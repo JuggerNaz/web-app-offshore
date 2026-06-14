@@ -1378,6 +1378,8 @@ function V10PreviewLayout() {
     setSzciPreviewOpen,
     rscorPreviewOpen,
     setRscorPreviewOpen,
+    rscorV2PreviewOpen,
+    setRscorV2PreviewOpen,
     rrisiPreviewOpen,
     setRrisiPreviewOpen,
     jtisiPreviewOpen,
@@ -1464,6 +1466,8 @@ function V10PreviewLayout() {
     generateBLReportBlob,
     generateRSCORReport,
     generateRSCORReportBlob,
+    generateRSCORV2Report,
+    generateRSCORV2ReportBlob,
     generateRRISIReport,
     generateRRISIReportBlob,
     generateJTISIReport,
@@ -3137,7 +3141,6 @@ function V10PreviewLayout() {
             `
         )
         .eq("jobpack_id", parseInt(jobPackId || "0"))
-        .not(inspCol, "is", null)
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
@@ -7498,6 +7501,7 @@ function V10PreviewLayout() {
           showCriteriaConfirm,
           pendingRule,
           rscorPreviewOpen,
+          rscorV2PreviewOpen,
           anodePreviewOpen,
           anodeRsaniPreviewOpen,
           cpPreviewOpen,
@@ -7582,6 +7586,7 @@ function V10PreviewLayout() {
           setIsAttachmentManagerOpen,
           setShowCriteriaConfirm,
           setRscorPreviewOpen,
+          setRscorV2PreviewOpen,
           setAnodePreviewOpen,
           setAnodeRsaniPreviewOpen,
           setCpPreviewOpen,
@@ -7650,6 +7655,7 @@ function V10PreviewLayout() {
           generateCUReportBlob,
           generateBLReportBlob,
           generateRSCORReportBlob,
+          generateRSCORV2ReportBlob,
           generateRRISIReportBlob,
           generateJTISIReportBlob,
           generateITISIReportBlob,

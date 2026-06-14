@@ -2,7 +2,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
 // ─── Priority colour mapping ─────────────────────────────────────────────────
@@ -413,8 +413,10 @@ export const generateDefectSummaryReport = async (
             if (config.showPageNumbers) drawFooter(doc, i, totalPages);
         }
 
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         const suffix = config.isFindingsReport ? "FindingsSummary" : "DefectSummary";
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${config.reportNoPrefix}_${suffix}.pdf`);
         return;
     }
@@ -575,8 +577,10 @@ export const generateDefectSummaryReport = async (
         if (config.showPageNumbers) drawFooter(doc, i, totalPages);
     }
 
+    applyWatermarkAndSignaturesGlobal(doc, config);
     if (config.returnBlob) return doc.output("blob");
     const suffix = config.isFindingsReport ? "FindingsSummary" : "DefectSummary";
+    applyWatermarkAndSignaturesGlobal(doc, config);
     doc.save(`${config.reportNoPrefix}_${suffix}.pdf`);
 };
 

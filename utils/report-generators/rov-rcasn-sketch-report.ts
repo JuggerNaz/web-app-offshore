@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -448,10 +448,12 @@ export const generateROVCasnSketchReport = async (
         console.log("[ROV Caisson Sketch Report] Generation complete, returnBlob:", config?.returnBlob);
         if (config?.returnBlob !== false) {
             console.log("[ROV Caisson Sketch Report] Returning Blob");
+            applyWatermarkAndSignaturesGlobal(doc, config);
             return doc.output("blob");
         }
         
         console.log("[ROV Caisson Sketch Report] Saving PDF to file");
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
     } catch (e) { 
         console.error("ROV Caisson Sketch Report Error", e); 

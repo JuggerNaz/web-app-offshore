@@ -26,7 +26,9 @@ interface SOWData {
 interface ReportConfig {
     reportNoPrefix: string;
     reportYear: string;
-    preparedBy: { name: string; date: string };
+    preparedBy: { name: string; date: string 
+    approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
     reviewedBy: { name: string; date: string };
     approvedBy: { name: string; date: string };
     watermark: { enabled: boolean; text: string; transparency: number };
@@ -38,7 +40,7 @@ interface ReportConfig {
 }
 
 // Helpers
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 const fetchInspectionTypes = async (): Promise<any[]> => {
     try {
@@ -449,6 +451,7 @@ export const generateWorkScopeStatusReport = async (
     }
 
     if (config?.returnBlob) {
+        applyWatermarkAndSignaturesGlobal(doc, config);
         return doc.output('blob');
     }
     return doc;

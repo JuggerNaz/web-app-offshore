@@ -7,6 +7,35 @@ import { Loader2, Printer, Download, Share2, FileText, Eye, Leaf, User } from "l
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { jsPDF } from "jspdf";
+import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
+
+// Ensure jsPDF prototype is patched in this bundle context as well
+if (typeof window !== "undefined") {
+    const proto = jsPDF.prototype as any;
+    if (!proto._isPatchedForWatermarksGlobal) {
+        proto._isPatchedForWatermarksGlobal = true;
+        const originalOutput = proto.output;
+        const originalSave = proto.save;
+
+        proto.output = function (this: jsPDF, ...args: any[]) {
+            const config = (window as any).__reportConfig;
+            if (config) {
+                applyWatermarkAndSignaturesGlobal(this, config);
+            }
+            return originalOutput.apply(this, args);
+        };
+
+        proto.save = function (this: jsPDF, ...args: any[]) {
+            const config = (window as any).__reportConfig;
+            if (config) {
+                applyWatermarkAndSignaturesGlobal(this, config);
+            }
+            return originalSave.apply(this, args);
+        };
+    }
+}
+
 
 interface ReportPreviewDialogProps {
     open: boolean;
@@ -20,6 +49,8 @@ interface ReportPreviewDialogProps {
     initialPrintFriendly?: boolean;
     /** The active report configuration including watermark, etc. */
     reportConfig?: any;
+    /** Callback to return to the report wizard */
+    onBack?: () => void;
 }
 
 export function ReportPreviewDialog({
@@ -31,6 +62,7 @@ export function ReportPreviewDialog({
     initialShowSignatures,
     initialPrintFriendly,
     reportConfig,
+    onBack,
 }: ReportPreviewDialogProps) {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -275,7 +307,15 @@ export function ReportPreviewDialog({
 
                 <div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-950 flex justify-between items-center gap-2">
                     <div>
-                        <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        <Button 
+                            variant="outline" 
+                            onClick={() => {
+                                onOpenChange(false);
+                                if (onBack) {
+                                    onBack();
+                                }
+                            }}
+                        >
                             Back
                         </Button>
                     </div>

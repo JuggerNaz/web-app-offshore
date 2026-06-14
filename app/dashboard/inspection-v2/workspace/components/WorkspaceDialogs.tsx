@@ -49,6 +49,7 @@ import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 import { getReportHeaderData } from "@/utils/company-settings";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
+import { generateROVRSCORV2Report } from "@/utils/report-generators/rov-rscor-v2-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
 import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
@@ -110,6 +111,7 @@ interface WorkspaceDialogsProps {
         showCriteriaConfirm: boolean;
         pendingRule: any;
         rscorPreviewOpen: boolean;
+        rscorV2PreviewOpen: boolean;
         anodePreviewOpen: boolean;
         anodeRsaniPreviewOpen: boolean;
         cpPreviewOpen: boolean;
@@ -199,6 +201,7 @@ interface WorkspaceDialogsProps {
         setIsAttachmentManagerOpen: (open: boolean) => void;
         setShowCriteriaConfirm: (open: boolean) => void;
         setRscorPreviewOpen: (open: boolean) => void;
+        setRscorV2PreviewOpen: (open: boolean) => void;
         setAnodePreviewOpen: (open: boolean) => void;
         setAnodeRsaniPreviewOpen: (open: boolean) => void;
         setCpPreviewOpen: (open: boolean) => void;
@@ -274,6 +277,7 @@ interface WorkspaceDialogsProps {
         generateCUReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateBLReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRSCORV2ReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateITISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -374,6 +378,7 @@ export function WorkspaceDialogs({
         showCriteriaConfirm,
         pendingRule,
         rscorPreviewOpen,
+        rscorV2PreviewOpen,
         anodePreviewOpen,
         anodeRsaniPreviewOpen,
         cpPreviewOpen,
@@ -458,6 +463,7 @@ export function WorkspaceDialogs({
         setIsAttachmentManagerOpen,
         setShowCriteriaConfirm,
         setRscorPreviewOpen,
+        setRscorV2PreviewOpen,
         setAnodePreviewOpen,
         setAnodeRsaniPreviewOpen,
         setCpPreviewOpen,
@@ -528,6 +534,7 @@ export function WorkspaceDialogs({
         generateCUReportBlob,
         generateBLReportBlob,
         generateRSCORReportBlob,
+        generateRSCORV2ReportBlob,
         generateRRISIReportBlob,
         generateJTISIReportBlob,
         generateITISIReportBlob,
@@ -589,6 +596,22 @@ export function WorkspaceDialogs({
     // every ReportPreviewDialog opens with the settings the user chose in the wizard.
     const wizardShowSignatures: boolean = reportConfig?.showSignatures !== false;
     const wizardPrintFriendly: boolean = reportConfig?.printFriendly === true;
+
+    // Wizard step and template state lifted up to control back-routing from preview dialogs
+    const [wizardStep, setWizardStep] = React.useState(1);
+    const [wizardSelectedTemplate, setWizardSelectedTemplate] = React.useState<any>(null);
+    const isReturningFromPreview = React.useRef(false);
+
+    React.useEffect(() => {
+        if (isReportWizardOpen) {
+            if (isReturningFromPreview.current) {
+                isReturningFromPreview.current = false;
+            } else {
+                setWizardStep(1);
+                setWizardSelectedTemplate(null);
+            }
+        }
+    }, [isReportWizardOpen]);
 
     return (
         <>
@@ -1216,7 +1239,9 @@ export function WorkspaceDialogs({
                 </DialogContent>
             </Dialog>
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rscorPreviewOpen} 
@@ -1254,7 +1279,49 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={rscorV2PreviewOpen} 
+                onOpenChange={setRscorV2PreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.logo_url || '';
+                    }
+
+                    return await generateROVRSCORV2Report(
+                        scourRecords,
+                        { 
+                            ...headerData, 
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV Scour Survey Sketch v2 Report Preview"
+                fileName={`ROV_Scour_Survey_Sketch_v2_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={anodePreviewOpen} 
@@ -1311,6 +1378,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={cpPreviewOpen}
@@ -1372,6 +1441,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rswniPreviewOpen}
@@ -1433,6 +1504,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rovRicmiPreviewOpen}
@@ -1494,6 +1567,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingAnmainPreviewOpen}
@@ -1555,6 +1630,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rgviPreviewOpen}
@@ -1615,6 +1692,8 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rcondSketchPreviewOpen}
@@ -2017,7 +2096,9 @@ export function WorkspaceDialogs({
                 </div>
             )}
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={previewOpen} 
@@ -2026,7 +2107,9 @@ export function WorkspaceDialogs({
                 fileName={`Anomaly_Report_${previewRecord?.anomaly_ref_no || 'Draft'}`} 
                 generateReport={generateAnomalyReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={mPreviewOpen} 
@@ -2035,7 +2118,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_MGI_Report_${headerData.sowReportNo}`} 
                 generateReport={handlers.generateMGIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={fmdPreviewOpen} 
@@ -2044,7 +2129,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_FMD_Report_${headerData.sowReportNo}`} 
                 generateReport={handlers.generateFMDReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={utwtPreviewOpen} 
@@ -2053,7 +2140,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_UTWT_Report_${headerData.sowReportNo}`} 
                 generateReport={handlers.generateUTWTReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={szciPreviewOpen} 
@@ -2062,7 +2151,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_SZCI_Report_${headerData.sowReportNo}`} 
                 generateReport={generateSZCIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rgPreviewOpen} 
@@ -2071,7 +2162,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Riser_Guard_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRGReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={sgPreviewOpen} 
@@ -2080,7 +2173,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Caisson_Guard_Report_${headerData.sowReportNo}`} 
                 generateReport={generateSGReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={cuPreviewOpen} 
@@ -2089,7 +2184,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Conductor_Guard_Report_${headerData.sowReportNo}`} 
                 generateReport={generateCUReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={blPreviewOpen} 
@@ -2098,7 +2195,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Boatlanding_Report_${headerData.sowReportNo}`} 
                 generateReport={generateBLReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rscorPreviewOpen} 
@@ -2107,7 +2206,20 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Scour_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRSCORReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={rscorV2PreviewOpen} 
+                onOpenChange={setRscorV2PreviewOpen} 
+                title="ROV Scour Survey Sketch v2 Report Preview" 
+                fileName={`ROV_Scour_Survey_Sketch_v2_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRSCORV2ReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rrisiPreviewOpen} 
@@ -2116,7 +2228,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Riser_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRRISIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={jtisiPreviewOpen} 
@@ -2125,7 +2239,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_JTube_Report_${headerData.sowReportNo}`} 
                 generateReport={generateJTISIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={itisiPreviewOpen} 
@@ -2134,7 +2250,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_ITube_Report_${headerData.sowReportNo}`} 
                 generateReport={generateITISIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={anodePreviewOpen} 
@@ -2143,7 +2261,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Anode_Report_${headerData.sowReportNo}`} 
                 generateReport={generateAnodeReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={anodeRsaniPreviewOpen} 
@@ -2152,7 +2272,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Selected_Anode_Report_${headerData.sowReportNo}`} 
                 generateReport={generateAnodeRsaniReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={cpPreviewOpen} 
@@ -2161,7 +2283,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_CP_Report_${headerData.sowReportNo}`} 
                 generateReport={generateCPReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingAnodePreviewOpen} 
@@ -2170,7 +2294,9 @@ export function WorkspaceDialogs({
                 fileName={`Diving_Anode_Report_${headerData.sowReportNo}`} 
                 generateReport={generateDivingAnodeReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rgviPreviewOpen} 
@@ -2179,7 +2305,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_RGVI_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRGVIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rcasnPreviewOpen} 
@@ -2188,7 +2316,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Caisson_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCASNReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rcasnSketchPreviewOpen} 
@@ -2197,7 +2327,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCASNSketchReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rcondPreviewOpen} 
@@ -2206,7 +2338,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Conductor_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCONDReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rcondSketchPreviewOpen} 
@@ -2215,7 +2349,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Conductor_Sketch_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCONDSketchReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={seabedPreviewOpen} 
@@ -2224,7 +2360,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Seabed_Report_${headerData.sowReportNo}`} 
                 generateReport={generateSeabedReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={photographyPreviewOpen} 
@@ -2233,7 +2371,9 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Photography_Report_${headerData.sowReportNo}`} 
                 generateReport={generatePhotographyReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={photographyLogPreviewOpen} 
@@ -2243,7 +2383,9 @@ export function WorkspaceDialogs({
                 generateReport={generatePhotographyLogReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={gvinsPreviewOpen} 
@@ -2253,7 +2395,9 @@ export function WorkspaceDialogs({
                 generateReport={generateGVINSReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={bsinsPreviewOpen} 
@@ -2263,7 +2407,9 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateBSINSReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={cleanPreviewOpen} 
@@ -2273,7 +2419,9 @@ export function WorkspaceDialogs({
                 generateReport={generateCLEANReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={cvinsPreviewOpen} 
@@ -2283,7 +2431,9 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateCVINSReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={mpinsPreviewOpen} 
@@ -2293,7 +2443,9 @@ export function WorkspaceDialogs({
                 generateReport={generateMPINSReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={utwtkPreviewOpen} 
@@ -2303,7 +2455,9 @@ export function WorkspaceDialogs({
                 generateReport={generateUTWTKReportBlob} 
             />
             
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={szonePreviewOpen} 
@@ -2313,7 +2467,9 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateSZONEReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={cpclbPreviewOpen} 
@@ -2323,7 +2479,9 @@ export function WorkspaceDialogs({
                 generateReport={generateCPCLBReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={utclbPreviewOpen} 
@@ -2333,7 +2491,9 @@ export function WorkspaceDialogs({
                 generateReport={generateUTCLBReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingMgiPreviewOpen} 
@@ -2343,7 +2503,9 @@ export function WorkspaceDialogs({
                 generateReport={generateDivingMGIReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingAcfmcPreviewOpen} 
@@ -2353,7 +2515,9 @@ export function WorkspaceDialogs({
                 generateReport={generateDivingACFMCReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingPlcoPreviewOpen} 
@@ -2363,7 +2527,9 @@ export function WorkspaceDialogs({
                 generateReport={generateDivingPLCOReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rovRwdiPreviewOpen} 
@@ -2514,6 +2680,10 @@ export function WorkspaceDialogs({
             <ReportWizardDialog
                 open={isReportWizardOpen}
                 onOpenChange={setIsReportWizardOpen}
+                currentStep={wizardStep}
+                setCurrentStep={setWizardStep}
+                selectedTemplate={wizardSelectedTemplate}
+                setSelectedTemplate={setWizardSelectedTemplate}
                 inspMethod={inspMethod}
                 currentRecords={currentRecords}
                 headerData={headerData}
@@ -2549,6 +2719,7 @@ export function WorkspaceDialogs({
                     generateDivingMGIReport: () => setters.setDivingMgiPreviewOpen(true),
                     generateSZCIReport: () => setters.setSzciPreviewOpen(true),
                     generateRSCORReport: () => setters.setRscorPreviewOpen(true),
+                    generateRSCORV2Report: () => setters.setRscorV2PreviewOpen(true),
                     generateRRISIReport: () => setters.setRrisiPreviewOpen(true),
                     generateJTISIReport: () => setters.setJtisiPreviewOpen(true),
                     generateITISIReport: () => setters.setItisiPreviewOpen(true),

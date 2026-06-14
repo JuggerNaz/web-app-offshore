@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -76,7 +76,7 @@ export const generateROVRSCORReport = async (
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 11, { align: 'center' });
             d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`ROV Scour Survey Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.text(`Scour Survey Sketch Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
 
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
@@ -365,11 +365,11 @@ export const generateROVRSCORReport = async (
 
         const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
         if (config.showSignatures !== false) {
-            let sigY = pageHeight - 38;
-            if (finalY > sigY - 10) {
+            let sigY = pageHeight - 28;
+            if (finalY > sigY - 2) {
                 doc.addPage();
                 drawHeader(doc);
-                sigY = pageHeight - 38;
+                sigY = pageHeight - 28;
             }
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number) => {
@@ -395,8 +395,10 @@ export const generateROVRSCORReport = async (
             drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        applyWatermarkAndSignaturesGlobal(doc, config);
+        doc.save(`Scour_Survey_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
     } catch (e) {
         console.error("RSCOR Report Error", e);

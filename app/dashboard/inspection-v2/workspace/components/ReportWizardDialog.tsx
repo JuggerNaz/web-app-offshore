@@ -21,7 +21,9 @@ import {
     ChevronLeft,
     Settings2,
     Eye,
-    Globe
+    Globe,
+    List,
+    LayoutGrid
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface ReportTemplate {
     id: string;
@@ -170,6 +173,10 @@ interface ReportWizardDialogProps {
     headerData?: any;
     config: any;
     setConfig: (cfg: any) => void;
+    currentStep?: number;
+    setCurrentStep?: (step: number) => void;
+    selectedTemplate?: any;
+    setSelectedTemplate?: (t: any) => void;
     handlers: {
         generateRGVIReport: () => void;
         generateGVINSReport: () => void;
@@ -199,6 +206,7 @@ interface ReportWizardDialogProps {
         generateDivingMGIReport: () => void;
         generateSZCIReport: () => void;
         generateRSCORReport: () => void;
+        generateRSCORV2Report: () => void;
         generateRRISIReport: () => void;
         generateJTISIReport: () => void;
         generateITISIReport: () => void;
@@ -310,13 +318,23 @@ export function ReportWizardDialog({
     headerData,
     config,
     setConfig,
-    handlers
+    handlers,
+    currentStep: propCurrentStep,
+    setCurrentStep: propSetCurrentStep,
+    selectedTemplate: propSelectedTemplate,
+    setSelectedTemplate: propSetSelectedTemplate,
 }: ReportWizardDialogProps) {
-    const [currentStep, setCurrentStep] = useState(1);
-    const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
+    const [localStep, setLocalStep] = useState(1);
+    const currentStep = propCurrentStep ?? localStep;
+    const setCurrentStep = propSetCurrentStep ?? setLocalStep;
+
+    const [localTemplate, setLocalTemplate] = useState<ReportTemplate | null>(null);
+    const selectedTemplate = propSelectedTemplate ?? localTemplate;
+    const setSelectedTemplate = propSetSelectedTemplate ?? setLocalTemplate;
     const [search, setSearch] = useState("");
     const [activeCategory, setActiveCategory] = useState<string>("Inspection");
     const [activeMode, setActiveMode] = useState<string>("ALL");
+    const [viewMode, setViewMode] = useState<"card" | "table">("card");
 
     const templates: ReportTemplate[] = useMemo(() => {
         const hasRecords = (codes: string[]) => 
@@ -346,7 +364,8 @@ export function ReportWizardDialog({
             { id: 'rwdi', code: 'RWDI', name: 'ROV Water Depth Inspection Report', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
             { id: 'mgi_rov', code: 'RMGI', name: 'ROV Marine Growth (RMGI)', description: 'ROV Marine Growth Inspection report including coverage and thickness measurements.', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'szci_rov', code: 'RSZCI', name: 'ROV Splash Zone (SZCI)', description: 'ROV Splash Zone inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
-            { id: 'rscor_rov', code: 'RSCOR', name: 'ROV Scour Report (RSCOR)', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch v2', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
             { id: 'rrisi_rov', code: 'RRISI', name: 'ROV Riser Report (RRISI)', description: 'ROV Riser Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
             { id: 'jtisi_rov', code: 'JTISI', name: 'ROV J-Tube Report (JTISI)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI']) },
             { id: 'itisi_rov', code: 'ITISI', name: 'ROV I-Tube Report (ITISI)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI']) },
@@ -413,12 +432,36 @@ export function ReportWizardDialog({
         const seenNames = new Set<string>();
         const seenCodes = new Set<string>();
         for (const t of combined) {
-            const nameKey = t.name.trim().toLowerCase();
+            let updatedName = t.name.trim();
+            
+            // Strip redundant mode prefix since the postfix will be added
+            if (t.mode === 'ROV') {
+                if (updatedName.toUpperCase().startsWith('ROV ')) {
+                    updatedName = updatedName.substring(4).trim();
+                }
+            } else if (t.mode === 'DIVING') {
+                if (updatedName.toUpperCase().startsWith('DIVING ')) {
+                    updatedName = updatedName.substring(7).trim();
+                } else if (updatedName.toUpperCase().startsWith('DIVER ')) {
+                    updatedName = updatedName.substring(6).trim();
+                }
+            }
+
+            if (t.mode === 'ROV' && !updatedName.toUpperCase().endsWith('(ROV)')) {
+                updatedName = `${updatedName} (ROV)`;
+            } else if (t.mode === 'DIVING' && !updatedName.toUpperCase().endsWith('(DIVING)')) {
+                updatedName = `${updatedName} (DIVING)`;
+            }
+            
+            const nameKey = updatedName.toLowerCase();
             const codeKey = t.code.trim().toLowerCase();
             if (!seenNames.has(nameKey) && !seenCodes.has(codeKey)) {
                 seenNames.add(nameKey);
                 seenCodes.add(codeKey);
-                unique.push(t);
+                unique.push({
+                    ...t,
+                    name: updatedName
+                });
             }
         }
         unique.sort((a, b) => a.name.localeCompare(b.name));
@@ -433,6 +476,18 @@ export function ReportWizardDialog({
             return matchesSearch && matchesCategory && matchesMode;
         });
     }, [templates, search, activeCategory, activeMode]);
+
+    const groupedTemplates = useMemo(() => {
+        const rov = filteredTemplates.filter(t => t.mode === 'ROV');
+        const diving = filteredTemplates.filter(t => t.mode === 'DIVING');
+        const both = filteredTemplates.filter(t => t.mode === 'BOTH');
+        
+        return [
+            { label: "ROV Operations", icon: <Cpu className="w-3.5 h-3.5" />, templates: rov, colorClass: "text-blue-500" },
+            { label: "Diving Operations", icon: <Waves className="w-3.5 h-3.5" />, templates: diving, colorClass: "text-emerald-500" },
+            { label: "Combined Operations", icon: <Activity className="w-3.5 h-3.5" />, templates: both, colorClass: "text-indigo-500" }
+        ].filter(group => group.templates.length > 0);
+    }, [filteredTemplates]);
 
     const categories = ["Structure", "Job Pack", "Planning", "Inspection", "Final", "Others"];
 
@@ -464,9 +519,11 @@ export function ReportWizardDialog({
         if (selectedTemplate) {
             selectedTemplate.handler();
             onOpenChange(false);
-            // Reset wizard for next time
-            setCurrentStep(1);
-            setSelectedTemplate(null);
+            if (!propCurrentStep) {
+                // Reset wizard for next time if not parent-controlled
+                setCurrentStep(1);
+                setSelectedTemplate(null);
+            }
         }
     };
 
@@ -474,11 +531,13 @@ export function ReportWizardDialog({
         <Dialog open={open} onOpenChange={(val) => {
             onOpenChange(val);
             if (!val) {
-                // Reset step when closed
-                setTimeout(() => {
-                    setCurrentStep(1);
-                    setSelectedTemplate(null);
-                }, 300);
+                // Reset step when closed (only for local state)
+                if (!propCurrentStep) {
+                    setTimeout(() => {
+                        setLocalStep(1);
+                        setLocalTemplate(null);
+                    }, 300);
+                }
             }
         }}>
             <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
@@ -579,64 +638,137 @@ export function ReportWizardDialog({
                                             />
                                         </div>
 
-                                        {activeCategory === "Inspection" && (
-                                            <Tabs value={activeMode} onValueChange={setActiveMode} className="w-full md:w-auto">
-                                                <TabsList className="bg-slate-200/50 dark:bg-slate-800 h-11 p-1 gap-1">
-                                                    <TabsTrigger value="ALL" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">All Modes</TabsTrigger>
-                                                    <TabsTrigger value="ROV" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-blue-600 data-[state=active]:text-white flex gap-2">
-                                                        <Cpu className="w-3.5 h-3.5" /> ROV
-                                                    </TabsTrigger>
-                                                    <TabsTrigger value="DIVING" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white flex gap-2">
-                                                        <Waves className="w-3.5 h-3.5" /> Diving
-                                                    </TabsTrigger>
-                                                </TabsList>
-                                            </Tabs>
-                                        )}
+                                        <div className="flex items-center gap-4 shrink-0 w-full md:w-auto justify-between md:justify-end">
+                                            {activeCategory === "Inspection" && (
+                                                <Tabs value={activeMode} onValueChange={setActiveMode} className="w-full md:w-auto">
+                                                    <TabsList className="bg-slate-200/50 dark:bg-slate-800 h-11 p-1 gap-1">
+                                                        <TabsTrigger value="ALL" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">All Modes</TabsTrigger>
+                                                        <TabsTrigger value="ROV" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-blue-600 data-[state=active]:text-white flex gap-2">
+                                                            <Cpu className="w-3.5 h-3.5" /> ROV
+                                                        </TabsTrigger>
+                                                        <TabsTrigger value="DIVING" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white flex gap-2">
+                                                            <Waves className="w-3.5 h-3.5" /> Diving
+                                                        </TabsTrigger>
+                                                    </TabsList>
+                                                </Tabs>
+                                            )}
+
+                                            <div className="flex items-center gap-1 bg-slate-200/50 dark:bg-slate-800 p-1 rounded-lg h-11">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => setViewMode("card")}
+                                                    className={`h-9 w-9 p-0 rounded-md transition-all ${
+                                                        viewMode === "card"
+                                                            ? "bg-white dark:bg-slate-700 shadow-sm text-slate-950 dark:text-white"
+                                                            : "text-slate-500 hover:bg-slate-300/30 dark:hover:bg-slate-700/30"
+                                                    }`}
+                                                >
+                                                    <LayoutGrid className="w-4 h-4" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => setViewMode("table")}
+                                                    className={`h-9 w-9 p-0 rounded-md transition-all ${
+                                                        viewMode === "table"
+                                                            ? "bg-white dark:bg-slate-700 shadow-sm text-slate-950 dark:text-white"
+                                                            : "text-slate-500 hover:bg-slate-300/30 dark:hover:bg-slate-700/30"
+                                                    }`}
+                                                >
+                                                    <List className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
                                 <ScrollArea className="flex-1 -mr-2 pr-4 mt-4">
                                     {filteredTemplates.length > 0 ? (
                                         <div className="space-y-8 pb-4">
-                                            {activeCategory === "Inspection" && activeMode === "ALL" ? (
-                                                <>
-                                                    <div className="space-y-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-                                                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 flex items-center gap-2">
-                                                                <Cpu className="w-3.5 h-3.5" /> ROV Operations
-                                                            </span>
-                                                            <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-                                                        </div>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                            {filteredTemplates.filter(t => t.mode === 'ROV' || t.mode === 'BOTH').map((template) => (
-                                                                <TemplateCard key={template.id} template={template} onSelect={handleTemplateSelect} getIcon={getIcon} />
-                                                            ))}
-                                                        </div>
+                                            {groupedTemplates.map((group) => (
+                                                <div key={group.label} className="space-y-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
+                                                        <span className={`text-[10px] font-black uppercase tracking-widest ${group.colorClass} flex items-center gap-2`}>
+                                                            {group.icon} {group.label}
+                                                        </span>
+                                                        <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
                                                     </div>
 
-                                                    <div className="space-y-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-                                                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-2">
-                                                                <Waves className="w-3.5 h-3.5" /> Diving Operations
-                                                            </span>
-                                                            <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-                                                        </div>
+                                                    {viewMode === "card" ? (
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                            {filteredTemplates.filter(t => t.mode === 'DIVING').map((template) => (
+                                                            {group.templates.map((template) => (
                                                                 <TemplateCard key={template.id} template={template} onSelect={handleTemplateSelect} getIcon={getIcon} />
                                                             ))}
                                                         </div>
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                    {filteredTemplates.map((template) => (
-                                                        <TemplateCard key={template.id} template={template} onSelect={handleTemplateSelect} getIcon={getIcon} />
-                                                    ))}
+                                                    ) : (
+                                                        <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-950 shadow-sm">
+                                                            <Table>
+                                                                <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
+                                                                    <TableRow>
+                                                                        <TableHead className="w-[80px]">Code</TableHead>
+                                                                        <TableHead>Template Name</TableHead>
+                                                                        <TableHead className="hidden md:table-cell">Description</TableHead>
+                                                                        <TableHead className="w-[120px]">Category</TableHead>
+                                                                        <TableHead className="w-[120px] text-right">Status</TableHead>
+                                                                    </TableRow>
+                                                                </TableHeader>
+                                                                <TableBody>
+                                                                    {group.templates.map((template) => (
+                                                                        <TableRow 
+                                                                            key={template.id}
+                                                                            className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors ${
+                                                                                !template.available ? "opacity-60 grayscale cursor-not-allowed bg-slate-50/50 dark:bg-slate-950" : ""
+                                                                            }`}
+                                                                            onClick={() => {
+                                                                                if (template.available) {
+                                                                                    handleTemplateSelect(template);
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <TableCell>
+                                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800">
+                                                                                    {template.code}
+                                                                                </span>
+                                                                            </TableCell>
+                                                                            <TableCell className="font-bold text-slate-800 dark:text-slate-100">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <div className="p-1 rounded bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400">
+                                                                                        {getIcon(template.category)}
+                                                                                    </div>
+                                                                                    {template.name}
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            <TableCell className="text-slate-500 dark:text-slate-400 text-xs hidden md:table-cell">
+                                                                                {template.description}
+                                                                            </TableCell>
+                                                                            <TableCell className="text-slate-500 dark:text-slate-400 text-xs">
+                                                                                <Badge variant="outline" className="text-[9px] font-bold tracking-wider uppercase">
+                                                                                    {template.category}
+                                                                                </Badge>
+                                                                            </TableCell>
+                                                                            <TableCell className="text-right">
+                                                                                {template.available ? (
+                                                                                    <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-250 dark:border-emerald-800 text-[9px] font-black tracking-wide">
+                                                                                        Available
+                                                                                    </Badge>
+                                                                                ) : (
+                                                                                    <span className="text-[10px] text-amber-600 dark:text-amber-500 italic font-bold">
+                                                                                        No Records
+                                                                                    </span>
+                                                                                )}
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
+                                            ))}
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -976,16 +1108,7 @@ export function ReportWizardDialog({
 
                 <div className="p-4 border-t border-slate-100 dark:border-slate-900 bg-slate-50 dark:bg-slate-950 flex justify-between items-center shrink-0">
                     <div className="flex gap-2">
-                        {currentStep === 1 ? (
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => onOpenChange(false)}
-                                className="text-[10px] font-black uppercase tracking-widest h-9 px-6 rounded-full border-slate-200 hover:bg-slate-100"
-                            >
-                                Cancel Wizard
-                            </Button>
-                        ) : (
+                        {currentStep > 1 && (
                             <Button 
                                 variant="outline" 
                                 size="sm" 
@@ -995,6 +1118,22 @@ export function ReportWizardDialog({
                                 <ChevronLeft className="w-4 h-4 mr-1" /> Back
                             </Button>
                         )}
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => {
+                                onOpenChange(false);
+                                if (propSetCurrentStep) {
+                                    propSetCurrentStep(1);
+                                }
+                                if (propSetSelectedTemplate) {
+                                    propSetSelectedTemplate(null);
+                                }
+                            }}
+                            className="text-[10px] font-black uppercase tracking-widest h-9 px-6 rounded-full text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900"
+                        >
+                            Cancel Wizard
+                        </Button>
                     </div>
                     
                     <div className="flex items-center gap-3">

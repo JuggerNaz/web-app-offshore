@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 // Friendly labels for video log event types
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -180,7 +180,9 @@ export const generateVideoLogReport = async (
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
         doc.text("No video log records found.", pageWidth / 2, 80, { align: "center" });
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${config.reportNoPrefix}_VideoLog.pdf`);
         return;
     }
@@ -338,6 +340,8 @@ export const generateVideoLogReport = async (
         doc.text(printedDateStr, pageWidth - margin, footerLineY + 4, { align: "right" });
     }
 
+    applyWatermarkAndSignaturesGlobal(doc, config);
     if (config.returnBlob) return doc.output("blob");
+    applyWatermarkAndSignaturesGlobal(doc, config);
     doc.save(`${config.reportNoPrefix}_VideoLog.pdf`);
 };

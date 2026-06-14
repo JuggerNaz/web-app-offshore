@@ -15,7 +15,9 @@ interface ReportConfig {
     jobPackId?: number;
     structureId?: number;
     sowReportNo?: string;
-    preparedBy?: { name: string; date: string };
+    preparedBy?: { name: string; date: string 
+    approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
     reviewedBy?: { name: string; date: string };
     returnBlob?: boolean;
     showPageNumbers?: boolean;
@@ -302,7 +304,9 @@ export const generateROVRICMIReport = async (
         
         applyWatermarkAndSignaturesGlobal(doc, config);
 
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`ROV_RICMI_Inclinometer_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ROV RICMI Report] Error:", err);

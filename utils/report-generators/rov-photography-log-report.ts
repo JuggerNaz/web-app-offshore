@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -55,6 +55,7 @@ export const generateROVPhotographyLogReport = async (
             doc.setFontSize(10);
             doc.text("Please ensure photos are attached to the inspection records.", pageWidth / 2, 150, { align: "center" });
             
+            applyWatermarkAndSignaturesGlobal(doc, config);
             if (config.returnBlob) return doc.output("blob");
             return;
         }
@@ -202,7 +203,9 @@ export const generateROVPhotographyLogReport = async (
             drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`ROV_Photography_Log_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
 

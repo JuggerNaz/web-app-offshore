@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -390,7 +390,9 @@ export const generateROVMGIReport = async (
             drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`ROV_MGI_Summary_${headerData.sowReportNo}.pdf`);
         return;
     } catch (e) {

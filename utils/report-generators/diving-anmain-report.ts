@@ -319,7 +319,9 @@ export const generateDivingANMAINReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
 
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`Anode_Maintenance_Inspection_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ANMAIN Report] Error:", err);
