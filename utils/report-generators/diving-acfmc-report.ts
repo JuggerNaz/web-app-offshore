@@ -97,7 +97,7 @@ export const generateDivingACFMCReport = async (
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(14);  d.setFont("helvetica", "bold");
-            d.text("Diving ACFMC Inspection Report",                                    margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("ACFM Inspection Report (Diving)",                                    margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`SOW Report No: ${headerData.sowReportNo || "N/A"}`,                 margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -260,7 +260,7 @@ export const generateDivingACFMCReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Diving ACFMC Inspection Report  |  SOW: ${headerData.sowReportNo || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ACFM Inspection Report (Diving)  |  SOW: ${headerData.sowReportNo || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
@@ -309,7 +309,7 @@ export const generateDivingACFMCReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`Diving_ACFMC_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`ACFM_Inspection_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving ACFMC Report] Error:", err);
         throw err;

@@ -2510,8 +2510,8 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingAcfmcPreviewOpen} 
                 onOpenChange={setDivingAcfmcPreviewOpen} 
-                title="Diving ACFMC Inspection Report Preview" 
-                fileName={`Diving_ACFMC_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                title="ACFM Inspection Report (Diving) Preview" 
+                fileName={`ACFM_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingACFMCReportBlob} 
             />
 
