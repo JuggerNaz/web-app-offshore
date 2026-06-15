@@ -1540,6 +1540,24 @@ function V10PreviewLayout() {
     setRovRwdiPreviewOpen,
     generateROVRWDIReportBlob,
 
+    divingDcasnUwPreviewOpen,
+    setDivingDcasnUwPreviewOpen,
+    divingDcasnTsPreviewOpen,
+    setDivingDcasnTsPreviewOpen,
+    generateDivingDCASNUWReport,
+    generateDivingDCASNUWReportBlob,
+    generateDivingDCASNTSReport,
+    generateDivingDCASNTSReportBlob,
+
+    divingDcondUwPreviewOpen,
+    setDivingDcondUwPreviewOpen,
+    divingDcondTsPreviewOpen,
+    setDivingDcondTsPreviewOpen,
+    generateDivingDCONDUWReport,
+    generateDivingDCONDUWReportBlob,
+    generateDivingDCONDTSReport,
+    generateDivingDCONDTSReportBlob,
+
     generateInspectionReportByType,
     generateFullInspectionReport,
     reportConfig,
@@ -4594,7 +4612,8 @@ function V10PreviewLayout() {
         });
 
         const discardedCodes = ["PLATGI", "LOGS", "EXSUM", "NAVIG"];
-        setAllInspectionTypes(mergedTypes.filter((it) => !discardedCodes.includes(it.code)));
+        const activeTypes = mergedTypes.filter((it) => !discardedCodes.includes(it.code) && it.is_active === true);
+        setAllInspectionTypes(activeTypes);
       }
 
       if (codesRes.data) setDefectCodes(codesRes.data);
@@ -7567,6 +7586,10 @@ function V10PreviewLayout() {
           divingAcfmcPreviewOpen,
           divingPlcoPreviewOpen,
           rovRwdiPreviewOpen,
+          divingDcasnUwPreviewOpen,
+          divingDcasnTsPreviewOpen,
+          divingDcondUwPreviewOpen,
+          divingDcondTsPreviewOpen,
           isReportWizardOpen,
           reportConfig,
         }}
@@ -7643,6 +7666,10 @@ function V10PreviewLayout() {
           setDivingAcfmcPreviewOpen,
           setDivingPlcoPreviewOpen,
           setRovRwdiPreviewOpen,
+          setDivingDcasnUwPreviewOpen,
+          setDivingDcasnTsPreviewOpen,
+          setDivingDcondUwPreviewOpen,
+          setDivingDcondTsPreviewOpen,
           setIsReportWizardOpen,
           setReportConfig,
         }}
@@ -7710,6 +7737,14 @@ function V10PreviewLayout() {
           generateDivingACFMCReportBlob,
           generateDivingPLCOReportBlob,
           generateROVRWDIReportBlob,
+          generateDivingDCASNUWReport,
+          generateDivingDCASNUWReportBlob,
+          generateDivingDCASNTSReport,
+          generateDivingDCASNTSReportBlob,
+          generateDivingDCONDUWReport,
+          generateDivingDCONDUWReportBlob,
+          generateDivingDCONDTSReport,
+          generateDivingDCONDTSReportBlob,
         }}
         refs={{
           fileInputRef,

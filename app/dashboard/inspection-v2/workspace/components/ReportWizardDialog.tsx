@@ -145,6 +145,30 @@ export function getMatchingRecordsForTemplate(templateId: string, records: any[]
             return records.filter(r => hasCode(r, ['PL_CO']));
         case 'diving_anmain_report':
             return records.filter(r => hasCode(r, ['ANMAIN']));
+        case 'diving-dcasn-uw-report':
+        case 'diving-dcasn-ts-report':
+            return records.filter(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                const validTypes = ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'];
+                const isCaisson = typeCode === 'RCASN' || compCode === 'CS';
+                const isMatchingType = validTypes.includes(typeCode);
+                const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                const matchesElevation = templateId === 'diving-dcasn-uw-report' ? elev < 0 : elev >= 0;
+                return isMatchingType && isCaisson && matchesElevation;
+            });
+        case 'diving-dcond-uw-report':
+        case 'diving-dcond-ts-report':
+            return records.filter(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                const validTypes = ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'];
+                const isConductor = compCode === 'CD' || compCode === 'CON';
+                const isMatchingType = validTypes.includes(typeCode);
+                const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                const matchesElevation = templateId === 'diving-dcond-uw-report' ? elev < 0 : elev >= 0;
+                return isMatchingType && isConductor && matchesElevation;
+            });
             
         // BOTH
         case 'defect_summary':
@@ -193,6 +217,10 @@ interface ReportWizardDialogProps {
         generateRSWNIReport: () => void;
         generateROVRICMIReport: () => void;
         generateDivingANMAINReport: () => void;
+        generateDivingDCASNUWReport: () => void;
+        generateDivingDCASNTSReport: () => void;
+        generateDivingDCONDUWReport: () => void;
+        generateDivingDCONDTSReport: () => void;
         generateUTCLBReport: () => void;
         generateAnodeReport: () => void;
         generateAnodeRsaniReport: () => void;
@@ -398,8 +426,27 @@ export function ReportWizardDialog({
             { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
             { id: 'mgi_div', code: 'DMGI', name: 'Diving Marine Growth (DMGI)', description: 'Diving Marine Growth Inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMGIReport, available: hasRecords(['DMGI', 'MGROW']) },
             { id: 'diving_anmain_report', code: 'ANMAIN', name: 'Diving Anode Maintenance Report (ANMAIN)', description: 'Landscape Anode Maintenance Inspection Report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingANMAINReport, available: hasRecords(['ANMAIN']) },
-            
-            // ── INSPECTION REPORTS (BOTH / GENERAL) ────────────────────────────────
+            { id: 'diving-dcasn-uw-report', code: 'DCASN-UW', name: 'Caisson Inspection Underwater Diving', description: 'Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNUWReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
+            }) },
+            { id: 'diving-dcasn-ts-report', code: 'DCASN-TS', name: 'Caisson Inspection Topside Diving', description: 'Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNTSReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
+            }) },
+            { id: 'diving-dcond-uw-report', code: 'DCOND-UW', name: 'Conductor Inspection Underwater Diving', description: 'Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDUWReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
+            }) },
+            { id: 'diving-dcond-ts-report', code: 'DCOND-TS', name: 'Conductor Inspection Topside Diving', description: 'Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDTSReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
+            }) },
+
             { id: 'insp_report', code: 'INSP', name: 'Inspection Report', description: 'Detailed inspection findings, observations and results.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
             { id: 'defect_summary', code: 'DEFECT', name: 'Defect Summary Report', description: 'Priority-ordered summary of all anomalies with status.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly) },
             { id: 'findings', code: 'FINDINGS', name: 'Findings Summary Report', description: 'Consolidated summary of all findings across the SOW.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },

@@ -158,6 +158,10 @@ export const REPORT_TEMPLATES = {
         { id: "diving-plco-report", name: "Diving Coating Damage Inspection", icon: FileBarChart, description: "Landscape Diving Coating Damage Survey report — Surface Condition, CP Reading, Length, Width, Assessment, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-anmain-report", name: "Diving Anode Maintenance Report (ANMAIN)", icon: FileBarChart, description: "Landscape Anode Maintenance Inspection Report (ANMAIN) with QID, Elevation, Dive No., Anode Type, Installed Date, Replaced/Installed, Position, Life, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report", icon: FileBarChart, description: "Portrait ROV Water Depth Inspection report — QID, elevation, dive number, water depth, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater Diving", icon: FileBarChart, description: "Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcasn-ts-report", name: "Caisson Inspection Topside Diving", icon: FileBarChart, description: "Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater Diving", icon: FileBarChart, description: "Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcond-ts-report", name: "Conductor Inspection Topside Diving", icon: FileBarChart, description: "Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -204,7 +208,11 @@ const TOC_SECTIONS = [
       { id: "rov-sg-report", name: "ROV Caisson Guard Survey Report", mode: "ROV" },
       { id: "rov-cu-report", name: "ROV Conductor Guard Survey Report", mode: "ROV" },
       { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", mode: "ROV" },
-      { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" }
+      { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" },
+      { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater Diving", mode: "Diving" },
+      { id: "diving-dcasn-ts-report", name: "Caisson Inspection Topside Diving", mode: "Diving" },
+      { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater Diving", mode: "Diving" },
+      { id: "diving-dcond-ts-report", name: "Conductor Inspection Topside Diving", mode: "Diving" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
       { id: "rrisi-report", name: "ROV Riser Survey Report", mode: "ROV" },
@@ -1474,6 +1482,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateDivingACFMCReport } = await import("@/utils/report-generators/diving-acfmc-report");
             const { generateDivingPLCOReport } = await import("@/utils/report-generators/diving-plco-report");
             const { generateROVRWDIReport } = await import("@/utils/report-generators/rov-rwdi-report");
+            const { generateDivingDCASNUWReport } = await import("@/utils/report-generators/diving-dcasn-uw-report");
+            const { generateDivingDCASNTSReport } = await import("@/utils/report-generators/diving-dcasn-ts-report");
 
 
             // Fetch real company settings from API
@@ -3400,6 +3410,138 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("UTWTK Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Caisson Underwater Report (diving-dcasn-uw-report)
+        if (currentTemplateId === "diving-dcasn-uw-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                return null;
+            }
+
+            const caissonRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                return sowMatches && jobPackMatches;
+            });
+
+            if (!caissonRecords || caissonRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingDCASNUWReport(
+                    caissonRecords,
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId) } as any
+                );
+            } catch (error) {
+                console.error("Caisson UW Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Caisson Topside Report (diving-dcasn-ts-report)
+        if (currentTemplateId === "diving-dcasn-ts-report") {
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                return null;
+            }
+
+            const caissonRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                return sowMatches && jobPackMatches;
+            });
+
+            if (!caissonRecords || caissonRecords.length === 0) {
+                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingDCASNTSReport(
+                    caissonRecords,
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId) } as any
+                );
+            } catch (error) {
+                console.error("Caisson TS Generator Error:", error);
                 throw error;
             }
         }

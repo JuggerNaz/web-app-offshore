@@ -40,6 +40,10 @@ import { generateDivingACFMCReport as generateDivingACFMCReportTemplate } from "
 import { generateDivingPLCOReport as generateDivingPLCOReportTemplate } from "@/utils/report-generators/diving-plco-report";
 import { generateROVRWDIReport as generateROVRWDIReportTemplate } from "@/utils/report-generators/rov-rwdi-report";
 import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
+import { generateDivingDCASNUWReport as generateDivingDCASNUWReportTemplate } from "@/utils/report-generators/diving-dcasn-uw-report";
+import { generateDivingDCASNTSReport as generateDivingDCASNTSReportTemplate } from "@/utils/report-generators/diving-dcasn-ts-report";
+import { generateDivingDCONDUWReport as generateDivingDCONDUWReportTemplate } from "@/utils/report-generators/diving-dcond-uw-report";
+import { generateDivingDCONDTSReport as generateDivingDCONDTSReportTemplate } from "@/utils/report-generators/diving-dcond-ts-report";
 
 import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
 
@@ -109,6 +113,10 @@ export function useWorkspaceReports(
     const [divingAcfmcPreviewOpen, setDivingAcfmcPreviewOpen] = useState(false);
     const [divingPlcoPreviewOpen, setDivingPlcoPreviewOpen] = useState(false);
     const [rovRwdiPreviewOpen, setRovRwdiPreviewOpen] = useState(false);
+    const [divingDcasnUwPreviewOpen, setDivingDcasnUwPreviewOpen] = useState(false);
+    const [divingDcasnTsPreviewOpen, setDivingDcasnTsPreviewOpen] = useState(false);
+    const [divingDcondUwPreviewOpen, setDivingDcondUwPreviewOpen] = useState(false);
+    const [divingDcondTsPreviewOpen, setDivingDcondTsPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -1029,6 +1037,118 @@ export function useWorkspaceReports(
         return await generateDivingGVINSReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
 
+    const generateDivingDCASNUWReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
+        });
+        if (records.length === 0) {
+            toast.error("No matching caisson records found to generate report");
+            return;
+        }
+        setDivingDcasnUwPreviewOpen(true);
+    };
+
+    const generateDivingDCASNUWReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingDCASNUWReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
+    };
+
+    const generateDivingDCASNTSReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
+        });
+        if (records.length === 0) {
+            toast.error("No matching caisson records found to generate report");
+            return;
+        }
+        setDivingDcasnTsPreviewOpen(true);
+    };
+
+    const generateDivingDCASNTSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingDCASNTSReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
+    };
+
+    const generateDivingDCONDUWReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
+        });
+        if (records.length === 0) {
+            toast.error("No matching conductor records found to generate report");
+            return;
+        }
+        setDivingDcondUwPreviewOpen(true);
+    };
+
+    const generateDivingDCONDUWReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingDCONDUWReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
+    };
+
+    const generateDivingDCONDTSReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
+        });
+        if (records.length === 0) {
+            toast.error("No matching conductor records found to generate report");
+            return;
+        }
+        setDivingDcondTsPreviewOpen(true);
+    };
+
+    const generateDivingDCONDTSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingDCONDTSReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
+    };
+
     const generateDivingACFMCReport = async () => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'ACFMC');
         if (records.length === 0) {
@@ -1876,6 +1996,10 @@ export function useWorkspaceReports(
         cpclbPreviewOpen, setCpclbPreviewOpen,
         utclbPreviewOpen, setUtclbPreviewOpen,
         divingAnodePreviewOpen, setDivingAnodePreviewOpen,
+        divingDcasnUwPreviewOpen, setDivingDcasnUwPreviewOpen,
+        divingDcasnTsPreviewOpen, setDivingDcasnTsPreviewOpen,
+        divingDcondUwPreviewOpen, setDivingDcondUwPreviewOpen,
+        divingDcondTsPreviewOpen, setDivingDcondTsPreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -1939,6 +2063,14 @@ export function useWorkspaceReports(
         generatePhotographyLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
+        generateDivingDCASNUWReport,
+        generateDivingDCASNUWReportBlob,
+        generateDivingDCASNTSReport,
+        generateDivingDCASNTSReportBlob,
+        generateDivingDCONDUWReport,
+        generateDivingDCONDUWReportBlob,
+        generateDivingDCONDTSReport,
+        generateDivingDCONDTSReportBlob,
         generateDivingACFMCReport,
         generateDivingACFMCReportBlob,
         generateDivingPLCOReport,

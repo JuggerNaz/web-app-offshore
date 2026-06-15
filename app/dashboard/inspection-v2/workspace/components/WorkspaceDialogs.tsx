@@ -60,6 +60,10 @@ import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-repo
 import { generateROVRMGIReport } from "@/utils/report-generators/rov-rmgi-report";
 import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
 import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
+import { generateDivingDCASNUWReport } from "@/utils/report-generators/diving-dcasn-uw-report";
+import { generateDivingDCASNTSReport } from "@/utils/report-generators/diving-dcasn-ts-report";
+import { generateDivingDCONDUWReport } from "@/utils/report-generators/diving-dcond-uw-report";
+import { generateDivingDCONDTSReport } from "@/utils/report-generators/diving-dcond-ts-report";
 
 
 interface WorkspaceDialogsProps {
@@ -167,6 +171,10 @@ interface WorkspaceDialogsProps {
         divingAcfmcPreviewOpen: boolean;
         divingPlcoPreviewOpen: boolean;
         rovRwdiPreviewOpen: boolean;
+        divingDcasnUwPreviewOpen: boolean;
+        divingDcasnTsPreviewOpen: boolean;
+        divingDcondUwPreviewOpen: boolean;
+        divingDcondTsPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
@@ -248,6 +256,10 @@ interface WorkspaceDialogsProps {
         setDivingAcfmcPreviewOpen: (open: boolean) => void;
         setDivingPlcoPreviewOpen: (open: boolean) => void;
         setRovRwdiPreviewOpen: (open: boolean) => void;
+        setDivingDcasnUwPreviewOpen: (open: boolean) => void;
+        setDivingDcasnTsPreviewOpen: (open: boolean) => void;
+        setDivingDcondUwPreviewOpen: (open: boolean) => void;
+        setDivingDcondTsPreviewOpen: (open: boolean) => void;
         setIsReportWizardOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
 
@@ -322,6 +334,14 @@ interface WorkspaceDialogsProps {
         generateDivingACFMCReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingPLCOReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateROVRWDIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCASNUWReport: () => void;
+        generateDivingDCASNUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCASNTSReport: () => void;
+        generateDivingDCASNTSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCONDUWReport: () => void;
+        generateDivingDCONDUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCONDTSReport: () => void;
+        generateDivingDCONDTSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -436,6 +456,10 @@ export function WorkspaceDialogs({
         divingAcfmcPreviewOpen,
         divingPlcoPreviewOpen,
         rovRwdiPreviewOpen,
+        divingDcasnUwPreviewOpen,
+        divingDcasnTsPreviewOpen,
+        divingDcondUwPreviewOpen,
+        divingDcondTsPreviewOpen,
         isReportWizardOpen,
         reportConfig
     } = states;
@@ -512,6 +536,10 @@ export function WorkspaceDialogs({
         setDivingAcfmcPreviewOpen,
         setDivingPlcoPreviewOpen,
         setRovRwdiPreviewOpen,
+        setDivingDcasnUwPreviewOpen,
+        setDivingDcasnTsPreviewOpen,
+        setDivingDcondUwPreviewOpen,
+        setDivingDcondTsPreviewOpen,
         setIsReportWizardOpen,
         setReportConfig
     } = setters;
@@ -574,7 +602,15 @@ export function WorkspaceDialogs({
         generateDivingMGIReportBlob,
         generateDivingACFMCReportBlob,
         generateDivingPLCOReportBlob,
-        generateROVRWDIReportBlob
+        generateROVRWDIReportBlob,
+        generateDivingDCASNUWReport,
+        generateDivingDCASNUWReportBlob,
+        generateDivingDCASNTSReport,
+        generateDivingDCASNTSReportBlob,
+        generateDivingDCONDUWReport,
+        generateDivingDCONDUWReportBlob,
+        generateDivingDCONDTSReport,
+        generateDivingDCONDTSReportBlob
     } = handlers;
 
 
@@ -618,6 +654,27 @@ export function WorkspaceDialogs({
             }
         }
     }, [isReportWizardOpen]);
+
+    const dialogSowList = React.useMemo(() => {
+        return componentsSow.filter((c: any) => {
+            let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
+            const hasValidTask = tasksToFilter.some((tCode: string) => {
+                const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                if (!it) return true;
+                const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                if (inspMethod === "DIVING" && isDiving) return true;
+                if (inspMethod === "ROV" && isRov) return true;
+                return false;
+            });
+            return hasValidTask;
+        });
+    }, [componentsSow, allInspectionTypes, inspMethod]);
+
+    const dialogNonSowList = React.useMemo(() => {
+        const sowCompIdsWithValidTask = new Set(dialogSowList.map(c => c.id));
+        return allComps.filter((c: any) => !sowCompIdsWithValidTask.has(c.id));
+    }, [allComps, dialogSowList]);
 
     return (
         <>
@@ -1943,6 +2000,7 @@ export function WorkspaceDialogs({
                             <div className="space-y-1.5">
                                 {selectedComp?.taskStatuses
                                     ?.filter((ts: any) => {
+                                        if (['CPCLB', 'UTCLB', 'RCPCLB', 'RUTCLB'].includes(ts.code)) return false;
                                         const it = allInspectionTypes.find(type => type.code === ts.code);
                                         if (!it) return true;
                                         if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
@@ -1980,6 +2038,8 @@ export function WorkspaceDialogs({
                             <div className="space-y-1">
                                 {allInspectionTypes
                                     .filter(it => {
+                                        if (it.is_active !== true) return false;
+                                        if (['CPCLB', 'UTCLB', 'RCPCLB', 'RUTCLB'].includes(it.code)) return false;
                                         const isInSow = (selectedComp?.taskStatuses || []).some((ts: any) => ts.code === it.code);
                                         if (isInSow) return false;
                                         const matchesSearch = it.name.toLowerCase().includes(addTaskSearch.toLowerCase()) || 
@@ -1989,7 +2049,6 @@ export function WorkspaceDialogs({
                                         if (inspMethod === 'ROV') return it.metadata?.rov === 1;
                                         return true;
                                     })
-                                    .slice(0, 10)
                                     .map((it: any) => (
                                          <button 
                                             key={it.id} 
@@ -2044,19 +2103,8 @@ export function WorkspaceDialogs({
                     </div>
                      <div className="p-2 space-y-1 max-h-[50vh] overflow-y-auto bg-white dark:bg-slate-950">
                         <div className="px-2 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-50 dark:bg-slate-950 mb-1 rounded">SOW Items</div>
-                        {componentsSow
+                        {dialogSowList
                             .filter(c => {
-                                let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
-                                const hasValidTask = tasksToFilter.some((tCode: string) => {
-                                    const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
-                                    if (!it) return true;
-                                    const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                    const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                    if (inspMethod === "DIVING" && isDiving) return true;
-                                    if (inspMethod === "ROV" && isRov) return true;
-                                    return false;
-                                });
-                                if (!hasValidTask) return false;
                                 return JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
                             })
                             .map((c: any) => (
@@ -2086,10 +2134,9 @@ export function WorkspaceDialogs({
                             {selectorShowAll ? (
                             <>
                                 <div className="mt-4 px-2 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-50 dark:bg-slate-950 mb-1 rounded">Platform Library (Non-SOW)</div>
-                                {allComps
+                                {dialogNonSowList
                                     .filter(c => {
-                                        const isInSow = componentsSow.some(sc => sc.id === c.id);
-                                        return !isInSow && JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
+                                        return JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
                                     })
                                     .map((c: any) => (
                                         <button 
@@ -2610,6 +2657,54 @@ export function WorkspaceDialogs({
                 generateReport={generateROVRWDIReportBlob} 
             />
 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingDcasnUwPreviewOpen} 
+                onOpenChange={setDivingDcasnUwPreviewOpen} 
+                title="Caisson Inspection Underwater Diving Report Preview" 
+                fileName={`Diving_Caisson_UW_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingDCASNUWReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingDcasnTsPreviewOpen} 
+                onOpenChange={setDivingDcasnTsPreviewOpen} 
+                title="Caisson Inspection Topside Diving Report Preview" 
+                fileName={`Diving_Caisson_TS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingDCASNTSReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingDcondUwPreviewOpen} 
+                onOpenChange={setDivingDcondUwPreviewOpen} 
+                title="Conductor Inspection Underwater Diving Report Preview" 
+                fileName={`Diving_Conductor_UW_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingDCONDUWReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingDcondTsPreviewOpen} 
+                onOpenChange={setDivingDcondTsPreviewOpen} 
+                title="Conductor Inspection Topside Diving Report Preview" 
+                fileName={`Diving_Conductor_TS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingDCONDTSReportBlob} 
+            />
+
 
             <Dialog open={isGalleryOpen} onOpenChange={setIsGalleryOpen}>
                 <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-6 dark:bg-slate-950 dark:border-slate-800 bg-white shadow-2xl border-none">
@@ -2803,6 +2898,10 @@ export function WorkspaceDialogs({
                     generateRGReport: () => setters.setRgPreviewOpen(true),
                     generateSGReport: () => setters.setSgPreviewOpen(true),
                     generateCUReport: () => setters.setCuPreviewOpen(true),
+                    generateDivingDCASNUWReport: () => setters.setDivingDcasnUwPreviewOpen(true),
+                    generateDivingDCASNTSReport: () => setters.setDivingDcasnTsPreviewOpen(true),
+                    generateDivingDCONDUWReport: () => setters.setDivingDcondUwPreviewOpen(true),
+                    generateDivingDCONDTSReport: () => setters.setDivingDcondTsPreviewOpen(true),
                     generateSeabedReport: (templateId: string) => setters.setSeabedPreviewOpen(true),
                     generateFullInspectionReport: () => toast.info("Generating full inspection report..."),
                     generateInspectionReportByType: (id: any) => {
