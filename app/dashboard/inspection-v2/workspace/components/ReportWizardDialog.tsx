@@ -86,6 +86,7 @@ export function getMatchingRecordsForTemplate(templateId: string, records: any[]
         case 'rwdi':
             return records.filter(r => hasCode(r, ['RWDI']));
         case 'mgi_rov':
+        case 'rov_rmgi_report':
             return records.filter(r => hasCode(r, ['RMGI', 'MGROW']));
         case 'szci_rov':
             return records.filter(r => hasCode(r, ['RSZCI']));
@@ -204,6 +205,7 @@ interface ReportWizardDialogProps {
         generateFMDReport: () => void;
         generateUTWTReport: () => void;
         generateMGIReport: () => void;
+        generateRMGIReport: () => void;
         generateDivingMGIReport: () => void;
         generateSZCIReport: () => void;
         generateRSCORReport: () => void;
@@ -363,7 +365,8 @@ export function ReportWizardDialog({
             { id: 'utwt_rov', code: 'RUTWT', name: 'UTWT Survey', description: 'Ultrasonic Wall Thickness measurements of members.', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT']) },
             { id: 'seabed_rov', code: 'RSEAB', name: 'ROV Seabed Survey', description: 'Debris, gas seepage, and crater survey of the seabed.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
             { id: 'rwdi', code: 'RWDI', name: 'ROV Water Depth Inspection Report', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
-            { id: 'mgi_rov', code: 'RMGI', name: 'ROV Marine Growth (RMGI)', description: 'ROV Marine Growth Inspection report including coverage and thickness measurements.', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
+            { id: 'mgi_rov', code: 'RMGI', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
+            { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI']) },
             { id: 'szci_rov', code: 'RSZCI', name: 'ROV Splash Zone (SZCI)', description: 'ROV Splash Zone inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
             { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
             { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch v2', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
@@ -431,7 +434,7 @@ export function ReportWizardDialog({
         const combined = [...baseTemplates, ...dynamicReports];
         const unique: ReportTemplate[] = [];
         const seenNames = new Set<string>();
-        const seenCodes = new Set<string>();
+        const seenIds = new Set<string>();
         for (const t of combined) {
             let updatedName = t.name.trim();
             
@@ -455,10 +458,10 @@ export function ReportWizardDialog({
             }
             
             const nameKey = updatedName.toLowerCase();
-            const codeKey = t.code.trim().toLowerCase();
-            if (!seenNames.has(nameKey) && !seenCodes.has(codeKey)) {
+            const idKey = String(t.id).toLowerCase();
+            if (!seenNames.has(nameKey) && !seenIds.has(idKey)) {
                 seenNames.add(nameKey);
-                seenCodes.add(codeKey);
+                seenIds.add(idKey);
                 unique.push({
                     ...t,
                     name: updatedName

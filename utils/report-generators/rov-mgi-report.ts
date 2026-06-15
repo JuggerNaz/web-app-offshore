@@ -24,7 +24,7 @@ interface ReportConfig {
 /**
  * ROV MGI Summary Report - Compact Technical Layout
  */
-export const generateROVMGIReport = async (
+export const generateROVMGIGraphReport = async (
     records: any[],
     mgiProfile: any,
     headerData: any,

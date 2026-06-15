@@ -22,7 +22,9 @@ import {
     User,
     FileCheck,
     Search,
-    X
+    X,
+    LayoutGrid,
+    List
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -117,7 +119,8 @@ export const REPORT_TEMPLATES = {
         { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "seabed-survey-crater", name: "Seabed Survey For Crater", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-seabed-report", name: "ROV Seabed Survey Report", icon: FileCheck, description: "Unfiltered Seabed GUI maps showing all debris, craters and gas seepages", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "mgi-report", name: "ROV MGI Survey Report", icon: FileBarChart, description: "Vertical profile of marine growth thickness vs allowable thresholds", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", icon: FileBarChart, description: "Marine Growth Graph Report (ROV) RMGI with Graph", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", icon: FileBarChart, description: "Marine Growth Inspection Report (ROV) RMGI Standard Table", requires: ["jobpack", "structure", "sow_report"] },
         { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
         { id: "szci-report", name: "ROV Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "utwt-report", name: "ROV UT Thickness Report", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
@@ -218,7 +221,8 @@ const TOC_SECTIONS = [
       { id: "diving-anode-report", name: "Diving Selected Anode Report", mode: "Diving" }
   ]},
   { id: 9, name: "Marine Growth Survey", templates: [
-      { id: "mgi-report", name: "ROV MGI Survey Report", mode: "ROV" },
+      { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", mode: "ROV" },
+      { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-mgi-report", name: "Diving Marine Growth Inspection Graph Report", mode: "Diving" }
   ]},
   { id: 10, name: "Base Level Survey (Scour Survey)", templates: [
@@ -257,6 +261,8 @@ const TOC_SECTIONS = [
 
 export function ReportWizard({ onClose }: ReportWizardProps) {
     const [step, setStep] = useState<WizardStep>("template");
+    const [templateSearch, setTemplateSearch] = useState("");
+    const [viewMode, setViewMode] = useState<"card" | "list">("card");
     const [selections, setSelections] = useState<SelectionState>({
         templateId: "",
         category: "",
@@ -515,20 +521,27 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     // Render Steps
     const renderTemplateSelection = () => {
+        const filterTemplates = (templates: any[]) => {
+            if (!templateSearch.trim()) return templates;
+            const term = templateSearch.toLowerCase();
+            return templates.filter(t => 
+                (t.name || "").toLowerCase().includes(term) || 
+                (t.description || "").toLowerCase().includes(term)
+            );
+        };
+
         const categories = {
-            "Structure": REPORT_TEMPLATES.structure,
-            "Job Pack": REPORT_TEMPLATES.jobpack || [],
-            "Planning": REPORT_TEMPLATES.planning || [],
-            "Inspection": REPORT_TEMPLATES.inspection || [],
-            "Final Report": (REPORT_TEMPLATES as any).final_report || [],
-            "Others": (REPORT_TEMPLATES as any).others || []
+            "Structure": filterTemplates(REPORT_TEMPLATES.structure),
+            "Job Pack": filterTemplates(REPORT_TEMPLATES.jobpack || []),
+            "Planning": filterTemplates(REPORT_TEMPLATES.planning || []),
+            "Inspection": filterTemplates(REPORT_TEMPLATES.inspection || []),
+            "Final Report": filterTemplates((REPORT_TEMPLATES as any).final_report || []),
+            "Others": filterTemplates((REPORT_TEMPLATES as any).others || [])
         };
 
         return (
             <div className="space-y-6">
-                <div className="flex flex-col gap-4">
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100">Select Report Type</h2>
-
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     {/* Category Tabs */}
                     <div className="flex flex-wrap gap-2">
                         {Object.keys(categories).map((cat) => (
@@ -546,47 +559,140 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                             </button>
                         ))}
                     </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {(categories[activeCategory as keyof typeof categories] || []).map((template: any) => (
-                        <div
-                            key={template.id}
-                            onClick={() => {
-                                const categoryMap: Record<string, string> = {
-                                    "Structure": "structure",
-                                    "Job Pack": "jobpack",
-                                    "Planning": "planning",
-                                    "Inspection": "inspection",
-                                    "Final Report": "final_report",
-                                    "Others": "others"
-                                };
-                                setSelections({ ...selections, category: categoryMap[activeCategory] || "structure", templateId: template.id });
-                            }}
-                            className={`
-                                cursor-pointer group relative overflow-hidden rounded-xl border-2 p-4 transition-all hover:shadow-lg
-                                ${selections.templateId === template.id
-                                    ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 shadow-md ring-1 ring-blue-500"
-                                    : "border-slate-200 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 bg-white dark:bg-slate-900"}
-                            `}
-                        >
-                            <div className={`
-                                mb-3 inline-flex rounded-lg p-2 transition-colors
-                                ${selections.templateId === template.id ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 group-hover:bg-blue-100 dark:group-hover:bg-blue-900 group-hover:text-blue-600"}
-                            `}>
-                                <template.icon className="h-6 w-6" />
-                            </div>
-                            <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">{template.name}</h3>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 leading-snug">{template.description}</p>
-
-                            {selections.templateId === template.id && (
-                                <div className="absolute top-2 right-2 rounded-full bg-blue-500 p-1 text-white shadow-sm">
-                                    <Check className="h-3 w-3" />
-                                </div>
+                    <div className="flex items-center gap-2">
+                        {/* Search Input */}
+                        <div className="relative w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Input
+                                placeholder="Search templates..."
+                                className="pl-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 h-9 text-sm rounded-lg"
+                                value={templateSearch}
+                                onChange={(e) => setTemplateSearch(e.target.value)}
+                            />
+                            {templateSearch && (
+                                <button
+                                    onClick={() => setTemplateSearch("")}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
                             )}
                         </div>
-                    ))}
+
+                        {/* View Switcher */}
+                        <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 h-9">
+                            <button
+                                onClick={() => setViewMode("card")}
+                                className={`px-2.5 rounded-md flex items-center justify-center transition-all ${
+                                    viewMode === "card"
+                                        ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-sm"
+                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                                }`}
+                                title="Card View"
+                            >
+                                <LayoutGrid className="h-4 w-4" />
+                            </button>
+                            <button
+                                onClick={() => setViewMode("list")}
+                                className={`px-2.5 rounded-md flex items-center justify-center transition-all ${
+                                    viewMode === "list"
+                                        ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-white shadow-sm"
+                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                                }`}
+                                title="List View"
+                            >
+                                <List className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
+
+                {viewMode === "card" ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {(categories[activeCategory as keyof typeof categories] || []).map((template: any) => (
+                            <div
+                                key={template.id}
+                                onClick={() => {
+                                    const categoryMap: Record<string, string> = {
+                                        "Structure": "structure",
+                                        "Job Pack": "jobpack",
+                                        "Planning": "planning",
+                                        "Inspection": "inspection",
+                                        "Final Report": "final_report",
+                                        "Others": "others"
+                                    };
+                                    setSelections({ ...selections, category: categoryMap[activeCategory] || "structure", templateId: template.id });
+                                }}
+                                className={`
+                                    cursor-pointer group relative overflow-hidden rounded-xl border-2 p-4 transition-all hover:shadow-lg
+                                    ${selections.templateId === template.id
+                                        ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 shadow-md ring-1 ring-blue-500"
+                                        : "border-slate-200 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-800 bg-white dark:bg-slate-900"}
+                                `}
+                            >
+                                <div className={`
+                                    mb-3 inline-flex rounded-lg p-2 transition-colors
+                                    ${selections.templateId === template.id ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 group-hover:bg-blue-100 dark:group-hover:bg-blue-900 group-hover:text-blue-600"}
+                                `}>
+                                    <template.icon className="h-6 w-6" />
+                                </div>
+                                <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">{template.name}</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 leading-snug">{template.description}</p>
+
+                                {selections.templateId === template.id && (
+                                    <div className="absolute top-2 right-2 rounded-full bg-blue-500 p-1 text-white shadow-sm">
+                                        <Check className="h-3 w-3" />
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800">
+                        {(categories[activeCategory as keyof typeof categories] || []).map((template: any) => {
+                            const isSelected = selections.templateId === template.id;
+                            return (
+                                <div
+                                    key={template.id}
+                                    onClick={() => {
+                                        const categoryMap: Record<string, string> = {
+                                            "Structure": "structure",
+                                            "Job Pack": "jobpack",
+                                            "Planning": "planning",
+                                            "Inspection": "inspection",
+                                            "Final Report": "final_report",
+                                            "Others": "others"
+                                        };
+                                        setSelections({ ...selections, category: categoryMap[activeCategory] || "structure", templateId: template.id });
+                                    }}
+                                    className={`
+                                        cursor-pointer p-4 transition-all flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50
+                                        ${isSelected ? "bg-blue-50/50 dark:bg-blue-950/10" : ""}
+                                    `}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`
+                                            rounded-lg p-2 transition-colors
+                                            ${isSelected ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"}
+                                        `}>
+                                            <template.icon className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                            <h3 className={`font-semibold text-sm ${isSelected ? "text-blue-600 dark:text-blue-400" : "text-slate-900 dark:text-slate-100"}`}>{template.name}</h3>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{template.description}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {isSelected && (
+                                            <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         );
     };
@@ -1225,10 +1331,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const strType = structureData.str_type?.toLowerCase() || "platform";
                 console.log(`[fetchStructureData] Fetching comments for ${strType} structure ID: ${selections.structureId}`);
                 const commentRes = await fetch(`/api/comment/${strType}/${selections.structureId}`);
-                const commentJson = await commentRes.json();
-                if (commentJson.data && Array.isArray(commentJson.data)) {
-                    structureData.discussions = commentJson.data;
-                    console.log(`[fetchStructureData] Loaded ${commentJson.data.length} comments`);
+                const commentText = await commentRes.text();
+                if (commentText.trim()) {
+                    const commentJson = JSON.parse(commentText);
+                    if (commentJson.data && Array.isArray(commentJson.data)) {
+                        structureData.discussions = commentJson.data;
+                        console.log(`[fetchStructureData] Loaded ${commentJson.data.length} comments`);
+                    }
                 }
             } catch (commentErr) {
                 console.error("Error fetching structure comments for report:", commentErr);
@@ -1341,7 +1450,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateDiverLogReport } = await import("@/utils/report-generators/diver-log-report");
             const { generateVideoLogReport } = await import("@/utils/report-generators/video-log-report");
             const { generateDefectSummaryReport } = await import("@/utils/report-generators/defect-summary-report");
-            const { generateROVMGIReport } = await import("@/utils/report-generators/rov-mgi-report");
+            const { generateROVMGIGraphReport } = await import("@/utils/report-generators/rov-mgi-report");
+            const { generateROVRMGIReport } = await import("@/utils/report-generators/rov-rmgi-report");
             const { generateROVFMDReport } = await import("@/utils/report-generators/rov-fmd-report");
             const { generateROVSZCIReport } = await import("@/utils/report-generators/rov-szci-report");
             const { generateROVUTWTReport } = await import("@/utils/report-generators/rov-utwt-report");
@@ -1559,7 +1669,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return await generateJobPackSummaryReport(jobPack, companySettings, reportConfig);
         }
 
-        // ROV MGI Report
+        // ROV MGI Graph Report
         if (currentTemplateId === "mgi-report") {
             const jobPack = await fetchJobPackData();
             const structure = await fetchStructureData();
@@ -1653,9 +1763,109 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             try {
-                return await generateROVMGIReport(
+                return await generateROVMGIGraphReport(
                     mgiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     profile,
+                    headerData,
+                    companySettings,
+                    reportConfig as any
+                );
+            } catch (error) {
+                console.error("Generator threw error:", error);
+                throw error;
+            }
+        }
+
+        // ROV RMGI Portrait Report
+        if (currentTemplateId === "rov-rmgi-report") {
+            const jobPack = await fetchJobPackData();
+            const structure = await fetchStructureData();
+            if (!jobPack || !structure) return null;
+
+            // Fetch RMGI records
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            // 1. Find the RMGI type ID first
+            const { data: typeData } = await supabase
+                .from('inspection_type')
+                .select('id, code')
+                .eq('code', 'RMGI')
+                .maybeSingle();
+
+            const rmgiTypeId = typeData?.id || 79; // Fallback to 79
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this report.");
+                return null;
+            }
+
+            // 2. Fetch records for the structure
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId);
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            // FILTER MANUALLY
+            const mgiRecords = records?.filter(r => {
+                // 1. SOW check (partial match, case insensitive)
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase()) ||
+                    selections.sowReportNo.toLowerCase().includes(String(r.sow_report_no || '').toLowerCase());
+                
+                // 2. JobPack check
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+
+                // 3. RMGI check
+                const isRMGI = 
+                    r.inspection_type_id === rmgiTypeId ||
+                    String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RMGI';
+
+                return sowMatches && jobPackMatches && isRMGI;
+            });
+
+            if (!mgiRecords || mgiRecords.length === 0) {
+                console.warn("Records found for structure but didn't match filters:", records?.length);
+                alert(`Found ${records?.length || 0} records for this structure, but none matched SOW: "${selections.sowReportNo}" and Type: "RMGI". Please check your selection.`);
+                return null;
+            }
+
+            // Fetch Contractor Logo if available
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                waterDepth: Math.abs(structure.water_depth || structure.depth || structure.lowest_elevation || 0),
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVRMGIReport(
+                    mgiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
                     reportConfig as any

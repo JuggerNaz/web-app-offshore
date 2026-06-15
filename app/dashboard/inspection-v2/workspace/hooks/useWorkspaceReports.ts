@@ -5,7 +5,8 @@ import { format } from "date-fns";
 import { getReportHeaderData } from "@/utils/company-settings";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
-import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
+import { generateROVRMGIReport } from "@/utils/report-generators/rov-rmgi-report";
+import { generateROVMGIGraphReport } from "@/utils/report-generators/rov-mgi-report";
 import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
 import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
 import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
@@ -67,6 +68,7 @@ export function useWorkspaceReports(
 
     const [previewOpen, setPreviewOpen] = useState(false);
     const [mPreviewOpen, setMPreviewOpen] = useState(false);
+    const [rmgiPreviewOpen, setRmgiPreviewOpen] = useState(false);
     const [fmdPreviewOpen, setFmdPreviewOpen] = useState(false);
     const [szciPreviewOpen, setSzciPreviewOpen] = useState(false);
     const [utwtPreviewOpen, setUtwtPreviewOpen] = useState(false);
@@ -208,6 +210,49 @@ export function useWorkspaceReports(
         return result as Blob;
     };
 
+    const generateRMGIReport = async () => {
+        const rmgiRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RMGI');
+        if (rmgiRecords.length === 0) {
+            toast.error("No RMGI records found to generate report");
+            return;
+        }
+        setRmgiPreviewOpen(true);
+    };
+
+    const generateRMGIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const rmgiRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RMGI');
+        if (rmgiRecords.length === 0) return;
+
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+
+        const generatedConfig = {
+            returnBlob: true,
+            printFriendly,
+            showSignatures: showSignatures ?? reportConfig.showSignatures,
+            structureId: Number(structureId),
+            watermark: reportConfig.watermark,
+            preparedBy: reportConfig.preparedBy,
+            reviewedBy: reportConfig.reviewedBy,
+            approvedBy: reportConfig.approvedBy,
+        };
+        if (typeof window !== 'undefined') {
+            (window as any).__reportConfig = generatedConfig;
+        }
+
+        return await generateROVRMGIReport(
+            rmgiRecords,
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            generatedConfig
+        ) as Blob;
+    };
+
     const generateMGIReport = async () => {
         const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
         if (mgiRecords.length === 0) {
@@ -237,7 +282,7 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.logo_url || '';
         }
 
-        const result = await generateROVMGIReport(
+        const result = await generateROVMGIGraphReport(
             mgiRecords,
             profile,
             { 
@@ -1637,7 +1682,11 @@ export function useWorkspaceReports(
             await generateBLReport();
             return;
         }
-        if (typeCode === 'RMGI' || typeCode === 'MGI') {
+        if (typeCode === 'RMGI') {
+            await generateRMGIReport();
+            return;
+        }
+        if (typeCode === 'MGI') {
             await generateMGIReport();
             return;
         }
@@ -1833,6 +1882,9 @@ export function useWorkspaceReports(
         generateAnomalyReportBlob,
         generateMGIReport,
         generateMGIReportBlob,
+        generateRMGIReport,
+        generateRMGIReportBlob,
+        rmgiPreviewOpen, setRmgiPreviewOpen,
         generateFMDReport,
         generateFMDReportBlob,
         generateSZCIReport,

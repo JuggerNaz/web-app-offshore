@@ -57,6 +57,7 @@ import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-sel
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
+import { generateROVRMGIReport } from "@/utils/report-generators/rov-rmgi-report";
 import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
 import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
 
@@ -100,6 +101,7 @@ interface WorkspaceDialogsProps {
         previewOpen: boolean;
         previewRecord: any;
         mPreviewOpen: boolean;
+        rmgiPreviewOpen: boolean;
         fmdPreviewOpen: boolean;
         utwtPreviewOpen: boolean;
         szciPreviewOpen: boolean;
@@ -193,6 +195,7 @@ interface WorkspaceDialogsProps {
         setCompSpecDialogOpen: (open: boolean) => void;
         setPreviewOpen: (open: boolean) => void;
         setMPreviewOpen: (open: boolean) => void;
+        setRmgiPreviewOpen: (open: boolean) => void;
         setFmdPreviewOpen: (open: boolean) => void;
         setUtwtPreviewOpen: (open: boolean) => void;
         setSzciPreviewOpen: (open: boolean) => void;
@@ -269,6 +272,7 @@ interface WorkspaceDialogsProps {
         queryClient: any;
         generateAnomalyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateFMDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTWTReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZCIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -455,6 +459,7 @@ export function WorkspaceDialogs({
         setCompSpecDialogOpen,
         setPreviewOpen,
         setMPreviewOpen,
+        setRmgiPreviewOpen,
         setFmdPreviewOpen,
         setUtwtPreviewOpen,
         setSzciPreviewOpen,
@@ -526,6 +531,7 @@ export function WorkspaceDialogs({
         queryClient,
         generateAnomalyReportBlob,
         generateMGIReportBlob,
+        generateRMGIReportBlob,
         generateFMDReportBlob,
         generateUTWTReportBlob,
         generateSZCIReportBlob,
@@ -1331,6 +1337,57 @@ export function WorkspaceDialogs({
                 }}
                 title="ROV Scour Survey Sketch v2 Report Preview"
                 fileName={`ROV_Scour_Survey_Sketch_v2_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={states.rmgiPreviewOpen} 
+                onOpenChange={setters.setRmgiPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const generatedConfig = {
+                        jobPackId: Number(jobPackId),
+                        structureId: Number(structureId),
+                        sowReportNo: headerData.sowReportNo,
+                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
+                        reviewedBy: reportConfig.reviewedBy,
+                        approvedBy: reportConfig.approvedBy,
+                        watermark: reportConfig.watermark,
+                        returnBlob: true,
+                        printFriendly: isPrintFriendly,
+                        showSignatures
+                    };
+                    if (typeof window !== 'undefined') {
+                        (window as any).__reportConfig = generatedConfig;
+                    }
+
+                    return await generateROVRMGIReport(
+                        currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RMGI'),
+                        { 
+                             ...headerData, 
+                             contractorLogoUrl,
+                             vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        generatedConfig
+                    );
+                }}
+                title="Marine Growth Inspection Report (ROV) Preview"
+                fileName={`ROV_RMGI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
             <ReportPreviewDialog
@@ -2730,6 +2787,7 @@ export function WorkspaceDialogs({
                     generateFMDReport: () => setters.setFmdPreviewOpen(true),
                     generateUTWTReport: () => setters.setUtwtPreviewOpen(true),
                     generateMGIReport: () => setters.setMPreviewOpen(true),
+                    generateRMGIReport: () => setters.setRmgiPreviewOpen(true),
                     generateDivingMGIReport: () => setters.setDivingMgiPreviewOpen(true),
                     generateSZCIReport: () => setters.setSzciPreviewOpen(true),
                     generateRSCORReport: () => setters.setRscorPreviewOpen(true),
@@ -2780,6 +2838,7 @@ export function WorkspaceDialogs({
                             case 'FMD': setters.setFmdPreviewOpen(true); break;
                             case 'UTWT': setters.setUtwtPreviewOpen(true); break;
                             case 'MGI': setters.setMPreviewOpen(true); break;
+                            case 'RMGI': setters.setRmgiPreviewOpen(true); break;
                             case 'SZCI': setters.setSzciPreviewOpen(true); break;
                             case 'RSCOR': setters.setRscorPreviewOpen(true); break;
                             case 'RRISI': setters.setRrisiPreviewOpen(true); break;

@@ -97,7 +97,7 @@ import { toast } from "sonner";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
-import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
+import { generateROVMGIGraphReport } from "@/utils/report-generators/rov-mgi-report";
 import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
 import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
 import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
@@ -1452,6 +1452,10 @@ function V10PreviewLayout() {
     generateAnomalyReportBlob,
     generateMGIReport,
     generateMGIReportBlob,
+    generateRMGIReport,
+    generateRMGIReportBlob,
+    rmgiPreviewOpen,
+    setRmgiPreviewOpen,
     generateFMDReport,
     generateFMDReportBlob,
     generateSZCIReport,
@@ -6988,6 +6992,7 @@ function V10PreviewLayout() {
         generateInspectionReportByType={generateInspectionReportByType}
         generateSeabedReport={generateSeabedReport}
         generateMGIReport={generateMGIReport}
+        generateRMGIReport={generateRMGIReport}
         generateFMDReport={generateFMDReport}
         generateSZCIReport={generateSZCIReport}
         generateUTWTReport={generateUTWTReport}
@@ -7496,6 +7501,7 @@ function V10PreviewLayout() {
           previewOpen,
           previewRecord,
           mPreviewOpen,
+          rmgiPreviewOpen,
           fmdPreviewOpen,
           utwtPreviewOpen,
           szciPreviewOpen,
@@ -7584,6 +7590,7 @@ function V10PreviewLayout() {
           setCompSpecDialogOpen,
           setPreviewOpen,
           setMPreviewOpen,
+          setRmgiPreviewOpen,
           setFmdPreviewOpen,
           setUtwtPreviewOpen,
           setSzciPreviewOpen,
@@ -7653,6 +7660,7 @@ function V10PreviewLayout() {
           queryClient,
           generateAnomalyReportBlob,
           generateMGIReportBlob,
+          generateRMGIReportBlob,
           generateFMDReportBlob,
           generateUTWTReportBlob,
           generateSZCIReportBlob,

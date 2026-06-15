@@ -37,6 +37,7 @@ interface InspectionHeaderProps {
     generateInspectionReportByType: (id: any) => void;
     generateSeabedReport: (templateId: string) => void;
     generateMGIReport: () => void;
+    generateRMGIReport: () => void;
     generateFMDReport: () => void;
     generateSZCIReport: () => void;
     generateUTWTReport: () => void;
@@ -86,6 +87,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateInspectionReportByType,
     generateSeabedReport,
     generateMGIReport,
+    generateRMGIReport,
     generateFMDReport,
     generateSZCIReport,
     generateUTWTReport,

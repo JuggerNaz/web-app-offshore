@@ -19,7 +19,7 @@ import Link from "next/link";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
-import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText, Printer } from "lucide-react";
+import { Trash2, Edit2, Plus, Calendar, CheckCircle, FileText, Printer, Activity } from "lucide-react";
 import { JobPackSummaryPreviewDialog } from "@/components/dialogs/jobpack-summary-preview-dialog";
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
@@ -622,6 +622,80 @@ function JobpackActions({ row }: { row: any }) {
     }
   };
 
+  const handleInspectionClick = async () => {
+    try {
+      const res = await fetch(`/api/sow?jobpack_id=${item.id}`);
+      const json = await res.json();
+      const sows = json.data || [];
+
+      if (sows.length === 0) {
+        const structures = metadata.structures || [];
+        if (structures.length > 0) {
+          const sorted = [...structures].sort((a: any, b: any) => (a.title || "").localeCompare(b.title || ""));
+          const firstStruct = sorted[0];
+          window.location.href = `/dashboard/inspection-v2?jobpack=${item.id}&structure=${firstStruct.id}&mode=ROV`;
+        } else {
+          window.location.href = `/dashboard/inspection-v2?jobpack=${item.id}`;
+        }
+        return;
+      }
+
+      const withReportNums = sows.filter((sow: any) => sow.report_numbers && sow.report_numbers.length > 0);
+      let selectedSow = null;
+      if (withReportNums.length > 0) {
+        withReportNums.sort((a: any, b: any) => (a.structure_title || "").localeCompare(b.structure_title || ""));
+        selectedSow = withReportNums[0];
+      } else {
+        const sortedAll = [...sows].sort((a: any, b: any) => (a.structure_title || "").localeCompare(b.structure_title || ""));
+        selectedSow = sortedAll[0];
+      }
+
+      const structureId = selectedSow.structure_id;
+      const sowId = selectedSow.id;
+
+      let sowReportNo = "";
+      if (selectedSow.report_numbers && selectedSow.report_numbers.length > 0) {
+        sowReportNo = selectedSow.report_numbers[0].number || selectedSow.report_numbers[0];
+      }
+
+      const detailRes = await fetch(`/api/sow?sow_id=${sowId}`);
+      const detailJson = await detailRes.json();
+      const sowDetails = detailJson.data || {};
+      const items = sowDetails.items || [];
+
+      let hasRov = false;
+      if (selectedSow.report_numbers && selectedSow.report_numbers.some((rn: any) => (rn.job_type || "").toUpperCase() === 'ROV')) {
+        hasRov = true;
+      }
+
+      if (!hasRov && items.length > 0) {
+        const rovCodes = ['RGVI', 'CP', 'RSWNI', 'SWNI', 'RICMI', 'ANODE', 'FMD', 'RFMD', 'RUTWT', 'RSEAB', 'SEABED', 'RWDI', 'RMGI', 'RSZCI', 'RSCOR', 'SCOUR', 'RRISI', 'JTISI', 'ITISI', 'RCASN', 'RCOND', 'BL', 'RG', 'SG', 'CU'];
+        hasRov = items.some((item: any) => {
+          const code = (item.inspection_code || item.inspection_type_code || item.inspection_type?.code || "").toUpperCase();
+          return code.startsWith('R') || rovCodes.includes(code);
+        });
+      }
+
+      let mode = "ROV";
+      if (!hasRov) {
+        const diverCodes = ['DGVI', 'GVINS', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'UTWTK', 'SZONE', 'CPCLB', 'UTCLB', 'DMGI', 'ANMAIN', 'ACFMC', 'PLCO'];
+        const hasDiver = (selectedSow.report_numbers && selectedSow.report_numbers.some((rn: any) => (rn.job_type || "").toUpperCase() === 'DIVING')) ||
+          items.some((item: any) => {
+            const code = (item.inspection_code || item.inspection_type_code || item.inspection_type?.code || "").toUpperCase();
+            return code.startsWith('D') || diverCodes.includes(code);
+          });
+        if (hasDiver) {
+          mode = "DIVING";
+        }
+      }
+      const url = `/dashboard/inspection-v2?jobpack=${item.id}&structure=${structureId}&sow=${sowId}${sowReportNo ? `&sowReport=${sowReportNo}` : ""}&mode=${mode}`;
+      window.location.href = url;
+    } catch (err) {
+      console.error("Failed to route to Inspection Workspace:", err);
+      window.location.href = `/dashboard/inspection-v2?jobpack=${item.id}`;
+    }
+  };
+
   return (
     <div className="text-center" onClick={(e) => e.stopPropagation()}>
       <DropdownMenu>
@@ -634,6 +708,9 @@ function JobpackActions({ row }: { row: any }) {
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem className="cursor-pointer" onClick={handleInspectionClick}>
+            <Activity size={16} className="mr-2 text-rose-500" /> Inspection
+          </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer">
             <Link className="w-full flex items-center" href={`/dashboard/jobpack/${item.id}`}>
               <Edit2 size={16} className="mr-2" /> Modify

@@ -63,6 +63,7 @@ export default function InspectionLanding() {
 
     const [openSOW, setOpenSOW] = useState(false);
     const [searchSOW, setSearchSOW] = useState("");
+    const [searchJobPackStruct, setSearchJobPackStruct] = useState("");
 
     // State to track which years are expanded in the jobpack list
     const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
@@ -130,25 +131,43 @@ export default function InspectionLanding() {
         loadJobPacks();
     }, [selectedStructure]);
 
-    // Restore selections AFTER jobPacks are loaded
+    // Restore selections AFTER jobPacks are loaded, with query parameters taking priority
     useEffect(() => {
-        if (jobPacks.length > 0) {
-            const savedJobPack = sessionStorage.getItem("inspection_jobpack");
-            const savedStructure = sessionStorage.getItem("inspection_structure");
-            const savedSOW = sessionStorage.getItem("inspection_sow");
-            const savedMode = sessionStorage.getItem("inspection_mode");
+        if (jobPacks.length > 0 && typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const queryJobPack = params.get("jobpack");
+            const queryStructure = params.get("structure");
+            const querySow = params.get("sow");
+            const querySowReport = params.get("sowReport");
+            const queryMode = params.get("mode");
 
-            if (savedStructure && !selectedStructure) {
-                setSelectedStructure(savedStructure);
+            const activeStructure = queryStructure || sessionStorage.getItem("inspection_structure");
+            const activeJobPack = queryJobPack || sessionStorage.getItem("inspection_jobpack");
+            
+            let activeSow = sessionStorage.getItem("inspection_sow");
+            if (querySow && querySowReport) {
+                activeSow = `${querySow}-${querySowReport}`;
+            } else if (querySow) {
+                activeSow = querySow;
             }
-            if (savedJobPack && !selectedJobPack) {
-                setSelectedJobPack(savedJobPack);
+
+            const activeMode = queryMode || sessionStorage.getItem("inspection_mode");
+
+            if (activeStructure) {
+                setSelectedStructure(activeStructure);
+                sessionStorage.setItem("inspection_structure", activeStructure);
             }
-            if (savedSOW && !selectedSOW) {
-                setSelectedSOW(savedSOW);
+            if (activeJobPack) {
+                setSelectedJobPack(activeJobPack);
+                sessionStorage.setItem("inspection_jobpack", activeJobPack);
             }
-            if (savedMode && !selectedMode) {
-                setSelectedMode(savedMode);
+            if (activeSow) {
+                setSelectedSOW(activeSow);
+                sessionStorage.setItem("inspection_sow", activeSow);
+            }
+            if (activeMode) {
+                setSelectedMode(activeMode);
+                sessionStorage.setItem("inspection_mode", activeMode);
             }
         }
     }, [jobPacks]);
@@ -487,19 +506,61 @@ export default function InspectionLanding() {
             console.log("Formatted distinct SOW reports:", formatted);
             setSOWReports(formatted);
 
-            // Auto-select if only one distinct report
-            if (formatted.length === 1) {
-                setSelectedSOW(`${formatted[0].sow_id}-${formatted[0].item_no}`);
-                console.log("Auto-selected SOW:", formatted[0]);
-            } else {
-                // Check if there's a saved SOW that matches
-                const savedSOW = sessionStorage.getItem("inspection_sow");
-                if (savedSOW && formatted.some(f => `${f.sow_id}-${f.item_no}` === savedSOW)) {
-                    // Keep the saved selection
-                } else {
-                    setSelectedSOW("");
-                    setSelectedMode("");
+            // Helper to prioritize ROV mode by default unless no ROV items are found in the SOW
+            const determineDefaultMode = (sowObj: any, reportNum: string, itemsList: any[]) => {
+                const reportArray = sowObj.report_numbers || [];
+                const reportConfig = reportArray.find((r: any) => r.number === reportNum);
+                if (reportConfig && (reportConfig.job_type || "").toUpperCase() === 'ROV') {
+                    return "ROV";
                 }
+                
+                const currentReportItems = itemsList.filter(
+                    (item) => item.report_number === reportNum
+                );
+                
+                const rovCodes = ['RGVI', 'CP', 'RSWNI', 'SWNI', 'RICMI', 'ANODE', 'FMD', 'RFMD', 'RUTWT', 'RSEAB', 'SEABED', 'RWDI', 'RMGI', 'RSZCI', 'RSCOR', 'SCOUR', 'RRISI', 'JTISI', 'ITISI', 'RCASN', 'RCOND', 'BL', 'RG', 'SG', 'CU'];
+                const hasRovItems = currentReportItems.some((item: any) => {
+                    const code = (item.inspection_code || item.inspection_type_code || item.inspection_type?.code || "").toUpperCase();
+                    return code.startsWith('R') || rovCodes.includes(code);
+                });
+                
+                if (hasRovItems) {
+                    return "ROV";
+                }
+                
+                const hasDiverConfig = reportConfig && (reportConfig.job_type || "").toUpperCase() === 'DIVING';
+                const diverCodes = ['DGVI', 'GVINS', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'UTWTK', 'SZONE', 'CPCLB', 'UTCLB', 'DMGI', 'ANMAIN', 'ACFMC', 'PLCO'];
+                const hasDiverItems = currentReportItems.some((item: any) => {
+                    const code = (item.inspection_code || item.inspection_type_code || item.inspection_type?.code || "").toUpperCase();
+                    return code.startsWith('D') || diverCodes.includes(code);
+                });
+                
+                if (hasDiverConfig || hasDiverItems) {
+                    return "DIVING";
+                }
+                
+                return "ROV";
+            };
+
+            // Auto-select SOW report and prioritize ROV mode
+            if (formatted.length > 0) {
+                const savedSOW = sessionStorage.getItem("inspection_sow");
+                const savedMode = sessionStorage.getItem("inspection_mode");
+                
+                const matchingSow = savedSOW && formatted.find(f => `${f.sow_id}-${f.item_no}` === savedSOW);
+                if (matchingSow) {
+                    setSelectedSOW(`${matchingSow.sow_id}-${matchingSow.item_no}`);
+                    const defaultMode = determineDefaultMode(sow, matchingSow.report_number, itemsData);
+                    setSelectedMode(savedMode || defaultMode);
+                } else {
+                    const defaultSow = formatted[0];
+                    setSelectedSOW(`${defaultSow.sow_id}-${defaultSow.item_no}`);
+                    const defaultMode = determineDefaultMode(sow, defaultSow.report_number, itemsData);
+                    setSelectedMode(defaultMode);
+                }
+            } else {
+                setSelectedSOW("");
+                setSelectedMode("");
             }
         } catch (error) {
             console.error("Error loading SOW reports:", error);
@@ -572,31 +633,91 @@ export default function InspectionLanding() {
                                                     autoFocus
                                                 />
                                             </div>
-                                            <div className="max-h-[250px] overflow-y-auto p-2 bg-white dark:bg-slate-950">
-                                                {filteredStructures.length === 0 ? (
-                                                    <div className="py-6 text-center text-sm text-slate-500 font-medium">No structure found.</div>
-                                                ) : (
-                                                    filteredStructures.map((struct) => (
-                                                        <div
-                                                            key={`${struct.id}-${struct.name}`}
-                                                            onClick={() => {
-                                                                setSelectedStructure(struct.id.toString());
-                                                                setOpenStruct(false);
-                                                                setSearchStruct("");
-                                                                setTimeout(() => setOpenJP(true), 150);
-                                                            }}
-                                                            className={`relative flex justify-between cursor-pointer select-none items-center rounded-lg px-3 py-2 mb-0.5 text-sm outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${selectedStructure === struct.id.toString() ? "bg-green-50 dark:bg-green-900/20 ring-1 ring-green-200 dark:ring-green-800/50" : ""}`}
-                                                        >
-                                                            <div className="flex items-center gap-2">
-                                                                <Building2 className={`h-4 w-4 ${selectedStructure === struct.id.toString() ? "text-green-600 dark:text-green-500" : "text-slate-400"}`} />
-                                                                <span className={`font-bold ${selectedStructure === struct.id.toString() ? "text-green-900 dark:text-green-100" : "text-slate-805 dark:text-slate-200"}`}>{struct.name}</span>
-                                                            </div>
-                                                            {selectedStructure === struct.id.toString() && (
-                                                                <Check className="h-4 w-4 text-green-600 dark:text-green-500" />
-                                                            )}
+                                            <div className="max-h-[250px] overflow-y-auto p-2 bg-white dark:bg-slate-950 space-y-3">
+                                                {/* Structures inside selected Job Pack */}
+                                                {selectedJobPack && (
+                                                    <div className="space-y-1">
+                                                        <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-500 bg-blue-50/50 dark:bg-blue-950/20 rounded-md">
+                                                            Structures in Selected Job Pack ({selectedJobPackData?.structures?.length || 0})
                                                         </div>
-                                                    ))
+                                                        {selectedJobPackData?.structures
+                                                            ?.filter((s: any) => s.name.toLowerCase().includes(searchStruct.toLowerCase()))
+                                                            .map((struct: any) => {
+                                                                const isSelected = selectedStructure === struct.id.toString();
+                                                                return (
+                                                                    <div
+                                                                        key={`jp-struct-${struct.id}`}
+                                                                        onClick={() => {
+                                                                            if (!isSelected) {
+                                                                                setSelectedStructure(struct.id.toString());
+                                                                                setSelectedSOW("");
+                                                                                setSelectedMode("");
+                                                                                sessionStorage.setItem("inspection_structure", struct.id.toString());
+                                                                                sessionStorage.removeItem("inspection_sow");
+                                                                                sessionStorage.removeItem("inspection_mode");
+                                                                            }
+                                                                            setOpenStruct(false);
+                                                                            setSearchStruct("");
+                                                                        }}
+                                                                        className={`relative flex justify-between cursor-pointer select-none items-center rounded-lg px-3 py-2 mb-0.5 text-sm outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${isSelected ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 font-bold border border-green-200 dark:border-green-900" : "text-slate-800 dark:text-slate-200"}`}
+                                                                    >
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Building2 className={`h-4 w-4 ${isSelected ? "text-green-600 dark:text-green-500" : "text-slate-400"}`} />
+                                                                            <span>{struct.name}</span>
+                                                                        </div>
+                                                                        {isSelected && (
+                                                                            <Check className="h-4 w-4 text-green-600 dark:text-green-500" />
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        {selectedJobPackData?.structures?.filter((s: any) => s.name.toLowerCase().includes(searchStruct.toLowerCase())).length === 0 && (
+                                                            <div className="py-2 text-center text-xs text-slate-400 italic font-medium">No matching jobpack structures.</div>
+                                                        )}
+                                                    </div>
                                                 )}
+
+                                                {/* All Structures List */}
+                                                <div className="space-y-1">
+                                                    {selectedJobPack && (
+                                                        <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-t pt-3 mt-2">
+                                                            All Structures
+                                                        </div>
+                                                    )}
+                                                    {filteredStructures.length === 0 ? (
+                                                        <div className="py-6 text-center text-sm text-slate-500 font-medium">No structure found.</div>
+                                                    ) : (
+                                                        filteredStructures.map((struct) => {
+                                                            const isSelected = selectedStructure === struct.id.toString();
+                                                            return (
+                                                                <div
+                                                                    key={`${struct.id}-${struct.name}`}
+                                                                    onClick={() => {
+                                                                        if (!isSelected) {
+                                                                            setSelectedStructure(struct.id.toString());
+                                                                            setSelectedSOW("");
+                                                                            setSelectedMode("");
+                                                                            sessionStorage.setItem("inspection_structure", struct.id.toString());
+                                                                            sessionStorage.removeItem("inspection_sow");
+                                                                            sessionStorage.removeItem("inspection_mode");
+                                                                        }
+                                                                        setOpenStruct(false);
+                                                                        setSearchStruct("");
+                                                                    }}
+                                                                    className={`relative flex justify-between cursor-pointer select-none items-center rounded-lg px-3 py-2 mb-0.5 text-sm outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${isSelected ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 font-bold border border-green-200 dark:border-green-900" : "text-slate-800 dark:text-slate-200"}`}
+                                                                >
+                                                                    <div className="flex items-center gap-2">
+                                                                        <Building2 className={`h-4 w-4 ${isSelected ? "text-green-600 dark:text-green-500" : "text-slate-400"}`} />
+                                                                        <span>{struct.name}</span>
+                                                                    </div>
+                                                                    {isSelected && (
+                                                                        <Check className="h-4 w-4 text-green-600 dark:text-green-500" />
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
                                             </div>
                                         </PopoverContent>
                                     </Popover>
@@ -711,6 +832,8 @@ export default function InspectionLanding() {
                                         </PopoverContent>
                                     </Popover>
                                 </div>
+
+
 
                                 {/* SOW Report Selection */}
                                 <div className={`space-y-2 transition-opacity duration-305 ${!selectedStructure ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
