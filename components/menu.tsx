@@ -227,6 +227,15 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
                 />
               </RoleGate>
             )}
+            <RoleGate allowedRoles={["super_admin"]} hide>
+              <MenuLink
+                href="/dashboard/utilities/backup"
+                isCollapsed={isCollapsed}
+                label="Database Backup"
+                icon={<Database className="h-[18px] w-[18px] text-emerald-500" />}
+                text="Database Backup"
+              />
+            </RoleGate>
             {isModuleAllowed("Library") && (
               <MenuLink
                 href="/dashboard/utilities/library"
