@@ -80,6 +80,7 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 function formatCounter(seconds: number | string): string {
   const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
@@ -222,6 +223,7 @@ function V10PreviewLayout() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const { activeCompanyId } = useUserProfile();
   const jobPackId = searchParams.get("jobpack");
   const structureId = searchParams.get("structure");
   const sowIdFull = searchParams.get("sow");
@@ -1588,6 +1590,7 @@ function V10PreviewLayout() {
           const { data: newSow } = await supabase
             .from("u_sow")
             .insert({
+              company_id: activeCompanyId,
               jobpack_id: Number(jobPackId),
               structure_id: Number(structureId),
               structure_type: headerData.structureType === "pipeline" ? "PIPELINE" : "PLATFORM",
@@ -1742,6 +1745,7 @@ function V10PreviewLayout() {
         );
 
         const { error: insertError } = await supabase.from("u_sow_items").insert({
+          company_id: activeCompanyId,
           sow_id: activeSowId,
           component_id: compId,
           component_qid: compObj?.name || compObj?.q_id || `COMP-${compId}`,
@@ -2516,7 +2520,7 @@ function V10PreviewLayout() {
       if (updateErr) throw updateErr;
 
       // 3. SOW Status Synchronization (Rollback Old & Commit New)
-      if (sowId && originalRecordContext) {
+      if ((sowId || (jobPackId && structureId)) && originalRecordContext) {
         // Rollback original component/task
         await syncSowStatus(
           originalRecordContext.component_id,
@@ -5444,6 +5448,7 @@ function V10PreviewLayout() {
       }
 
       const payload: any = {
+        company_id: activeCompanyId,
         [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep.id,
         structure_id: parseInt(structureId || "0"),
         component_id: selectedComp.id,
@@ -5595,6 +5600,7 @@ function V10PreviewLayout() {
       // Commit Calibration/Required Record if needed
       if (requiredSpec && Object.keys(requiredProps).length > 0) {
         const reqPayload: any = {
+          company_id: activeCompanyId,
           [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep.id,
           structure_id: parseInt(structureId || "0"),
           component_id: selectedComp.id,
@@ -5654,7 +5660,7 @@ function V10PreviewLayout() {
       const newStatus = findingType === "Incomplete" ? "incomplete" : "completed";
 
       // Robust SOW Status Synchronization
-      if (sowId) {
+      if (sowId || (jobPackId && structureId)) {
         // 1. Sync the CURRENT component/task with elevation support
         await syncSowStatus(
           selectedComp.id,

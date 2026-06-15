@@ -30,6 +30,7 @@ export const generateROVRSCORV2Report = async (
     config: ReportConfig
 ) => {
     try {
+        const sowReportNo = headerData?.sowReportNo || headerData?.sow_report_no || config?.sowReportNo || 'N/A';
         const isPF = config.printFriendly;
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -80,7 +81,7 @@ export const generateROVRSCORV2Report = async (
             d.text(`Scour Survey Sketch Report (ROV) - v2`, margin + (contentWidth/2), margin + 12.5, { align: 'center' });
 
             d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 15.5, { align: 'center' });
+            d.text(`SOW Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 15.5, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -98,19 +99,50 @@ export const generateROVRSCORV2Report = async (
             drawBox('Structure:', headerData.platformName, margin, colW, y);
             drawBox('Vessel:', headerData.vessel || 'N/A', margin + colW, colW, y);
             drawBox('Job Pack:', headerData.jobpackName, margin, colW, y + rowH);
-            drawBox('Report No:', headerData.sowReportNo || 'N/A', margin + colW, colW, y + rowH);
+            drawBox('Report No:', sowReportNo, margin + colW, colW, y + rowH);
             return y + (rowH * 2) + 3;
         };
 
-        // Group records by Component QID
-        const groupedMap = new Map<string, any[]>();
+        // 1. Map QID to component data
+        const componentMap = new Map<string, any>();
         records.forEach(r => {
-            const qid = r.structure_components?.q_id || 'Unknown';
-            if (!groupedMap.has(qid)) groupedMap.set(qid, []);
-            groupedMap.get(qid)?.push(r);
+            const comp = r.structure_components;
+            if (comp && comp.q_id) {
+                componentMap.set(comp.q_id, comp);
+            }
         });
 
-        const components = Array.from(groupedMap.keys());
+        // 2. For each component, determine its legs
+        const componentLegsMap = new Map<string, { leg1: string; leg2: string }>();
+        componentMap.forEach((comp, qid) => {
+            // Find explicitly linked records to help find legs
+            const explicitRecords = records.filter(r => r.structure_components?.q_id === qid);
+            const foundLegNames: string[] = [];
+            explicitRecords.forEach(r => {
+                const loc = (r.inspection_data?.scour_location || '').toLowerCase();
+                if (loc.includes('leg') && loc.includes(':')) {
+                    const parts = loc.split(':');
+                    const name = parts[1].trim();
+                    if (name && !foundLegNames.includes(name)) foundLegNames.push(name);
+                } else if (loc.includes('leg')) {
+                    const match = loc.match(/leg\s+([a-zA-Z0-9]+)/);
+                    if (match && !foundLegNames.includes(match[1])) foundLegNames.push(match[1]);
+                }
+            });
+
+            const leg1 = (comp.startLeg || comp.metadata?.s_leg || (foundLegNames[0] || '')).toUpperCase();
+            const leg2 = (comp.endLeg || comp.metadata?.f_leg || (foundLegNames[1] || '')).toUpperCase();
+            componentLegsMap.set(qid, { leg1, leg2 });
+        });
+
+        // 3. Group records strictly by QID
+        const groupedMap = new Map<string, any[]>();
+        componentMap.forEach((comp, qid) => {
+            const compRecordsRaw = records.filter(r => r.structure_components?.q_id === qid);
+            groupedMap.set(qid, compRecordsRaw);
+        });
+
+        const components = Array.from(componentMap.keys());
         const compsPerPage = 4;
         const totalPages = Math.ceil(components.length / compsPerPage);
 
@@ -198,7 +230,9 @@ export const generateROVRSCORV2Report = async (
                 const burial = parseFloat(rd.Burial_percent || '0');
                 
                 let target = 'mid'; let xp = 0.5;
-                if (locTag.includes('start') || (leg1 && locTag.includes(leg1.toLowerCase()))) { 
+                if (locTag.includes('mid') || locTag.includes('middle')) {
+                    target = 'mid'; xp = 0.5;
+                } else if (locTag.includes('start') || (leg1 && locTag.includes(leg1.toLowerCase()))) { 
                     target = 'start'; xp = 0.05; 
                 } else if (locTag.includes('end') || (leg2 && locTag.includes(leg2.toLowerCase()))) { 
                     target = 'end'; xp = 0.95; 
@@ -208,11 +242,12 @@ export const generateROVRSCORV2Report = async (
                 const isAnom = r.has_anomaly || !!linkedAnom;
                 const isRect = linkedAnom ? linkedAnom.is_rectified : r.rectified;
 
-                if (!locValues.has(target) || locValues.get(target).depth < depth) {
+                const existing = locValues.get(target);
+                if (!existing || isNaN(existing.depth) || depth > existing.depth || (depth === existing.depth && isAnom && !existing.isAnom)) {
                     locValues.set(target, { 
                         x: homActualX1 + (xp * homLen), 
                         depth, burial, 
-                        exposed: rd.Exposed_pile === 'Yes',
+                        exposed: rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true,
                         isAnom, isRect 
                     });
                 }
@@ -270,7 +305,7 @@ export const generateROVRSCORV2Report = async (
 
                 da.setFillColor(...bubbleColor); da.setDrawColor(...borderCol); da.circle(p.x, my, r, 'FD');
                 da.setFontSize(4.0); da.setTextColor(0); da.setFont("helvetica", "normal");
-                const val = p.burial > 0 ? `${p.burial}%` : `${p.depth}M`;
+                const val = p.burial > 0 ? `${p.burial}%` : `${p.depth} mm`;
                 da.text(val, p.x, my + 0.8, { align: 'center' });
                 if (p.exposed) {
                     da.setDrawColor(...colors.mud); da.setLineWidth(0.6); da.circle(p.x, my, r + 0.8, 'S');
@@ -292,19 +327,48 @@ export const generateROVRSCORV2Report = async (
             // Context header finishes at y=48 (margin 12 + header 18 + offset 2 + context 10 + offset 6)
             // Signatures block on the last page takes 28 mm.
             const isLastPage = pageIdx === totalPages - 1;
-            const availableH = pageHeight - currentY - margin - (isLastPage && config.showSignatures !== false ? 25 : 0);
+            const availableH = pageHeight - currentY - margin - (isLastPage && config.showSignatures !== false ? 28 : 0);
             const compRowH = availableH / 4;
 
             for (let c = 0; c < pageComponents.length; c++) {
                 const qid = pageComponents[c];
-                const compRecordsRaw = groupedMap.get(qid) || [];
-                const compRecords = [...compRecordsRaw].sort((a, b) => {
-                    const dateA = new Date(`${a.inspection_date || '1970-01-01'}T${a.inspection_time || '00:00:00'}`);
-                    const dateB = new Date(`${b.inspection_date || '1970-01-01'}T${b.inspection_time || '00:00:00'}`);
-                    return dateA.getTime() - dateB.getTime();
+                const rawCompRecords = groupedMap.get(qid) || [];
+                const compData = componentMap.get(qid) || {};
+
+                // Find leg names to correctly group/sort location tags
+                const foundLegNames: string[] = [];
+                rawCompRecords.forEach(r => {
+                    const loc = (r.inspection_data?.scour_location || '').toLowerCase();
+                    if (loc.includes('leg') && loc.includes(':')) {
+                        const parts = loc.split(':');
+                        const name = parts[1].trim();
+                        if (name && !foundLegNames.includes(name)) foundLegNames.push(name);
+                    } else if (loc.includes('leg')) {
+                        const match = loc.match(/leg\s+([a-zA-Z0-9]+)/);
+                        if (match && !foundLegNames.includes(match[1])) foundLegNames.push(match[1]);
+                    }
                 });
 
-                const compData = compRecords[0]?.structure_components || {};
+                const leg1 = (compData.startLeg || compData.metadata?.s_leg || (foundLegNames[0] || '')).toUpperCase();
+                const leg2 = (compData.endLeg || compData.metadata?.f_leg || (foundLegNames[1] || '')).toUpperCase();
+
+                // Sort records so that start node/leg is first, midpoint is in the middle, and end node/leg is last
+                const compRecords = [...rawCompRecords].sort((a, b) => {
+                    const getOrder = (r: any) => {
+                        const rd = r.inspection_data || {};
+                        const locTag = (rd.scour_location || '').toLowerCase();
+                        if (locTag.includes('mid') || locTag.includes('middle')) return 1;
+                        if (locTag.includes('start') || (leg1 && locTag.includes(leg1.toLowerCase()))) return 0;
+                        if (locTag.includes('end') || (leg2 && locTag.includes(leg2.toLowerCase()))) return 2;
+                        return 1;
+                    };
+                    const orderA = getOrder(a);
+                    const orderB = getOrder(b);
+                    if (orderA !== orderB) return orderA - orderB;
+                    const dateA = new Date(a.cr_date || a.record_date || 0).getTime();
+                    const dateB = new Date(b.cr_date || b.record_date || 0).getTime();
+                    return dateA - dateB;
+                });
                 
                 // Draw QID Header Bar
                 doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 4.5, 'F');
@@ -386,25 +450,25 @@ export const generateROVRSCORV2Report = async (
         }
 
         // Draw signatures block at bottom of last page
+        let sigY = pageHeight - 28;
         if (config.showSignatures !== false) {
-            const sigY = pageHeight - 25;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
-                doc.rect(lx, sigY, sigW - 4, 15);
+                doc.rect(lx, sigY, sigW - 4, 18);
                 if (!isPF) {
                     doc.setFillColor(...colors.navy);
-                    doc.rect(lx, sigY, sigW - 4, 4.0, "F");
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
                     doc.setTextColor(255);
                 } else {
                     doc.setTextColor(...colors.navy);
                 }
                 doc.setFontSize(6.5); doc.setFont("helvetica", "bold");
-                doc.text(label, lx + 2, sigY + 3.0);
+                doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(5.5);
-                doc.text("Name:", lx + 2, sigY + 8);
-                doc.text("Date:", lx + 2, sigY + 11);
-                doc.text("Signature:", lx + 2, sigY + 14);
+                doc.text("Name:", lx + 2, sigY + 10);
+                doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Signature:", lx + 2, sigY + 17);
             };
 
             drawSig('PREPARED BY', margin);
@@ -412,10 +476,10 @@ export const generateROVRSCORV2Report = async (
             drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
-        applyWatermarkAndSignaturesGlobal(doc, config);
+        applyWatermarkAndSignaturesGlobal(doc, { ...config, sigY });
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`Scour_Survey_Sketch_Report_v2_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        applyWatermarkAndSignaturesGlobal(doc, { ...config, sigY });
+        doc.save(`Scour_Survey_Sketch_Report_v2_${sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
     } catch (e) {
         console.error("RSCOR v2 Report Error", e);

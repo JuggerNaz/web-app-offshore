@@ -90,6 +90,7 @@ export function getMatchingRecordsForTemplate(templateId: string, records: any[]
         case 'szci_rov':
             return records.filter(r => hasCode(r, ['RSZCI']));
         case 'rscor_rov':
+        case 'rscor_v2_rov':
             return records.filter(r => hasCode(r, ['RSCOR', 'SCOUR']));
         case 'rrisi_rov':
             return records.filter(r => hasCode(r, ['RRISI']));

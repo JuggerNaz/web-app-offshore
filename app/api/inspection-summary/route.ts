@@ -67,12 +67,27 @@ export const GET = withTenant(async (request, { companyId }) => {
                 `)
                 .eq("company_id", companyId)
                 .eq("sow_id", Number(resolvedSowId));
-            
             itemsErr = err;
             if (itemsErr) {
                 console.error("[Summary API] SOW Items fetch error:", itemsErr);
             }
             allSowItems = itemsData || [];
+        }
+
+        // Fetch structure components separately to build a lookup for null/missing component_type
+        const { data: compList } = !isNaN(strNum)
+            ? await (supabase as any)
+                .from("structure_components")
+                .select("id, q_id, code, metadata")
+                .eq("structure_id", strNum)
+                .eq("company_id", companyId)
+            : { data: null };
+
+        const compMap = new Map();
+        if (compList) {
+            compList.forEach((c: any) => {
+                compMap.set(c.id, c);
+            });
         }
 
         const sowItems = allSowItems;
@@ -102,6 +117,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 dive_job_id,
                 rov_job_id,
                 sow_report_no,
+                jobpack_id,
                 structure_components:component_id!left(
                     id, q_id, code, metadata
                 ),
@@ -110,7 +126,6 @@ export const GET = withTenant(async (request, { companyId }) => {
             `)
             .eq("company_id", companyId);
 
-        if (!isNaN(jpNum)) recQuery = recQuery.eq("jobpack_id", jpNum);
         if (!isNaN(strNum)) recQuery = recQuery.eq("structure_id", strNum);
 
         const { data: allRecordsData, error: recErr } = await recQuery;
@@ -119,7 +134,18 @@ export const GET = withTenant(async (request, { companyId }) => {
             return NextResponse.json({ error: recErr.message }, { status: 500 });
         }
 
-        const rawRecords: any[] = allRecordsData || [];
+        const sowReportNumbers = new Set(
+            allSowItems
+                .map((item: any) => (item.report_number || "").trim())
+                .filter((r: string) => r !== "")
+        );
+
+        const dbRecords = allRecordsData || [];
+        const rawRecords = dbRecords.filter((r: any) => {
+            const matchesJobpack = !isNaN(jpNum) && r.jobpack_id === jpNum;
+            const matchesReport = r.sow_report_no && sowReportNumbers.has(r.sow_report_no.trim());
+            return matchesJobpack || matchesReport;
+        });
         
         // Determine if we should filter the overview by the current report
         const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all";
@@ -342,17 +368,17 @@ export const GET = withTenant(async (request, { companyId }) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === "RMGI" || code === "MGROW" || code === "MGI";
         });
-        const mgiThicknesses = mgiRecords.map(r => parseFloat(r.inspection_data?.avg_thickness || r.inspection_data?.thickness || '0')).filter(v => !isNaN(v) && v > 0);
+        const mgiThicknesses = mgiRecords.map((r: any) => parseFloat(r.inspection_data?.avg_thickness || r.inspection_data?.thickness || '0')).filter((v: number) => !isNaN(v) && v > 0);
         const mgiMax = mgiThicknesses.length > 0 ? Math.max(...mgiThicknesses) : 0;
-        const mgiAvg = mgiThicknesses.length > 0 ? mgiThicknesses.reduce((a, b) => a + b, 0) / mgiThicknesses.length : 0;
+        const mgiAvg = mgiThicknesses.length > 0 ? mgiThicknesses.reduce((a: number, b: number) => a + b, 0) / mgiThicknesses.length : 0;
 
         // --- 9. SCOUR ANALYSIS ---
         const scourRecords = rawRecords.filter((r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === "RSCOR" || code === "SCOUR";
         });
-        const scourExposedCount = scourRecords.filter(r => r.inspection_data?.Exposed_pile === "Yes" || r.inspection_data?.Exposed_pile === true).length;
-        const scourBurials = scourRecords.map(r => parseFloat(r.inspection_data?.Burial_percent || '0')).filter(v => !isNaN(v));
+        const scourExposedCount = scourRecords.filter((r: any) => r.inspection_data?.Exposed_pile === "Yes" || r.inspection_data?.Exposed_pile === true).length;
+        const scourBurials = scourRecords.map((r: any) => parseFloat(r.inspection_data?.Burial_percent || '0')).filter((v: number) => !isNaN(v));
         const scourMinBurial = scourBurials.length > 0 ? Math.min(...scourBurials) : 100;
 
         // ─── 10. ANOMALIES ─────────────────────────────────────────────────────
@@ -516,7 +542,12 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // Scope (Total) is based on ALL items in the SOW (the whole platform's scope)
         allSowItems.forEach((item: any) => {
-            const comp = { q_id: item.component_qid, code: item.component_type };
+            const dbComp = compMap.get(item.component_id);
+            const comp = { 
+                q_id: item.component_qid || dbComp?.q_id, 
+                code: item.component_type || dbComp?.code,
+                metadata: dbComp?.metadata 
+            };
             const qid = (comp?.q_id || "").toUpperCase();
             if (!qid && !item.component_id) return;
 
@@ -646,9 +677,10 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // 1. Initialize from SOW items (to capture any pending items)
         allSowItems.forEach((item: any) => {
-            const compTypeRaw = item.component_type || "Other";
+            const dbComp = compMap.get(item.component_id);
+            const compTypeRaw = item.component_type || dbComp?.code || "Other";
             const compType = getComponentTypeName(compTypeRaw);
-            const qid = item.component_qid || `ID: ${item.component_id}`;
+            const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
             const inspCode = item.inspection_code || "UNKNOWN";
             
             if (!componentSummary[compType]) {
@@ -725,9 +757,10 @@ export const GET = withTenant(async (request, { companyId }) => {
         // 1. Initialize from SOW items (to capture any pending items)
         allSowItems.forEach((item: any) => {
             const inspCode = item.inspection_code || "UNKNOWN";
-            const compTypeRaw = item.component_type || "Other";
+            const dbComp = compMap.get(item.component_id);
+            const compTypeRaw = item.component_type || dbComp?.code || "Other";
             const compType = getComponentTypeName(compTypeRaw);
-            const qid = item.component_qid || `ID: ${item.component_id}`;
+            const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
             
             if (!inspectionTypeSummary[inspCode]) {
                 inspectionTypeSummary[inspCode] = {};
@@ -795,8 +828,8 @@ export const GET = withTenant(async (request, { companyId }) => {
                 sow: { total: totalSow, completed: completedSow, incomplete: incompleteSow, pending: pendingSow, completionPct, completedPct, incompletePct, pendingPct },
                 records: { 
                     total: rawRecords.length, 
-                    completed: rawRecords.filter(r => r.status === 'COMPLETED').length, 
-                    incomplete: rawRecords.filter(r => r.status === 'INCOMPLETE').length, 
+                    completed: rawRecords.filter((r: any) => r.status === 'COMPLETED').length, 
+                    incomplete: rawRecords.filter((r: any) => r.status === 'INCOMPLETE').length, 
                     anomaly: anomalyValidTotal, 
                     finding: findingValidTotal, 
                     rovCount: rovRecords.length, 
@@ -872,23 +905,23 @@ export const GET = withTenant(async (request, { companyId }) => {
                 scour: { total: scourRecords.length, exposed: scourExposedCount, minBurial: scourMinBurial },
                 attachmentGroups: attachmentGroupBreakdown,
                 
-                // Detailed Item Lists for Tables
-                cp_items: rawRecords.filter(r => {
+                 // Detailed Item Lists for Tables
+                cp_items: rawRecords.filter((r: any) => {
                     const d = r.inspection_data || {};
                     return (d.cp_rdg !== undefined || d.cp_reading_mv !== undefined);
-                }).map(r => ({
+                }).map((r: any) => ({
                     component: r.structure_components?.code || r.component_type || "N/A",
                     reading: r.inspection_data?.cp_rdg || r.inspection_data?.cp_reading_mv || "N/A",
                     status: r.status || "COMPLETED"
                 })),
 
-                fmd_items: fmdRecords.map(r => ({
+                fmd_items: fmdRecords.map((r: any) => ({
                     component: r.structure_components?.code || r.component_type || "N/A",
                     status: r.inspection_data?.member_status || "N/A",
                     mode: r.rov_job_id ? "ROV" : "DIVE"
                 })),
 
-                mgi_items: mgiRecords.map(r => ({
+                mgi_items: mgiRecords.map((r: any) => ({
                     component: r.structure_components?.code || r.component_type || "N/A",
                     thickness: r.inspection_data?.avg_thickness || r.inspection_data?.thickness || "0",
                     date: r.inspection_data?.date || new Date().toLocaleDateString("en-GB")

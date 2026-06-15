@@ -148,7 +148,7 @@ export function applyWatermarkAndSignaturesGlobal(doc: jsPDF, config: any) {
     const margin = 12;
     const contentWidth = pageWidth - margin * 2;
     const sigW = contentWidth / 3;
-    const sigY = pageHeight - 38;
+    const sigY = typeof config?.sigY === 'number' ? config.sigY : (pageHeight - 38);
 
     console.log("applyWatermarkAndSignaturesGlobal: Document properties", { pageCount, pageWidth, pageHeight, sigY });
 

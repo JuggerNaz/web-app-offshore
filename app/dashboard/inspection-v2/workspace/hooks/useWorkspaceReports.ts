@@ -609,7 +609,20 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVRSCORReport(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
+        const generatedConfig = {
+            returnBlob: true,
+            printFriendly,
+            showSignatures: showSignatures ?? reportConfig.showSignatures,
+            structureId: Number(structureId),
+            watermark: reportConfig.watermark,
+            preparedBy: reportConfig.preparedBy,
+            reviewedBy: reportConfig.reviewedBy,
+            approvedBy: reportConfig.approvedBy,
+        };
+        if (typeof window !== 'undefined') {
+            (window as any).__reportConfig = generatedConfig;
+        }
+        return await generateROVRSCORReport(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, generatedConfig) as Blob;
     };
 
     const generateRSCORV2Report = async () => {
@@ -631,7 +644,7 @@ export function useWorkspaceReports(
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
-        return await generateROVRSCORV2Report(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, {
+        const generatedConfig = {
             returnBlob: true,
             printFriendly,
             structureId: Number(structureId),
@@ -640,7 +653,11 @@ export function useWorkspaceReports(
             reviewedBy: reportConfig.reviewedBy,
             approvedBy: reportConfig.approvedBy,
             watermark: reportConfig.watermark
-        } as any) as Blob;
+        };
+        if (typeof window !== 'undefined') {
+            (window as any).__reportConfig = generatedConfig;
+        }
+        return await generateROVRSCORV2Report(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, generatedConfig as any) as Blob;
     };
 
     const generateRRISIReport = async () => {

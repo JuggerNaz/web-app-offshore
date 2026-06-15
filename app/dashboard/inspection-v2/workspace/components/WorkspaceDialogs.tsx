@@ -1256,23 +1256,30 @@ export function WorkspaceDialogs({
                         contractorLogoUrl = contrData?.logo_url || '';
                     }
 
+                    const generatedConfig = {
+                        jobPackId: Number(jobPackId),
+                        structureId: Number(structureId),
+                        sowReportNo: headerData.sowReportNo,
+                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
+                        reviewedBy: reportConfig.reviewedBy,
+                        approvedBy: reportConfig.approvedBy,
+                        watermark: reportConfig.watermark,
+                        returnBlob: true,
+                        printFriendly: isPrintFriendly,
+                        showSignatures
+                    };
+                    if (typeof window !== 'undefined') {
+                        (window as any).__reportConfig = generatedConfig;
+                    }
                     return await generateROVRSCORReport(
                         scourRecords,
                         { 
-                            ...headerData, 
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
+                             ...headerData, 
+                             contractorLogoUrl,
+                             vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showSignatures
-                        }
+                        generatedConfig
                     );
                 }}
                 title="ROV Scour Survey Report (RSCOR)"
@@ -1296,23 +1303,30 @@ export function WorkspaceDialogs({
                         contractorLogoUrl = contrData?.logo_url || '';
                     }
 
+                    const generatedConfig = {
+                        jobPackId: Number(jobPackId),
+                        structureId: Number(structureId),
+                        sowReportNo: headerData.sowReportNo,
+                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
+                        reviewedBy: reportConfig.reviewedBy,
+                        approvedBy: reportConfig.approvedBy,
+                        watermark: reportConfig.watermark,
+                        returnBlob: true,
+                        printFriendly: isPrintFriendly,
+                        showSignatures
+                    };
+                    if (typeof window !== 'undefined') {
+                        (window as any).__reportConfig = generatedConfig;
+                    }
                     return await generateROVRSCORV2Report(
                         scourRecords,
                         { 
-                            ...headerData, 
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
+                             ...headerData, 
+                             contractorLogoUrl,
+                             vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showSignatures
-                        }
+                        generatedConfig
                     );
                 }}
                 title="ROV Scour Survey Sketch v2 Report Preview"
