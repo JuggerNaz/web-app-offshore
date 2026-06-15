@@ -86,13 +86,23 @@ export default function Platform3DPage() {
     );
     const components: Component[] = useMemo(() => {
         const all = componentsData?.data || [];
-        return all.filter((c: any) => !c.is_deleted).map((c: any) => ({
-            ...c,
-            created_at: c.created_at || null,
-            updated_at: c.updated_at || null,
-            created_by: c.created_by || null,
-            modified_by: c.modified_by || null,
-        }));
+        return all
+            .filter((c: any) => {
+                if (c.is_deleted) return false;
+                // Exclude node weld components (code 'WN') that have a dash '-' in their q_id
+                const isNodeWeld = c.code?.toUpperCase() === "WN";
+                if (isNodeWeld && c.q_id && c.q_id.includes("-")) {
+                    return false;
+                }
+                return true;
+            })
+            .map((c: any) => ({
+                ...c,
+                created_at: c.created_at || null,
+                updated_at: c.updated_at || null,
+                created_by: c.created_by || null,
+                modified_by: c.modified_by || null,
+            }));
     }, [componentsData]);
 
     // 3. Fetch Platform Details

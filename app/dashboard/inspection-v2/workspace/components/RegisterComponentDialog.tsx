@@ -123,26 +123,60 @@ export function RegisterComponentDialog({
     );
 
     const legOptions = platformData?.data
-        ? Array.from({ length: 20 }, (_, i) => {
-            const key = `leg_t${i + 1}`;
-            const val = platformData.data[key];
-            return val ? { value: val, label: val } : null;
-        }).filter(Boolean)
+        ? Array.from(new Map(
+            Array.from({ length: 20 }, (_, i) => {
+                const key = `leg_t${i + 1}`;
+                const rawVal = platformData.data[key];
+                if (!rawVal) return null;
+                const val = rawVal.toString().trim().replace(/\s+/g, " ");
+                return [val.toUpperCase(), { value: val, label: val }];
+            }).filter(Boolean) as [string, { value: string; label: string }][]
+          ).values())
         : [];
 
-    const levelOptions = levelData?.data?.map((x: any) => ({ value: x.level_name, label: x.level_name })) || [];
-    const faceOptions = faceData?.data?.map((x: any) => ({ value: x.face, label: x.face })) || [];
-    const clockOptions = positionLib?.data?.map((x: any) => ({ 
-        value: x.lib_name || x.lib_desc, 
-        label: x.lib_desc || x.lib_name 
-    })) || [];
+    const levelOptions = levelData?.data
+        ? Array.from(new Map(levelData.data.map((x: any) => {
+            const val = (x.level_name || "").toString().trim().replace(/\s+/g, " ");
+            return [
+                val.toUpperCase(),
+                { value: val, label: val }
+            ];
+          })).values())
+        : [];
+
+    const faceOptions = faceData?.data
+        ? Array.from(new Map(faceData.data.map((x: any) => {
+            const val = (x.face || "").toString().trim().replace(/\s+/g, " ");
+            return [
+                val.toUpperCase(),
+                { value: val, label: val }
+            ];
+          })).values())
+        : [];
+
+    const clockOptions = positionLib?.data
+        ? Array.from(new Map(positionLib.data.map((x: any) => {
+            const val = (x.lib_name || x.lib_desc || "").toString().trim().replace(/\s+/g, " ");
+            const label = (x.lib_desc || x.lib_name || "").toString().trim().replace(/\s+/g, " ");
+            return [
+                val.toUpperCase(),
+                { value: val, label: label }
+            ];
+          })).values())
+        : [];
 
     // Structural group options (COMPGRP library)
     const { data: compGroupLib } = useSWR(`/api/library/COMPGRP`, fetcher);
-    const groupOptions = compGroupLib?.data ? compGroupLib.data.map((item: any) => ({
-        value: item.lib_id,
-        label: item.lib_desc
-    })) : [];
+    const groupOptions = compGroupLib?.data
+        ? Array.from(new Map(compGroupLib.data.map((item: any) => {
+            const val = (item.lib_id || "").toString().trim().replace(/\s+/g, " ");
+            const label = (item.lib_desc || item.lib_id || "").toString().trim().replace(/\s+/g, " ");
+            return [
+                val.toUpperCase(),
+                { value: val, label: label }
+            ];
+          })).values())
+        : [];
 
     const handleTypeChange = (val: string) => {
         const selected = filteredCompTypes.find((c: any) => c.code === val);

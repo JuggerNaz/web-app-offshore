@@ -41,8 +41,7 @@ const ComponentMesh = ({
     onClick,
     start,
     end,
-    thickness = 0.3,
-    showWeldLabels = false
+    thickness = 0.3
 }: {
     component: Component3D;
     isSelected: boolean;
@@ -50,7 +49,6 @@ const ComponentMesh = ({
     start: [number, number, number];
     end: [number, number, number];
     thickness?: number;
-    showWeldLabels?: boolean;
 }) => {
     const [hovered, setHovered] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
@@ -66,19 +64,20 @@ const ComponentMesh = ({
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
 
-    // Guard against NaN coordinates — skip render entirely if bad data
-    const hasNaN = [startVec.x, startVec.y, startVec.z, endVec.x, endVec.y, endVec.z].some(v => !isFinite(v));
+    // Scale thickness based on type, guarding against undefined/NaN values
+    let baseThickness = thickness;
+    if (isNaN(baseThickness) || baseThickness === null || baseThickness === undefined) {
+        baseThickness = 0.3;
+    }
 
     const length = startVec.distanceTo(endVec);
     const position = startVec.clone().add(endVec).multiplyScalar(0.5);
     const direction = endVec.clone().sub(startVec).normalize();
 
-    // Scale thickness based on type
-    let baseThickness = thickness;
     if (isAnode) baseThickness = 0.15;
-    else if (isClamp) baseThickness = thickness * 1.8;
+    else if (isClamp) baseThickness = baseThickness * 1.8;
     else if (isWeld) {
-        baseThickness = thickness * 1.15;
+        baseThickness = baseThickness * 1.15;
         if (baseThickness < 0.25) {
             baseThickness = component.metadata?.s_leg ? 0.55 : 0.3;
         }
@@ -94,8 +93,8 @@ const ComponentMesh = ({
     const euler = new THREE.Euler().setFromQuaternion(quaternion);
 
     // Zoom-based visibility logic removed as per user request
-    // Labels now only show on hover or selection, or persistent weld labels if toggled
-    const showLabel = hovered || isSelected || (showWeldLabels && isWeld);
+    // Labels now only show on hover or selection, or persistently for welds
+    const showLabel = hovered || isSelected || isWeld;
 
     let labelText = component.q_id;
     if (isWeld) {
@@ -106,9 +105,25 @@ const ComponentMesh = ({
     }
 
     // Offset anodes from the center of the member so they sit on the surface
-    // Note: dist/clk_pos positioning is now handled in the layout pass (useMemo),
-    // so no additional local offset is needed here.
-    const offsetPos: [number, number, number] = [0, 0, 0];
+    const md = component.metadata || {};
+    let clockPos = parseFloat(md.clk_pos || "12");
+    if (isNaN(clockPos)) clockPos = 12;
+    const angle = (clockPos / 12) * Math.PI * 2;
+    const memberRadius = baseThickness < 0.2 ? 0.25 : baseThickness;
+    const offsetDistance = memberRadius + 0.15;
+    let ox = Math.sin(angle) * offsetDistance;
+    let oz = Math.cos(angle) * offsetDistance;
+    if (isNaN(ox)) ox = 0;
+    if (isNaN(oz)) oz = 0;
+
+    const offsetPos: [number, number, number] = isAnode ? [ox, 0, oz] : [0, 0, 0];
+
+    // Guard against NaN coordinates — skip render entirely if bad data
+    const hasNaN = [
+        startVec.x, startVec.y, startVec.z,
+        endVec.x, endVec.y, endVec.z,
+        offsetPos[0], offsetPos[1], offsetPos[2]
+    ].some(v => !isFinite(v));
 
     // Skip rendering entirely if coordinates are invalid — prevents NaN from poisoning Bounds
     if (hasNaN) return null;
@@ -147,8 +162,8 @@ const ComponentMesh = ({
                                 <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
                                 <meshStandardMaterial color="#ef4444" roughness={0.4} />
                             </mesh>
-                            <mesh position={[-0.2, safeMeshLength / 2 + 0.1, 0]} rotation={[0, 0, Math.PI / 2]}>
-                                <cylinderGeometry args={[0.03, 0.03, 0.4, 8]} />
+                            <mesh position={[-ox / 2, safeMeshLength / 2 + 0.1, -oz / 2]} rotation={[Math.PI / 2, angle, 0]}>
+                                <cylinderGeometry args={[0.03, 0.03, offsetDistance, 8]} />
                                 <meshStandardMaterial color="#ef4444" roughness={0.4} />
                             </mesh>
                             {/* Bottom Stub */}
@@ -156,8 +171,8 @@ const ComponentMesh = ({
                                 <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
                                 <meshStandardMaterial color="#ef4444" roughness={0.4} />
                             </mesh>
-                            <mesh position={[-0.2, -safeMeshLength / 2 - 0.1, 0]} rotation={[0, 0, Math.PI / 2]}>
-                                <cylinderGeometry args={[0.03, 0.03, 0.4, 8]} />
+                            <mesh position={[-ox / 2, -safeMeshLength / 2 - 0.1, -oz / 2]} rotation={[Math.PI / 2, angle, 0]}>
+                                <cylinderGeometry args={[0.03, 0.03, offsetDistance, 8]} />
                                 <meshStandardMaterial color="#ef4444" roughness={0.4} />
                             </mesh>
                         </group>
@@ -194,7 +209,7 @@ const ComponentMesh = ({
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
                                 ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
-                                : isWeld && showWeldLabels
+                                : isWeld
                                     ? "bg-orange-500 text-white border-orange-400 scale-100 opacity-90 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
                                     : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
@@ -286,16 +301,26 @@ function SelectToZoom({ children }: { children: React.ReactNode }) {
 }
 
 export function Structural3DViewer({
-    components,
+    components: rawComponents,
     platformDetails,
     elevations = [],
     faces = [],
     selectedCompId,
     onSelectComponent
 }: Structural3DViewerProps) {
+    const components = useMemo(() => {
+        return rawComponents.filter(c => {
+            const code = (c.code || "").toUpperCase();
+            const isNodeWeld = code === "WN";
+            if (isNodeWeld && c.q_id && c.q_id.includes("-")) {
+                return false;
+            }
+            return true;
+        });
+    }, [rawComponents]);
+
     const [showGrid, setShowGrid] = useState(true);
     const [showWater, setShowWater] = useState(true);
-    const [showWeldLabels, setShowWeldLabels] = useState(false);
     const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
     const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
     const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | null>(null);
@@ -462,17 +487,41 @@ export function Structural3DViewer({
         const nodeMap = new Map<string, THREE.Vector3>();
         const nodeLegMap = new Map<string, string>();
 
+        // Helper to scan nodeMap for any existing aliases of the target node and return its vector reference
+        const getExistingNodeVector = (nodeId: string): THREE.Vector3 | undefined => {
+            const normalized = nodeId.toUpperCase().trim();
+            const aliases = [normalized];
+            if (/^N\d+$/.test(normalized)) aliases.push(normalized.slice(1));
+            if (/^\d+$/.test(normalized)) aliases.push(`N${normalized}`);
+            if (!normalized.startsWith("WN")) {
+                aliases.push(`WN ${normalized}`);
+                aliases.push(`WN${normalized}`);
+            }
+            for (const alias of aliases) {
+                if (nodeMap.has(alias)) {
+                    const vec = nodeMap.get(alias)!;
+                    if (vec.x !== 0 || vec.z !== 0) return vec;
+                }
+            }
+            return undefined;
+        };
+
         // Helper to register a vector under multiple alias keys in nodeMap
         const registerNodeAlias = (alias: string, vec: THREE.Vector3, legKey: string) => {
             const key = alias.toUpperCase();
+            
+            // Look for any existing vector instance for this node name to share reference
+            const existingVec = getExistingNodeVector(key);
+            const activeVec = existingVec || vec;
+            
             if (!nodeMap.has(key) || (nodeMap.get(key)!.x === 0 && nodeMap.get(key)!.z === 0)) {
-                nodeMap.set(key, vec);
+                nodeMap.set(key, activeVec);
                 if (legKey) nodeLegMap.set(key, legKey);
             }
             if (legKey) {
                 const compositeKey = `${key}|${legKey}`;
                 if (!nodeMap.has(compositeKey) || (nodeMap.get(compositeKey)!.x === 0 && nodeMap.get(compositeKey)!.z === 0)) {
-                    nodeMap.set(compositeKey, vec);
+                    nodeMap.set(compositeKey, activeVec);
                     nodeLegMap.set(compositeKey, legKey);
                 }
             }
@@ -606,6 +655,42 @@ export function Structural3DViewer({
             return undefined;
         };
 
+        // PASS 1.2: Register endpoints for all primary member components
+        components.forEach(c => {
+            const md = c.metadata || {};
+            const code = (c.code || "").toUpperCase();
+            const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG"].includes(code);
+            if (isPrimary) {
+                processNode(md.s_node, md.s_leg, md.elv_1, md.depth, md.easting, md.northing, true);
+                processNode(md.f_node, md.f_leg, md.elv_2, md.depth, md.easting, md.northing, true);
+            }
+        });
+
+        // PASS 1.5: Adjust primary member endpoint positions based on metadata length
+        components.forEach(c => {
+            const md = c.metadata || {};
+            const code = (c.code || "").toUpperCase();
+            const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(code);
+            if (isMember && md.s_node && md.f_node) {
+                const sPos = lookupNode(md.s_node, md.s_leg);
+                const fPos = lookupNode(md.f_node, md.f_leg);
+                if (sPos && fPos) {
+                    const originalDist = sPos.distanceTo(fPos);
+                    if (originalDist > 0.001) {
+                        const lengthStr = md.length || md.additionalInfo?.length;
+                        if (lengthStr) {
+                            const memberLength = parseFloat(lengthStr);
+                            if (!isNaN(memberLength) && memberLength > 0) {
+                                const dir = fPos.clone().sub(sPos).normalize();
+                                const newFPos = sPos.clone().add(dir.multiplyScalar(memberLength));
+                                fPos.copy(newFPos);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
         // PASS 2: Intermediate Node Welds (e.g. WN N170 sitting on HOM N166-N164)
         // Group by endpoints, interpolate, and REGISTER back to nodeMap!
         const intermediateWeldGroups = new Map<string, typeof intermediateWelds>();
@@ -664,17 +749,18 @@ export function Structural3DViewer({
             });
         });
 
-        // PASS 3: Fallback registrations for endpoints on non-node components
+        // PASS 3: Fallback registrations for endpoints on non-node and non-primary components
         components.forEach(c => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
             const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
             const isNode = isWeld || code.includes("NODE") || code === "ND";
+            const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG"].includes(code);
             
-            if (!isNode) {
-                const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG", "CF", "CG", "CD", "CO", "CA"].includes(code);
-                processNode(md.s_node, md.s_leg, md.elv_1, md.depth, md.easting, md.northing, isPrimary);
-                processNode(md.f_node, md.f_leg, md.elv_2, md.depth, md.easting, md.northing, isPrimary);
+            if (!isNode && !isPrimary) {
+                const isPrimaryFallback = ["CF", "CG", "CD", "CO", "CA"].includes(code);
+                processNode(md.s_node, md.s_leg, md.elv_1, md.depth, md.easting, md.northing, isPrimaryFallback);
+                processNode(md.f_node, md.f_leg, md.elv_2, md.depth, md.easting, md.northing, isPrimaryFallback);
             }
         });
 
@@ -682,12 +768,84 @@ export function Structural3DViewer({
 
         // 5. Resolve Structural Layouts for components
         const intermediateLayouts = new Map<number, { component: any, start: THREE.Vector3, end: THREE.Vector3, thickness: number }>();
+
+        // PASS 1.7: Interpolate and register child node welds (WN) on parent members
+        const childWeldGroups = new Map<number, typeof components>();
+        components.forEach(c => {
+            const md = c.metadata || {};
+            const code = (c.code || "").toUpperCase();
+            if (code === "WN" && md.associated_comp_id) {
+                const parentId = md.associated_comp_id;
+                if (!childWeldGroups.has(parentId)) {
+                    childWeldGroups.set(parentId, []);
+                }
+                childWeldGroups.get(parentId)!.push(c);
+            }
+        });
+
+        // Run interpolation multiple times (3 iterations) to resolve dependency ordering
+        // (e.g. child welds whose parent endpoints themselves depend on other child welds)
+        for (let iter = 0; iter < 3; iter++) {
+            childWeldGroups.forEach((children, parentId) => {
+                // Find parent component
+                const parentComp = components.find(c => c.id === parentId);
+                if (!parentComp) return;
+
+                const parentMd = parentComp.metadata || {};
+                const pStart = lookupNode(parentMd.s_node, parentMd.s_leg);
+                const pEnd = lookupNode(parentMd.f_node, parentMd.f_leg);
+                if (!pStart || !pEnd) return;
+
+                const direction = pEnd.clone().sub(pStart).normalize();
+
+                // Sort children by dist ascending
+                children.sort((a, b) => {
+                    const distA = parseFloat(a.metadata?.dist || "0");
+                    const distB = parseFloat(b.metadata?.dist || "0");
+                    if (distA !== distB) return distA - distB;
+                    return (a.q_id || "").localeCompare(b.q_id || "");
+                });
+
+                const count = children.length;
+                children.forEach((c, idx) => {
+                    const t = (idx + 1) / (count + 1);
+                    const pos = pStart.clone().lerp(pEnd, t);
+
+                    // Update position in nodeMap
+                    const nodeName = (c.metadata?.s_node || "").toUpperCase();
+                    if (nodeName) {
+                        const nodeVec = lookupNode(nodeName, "");
+                        if (nodeVec) {
+                            nodeVec.copy(pos);
+                        } else {
+                            registerNodeAlias(nodeName, pos, "");
+                            registerNodeAlias(c.q_id, pos, "");
+                        }
+                    }
+
+                    // Add layout to intermediateLayouts immediately
+                    let thickness = 0.15; // default weld thickness
+                    const start = pos.clone();
+                    const end = pos.clone();
+                    if (direction.lengthSq() > 0.1) {
+                        end.add(direction.clone().multiplyScalar(0.1));
+                    }
+                    intermediateLayouts.set(c.id, { component: c, start, end, thickness });
+                });
+            });
+        }
+
         const pendingAttachments: typeof components = [];
         const pendingSpanAccessories: { component: any, sNode: THREE.Vector3, fNode: THREE.Vector3 }[] = [];
 
         components.forEach((c, i) => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
+
+            // Skip child welds already resolved in PASS 1.7
+            if (code === "WN" && md.associated_comp_id) {
+                return;
+            }
 
             const isAnode = code === "AN" || code.includes("ANOD");
             const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
@@ -717,15 +875,15 @@ export function Structural3DViewer({
                 return;
             } else if (isPointAccessory && (hasStartNode || hasStartNode !== hasEndNode || md.s_leg)) {
                 const y = md.elv_1 ? sanitizeElevation(md.elv_1) : (startNode?.y ?? endNode?.y ?? 0);
-                if (md.s_leg) {
+                if (startNode) {
+                    start.set(startNode.x, y, startNode.z);
+                } else if (md.s_leg) {
                     const coords = getLegCoordsAtElv(md.s_leg.toUpperCase(), y);
                     start.set(coords.x, y, coords.z);
-                } else if (startNode) {
-                    start.set(startNode.x, y, startNode.z);
                 } else if (endNode) {
                     start.set(endNode.x, y, endNode.z);
                 }
-                if (md.dist) {
+                if (md.dist && !isAnode) {
                     const distance = parseFloat(md.dist);
                     if (distance > 0 && distance < 3.0) {
                         const clockPos = parseFloat(md.clk_pos || "12");
@@ -805,7 +963,9 @@ export function Structural3DViewer({
                     start.copy(sNode).lerp(fNode, t);
                 }
                 
-                if (md.dist) {
+                const itemCode = (item.component.code || "").toUpperCase();
+                const isAnode = itemCode === "AN" || itemCode.includes("ANOD");
+                if (md.dist && !isAnode) {
                     const distance = parseFloat(md.dist);
                     if (distance > 0 && distance < 3.0) {
                         const clockPos = parseFloat(md.clk_pos || "12");
@@ -815,7 +975,12 @@ export function Structural3DViewer({
                     }
                 }
                 
-                end.copy(start);
+                const direction = fNode.clone().sub(sNode).normalize();
+                if (direction.lengthSq() > 0.1) {
+                    end.copy(start).add(direction.clone().multiplyScalar(0.8));
+                } else {
+                    end.copy(start);
+                }
                 
                 intermediateLayouts.set(item.component.id, { 
                     component: item.component, 
@@ -925,11 +1090,55 @@ export function Structural3DViewer({
             });
         });
 
+        // Align endpoint welds with connecting members
+        intermediateLayouts.forEach((layout) => {
+            const c = layout.component;
+            const code = (c.code || "").toUpperCase();
+            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+            
+            if (isWeld && layout.start.distanceTo(layout.end) < 0.001) {
+                const nodeName = String(c.metadata?.s_node || "").toUpperCase().trim();
+                if (nodeName) {
+                    let foundMemberLayout: any = null;
+                    for (const otherLayout of Array.from(intermediateLayouts.values())) {
+                        const otherComp = otherLayout.component;
+                        const otherCode = (otherComp.code || "").toUpperCase();
+                        const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(otherCode);
+                        if (isMember) {
+                            const otherMd = otherComp.metadata || {};
+                            const sNodeStr = String(otherMd.s_node || "").toUpperCase().trim();
+                            const fNodeStr = String(otherMd.f_node || "").toUpperCase().trim();
+                            if (sNodeStr === nodeName || fNodeStr === nodeName) {
+                                foundMemberLayout = otherLayout;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (foundMemberLayout) {
+                        const mStart = foundMemberLayout.start;
+                        const mEnd = foundMemberLayout.end;
+                        const mDist = mStart.distanceTo(mEnd);
+                        if (mDist > 0.001) {
+                            const dir = mEnd.clone().sub(mStart).normalize();
+                            layout.end.copy(layout.start.clone().add(dir.multiplyScalar(0.1)));
+                        }
+                    }
+                }
+            }
+        });
+
         const resolvedLayouts = Array.from(intermediateLayouts.values())
             // Filter out any layouts where coordinates are NaN or non-finite
             .filter(layout => {
                 const coords = [layout.start.x, layout.start.y, layout.start.z, layout.end.x, layout.end.y, layout.end.z];
                 return coords.every(v => isFinite(v));
+            })
+            // Filter out leg components from the 3D visualization to keep only the vertical member structures
+            .filter(layout => {
+                const code = (layout.component.code || "").toUpperCase();
+                const qId = (layout.component.q_id || "").toUpperCase();
+                return !(code === "LG" || code === "LEG" || qId.includes("LEG"));
             })
             .map(layout => ({
                 component: layout.component,
@@ -940,10 +1149,18 @@ export function Structural3DViewer({
 
         const getComponentLegs = (comp: any) => {
             const compMd = comp.metadata || {};
-            const sNodeKey = (compMd.s_node || "").toUpperCase();
-            const fNodeKey = (compMd.f_node || "").toUpperCase();
-            const sLeg = (compMd.s_leg || nodeLegMap.get(sNodeKey) || nodeLegMap.get(`N${sNodeKey}`) || "").toUpperCase();
-            const fLeg = (compMd.f_leg || nodeLegMap.get(fNodeKey) || nodeLegMap.get(`N${fNodeKey}`) || "").toUpperCase();
+            let targetComp = comp;
+            if (compMd.associated_comp_id) {
+                const parent = components.find(c => c.id === compMd.associated_comp_id);
+                if (parent) {
+                    targetComp = parent;
+                }
+            }
+            const targetMd = targetComp.metadata || {};
+            const sNodeKey = (targetMd.s_node || "").toUpperCase();
+            const fNodeKey = (targetMd.f_node || "").toUpperCase();
+            const sLeg = (targetMd.s_leg || nodeLegMap.get(sNodeKey) || nodeLegMap.get(`N${sNodeKey}`) || "").toUpperCase();
+            const fLeg = (targetMd.f_leg || nodeLegMap.get(fNodeKey) || nodeLegMap.get(`N${fNodeKey}`) || "").toUpperCase();
             return { sLeg, fLeg };
         };
 
@@ -1001,18 +1218,7 @@ export function Structural3DViewer({
 
         const filteredFoundationMembers = foundationMembers.filter(m => {
             if (m.id.startsWith("leg-")) {
-                const legName = m.label;
-                if (selectedFaces.length > 0) {
-                    const matchesFace = selectedFaces.some(faceName => {
-                        const faceObj = faces.find(f => f.face?.toUpperCase() === faceName.toUpperCase());
-                        if (faceObj) {
-                            return faceObj.face_from?.toUpperCase() === legName.toUpperCase() ||
-                                faceObj.face_to?.toUpperCase() === legName.toUpperCase();
-                        }
-                        return false;
-                    });
-                    if (!matchesFace) return false;
-                }
+                return true;
             }
 
             if (m.id.startsWith("face-")) {
@@ -1209,7 +1415,6 @@ export function Structural3DViewer({
                                 start={layout.start}
                                 end={layout.end}
                                 thickness={layout.thickness}
-                                showWeldLabels={showWeldLabels}
                             />
                         ))}
                     </SelectToZoom>
@@ -1429,18 +1634,6 @@ export function Structural3DViewer({
                     )}
                 >
                     {showGrid ? "Grid: ON" : "Grid: OFF"}
-                </Button>
-
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowWeldLabels(!showWeldLabels)}
-                    className={cn(
-                        "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
-                        showWeldLabels ? "border-orange-200 text-orange-600 shadow-[0_0_15px_rgba(249,115,22,0.15)]" : "border-slate-200 text-slate-400"
-                    )}
-                >
-                    {showWeldLabels ? "Weld Labels: ON" : "Weld Labels: OFF"}
                 </Button>
 
                 <div className="bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border border-blue-100 shadow-lg flex items-center gap-3">

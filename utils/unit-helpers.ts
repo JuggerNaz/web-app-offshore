@@ -37,6 +37,11 @@ export const getDefaultUnit = (category: string | null, isImperial: boolean, fie
     return 'm';
   }
 
+  // Component-specific field overrides
+  if (!isImperial && category?.toLowerCase() === 'length' && lowerField === 'length' && ['hm', 'hd', 'vd', 'vm'].includes(code)) {
+    return 'm';
+  }
+
   
   if (!category) return null;
   const upperCategory = category.toUpperCase();
