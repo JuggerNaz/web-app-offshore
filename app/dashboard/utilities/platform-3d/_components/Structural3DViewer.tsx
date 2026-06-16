@@ -396,6 +396,8 @@ export function Structural3DViewer({
         const centerRow = (rowLetters.length - 1) / 2;
         const centerCol = (colNumbers.length - 1) / 2;
 
+        const legRowCol: Record<string, { row: number, col: number }> = {};
+
         allLegNames.forEach(name => {
             const match = name.match(/([A-Z]+)(\d+)/);
             if (match) {
@@ -411,8 +413,107 @@ export function Structural3DViewer({
                     x: (colIndex - centerCol) * SPACING,
                     z: -(rowIndex - centerRow) * SPACING
                 };
+                legRowCol[name.toUpperCase()] = { row: rowIndex, col: colIndex };
             }
         });
+
+        // Extract horizontal member length data points to compute splay factor at different elevations
+        interface MemberDataPoint {
+            y: number;
+            length: number;
+            type: "X" | "Z";
+        }
+        const dataPoints: MemberDataPoint[] = [];
+
+        components.forEach(c => {
+            const code = (c.code || "").toUpperCase();
+            if (!["HM", "HOM", "HD", "HDM"].includes(code)) return;
+            const md = c.metadata || {};
+            if (!md.s_leg || !md.f_leg) return;
+            const sLeg = md.s_leg.toUpperCase();
+            const fLeg = md.f_leg.toUpperCase();
+            if (sLeg === fLeg) return;
+            
+            const sInfo = legRowCol[sLeg];
+            const fInfo = legRowCol[fLeg];
+            if (!sInfo || !fInfo) return;
+
+            // Make sure it's horizontal
+            const y1 = sanitizeElevation(md.elv_1 || (md.depth ? -parseFloat(md.depth)/10 : undefined));
+            const y2 = sanitizeElevation(md.elv_2 || (md.depth ? -parseFloat(md.depth)/10 : undefined));
+            if (Math.abs(y1 - y2) > 0.01) return; // not horizontal
+
+            const lengthVal = parseFloat(md.length || md.additionalInfo?.length || "0");
+            if (isNaN(lengthVal) || lengthVal <= 0.1) return;
+
+            const colDiff = Math.abs(fInfo.col - sInfo.col);
+            const rowDiff = Math.abs(fInfo.row - sInfo.row);
+
+            if (sInfo.row === fInfo.row && colDiff > 0) {
+                dataPoints.push({ y: y1, length: lengthVal / colDiff, type: "X" });
+            } else if (sInfo.col === fInfo.col && rowDiff > 0) {
+                dataPoints.push({ y: y1, length: lengthVal / rowDiff, type: "Z" });
+            }
+        });
+
+        const xScalesByY = new Map<number, number[]>();
+        const zScalesByY = new Map<number, number[]>();
+
+        dataPoints.forEach(p => {
+            if (p.type === "X") {
+                if (!xScalesByY.has(p.y)) xScalesByY.set(p.y, []);
+                xScalesByY.get(p.y)!.push(p.length / SPACING);
+            } else if (p.type === "Z") {
+                if (!zScalesByY.has(p.y)) zScalesByY.set(p.y, []);
+                zScalesByY.get(p.y)!.push(p.length / SPACING);
+            }
+        });
+
+        const xPoints: { y: number, scale: number }[] = [];
+        const zPoints: { y: number, scale: number }[] = [];
+
+        xScalesByY.forEach((scales, y) => {
+            const avg = scales.reduce((a, b) => a + b, 0) / scales.length;
+            xPoints.push({ y, scale: avg });
+        });
+
+        zScalesByY.forEach((scales, y) => {
+            const avg = scales.reduce((a, b) => a + b, 0) / scales.length;
+            zPoints.push({ y, scale: avg });
+        });
+
+        xPoints.sort((a, b) => a.y - b.y);
+        zPoints.sort((a, b) => a.y - b.y);
+
+        const getScaleAtY = (points: { y: number, scale: number }[], yVal: number): number => {
+            if (points.length === 0) return 1.0;
+            if (points.length === 1) return points[0].scale;
+            
+            // Extrapolate below lowest elevation
+            if (yVal <= points[0].y) {
+                const p0 = points[0];
+                const p1 = points[1];
+                const slope = (p1.scale - p0.scale) / (p1.y - p0.y);
+                return p0.scale + slope * (yVal - p0.y);
+            }
+            // Extrapolate above highest elevation
+            if (yVal >= points[points.length - 1].y) {
+                const p0 = points[points.length - 2];
+                const p1 = points[points.length - 1];
+                const slope = (p1.scale - p0.scale) / (p1.y - p0.y);
+                return p1.scale + slope * (yVal - p1.y);
+            }
+            // Interpolate between surrounding elevations
+            for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[i];
+                const p1 = points[i + 1];
+                if (yVal >= p0.y && yVal <= p1.y) {
+                    const t = (yVal - p0.y) / (p1.y - p0.y);
+                    return p0.scale + (p1.scale - p0.scale) * t;
+                }
+            }
+            return 1.0;
+        };
 
         const isD21JT = platformDetails?.title?.toUpperCase().includes('D21JT') || false;
 
@@ -428,7 +529,10 @@ export function Structural3DViewer({
                 if (key === 'B2') return { x: L / 2, z: -W / 2 };
             }
             if (legMap[key]) {
-                return legMap[key];
+                const nominal = legMap[key];
+                const scaleX = getScaleAtY(xPoints, yVal);
+                const scaleZ = getScaleAtY(zPoints, yVal);
+                return { x: nominal.x * scaleX, z: nominal.z * scaleZ };
             }
             return { x: 0, z: 0 };
         };
@@ -667,6 +771,8 @@ export function Structural3DViewer({
         });
 
         // PASS 1.5: Adjust primary member endpoint positions based on metadata length
+        // (Commented out to prevent cumulative in-place coordinate distortion on closed loop frames)
+        /*
         components.forEach(c => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
@@ -690,6 +796,7 @@ export function Structural3DViewer({
                 }
             }
         });
+        */
 
         // PASS 2: Intermediate Node Welds (e.g. WN N170 sitting on HOM N166-N164)
         // Group by endpoints, interpolate, and REGISTER back to nodeMap!
