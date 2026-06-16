@@ -23,6 +23,7 @@ import {
   Paperclip,
   Box,
   Building2,
+  Laptop,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -317,6 +318,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
                 label="User Management"
                 icon={<ShieldAlert className="h-[18px] w-[18px] text-red-500" />}
                 text="User Management"
+              />
+              <MenuLink
+                href="/dashboard/admin/devices"
+                isCollapsed={isCollapsed}
+                label="Device Registry"
+                icon={<Laptop className="h-[18px] w-[18px] text-amber-500" />}
+                text="Device Registry"
               />
               <RoleGate minRole="super_admin" hide>
                 <MenuLink

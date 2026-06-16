@@ -805,6 +805,32 @@ function V10PreviewLayout() {
   const [pipWindow, setPipWindow] = useState<any>(null);
   const [capturedEventsPipWindow, setCapturedEventsPipWindow] = useState<any>(null);
 
+  // Auto-edit record when recordIdParam is provided in URL (e.g. clicked from Global Search)
+  const [lastLoadedRecordId, setLastLoadedRecordId] = useState<string | null>(null);
+  useEffect(() => {
+    if (recordIdParam && lastLoadedRecordId !== recordIdParam) {
+      const record = currentRecords.find((r) => String(r.insp_id) === String(recordIdParam)) || 
+                     allWorkspaceRecords.find((r) => String(r.insp_id) === String(recordIdParam));
+      if (record) {
+        handleEditRecord(record);
+        setLastLoadedRecordId(recordIdParam);
+      } else {
+        const loadAndEdit = async () => {
+          const { data } = await supabase
+            .from("insp_records")
+            .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*)")
+            .eq("insp_id", Number(recordIdParam))
+            .maybeSingle();
+          if (data) {
+            handleEditRecord(data);
+            setLastLoadedRecordId(recordIdParam);
+          }
+        };
+        loadAndEdit();
+      }
+    }
+  }, [recordIdParam, currentRecords, allWorkspaceRecords, lastLoadedRecordId, supabase]);
+
   // Multiple Attachment State
   const [pendingAttachments, setPendingAttachments] = useState<
     Array<{
@@ -2232,15 +2258,15 @@ function V10PreviewLayout() {
         try {
           const cssRules = styleSheet.cssRules;
           if (cssRules) {
-            const newStyleEl = document.createElement("style");
+            const newStyleEl = pip.document.createElement("style");
             Array.from(cssRules).forEach((rule) => {
-              newStyleEl.appendChild(document.createTextNode(rule.cssText));
+              newStyleEl.appendChild(pip.document.createTextNode(rule.cssText));
             });
             pip.document.head.appendChild(newStyleEl);
           }
         } catch (e) {
           if (styleSheet.href) {
-            const newLinkEl = document.createElement("link");
+            const newLinkEl = pip.document.createElement("link");
             newLinkEl.rel = "stylesheet";
             newLinkEl.href = styleSheet.href;
             pip.document.head.appendChild(newLinkEl);
@@ -2248,10 +2274,29 @@ function V10PreviewLayout() {
         }
       });
 
-      // Add basic HTML structure overlay
+      // Sync dark mode configuration and base classes
+      const isDark = document.documentElement.classList.contains("dark");
+      if (isDark) {
+        pip.document.documentElement.classList.add("dark");
+      }
+      pip.document.body.className = document.body.className;
+
+      const bg = isDark ? "#0b0f19" : "#ffffff";
+      const text = isDark ? "#f8fafc" : "#0f172a";
+
+      // Add basic HTML structure overlay with matching theme color
       pip.document.head.insertAdjacentHTML(
         "beforeend",
-        "<style>body { margin: 0; padding: 0; overflow: hidden; background: #fff; font-family: system-ui, -apple-system, sans-serif; }</style>"
+        `<style>
+          body { 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background: ${bg} !important; 
+            color: ${text} !important; 
+            font-family: system-ui, -apple-system, sans-serif; 
+          }
+        </style>`
       );
 
       setCapturedEventsPipWindow(pip);
@@ -2461,6 +2506,11 @@ function V10PreviewLayout() {
   };
 
   const handleComponentSelection = (c: any) => {
+    if (selectedComp && activeSpec && !showCompSelector) {
+      toast.warning("To switch components, please click the 'Change' button in the form header.");
+      return;
+    }
+
     if (editingRecordId && selectedComp && c.id !== selectedComp.id) {
       const orphaned = diffSpecifications(c, activeSpec || "");
       setPendingReclass({
@@ -2577,6 +2627,11 @@ function V10PreviewLayout() {
   };
 
   const handleTaskChange = (newTask: string) => {
+    if (selectedComp && activeSpec && !showTaskSelector) {
+      toast.warning("To switch inspection types, please click the 'Change' button in the form header.");
+      return;
+    }
+
     if (!selectedComp || !editingRecordId) {
       setActiveSpec(newTask);
       setShowTaskSelector(false);
