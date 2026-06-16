@@ -267,6 +267,18 @@ const TOC_SECTIONS = [
   ]}
 ];
 
+const PanelContainer = ({ children, title, stepNum, disabled }: any) => (
+    <div className={`flex flex-col border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-950 overflow-hidden h-[450px] transition-opacity ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="p-4 border-b bg-slate-50/50 dark:bg-slate-900/50">
+            <Label className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400 w-5 h-5 flex items-center justify-center rounded-full text-xs">{stepNum}</span>
+                {title}
+            </Label>
+        </div>
+        {children}
+    </div>
+);
+
 export function ReportWizard({ onClose }: ReportWizardProps) {
     const [step, setStep] = useState<WizardStep>("template");
     const [templateSearch, setTemplateSearch] = useState("");
@@ -485,24 +497,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const filteredStructures = useMemo(() => {
         let result = structures;
 
-        // Filter by JobPack if selected and template requires both
-        if (selections.jobPackId && getCurrentTemplate()?.requires.includes("jobpack")) {
-            const jp = jobPacks.find((j: any) => j.id.toString() === selections.jobPackId);
-            if (jp && jp.metadata?.structures) {
-                const structIds = jp.metadata.structures.map((s: any) => s.id);
-                result = result.filter((s: any) => structIds.includes(s.id));
-            }
-        }
-
-        // Apply inspection data filters if active
-        if (isInspectionTemplate && inspectionFilters.length > 0) {
-            const validStructureIds = Array.from(new Set(inspectionFilters.map(f => f.structure_id)));
-            result = result.filter((s: any) => validStructureIds.includes(s.id));
-        } else if (isInspectionTemplate && inspectionFilters.length === 0 && selections.jobPackId) {
-            // If it's an inspection template and no inspection data exists, return empty
-            result = [];
-        }
-
         if (structureSearch) {
             const lower = structureSearch.toLowerCase();
             result = result.filter((s: any) =>
@@ -511,21 +505,78 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             );
         }
         return result;
-    }, [structures, structureSearch, selections.jobPackId, jobPacks, isInspectionTemplate, inspectionFilters]);
+    }, [structures, structureSearch]);
 
     // Filtered Job Packs
     const filteredJobPacks = useMemo(() => {
-        if (!jobPackSearch) return jobPacks;
-        const lower = jobPackSearch.toLowerCase();
-        return jobPacks.filter((jp: any) =>
-            String(jp.id).includes(lower) ||
-            jp.name?.toLowerCase().includes(lower) ||
-            jp.status?.toLowerCase().includes(lower)
-        );
-    }, [jobPacks, jobPackSearch]);
+        let result = jobPacks;
+
+        // Filter by selected structure
+        if (selections.structureId && selections.structureId !== "all" && getCurrentTemplate()?.requires.includes("structure")) {
+            result = result.filter((jp: any) => {
+                if (jp.metadata?.structures) {
+                    return jp.metadata.structures.some((s: any) => s.id.toString() === selections.structureId);
+                }
+                return false;
+            });
+        }
+
+        if (jobPackSearch) {
+            const lower = jobPackSearch.toLowerCase();
+            result = result.filter((jp: any) =>
+                String(jp.id).includes(lower) ||
+                jp.name?.toLowerCase().includes(lower) ||
+                jp.status?.toLowerCase().includes(lower)
+            );
+        }
+        return result;
+    }, [jobPacks, jobPackSearch, selections.structureId, selections.templateId]);
 
     // Category Selection State
     const [activeCategory, setActiveCategory] = useState<string>("Structure");
+
+    const selectedJobPack = useMemo(() => {
+        if (!selections.jobPackId) return null;
+        return jobPacks.find((jp: any) => jp.id.toString() === selections.jobPackId);
+    }, [jobPacks, selections.jobPackId]);
+
+    const jobPackStructureIds = useMemo(() => {
+        if (!selections.jobPackId) return [];
+        if (isInspectionTemplate) {
+            return Array.from(new Set(inspectionFilters.map(f => f.structure_id.toString())));
+        }
+        if (selectedJobPack && selectedJobPack.metadata?.structures) {
+            return selectedJobPack.metadata.structures.map((s: any) => s.id.toString());
+        }
+        return [];
+    }, [selections.jobPackId, selectedJobPack, isInspectionTemplate, inspectionFilters]);
+
+    const handleStructureSelect = (structureId: string) => {
+        const jp = jobPacks.find((j: any) => j.id.toString() === selections.jobPackId);
+        let keepJobPack = false;
+        
+        if (jp) {
+            if (isInspectionTemplate) {
+                const validStructureIds = inspectionFilters.map(f => f.structure_id.toString());
+                if (validStructureIds.includes(structureId)) {
+                    keepJobPack = true;
+                }
+            } else if (jp.metadata?.structures) {
+                const structIds = jp.metadata.structures.map((s: any) => s.id.toString());
+                if (structIds.includes(structureId)) {
+                    keepJobPack = true;
+                }
+            }
+        }
+
+        setSelections({
+            ...selections,
+            structureId,
+            jobPackId: keepJobPack ? selections.jobPackId : "",
+            componentId: "",
+            sowReportNo: ""
+        });
+    };
 
     // Render Steps
     const renderTemplateSelection = () => {
@@ -713,18 +764,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         // Determine grid columns based on requirements to make it side-by-side
         const cols = Math.min(reqs.length, 3);
 
-        const PanelContainer = ({ children, title, stepNum, disabled }: any) => (
-            <div className={`flex flex-col border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-950 overflow-hidden h-[450px] transition-opacity ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                <div className="p-4 border-b bg-slate-50/50 dark:bg-slate-900/50">
-                    <Label className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                        <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400 w-5 h-5 flex items-center justify-center rounded-full text-xs">{stepNum}</span>
-                        {title}
-                    </Label>
-                </div>
-                {children}
-            </div>
-        );
-
         let stepCounter = 1;
 
         return (
@@ -736,57 +775,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                 <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${cols} gap-6`}>
 
-                    {reqs.includes("jobpack") && (
-                        <PanelContainer title="Job Pack" stepNum={stepCounter++} disabled={false}>
-                            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                    <Input
-                                        placeholder="Search job packs..."
-                                        className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
-                                        value={jobPackSearch}
-                                        onChange={(e) => setJobPackSearch(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
-                                {filteredJobPacks.length === 0 ? (
-                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">No job packs found</div>
-                                ) : (
-                                    filteredJobPacks.map((jp: any) => {
-                                        const isSelected = selections.jobPackId === jp.id.toString();
-                                        return (
-                                            <div
-                                                key={jp.id}
-                                                ref={isSelected ? (el) => { if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } : undefined}
-                                                onClick={() => setSelections({ ...selections, jobPackId: jp.id.toString(), structureId: "", componentId: "", sowReportNo: "" })}
-                                                className={`
-                                                    p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
-                                                    ${isSelected
-                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-500"
-                                                        : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
-                                                `}
-                                            >
-                                                <div className="overflow-hidden">
-                                                    <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{jp.name}</div>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-white dark:bg-slate-900">{jp.status || "OPEN"}</Badge>
-                                                    </div>
-                                                </div>
-                                                {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
-                                            </div>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        </PanelContainer>
-                    )}
-
                     {reqs.includes("structure") && (
                         <PanelContainer
                             title="Structure"
                             stepNum={stepCounter++}
-                            disabled={reqs.includes("jobpack") && !selections.jobPackId}
+                            disabled={false}
                         >
                             <div className="p-3 border-b border-slate-100 dark:border-slate-800">
                                 <div className="relative">
@@ -800,51 +793,127 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 </div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
-                                {reqs.includes("jobpack") && !selections.jobPackId ? (
-                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a job pack first</div>
+                                {/* Optional ALL STRUCTURES selection depending on template */}
+                                {["work-scope-report", "work-scope-status", "work-scope-incomplete"].includes(selections.templateId) && (
+                                    <div
+                                        onClick={() => setSelections({ ...selections, structureId: "all", jobPackId: "", componentId: "", sowReportNo: "" })}
+                                        className={`
+                                            p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between mb-2
+                                            ${selections.structureId === "all"
+                                                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-blue-300"}
+                                        `}
+                                    >
+                                        <div className="font-bold text-sm">ALL STRUCTURES</div>
+                                        {selections.structureId === "all" && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                    </div>
+                                )}
+                                {filteredStructures.length === 0 ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-4">No structures found</div>
                                 ) : (
-                                    <>
-                                        {/* Optional ALL STRUCTURES selection depending on template */}
-                                        {["work-scope-report", "work-scope-status", "work-scope-incomplete"].includes(selections.templateId) && (
-                                            <div
-                                                onClick={() => setSelections({ ...selections, structureId: "all", componentId: "", sowReportNo: "" })}
-                                                className={`
-                                                    p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between mb-2
-                                                    ${selections.structureId === "all"
-                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
-                                                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-blue-300"}
-                                                `}
-                                            >
-                                                <div className="font-bold text-sm">ALL STRUCTURES</div>
-                                                {selections.structureId === "all" && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
-                                            </div>
-                                        )}
-                                        {filteredStructures.length === 0 ? (
-                                            <div className="p-4 text-sm text-center text-muted-foreground mt-4">No structures found</div>
-                                        ) : (
-                                            filteredStructures.map((s: any) => {
-                                                const isSelected = selections.structureId === s.id.toString();
-                                                return (
-                                                    <div
-                                                        key={s.id}
-                                                        onClick={() => setSelections({ ...selections, structureId: s.id.toString(), componentId: "", sowReportNo: "" })}
-                                                        className={`
-                                                            p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
-                                                            ${isSelected
-                                                                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
-                                                                : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
-                                                        `}
-                                                    >
-                                                        <div className="overflow-hidden">
-                                                            <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{s.str_name}</div>
-                                                            <div className="text-xs text-slate-500 truncate mt-0.5">{s.str_type}</div>
-                                                        </div>
-                                                        {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                    (() => {
+                                        const jobPackStructures = filteredStructures.filter((s: any) => jobPackStructureIds.includes(s.id.toString()));
+                                        const otherStructures = filteredStructures.filter((s: any) => !jobPackStructureIds.includes(s.id.toString()));
+
+                                        const renderStructureItem = (s: any) => {
+                                            const isSelected = selections.structureId === s.id.toString();
+                                            return (
+                                                <div
+                                                    key={s.id}
+                                                    onClick={() => handleStructureSelect(s.id.toString())}
+                                                    className={`
+                                                        p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
+                                                        ${isSelected
+                                                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                            : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
+                                                    `}
+                                                >
+                                                    <div className="overflow-hidden">
+                                                        <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{s.str_name}</div>
+                                                        <div className="text-xs text-slate-500 truncate mt-0.5">{s.str_type}</div>
                                                     </div>
-                                                );
-                                            })
-                                        )}
-                                    </>
+                                                    {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                                </div>
+                                            );
+                                        };
+
+                                        return (
+                                            <div className="space-y-3">
+                                                {jobPackStructures.length > 0 && (
+                                                    <div className="space-y-1">
+                                                        <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider px-2 py-1 bg-blue-50/50 dark:bg-blue-950/30 rounded">
+                                                            Involved in Selected Job Pack ({selectedJobPack?.name})
+                                                        </div>
+                                                        {jobPackStructures.map(renderStructureItem)}
+                                                    </div>
+                                                )}
+                                                {otherStructures.length > 0 && (
+                                                    <div className="space-y-1">
+                                                        {jobPackStructures.length > 0 && (
+                                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                                                                Other Structures
+                                                            </div>
+                                                        )}
+                                                        {otherStructures.map(renderStructureItem)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()
+                                )}
+                            </div>
+                        </PanelContainer>
+                    )}
+
+                    {reqs.includes("jobpack") && (
+                        <PanelContainer
+                            title="Job Pack"
+                            stepNum={stepCounter++}
+                            disabled={reqs.includes("structure") && !selections.structureId}
+                        >
+                            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <Input
+                                        placeholder="Search job packs..."
+                                        className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
+                                        value={jobPackSearch}
+                                        onChange={(e) => setJobPackSearch(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
+                                {reqs.includes("structure") && !selections.structureId ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a structure first</div>
+                                ) : (
+                                    filteredJobPacks.length === 0 ? (
+                                        <div className="p-4 text-sm text-center text-muted-foreground mt-10">No job packs found</div>
+                                    ) : (
+                                        filteredJobPacks.map((jp: any) => {
+                                            const isSelected = selections.jobPackId === jp.id.toString();
+                                            return (
+                                                <div
+                                                    key={jp.id}
+                                                    ref={isSelected ? (el) => { if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } : undefined}
+                                                    onClick={() => setSelections({ ...selections, jobPackId: jp.id.toString(), componentId: "", sowReportNo: "" })}
+                                                    className={`
+                                                        p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
+                                                        ${isSelected
+                                                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-500"
+                                                            : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
+                                                    `}
+                                                >
+                                                    <div className="overflow-hidden">
+                                                        <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{jp.name}</div>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-white dark:bg-slate-900">{jp.status || "OPEN"}</Badge>
+                                                        </div>
+                                                    </div>
+                                                    {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
+                                                </div>
+                                            );
+                                        })
+                                    )
                                 )}
                             </div>
                         </PanelContainer>
@@ -854,14 +923,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         <PanelContainer
                             title="SOW Report"
                             stepNum={stepCounter++}
-                            disabled={!selections.structureId || selections.structureId === "all"}
+                            disabled={!selections.jobPackId || !selections.structureId || selections.structureId === "all"}
                         >
                             <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 min-h-[57px] flex items-center">
                                 <span className="text-xs text-slate-500">Available reports for selected structure</span>
                             </div>
                             <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
-                                {!selections.structureId ? (
-                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a structure first</div>
+                                {!selections.jobPackId ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a job pack first</div>
                                 ) : isLoadingSowReports ? (
                                     <div className="p-4 text-sm text-center text-muted-foreground mt-10">Loading reports...</div>
                                 ) : availableSowReports.length === 0 ? (

@@ -49,146 +49,206 @@ interface ReportTemplate {
     available: boolean;
 }
 
-export function getMatchingRecordsForTemplate(templateId: string, records: any[]): any[] {
-    const hasCode = (r: any, codes: string[]) => 
-        codes.includes((r.inspection_type_code || r.inspection_type?.code || "").toUpperCase());
+export function getMatchingRecordsForTemplate(templateOrId: any, records: any[]): any[] {
+    if (!templateOrId) return [];
 
-    switch (templateId) {
-        case 'rgvi':
-        case 'dgvi':
+    const templateId = typeof templateOrId === "object" ? templateOrId.id : templateOrId;
+    const templateCode = (typeof templateOrId === "object" ? templateOrId.code : templateOrId) || "";
+
+    const idLower = templateId.toLowerCase();
+    const codeUpper = templateCode.toUpperCase();
+
+    const hasCode = (r: any, codes: string[]) => {
+        const rCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+        return codes.includes(rCode);
+    };
+
+    // 1. Anomaly / Defect templates
+    if (
+        idLower.includes("anomaly") || 
+        idLower.includes("defect") || 
+        codeUpper === "ANOM" || 
+        codeUpper === "DEFECT"
+    ) {
+        return records.filter(r => 
+            r.has_anomaly === true || 
+            r.is_anomaly === true || 
+            r.has_anomaly === 1 ||
+            r.has_anomaly === "true" ||
+            r.component_condition === 'Anomalous' || 
+            (r.description && r.description.toLowerCase().includes('anomaly')) || 
+            (r.insp_anomalies && r.insp_anomalies.length > 0)
+        );
+    }
+
+    // 2. Generic/All-Records templates
+    const allRecordsTemplates = [
+        'findings', 'photo', 'video_log', 'diver_log', 'compliance', 
+        'jp_summary', 'sow_report', 'struct_over', 'exec_sum', 'insp_report'
+    ];
+    if (allRecordsTemplates.includes(idLower) || allRecordsTemplates.includes(templateCode.toLowerCase())) {
+        return records;
+    }
+
+    // 3. Specific mapping rules based on code
+    switch (codeUpper) {
+        case 'RGVI':
+        case 'DGVI':
             return records.filter(r => hasCode(r, ['RGVI', 'DGVI']));
-        case 'cp_rov':
-        case 'cp_div':
+        case 'CP':
             return records.filter(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || r.inspection_data?.cp !== undefined);
-        case 'rswni_rov':
+        case 'RSWNI':
+        case 'SWNI':
             return records.filter(r => hasCode(r, ['RSWNI', 'SWNI']));
-        case 'rov_ricmi_report':
+        case 'RICMI':
             return records.filter(r => hasCode(r, ['RICMI']));
-        case 'anode_rov':
-            return records.filter(r => {
-                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-                const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
-                return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
-            });
-        case 'anode_rsani_rov':
-            return records.filter(r => {
-                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-                const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                return typeCode === 'RSANI' && compCode === 'AN';
-            });
-        case 'fmd_rov':
-            return records.filter(r => hasCode(r, ['RFMD', 'FMD']));
-        case 'utwt_rov':
-            return records.filter(r => hasCode(r, ['RUTWT']));
-        case 'seabed_rov':
+        case 'ANODE':
+        case 'ANOD':
+        case 'RSANI':
+        case 'SANI':
+        case 'PL_AN':
+            // Anode / Selected Anode
+            if (idLower.includes("rsani") || idLower.includes("sani")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    return typeCode === 'RSANI' && compCode === 'AN';
+                });
+            } else if (idLower.includes("diving") || idLower.includes("dive")) {
+                return records.filter(r => hasCode(r, ['PL_AN']));
+            } else {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
+                    return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
+                });
+            }
+        case 'RFMD':
+        case 'FMD':
+        case 'DFMD':
+            return records.filter(r => hasCode(r, ['RFMD', 'FMD', 'DFMD']));
+        case 'RUTWT':
+        case 'UTWT':
+        case 'UTWTK':
+        case 'DUTWT':
+            return records.filter(r => hasCode(r, ['RUTWT', 'UTWT', 'UTWTK', 'DUTWT']));
+        case 'RSEAB':
+        case 'SEABED':
             return records.filter(r => hasCode(r, ['RSEAB', 'SEABED']));
-        case 'rwdi':
+        case 'RWDI':
             return records.filter(r => hasCode(r, ['RWDI']));
-        case 'mgi_rov':
-        case 'rov_rmgi_report':
-            return records.filter(r => hasCode(r, ['RMGI', 'MGROW']));
-        case 'szci_rov':
-            return records.filter(r => hasCode(r, ['RSZCI']));
-        case 'rscor_rov':
-        case 'rscor_v2_rov':
-            return records.filter(r => hasCode(r, ['RSCOR', 'SCOUR']));
-        case 'rrisi_rov':
-            return records.filter(r => hasCode(r, ['RRISI']));
-        case 'jtisi_rov':
+        case 'RMGI':
+        case 'MGROW':
+        case 'DMGI':
+            return records.filter(r => hasCode(r, ['RMGI', 'MGROW', 'DMGI']));
+        case 'RSZCI':
+        case 'SZCI':
+        case 'DSZCI':
+        case 'SZONE':
+            return records.filter(r => hasCode(r, ['RSZCI', 'SZCI', 'DSZCI', 'SZONE']));
+        case 'RSCOR':
+        case 'SCOUR':
+        case 'DSCOR':
+            return records.filter(r => hasCode(r, ['RSCOR', 'SCOUR', 'DSCOR']));
+        case 'RRISI':
+        case 'DRISI':
+            return records.filter(r => hasCode(r, ['RRISI', 'DRISI']));
+        case 'JTISI':
             return records.filter(r => hasCode(r, ['JTISI']));
-        case 'itisi_rov':
+        case 'ITISI':
             return records.filter(r => hasCode(r, ['ITISI']));
-        case 'rcasn_rov':
-        case 'rcasn_sketch_rov':
-            return records.filter(r => hasCode(r, ['RCASN']));
-        case 'rcond_rov':
-        case 'rcond_sketch_rov':
-            return records.filter(r => hasCode(r, ['RCOND', 'RCON']));
-        case 'bl_rov':
+        case 'RCASN':
+        case 'DCASN':
+        case 'RCASN-S':
+        case 'DCASN-UW':
+        case 'DCASN-TS':
+            // Caisson Topside vs Underwater
+            if (idLower.includes("-uw")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || "").toUpperCase();
+                    const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                    return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_')) && elev < 0;
+                });
+            } else if (idLower.includes("-ts")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || "").toUpperCase();
+                    const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                    return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_')) && elev >= 0;
+                });
+            }
+            return records.filter(r => hasCode(r, ['RCASN', 'DCASN']));
+        case 'RCOND':
+        case 'DCOND':
+        case 'RCON':
+        case 'DCON':
+        case 'DCOND-UW':
+        case 'DCOND-TS':
+            // Conductor Topside vs Underwater
+            if (idLower.includes("-uw")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || "").toUpperCase();
+                    const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                    return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_')) && elev < 0;
+                });
+            } else if (idLower.includes("-ts")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || "").toUpperCase();
+                    const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                    return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_')) && elev >= 0;
+                });
+            }
+            return records.filter(r => hasCode(r, ['RCOND', 'RCON', 'DCOND', 'DCON']));
+        case 'BL':
+        case 'BOATLANDING':
             return records.filter(r => hasCode(r, ['BL', 'BOATLANDING']));
-        case 'rg_rov':
+        case 'RG':
+        case 'RISERGUARD':
             return records.filter(r => hasCode(r, ['RG', 'RISERGUARD']));
-        case 'sg_rov':
+        case 'SG':
+        case 'CAISSONGUARD':
             return records.filter(r => hasCode(r, ['SG', 'CAISSONGUARD']));
-        case 'cu_rov':
+        case 'CU':
+        case 'CONDUCTORGUARD':
             return records.filter(r => hasCode(r, ['CU', 'CONDUCTORGUARD']));
-            
-        // DIVING
-        case 'gvins':
+        case 'GVINS':
             return records.filter(r => hasCode(r, ['GVINS']));
-        case 'bsins':
+        case 'BSINS':
             return records.filter(r => hasCode(r, ['BSINS']));
-        case 'cvins':
+        case 'CVINS':
             return records.filter(r => hasCode(r, ['CVINS']));
-        case 'clean':
+        case 'CLEAN':
             return records.filter(r => hasCode(r, ['CLEAN']));
-        case 'mpins':
+        case 'MPINS':
             return records.filter(r => hasCode(r, ['MPINS']));
-        case 'utwtk':
-            return records.filter(r => hasCode(r, ['UTWTK', 'DUTWT']));
-        case 'szone':
-            return records.filter(r => hasCode(r, ['SZONE', 'DSZCI']));
-        case 'mgi_div':
-            return records.filter(r => hasCode(r, ['DMGI', 'MGROW']));
-        case 'cpclb':
+        case 'CPCLB':
             return records.filter(r => hasCode(r, ['CPCLB']));
-        case 'utclb':
+        case 'UTCLB':
             return records.filter(r => hasCode(r, ['UTCLB']));
-        case 'divingAnode':
-        case 'diving_anode':
-        case 'divingAnode_rov':
-            return records.filter(r => hasCode(r, ['PL_AN']));
-        case 'acfmc':
+        case 'ACFMC':
             return records.filter(r => hasCode(r, ['ACFMC']));
-        case 'plco':
+        case 'PL_CO':
             return records.filter(r => hasCode(r, ['PL_CO']));
-        case 'diving_anmain_report':
+        case 'ANMAIN':
             return records.filter(r => hasCode(r, ['ANMAIN']));
-        case 'diving-dcasn-uw-report':
-        case 'diving-dcasn-ts-report':
-            return records.filter(r => {
-                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-                const compCode = (r.structure_components?.code || "").toUpperCase();
-                const validTypes = ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'];
-                const isCaisson = typeCode === 'RCASN' || compCode === 'CS';
-                const isMatchingType = validTypes.includes(typeCode);
-                const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
-                const matchesElevation = templateId === 'diving-dcasn-uw-report' ? elev < 0 : elev >= 0;
-                return isMatchingType && isCaisson && matchesElevation;
-            });
-        case 'diving-dcond-uw-report':
-        case 'diving-dcond-ts-report':
-            return records.filter(r => {
-                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-                const compCode = (r.structure_components?.code || "").toUpperCase();
-                const validTypes = ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'];
-                const isConductor = compCode === 'CD' || compCode === 'CON';
-                const isMatchingType = validTypes.includes(typeCode);
-                const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
-                const matchesElevation = templateId === 'diving-dcond-uw-report' ? elev < 0 : elev >= 0;
-                return isMatchingType && isConductor && matchesElevation;
-            });
-            
-        // BOTH
-        case 'defect_summary':
-        case 'anomaly':
-            return records.filter(r => r.has_anomaly || r.is_anomaly);
-        case 'findings':
-        case 'photo':
-        case 'video_log':
-        case 'diver_log':
-        case 'compliance':
-        case 'jp_summary':
-        case 'sow_report':
-        case 'struct_over':
-        case 'exec_sum':
-        case 'insp_report':
-            return records;
         default:
-            return records.filter(r => r.inspection_type_id === templateId || r.inspection_type_code === templateId);
+            // Dynamic fallback: match by template code or ID case-insensitively
+            return records.filter(r => {
+                const rCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const rTypeId = String(r.inspection_type_id || "");
+                return (
+                    rCode === codeUpper ||
+                    rCode === idLower.toUpperCase() ||
+                    rTypeId === templateId
+                );
+            });
     }
 }
+
 
 interface ReportWizardDialogProps {
     open: boolean;
@@ -881,7 +941,7 @@ export function ReportWizardDialog({
                                                 <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SOW Record Count</Label>
                                                 <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
                                                     {selectedTemplate 
-                                                        ? `${getMatchingRecordsForTemplate(selectedTemplate.id, currentRecords).length} / ${currentRecords.length} Matching Records` 
+                                                        ? `${getMatchingRecordsForTemplate(selectedTemplate, currentRecords).length} / ${currentRecords.length} Matching Records` 
                                                         : `${currentRecords.length} Records Identified`}
                                                 </p>
                                             </div>
@@ -1115,7 +1175,7 @@ export function ReportWizardDialog({
                                              <div>
                                                  <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filtered Records</Label>
                                                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                                                     {selectedTemplate ? `${getMatchingRecordsForTemplate(selectedTemplate.id, currentRecords).length} Items` : "0 Items"}
+                                                     {selectedTemplate ? `${getMatchingRecordsForTemplate(selectedTemplate, currentRecords).length} Items` : "0 Items"}
                                                  </p>
                                              </div>
                                              <div>
