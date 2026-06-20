@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -17,6 +17,7 @@ interface ReportConfig {
     preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
     showSignatures?: boolean;
     showPageNumbers?: boolean;
@@ -29,6 +30,7 @@ export const generateROVRSCORReport = async (
     config: ReportConfig
 ) => {
     try {
+        const sowReportNo = headerData?.sowReportNo || headerData?.sow_report_no || config?.sowReportNo || 'N/A';
         const isPF = config.printFriendly;
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -76,10 +78,10 @@ export const generateROVRSCORReport = async (
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 11, { align: 'center' });
             d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`ROV Scour Survey Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.text(`Scour Survey Sketch Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
 
             d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+            d.text(`SOW Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -97,28 +99,90 @@ export const generateROVRSCORReport = async (
             drawBox('Structure:', headerData.platformName, margin, colW, y);
             drawBox('Vessel:', headerData.vessel || 'N/A', margin + colW, colW, y);
             drawBox('Job Pack:', headerData.jobpackName, margin, colW, y + rowH);
-            drawBox('Report No:', headerData.sowReportNo || 'N/A', margin + colW, colW, y + rowH);
+            drawBox('Report No:', sowReportNo, margin + colW, colW, y + rowH);
             return y + (rowH * 2) + 5;
         };
 
-        const groupedMap = new Map<string, any[]>();
+        // 1. Map QID to component data
+        const componentMap = new Map<string, any>();
         records.forEach(r => {
-            const qid = r.structure_components?.q_id || 'Unknown';
-            if (!groupedMap.has(qid)) groupedMap.set(qid, []);
-            groupedMap.get(qid)?.push(r);
+            const comp = r.structure_components;
+            if (comp && comp.q_id) {
+                componentMap.set(comp.q_id, comp);
+            }
         });
 
-        const components = Array.from(groupedMap.keys());
-        for (let i = 0; i < components.length; i++) {
-            const qid = components[i];
-            const compRecordsRaw = groupedMap.get(qid) || [];
-            const compRecords = [...compRecordsRaw].sort((a, b) => {
-                const dateA = new Date(`${a.inspection_date || '1970-01-01'}T${a.inspection_time || '00:00:00'}`);
-                const dateB = new Date(`${b.inspection_date || '1970-01-01'}T${b.inspection_time || '00:00:00'}`);
-                return dateA.getTime() - dateB.getTime();
+        // 2. For each component, determine its legs
+        const componentLegsMap = new Map<string, { leg1: string; leg2: string }>();
+        componentMap.forEach((comp, qid) => {
+            // Find explicitly linked records to help find legs
+            const explicitRecords = records.filter(r => r.structure_components?.q_id === qid);
+            const foundLegNames: string[] = [];
+            explicitRecords.forEach(r => {
+                const loc = (r.inspection_data?.scour_location || '').toLowerCase();
+                if (loc.includes('leg') && loc.includes(':')) {
+                    const parts = loc.split(':');
+                    const name = parts[1].trim();
+                    if (name && !foundLegNames.includes(name)) foundLegNames.push(name);
+                } else if (loc.includes('leg')) {
+                    const match = loc.match(/leg\s+([a-zA-Z0-9]+)/);
+                    if (match && !foundLegNames.includes(match[1])) foundLegNames.push(match[1]);
+                }
             });
 
-            const compData = compRecords[0]?.structure_components || {};
+            const leg1 = (comp.startLeg || comp.metadata?.s_leg || (foundLegNames[0] || '')).toUpperCase();
+            const leg2 = (comp.endLeg || comp.metadata?.f_leg || (foundLegNames[1] || '')).toUpperCase();
+            componentLegsMap.set(qid, { leg1, leg2 });
+        });
+
+        // 3. Group records strictly by QID
+        const groupedMap = new Map<string, any[]>();
+        componentMap.forEach((comp, qid) => {
+            const compRecordsRaw = records.filter(r => r.structure_components?.q_id === qid);
+            groupedMap.set(qid, compRecordsRaw);
+        });
+
+        const components = Array.from(componentMap.keys());
+        for (let i = 0; i < components.length; i++) {
+            const qid = components[i];
+            const rawCompRecords = groupedMap.get(qid) || [];
+            const compData = componentMap.get(qid) || {};
+
+            // Find leg names to correctly group/sort location tags
+            const foundLegNames: string[] = [];
+            rawCompRecords.forEach(r => {
+                const loc = (r.inspection_data?.scour_location || '').toLowerCase();
+                if (loc.includes('leg') && loc.includes(':')) {
+                    const parts = loc.split(':');
+                    const name = parts[1].trim();
+                    if (name && !foundLegNames.includes(name)) foundLegNames.push(name);
+                } else if (loc.includes('leg')) {
+                    const match = loc.match(/leg\s+([a-zA-Z0-9]+)/);
+                    if (match && !foundLegNames.includes(match[1])) foundLegNames.push(match[1]);
+                }
+            });
+
+            const leg1 = (compData.startLeg || compData.metadata?.s_leg || (foundLegNames[0] || '')).toUpperCase();
+            const leg2 = (compData.endLeg || compData.metadata?.f_leg || (foundLegNames[1] || '')).toUpperCase();
+
+            // Sort records so that start node/leg is first, midpoint is in the middle, and end node/leg is last
+            const compRecords = [...rawCompRecords].sort((a, b) => {
+                const getOrder = (r: any) => {
+                    const rd = r.inspection_data || {};
+                    const locTag = (rd.scour_location || '').toLowerCase();
+                    if (locTag.includes('mid') || locTag.includes('middle')) return 1;
+                    if (locTag.includes('start') || (leg1 && locTag.includes(leg1.toLowerCase()))) return 0;
+                    if (locTag.includes('end') || (leg2 && locTag.includes(leg2.toLowerCase()))) return 2;
+                    return 1;
+                };
+                const orderA = getOrder(a);
+                const orderB = getOrder(b);
+                if (orderA !== orderB) return orderA - orderB;
+                const dateA = new Date(a.cr_date || a.record_date || 0).getTime();
+                const dateB = new Date(b.cr_date || b.record_date || 0).getTime();
+                return dateA - dateB;
+            });
+
             if (i > 0) doc.addPage();
             drawHeader(doc);
             let currentY = drawContext(doc, margin + 22 + 2);
@@ -219,7 +283,9 @@ export const generateROVRSCORReport = async (
                     const burial = parseFloat(rd.Burial_percent || '0');
                     
                     let target = 'mid'; let xp = 0.5;
-                    if (locTag.includes('start') || (leg1 && locTag.includes(leg1.toLowerCase()))) { 
+                    if (locTag.includes('mid') || locTag.includes('middle')) {
+                        target = 'mid'; xp = 0.5;
+                    } else if (locTag.includes('start') || (leg1 && locTag.includes(leg1.toLowerCase()))) { 
                         target = 'start'; xp = 0.05; 
                     } else if (locTag.includes('end') || (leg2 && locTag.includes(leg2.toLowerCase()))) { 
                         target = 'end'; xp = 0.95; 
@@ -229,11 +295,12 @@ export const generateROVRSCORReport = async (
                     const isAnom = r.has_anomaly || !!linkedAnom;
                     const isRect = linkedAnom ? linkedAnom.is_rectified : r.rectified;
 
-                    if (!locValues.has(target) || locValues.get(target).depth < depth) {
+                    const existing = locValues.get(target);
+                    if (!existing || isNaN(existing.depth) || depth > existing.depth || (depth === existing.depth && isAnom && !existing.isAnom)) {
                         locValues.set(target, { 
                             x: homActualX1 + (xp * homLen), 
                             depth, burial, 
-                            exposed: rd.Exposed_pile === 'Yes',
+                            exposed: rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true,
                             isAnom, isRect 
                         });
                     }
@@ -293,7 +360,7 @@ export const generateROVRSCORReport = async (
 
                     da.setFillColor(...bubbleColor); da.setDrawColor(...borderCol); da.circle(p.x, my, r, 'FD');
                     da.setFontSize(5); da.setTextColor(0); da.setFont("helvetica", "normal");
-                    const val = p.burial > 0 ? `${p.burial}%` : `${p.depth}MM`;
+                    const val = p.burial > 0 ? `${p.burial}%` : `${p.depth} mm`;
                     da.text(val, p.x, my + 1, { align: 'center' });
                     if (p.exposed) {
                         da.setDrawColor(...colors.mud); da.setLineWidth(0.8); da.circle(p.x, my, r + 1, 'S');
@@ -364,12 +431,12 @@ export const generateROVRSCORReport = async (
         }
 
         const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
+        let sigY = pageHeight - 28;
         if (config.showSignatures !== false) {
-            let sigY = pageHeight - 38;
-            if (finalY > sigY - 10) {
+            if (finalY > sigY - 2) {
                 doc.addPage();
                 drawHeader(doc);
-                sigY = pageHeight - 38;
+                sigY = pageHeight - 28;
             }
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number) => {
@@ -395,8 +462,10 @@ export const generateROVRSCORReport = async (
             drawSig('APPROVED BY', margin + (sigW * 2));
         }
 
+        applyWatermarkAndSignaturesGlobal(doc, { ...config, sigY });
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        applyWatermarkAndSignaturesGlobal(doc, { ...config, sigY });
+        doc.save(`Scour_Survey_Sketch_Report_${sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
     } catch (e) {
         console.error("RSCOR Report Error", e);

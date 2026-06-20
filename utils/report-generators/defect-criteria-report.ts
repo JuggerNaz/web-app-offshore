@@ -2,12 +2,14 @@ import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 
 // Helper to load image for PDF (reused from pdf-generator.ts logic)
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface ReportConfig {
     reportNoPrefix: string;
     reportYear: string;
-    preparedBy: { name: string; date: string };
+    preparedBy: { name: string; date: string 
+    approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
     reviewedBy: { name: string; date: string };
     approvedBy: { name: string; date: string };
     watermark: { enabled: boolean; text: string; transparency: number };
@@ -180,7 +182,9 @@ export const generateDefectCriteriaReport = async (
         if (!autoTable) {
             // Fallback if autoTable not found
             doc.text("Error: jspdf-autotable plugin not loaded.", 10, 50);
+            applyWatermarkAndSignaturesGlobal(doc, config);
             if (config?.returnBlob) return doc.output('blob');
+            applyWatermarkAndSignaturesGlobal(doc, config);
             doc.save("error.pdf");
             return;
         }
@@ -425,8 +429,10 @@ export const generateDefectCriteriaReport = async (
         }
 
         if (config?.returnBlob) {
+            applyWatermarkAndSignaturesGlobal(doc, config);
             return doc.output('blob');
         } else {
+            applyWatermarkAndSignaturesGlobal(doc, config);
             doc.save("Defect_Criteria_Report.pdf");
         }
     } catch (criticalError) {

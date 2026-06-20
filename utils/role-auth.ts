@@ -49,6 +49,47 @@ export async function getUserMembership(supabase: any, userId: string, companyId
     return { error: "User profile is inactive", status: 403 };
   }
 
+  // Time-based login restriction check
+  if (profile.login_restriction_type === 'scheduled') {
+    try {
+      const tz = profile.timezone || 'Asia/Kuala_Lumpur';
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        hour12: false,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      
+      const parts = formatter.formatToParts(new Date());
+      const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+      
+      const dayMap: Record<string, number> = {
+        'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6, 'Sun': 7
+      };
+      const isoWeekday = dayMap[partMap.weekday] || 1;
+      
+      const allowedDays = profile.allowed_days || [1, 2, 3, 4, 5];
+      if (!allowedDays.includes(isoWeekday)) {
+        return { error: `Access denied. Login not allowed on this day.`, status: 403 };
+      }
+      
+      const currentTime = `${partMap.hour}:${partMap.minute}:${partMap.second}`;
+      const startTime = profile.allowed_start_time || '08:00:00';
+      const endTime = profile.allowed_end_time || '17:00:00';
+      
+      if (currentTime < startTime || currentTime > endTime) {
+        return { 
+          error: `Access denied outside scheduled hours (${startTime} - ${endTime} ${tz}).`, 
+          status: 403 
+        };
+      }
+    } catch (e: any) {
+      console.error("[getUserMembership] Scheduling check failed:", e);
+    }
+  }
+
   // 2. Get memberships
   const { data: memberships, error: membershipsError } = await supabase
     .from("company_memberships")

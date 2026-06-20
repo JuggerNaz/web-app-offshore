@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -273,9 +273,11 @@ export const generateMultiInspectionReport = async (
         } // End of For Loop
 
         if (config?.returnBlob) {
+            applyWatermarkAndSignaturesGlobal(doc, config);
             return doc.output("blob");
         }
 
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${config?.reportNoPrefix || 'Inspection'}_Combined_Report.pdf`);
 
     } catch (e) {

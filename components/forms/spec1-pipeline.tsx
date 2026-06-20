@@ -202,24 +202,23 @@ export default function Spec1Pipeline({ data }: Props) {
 
   // Compute Span Table Rows
   const ppComponents = componentsData?.data
-    ?.filter((c: any) => c.code?.toLowerCase() === "pp" && c.metadata?.kp != null && c.metadata?.kp !== "")
-    .sort((a: any, b: any) => Number(a.metadata.kp) - Number(b.metadata.kp)) || [];
+    ?.filter((c: any) => c.code?.toLowerCase() === "pp" && (c.metadata?.start_kp != null || c.metadata?.end_kp != null))
+    .sort((a: any, b: any) => Number(a.metadata?.start_kp || 0) - Number(b.metadata?.start_kp || 0)) || [];
 
   const spanRows = [];
-  let previousKP = 0;
   for (const comp of ppComponents) {
-    const currentKP = Number(comp.metadata.kp);
+    const startKP = comp.metadata?.start_kp !== undefined ? comp.metadata.start_kp : 0;
+    const endKP = comp.metadata?.end_kp !== undefined ? comp.metadata.end_kp : 0;
     spanRows.push({
-      range: `${previousKP} - ${currentKP}`,
-      cons_span: comp.metadata.additionalInfo?.cons_span || "N/A",
-      oper_span: comp.metadata.additionalInfo?.oper_span || "N/A",
-      wall_thk: comp.metadata.additionalInfo?.wall_thk || "N/A",
-      pipe_mat: comp.metadata.additionalInfo?.pipe_mat || "N/A",
-      corr_ctg: comp.metadata.additionalInfo?.corr_ctg || "N/A",
-      kp_unit: comp.metadata.kp_unit || "km",
+      range: `${startKP} - ${endKP}`,
+      cons_span: comp.metadata?.additionalInfo?.cons_span || "N/A",
+      oper_span: comp.metadata?.additionalInfo?.oper_span || "N/A",
+      wall_thk: comp.metadata?.additionalInfo?.wall_thk || "N/A",
+      pipe_mat: comp.metadata?.additionalInfo?.pipe_mat || "N/A",
+      corr_ctg: comp.metadata?.additionalInfo?.corr_ctg || "N/A",
+      kp_unit: comp.metadata?.start_kp_unit || comp.metadata?.end_kp_unit || comp.metadata?.kp_unit || "km",
       id: comp.id
     });
-    previousKP = currentKP;
   }
 
   return (

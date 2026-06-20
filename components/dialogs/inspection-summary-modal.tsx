@@ -158,7 +158,15 @@ function CollapsibleJobPack({ name, items, structureId }: { name: string; items:
                         const jpId = insp.jobpack?.id || insp.jobpack_id;
                         const jpName = encodeURIComponent(insp.jobpack?.name || `JP-${jpId}`);
                         const sowReport = encodeURIComponent(insp.sow_report_no || '');
-                        const mode = insp.rov_job_id ? 'ROV' : 'DIVING';
+                        
+                        let mode = insp.rov_job_id ? 'ROV' : 'DIVING';
+                        const code = (insp.inspection_type_code || '').toUpperCase();
+                        if (code.startsWith('R')) {
+                          mode = 'ROV';
+                        } else if (code.startsWith('D')) {
+                          mode = 'DIVING';
+                        }
+
                         if (jpId && structureId) {
                           const url = `/dashboard/inspection-v2/workspace?jobpack=${jpId}&structure=${structureId}&jpName=${jpName}&sowReport=${sowReport}&compId=${insp.component_id}&recordId=${insp.insp_id}&mode=${mode}`;
                           window.open(url, '_blank');

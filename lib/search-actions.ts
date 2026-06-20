@@ -9,6 +9,7 @@ export type SearchResult = {
   type: "platform" | "pipeline" | "jobpack" | "sow" | "inspection" | "anomaly" | "media" | "component";
   url: string;
   score: number;
+  year?: string;
 };
 
 export async function searchGlobal(query: string): Promise<SearchResult[]> {
@@ -149,47 +150,116 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   // 5. Inspection Records Search
   const inspectionPromise = (async () => {
     try {
-      let orFilter = `inspection_type_code.ilike.%${query}%,status.ilike.%${query}%`;
-      
-      // Add description/observation if we can safely assume they exist
-      orFilter += `,description.ilike.%${query}%,observation.ilike.%${query}%`;
+      // Find matching inspection type codes
+      const typeQuery = (supabase as any).from("inspection_type").select("code").or(`code.ilike.%${query}%,name.ilike.%${query}%`);
+      // Find matching platform/pipeline IDs
+      const platQuery = (supabase as any).from("platform").select("plat_id").ilike("title", `%${query}%`);
+      const pipeQuery = (supabase as any).from("u_pipeline").select("pipe_id").ilike("title", `%${query}%`);
+      // Find matching jobpacks
+      const jpQuery = (supabase as any).from("jobpack").select("id").ilike("name", `%${query}%`);
+      // Find matching component QIDs
+      const compQuery = (supabase as any).from("structure_components").select("id").ilike("q_id", `%${query}%`);
 
+      const [typesRes, platRes, pipeRes, jpRes, compRes] = await Promise.all([
+        typeQuery,
+        platQuery,
+        pipeQuery,
+        jpQuery,
+        compQuery
+      ]);
+
+      const matchedCodes = typesRes.data?.map((t: any) => t.code) || [];
+      const matchedStructureIds = [
+        ...(platRes.data?.map((p: any) => p.plat_id) || []),
+        ...(pipeRes.data?.map((p: any) => p.pipe_id) || [])
+      ];
+      const matchedJobpackIds = jpRes.data?.map((j: any) => j.id) || [];
+      const matchedComponentIds = compRes.data?.map((c: any) => c.id) || [];
+
+      const conditions = [];
+      conditions.push(`description.ilike.%${query}%`);
+      conditions.push(`status.ilike.%${query}%`);
+      conditions.push(`sow_report_no.ilike.%${query}%`);
+      
       if (/^\d+$/.test(query)) {
-        orFilter += `,insp_id.eq.${query}`;
+        conditions.push(`insp_id.eq.${query}`);
       }
+      if (matchedCodes.length > 0) {
+        conditions.push(`inspection_type_code.in.(${matchedCodes.join(",")})`);
+      }
+      if (matchedStructureIds.length > 0) {
+        conditions.push(`structure_id.in.(${matchedStructureIds.join(",")})`);
+      }
+      if (matchedJobpackIds.length > 0) {
+        conditions.push(`jobpack_id.in.(${matchedJobpackIds.join(",")})`);
+      }
+      if (matchedComponentIds.length > 0) {
+        conditions.push(`component_id.in.(${matchedComponentIds.join(",")})`);
+      }
+
+      const orFilter = conditions.join(",");
 
       const { data: inspections } = await (supabase as any)
         .from("insp_records")
-        .select("insp_id, inspection_type_code, status, inspection_date, description")
+        .select(`
+          insp_id, 
+          inspection_type_code, 
+          status, 
+          inspection_date, 
+          description, 
+          jobpack_id, 
+          structure_id, 
+          sow_report_no, 
+          rov_job_id, 
+          dive_job_id,
+          jobpack(name),
+          structure_components(q_id)
+        `)
         .or(orFilter)
         .limit(5);
 
-      return (inspections || []).map((i: any) => ({
-        id: i.insp_id,
-        title: `Inspection: ${i.inspection_type_code}`,
-        subtitle: `Report #${i.insp_id} • ${i.status} • ${i.inspection_date} ${i.description ? `• ${i.description.substring(0, 30)}...` : ""}`,
-        type: "inspection" as const,
-        url: `/dashboard/inspection/workspace?id=${i.insp_id}`,
-        score: 75
-      }));
+      return (inspections || []).map((i: any) => {
+        const structureTitle = structureTitleMap.get(i.structure_id) || `Structure #${i.structure_id}`;
+        const jobpackName = i.jobpack?.name || `Jobpack #${i.jobpack_id}`;
+        const mode = i.rov_job_id ? "ROV" : "DIVING";
+        const qidStr = i.structure_components?.q_id ? ` • ${i.structure_components.q_id}` : "";
+        const year = i.inspection_date ? i.inspection_date.substring(0, 4) : "Unknown Year";
+
+        return {
+          id: i.insp_id,
+          title: `Inspection: ${i.inspection_type_code}`,
+          subtitle: `${jobpackName} • ${structureTitle}${qidStr} • Report #${i.insp_id} • ${i.status} • ${i.inspection_date}`,
+          type: "inspection" as const,
+          url: `/dashboard/inspection-v2/workspace?jobpack=${i.jobpack_id}&structure=${i.structure_id}&sowReport=${i.sow_report_no || ""}&recordId=${i.insp_id}&mode=${mode}`,
+          score: 75,
+          year
+        };
+      });
     } catch (err) {
       console.error("Inspection search error:", err);
       // Fallback to simpler query if columns don't exist
       try {
         const { data: inspections } = await (supabase as any)
           .from("insp_records")
-          .select("insp_id, inspection_type_code, status, inspection_date")
+          .select("insp_id, inspection_type_code, status, inspection_date, jobpack_id, structure_id, sow_report_no, rov_job_id, dive_job_id")
           .or(`inspection_type_code.ilike.%${query}%,status.ilike.%${query}%`)
           .limit(5);
 
-        return (inspections || []).map((i: any) => ({
-          id: i.insp_id,
-          title: `Inspection: ${i.inspection_type_code}`,
-          subtitle: `Report #${i.insp_id} • ${i.status} • ${i.inspection_date}`,
-          type: "inspection" as const,
-          url: `/dashboard/inspection/workspace?id=${i.insp_id}`,
-          score: 75
-        }));
+        return (inspections || []).map((i: any) => {
+          const structureTitle = structureTitleMap.get(i.structure_id) || `Structure #${i.structure_id}`;
+          const mode = i.rov_job_id ? "ROV" : "DIVING";
+          const year = i.inspection_date ? i.inspection_date.substring(0, 4) : "Unknown Year";
+
+          return {
+            id: i.insp_id,
+            title: `Inspection: ${i.inspection_type_code}`,
+            subtitle: `${structureTitle} • Report #${i.insp_id} • ${i.status} • ${i.inspection_date}`,
+            type: "inspection" as const,
+            url: `/dashboard/inspection-v2/workspace?jobpack=${i.jobpack_id}&structure=${i.structure_id}&sowReport=${i.sow_report_no || ""}&recordId=${i.insp_id}&mode=${mode}`,
+            score: 75,
+            year
+          };
+        });
       } catch (fallbackErr) {
         console.error("Inspection fallback search error:", fallbackErr);
         return [];

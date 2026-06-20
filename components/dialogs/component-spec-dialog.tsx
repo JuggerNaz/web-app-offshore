@@ -50,6 +50,7 @@ type Component = {
   modified_by: string | null;
   created_by_name?: string | null;
   modified_by_name?: string | null;
+  is_deleted?: boolean | null;
 };
 
 // Helper to build ID No in the format:
@@ -186,11 +187,11 @@ export function ComponentSpecDialog({
   );
 
   const legOptions = platformData?.data
-    ? Array.from({ length: 20 }, (_, i) => {
+    ? Array.from(new Map(Array.from({ length: 20 }, (_, i) => {
         const key = `leg_t${i + 1}`;
         const val = platformData.data[key];
-        return val ? { value: val, label: val } : null;
-      }).filter(Boolean)
+        return val ? [val, { value: val, label: val }] : null;
+      }).filter(Boolean) as [string, { value: string; label: string }][]).values())
     : [];
 
   // All components for association
@@ -207,6 +208,19 @@ export function ComponentSpecDialog({
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [assocSearch, setAssocSearch] = useState("");
   const [isSavingAssoc, setIsSavingAssoc] = useState(false);
+
+  // Helper to deduplicate library items by lib_id (used to avoid duplicate keys/values in selects)
+  const getUniqueLibItems = (data: any[], libCode: string) => {
+    if (!data) return [];
+    const filtered = data.filter((x: any) => x.lib_code === libCode);
+    const seen = new Set();
+    return filtered.filter((x: any) => {
+      const key = String(x.lib_id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
 
   // Persisted associated_comp_id for view mode (mirrors DB value)
   const [viewAssocId, setViewAssocId] = useState<number | null>(
@@ -265,6 +279,10 @@ export function ComponentSpecDialog({
     associated_comp_id: null as number | null,
     kp: "",
     kp_unit: "",
+    start_kp: "",
+    start_kp_unit: "",
+    end_kp: "",
+    end_kp_unit: "",
     easting: "",
     easting_unit: "",
     northing: "",
@@ -442,6 +460,12 @@ export function ComponentSpecDialog({
         const kpUnit =
           getDefaultUnit("DISTANCE", isImp, "kp", effectiveCode || undefined) ||
           (isImp ? "mile" : "km");
+        const startKpUnit =
+          getDefaultUnit("DISTANCE", isImp, "start_kp", effectiveCode || undefined) ||
+          (isImp ? "mile" : "km");
+        const endKpUnit =
+          getDefaultUnit("DISTANCE", isImp, "end_kp", effectiveCode || undefined) ||
+          (isImp ? "mile" : "km");
         const depthUnit =
           getDefaultUnit("LENGTH", isImp, "depth", effectiveCode || undefined) ||
           (isImp ? "ft" : "m");
@@ -466,6 +490,14 @@ export function ComponentSpecDialog({
         }
         if (prev.kp_unit !== kpUnit) {
           updates.kp_unit = kpUnit;
+          changed = true;
+        }
+        if (prev.start_kp_unit !== startKpUnit) {
+          updates.start_kp_unit = startKpUnit;
+          changed = true;
+        }
+        if (prev.end_kp_unit !== endKpUnit) {
+          updates.end_kp_unit = endKpUnit;
           changed = true;
         }
         if (prev.depth_unit !== depthUnit) {
@@ -555,6 +587,10 @@ export function ComponentSpecDialog({
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
         kp: component.metadata?.kp ?? "",
         kp_unit: component.metadata?.kp_unit ?? "",
+        start_kp: component.metadata?.start_kp ?? "",
+        start_kp_unit: component.metadata?.start_kp_unit ?? "",
+        end_kp: component.metadata?.end_kp ?? "",
+        end_kp_unit: component.metadata?.end_kp_unit ?? "",
         easting: component.metadata?.easting ?? "",
         easting_unit: component.metadata?.easting_unit ?? "",
         northing: component.metadata?.northing ?? "",
@@ -834,6 +870,14 @@ export function ComponentSpecDialog({
         kp: "",
         kp_unit:
           getDefaultUnit("DISTANCE", isImperial, "kp", defaultCode || undefined) ||
+          (isImperial ? "mile" : "km"),
+        start_kp: "",
+        start_kp_unit:
+          getDefaultUnit("DISTANCE", isImperial, "start_kp", defaultCode || undefined) ||
+          (isImperial ? "mile" : "km"),
+        end_kp: "",
+        end_kp_unit:
+          getDefaultUnit("DISTANCE", isImperial, "end_kp", defaultCode || undefined) ||
           (isImperial ? "mile" : "km"),
         easting: "",
         easting_unit:
@@ -1121,6 +1165,10 @@ export function ComponentSpecDialog({
         associated_comp_id: formData.associated_comp_id,
         kp: formData.kp,
         kp_unit: formData.kp_unit,
+        start_kp: formData.start_kp,
+        start_kp_unit: formData.start_kp_unit,
+        end_kp: formData.end_kp,
+        end_kp_unit: formData.end_kp_unit,
         easting: formData.easting,
         easting_unit: formData.easting_unit,
         northing: formData.northing,
@@ -1183,6 +1231,14 @@ export function ComponentSpecDialog({
         kp: "",
         kp_unit:
           getDefaultUnit("DISTANCE", isImperial, "kp", defaultCode || undefined) ||
+          (isImperial ? "mile" : "km"),
+        start_kp: "",
+        start_kp_unit:
+          getDefaultUnit("DISTANCE", isImperial, "start_kp", defaultCode || undefined) ||
+          (isImperial ? "mile" : "km"),
+        end_kp: "",
+        end_kp_unit:
+          getDefaultUnit("DISTANCE", isImperial, "end_kp", defaultCode || undefined) ||
           (isImperial ? "mile" : "km"),
         easting: "",
         easting_unit:
@@ -1353,9 +1409,9 @@ export function ComponentSpecDialog({
                   </>
                 ) : (
                   <>
-                    <span className="flex items-center gap-2 mt-1">
+                    <span className="flex items-center gap-4 mt-1">
                       <span className="text-blue-600 font-black text-sm uppercase">
-                        {typeName || component?.id_no}
+                        {typeName || component?.id_no} {component?.q_id ? `- ${component.q_id}` : ""}
                       </span>
                       {component?.updated_at && (
                         <>
@@ -1409,6 +1465,17 @@ export function ComponentSpecDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-8 pt-6">
+          {!isCreateMode && (component?.is_deleted || component?.metadata?.del === 1 || component?.metadata?.del === true || component?.metadata?.del === '1' || component?.metadata?.del === 'true') && (
+            <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+              <AlertCircle className="h-5 w-5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <h4 className="font-bold text-sm tracking-tight">Archived / Deleted Component</h4>
+                <p className="text-xs opacity-90 mt-0.5">
+                  This component has been archived or deleted. The specifications shown below are for historical reference only.
+                </p>
+              </div>
+            </div>
+          )}
           <Tabs defaultValue="specifications" className="w-full">
             <TabsList
               className={`grid w-full mb-8 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl ${isCreateMode ? "grid-cols-1" : "grid-cols-4 h-12"}`}
@@ -1789,7 +1856,7 @@ export function ComponentSpecDialog({
                             : (component?.metadata?.clk_pos ?? "")
                         }
                         onValueChange={(val) => handleInputChange("clk_pos", val)}
-                        disabled={!isCreateMode || !positionLib}
+                        disabled={!(isCreateMode || isEditMode) || !positionLib}
                       >
                         <SelectTrigger
                           id="clockPos"
@@ -1801,9 +1868,7 @@ export function ComponentSpecDialog({
                           <SelectValue placeholder="Select position" />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          {positionLib?.data
-                            ?.filter((x: any) => x.lib_code === "POSITION")
-                            .map((x: any) => (
+                          {getUniqueLibItems(positionLib?.data, "POSITION").map((x: any) => (
                               <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                 {x.lib_id}
                               </SelectItem>
@@ -1938,9 +2003,7 @@ export function ComponentSpecDialog({
                           <SelectValue placeholder="Select group" />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          {compGroupLib?.data
-                            ?.filter((x: any) => x.lib_code === "COMPGRP")
-                            .map((x: any) => (
+                          {getUniqueLibItems(compGroupLib?.data, "COMPGRP").map((x: any) => (
                               <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                 {x.lib_desc}
                               </SelectItem>
@@ -2117,7 +2180,7 @@ export function ComponentSpecDialog({
                                 : (component?.metadata?.clk_pos ?? "")
                             }
                             onValueChange={(val) => handleInputChange("clk_pos", val)}
-                            disabled={!isCreateMode || !positionLib}
+                            disabled={!(isCreateMode || isEditMode) || !positionLib}
                           >
                             <SelectTrigger
                               id="clockPos"
@@ -2126,9 +2189,7 @@ export function ComponentSpecDialog({
                               <SelectValue placeholder="Select position" />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
-                              {positionLib?.data
-                                ?.filter((x: any) => x.lib_code === "POSITION")
-                                .map((x: any) => (
+                              {getUniqueLibItems(positionLib?.data, "POSITION").map((x: any) => (
                                   <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                     {x.lib_id}
                                   </SelectItem>
@@ -2251,8 +2312,9 @@ export function ComponentSpecDialog({
                               <SelectValue placeholder="Select structural group" />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
-                              {compGroupLib?.data
+                              {Array.from(new Map(compGroupLib?.data
                                 ?.filter((x: any) => x.lib_code === "COMPGRP")
+                                .map((x: any) => [x.lib_id, x]) || []).values())
                                 .map((x: any) => (
                                   <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                     {x.lib_desc}
@@ -2269,234 +2331,533 @@ export function ComponentSpecDialog({
                 {/* Pipeline Specific Fields */}
                 {pageType === "pipeline" && (
                   <>
-                    <div className="col-span-3 space-y-2">
-                      <Label
-                        htmlFor="kp"
-                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
-                      >
-                        KP
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="kp"
-                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                          value={
-                            isCreateMode || isEditMode
-                              ? formData.kp
-                              : (component?.metadata?.kp ?? "")
-                          }
-                          onChange={(e) => handleInputChange("kp", e.target.value)}
-                          readOnly={!(isCreateMode || isEditMode)}
-                        />
-                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                          <Select
-                            value={
-                              isCreateMode || isEditMode
-                                ? formData.kp_unit ||
-                                  getDefaultUnit(
-                                    "DISTANCE",
-                                    isImperial,
-                                    "kp",
-                                    effectiveCode || undefined
-                                  )
-                                : ((component?.metadata?.kp_unit ??
-                                  getDefaultUnit(
-                                    "DISTANCE",
-                                    isImperial,
-                                    "kp",
-                                    effectiveCode || undefined
-                                  )) || ""
-                                )
-                            }
-                            onValueChange={(val) => handleInputChange("kp_unit", val)}
-                            disabled={!(isCreateMode || isEditMode)}
+                    {effectiveCode?.toLowerCase() === "pp" ? (
+                      <div className="col-span-12 grid grid-cols-5 gap-6">
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="start_kp"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
                           >
-                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                              <SelectValue />
-                            </SelectTrigger>
+                            Start KP
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="start_kp"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.start_kp
+                                  : (component?.metadata?.start_kp ?? "")
+                              }
+                              onChange={(e) => handleInputChange("start_kp", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.start_kp_unit ||
+                                      getDefaultUnit(
+                                        "DISTANCE",
+                                        isImperial,
+                                        "start_kp",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.start_kp_unit ??
+                                      getDefaultUnit(
+                                        "DISTANCE",
+                                        isImperial,
+                                        "start_kp",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("start_kp_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
 
-                            <SelectContent className="rounded-xl">
-                              {getUnitOptions("DISTANCE", isImperial)?.map((u) => (
-                                <SelectItem key={u} value={u} className="lowercase">
-                                  {u}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("DISTANCE", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="end_kp"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
+                          >
+                            End KP
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="end_kp"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.end_kp
+                                  : (component?.metadata?.end_kp ?? "")
+                              }
+                              onChange={(e) => handleInputChange("end_kp", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.end_kp_unit ||
+                                      getDefaultUnit(
+                                        "DISTANCE",
+                                        isImperial,
+                                        "end_kp",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.end_kp_unit ??
+                                      getDefaultUnit(
+                                        "DISTANCE",
+                                        isImperial,
+                                        "end_kp",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("end_kp_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("DISTANCE", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="easting"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
+                          >
+                            Easting
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="easting"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.easting
+                                  : (component?.metadata?.easting ?? "")
+                              }
+                              onChange={(e) => handleInputChange("easting", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.easting_unit ||
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "easting",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.easting_unit ??
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "easting",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("easting_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("LENGTH", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="northing"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
+                          >
+                            Northing
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="northing"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.northing
+                                  : (component?.metadata?.northing ?? "")
+                              }
+                              onChange={(e) => handleInputChange("northing", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.northing_unit ||
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "northing",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.northing_unit ??
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "northing",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("northing_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("LENGTH", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="depth"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
+                          >
+                            Depth
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="depth"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.depth
+                                  : (component?.metadata?.depth ?? "")
+                              }
+                              onChange={(e) => handleInputChange("depth", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.depth_unit ||
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "depth",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.depth_unit ??
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "depth",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("depth_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("LENGTH", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="col-span-3 space-y-2">
-                      <Label
-                        htmlFor="easting"
-                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
-                      >
-                        Easting
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="easting"
-                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                          value={
-                            isCreateMode || isEditMode
-                              ? formData.easting
-                              : (component?.metadata?.easting ?? "")
-                          }
-                          onChange={(e) => handleInputChange("easting", e.target.value)}
-                          readOnly={!(isCreateMode || isEditMode)}
-                        />
-                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                          <Select
-                            value={
-                              isCreateMode || isEditMode
-                                ? formData.easting_unit ||
-                                  getDefaultUnit(
-                                    "LENGTH",
-                                    isImperial,
-                                    "easting",
-                                    effectiveCode || undefined
-                                  )
-                                : ((component?.metadata?.easting_unit ??
-                                  getDefaultUnit(
-                                    "LENGTH",
-                                    isImperial,
-                                    "easting",
-                                    effectiveCode || undefined
-                                  )) || ""
-                                )
-                            }
-                            onValueChange={(val) => handleInputChange("easting_unit", val)}
-                            disabled={!(isCreateMode || isEditMode)}
+                    ) : (
+                      <>
+                        <div className="col-span-3 space-y-2">
+                          <Label
+                            htmlFor="kp"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
                           >
-                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                              <SelectValue />
-                            </SelectTrigger>
+                            KP
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="kp"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.kp
+                                  : (component?.metadata?.kp ?? "")
+                              }
+                              onChange={(e) => handleInputChange("kp", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.kp_unit ||
+                                      getDefaultUnit(
+                                        "DISTANCE",
+                                        isImperial,
+                                        "kp",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.kp_unit ??
+                                      getDefaultUnit(
+                                        "DISTANCE",
+                                        isImperial,
+                                        "kp",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("kp_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
 
-                            <SelectContent className="rounded-xl">
-                              {getUnitOptions("LENGTH", isImperial)?.map((u) => (
-                                <SelectItem key={u} value={u} className="lowercase">
-                                  {u}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("DISTANCE", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    <div className="col-span-3 space-y-2">
-                      <Label
-                        htmlFor="northing"
-                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
-                      >
-                        Northing
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="northing"
-                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                          value={
-                            isCreateMode || isEditMode
-                              ? formData.northing
-                              : (component?.metadata?.northing ?? "")
-                          }
-                          onChange={(e) => handleInputChange("northing", e.target.value)}
-                          readOnly={!(isCreateMode || isEditMode)}
-                        />
-                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                          <Select
-                            value={
-                              isCreateMode || isEditMode
-                                ? formData.northing_unit ||
-                                  getDefaultUnit(
-                                    "LENGTH",
-                                    isImperial,
-                                    "northing",
-                                    effectiveCode || undefined
-                                  )
-                                : ((component?.metadata?.northing_unit ??
-                                  getDefaultUnit(
-                                    "LENGTH",
-                                    isImperial,
-                                    "northing",
-                                    effectiveCode || undefined
-                                  )) || ""
-                                )
-                            }
-                            onValueChange={(val) => handleInputChange("northing_unit", val)}
-                            disabled={!(isCreateMode || isEditMode)}
+
+                        <div className="col-span-3 space-y-2">
+                          <Label
+                            htmlFor="easting"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
                           >
-                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                              <SelectValue />
-                            </SelectTrigger>
+                            Easting
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="easting"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.easting
+                                  : (component?.metadata?.easting ?? "")
+                              }
+                              onChange={(e) => handleInputChange("easting", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.easting_unit ||
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "easting",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.easting_unit ??
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "easting",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("easting_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
 
-                            <SelectContent className="rounded-xl">
-                              {getUnitOptions("LENGTH", isImperial)?.map((u) => (
-                                <SelectItem key={u} value={u} className="lowercase">
-                                  {u}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("LENGTH", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    <div className="col-span-3 space-y-2">
-                      <Label
-                        htmlFor="depth"
-                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
-                      >
-                        Depth
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="depth"
-                          className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
-                          value={
-                            isCreateMode || isEditMode
-                              ? formData.depth
-                              : (component?.metadata?.depth ?? "")
-                          }
-                          onChange={(e) => handleInputChange("depth", e.target.value)}
-                          readOnly={!(isCreateMode || isEditMode)}
-                        />
-                        <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
-                          <Select
-                            value={
-                              isCreateMode || isEditMode
-                                ? formData.depth_unit ||
-                                  getDefaultUnit(
-                                    "LENGTH",
-                                    isImperial,
-                                    "depth",
-                                    effectiveCode || undefined
-                                  )
-                                : ((component?.metadata?.depth_unit ??
-                                  getDefaultUnit(
-                                    "LENGTH",
-                                    isImperial,
-                                    "depth",
-                                    effectiveCode || undefined
-                                  )) || ""
-                                )
-                            }
-                            onValueChange={(val) => handleInputChange("depth_unit", val)}
-                            disabled={!(isCreateMode || isEditMode)}
+
+                        <div className="col-span-3 space-y-2">
+                          <Label
+                            htmlFor="northing"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
                           >
-                            <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
-                              <SelectValue />
-                            </SelectTrigger>
+                            Northing
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="northing"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.northing
+                                  : (component?.metadata?.northing ?? "")
+                              }
+                              onChange={(e) => handleInputChange("northing", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.northing_unit ||
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "northing",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.northing_unit ??
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "northing",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("northing_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
 
-                            <SelectContent className="rounded-xl">
-                              {getUnitOptions("LENGTH", isImperial)?.map((u) => (
-                                <SelectItem key={u} value={u} className="lowercase">
-                                  {u}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("LENGTH", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+
+                        <div className="col-span-3 space-y-2">
+                          <Label
+                            htmlFor="depth"
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
+                          >
+                            Depth
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="depth"
+                              className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 bg-white dark:bg-slate-950 font-bold h-11 pr-20"
+                              value={
+                                isCreateMode || isEditMode
+                                  ? formData.depth
+                                  : (component?.metadata?.depth ?? "")
+                              }
+                              onChange={(e) => handleInputChange("depth", e.target.value)}
+                              readOnly={!(isCreateMode || isEditMode)}
+                            />
+                            <div className="absolute right-0 top-0 h-full flex items-center pr-1.5 pt-0.5">
+                              <Select
+                                value={
+                                  isCreateMode || isEditMode
+                                    ? formData.depth_unit ||
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "depth",
+                                        effectiveCode || undefined
+                                      )
+                                    : ((component?.metadata?.depth_unit ??
+                                      getDefaultUnit(
+                                        "LENGTH",
+                                        isImperial,
+                                        "depth",
+                                        effectiveCode || undefined
+                                      )) || ""
+                                    )
+                                }
+                                onValueChange={(val) => handleInputChange("depth_unit", val)}
+                                disabled={!(isCreateMode || isEditMode)}
+                              >
+                                <SelectTrigger className="h-8 min-w-[68px] bg-slate-50 dark:bg-slate-900 border-none focus:ring-0 text-[10px] font-black rounded-lg w-auto px-2">
+                                  <SelectValue />
+                                </SelectTrigger>
+
+                                <SelectContent className="rounded-xl">
+                                  {getUnitOptions("LENGTH", isImperial)?.map((u) => (
+                                    <SelectItem key={u} value={u} className="lowercase">
+                                      {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
 

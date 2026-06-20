@@ -96,6 +96,7 @@ interface SummaryData {
     totalCount: number;
     minVal: number | null;
     maxVal: number | null;
+    cpDetails?: Record<string, Record<string, Array<{ val: number; type: "primary" | "additional"; mode: string }>>>;
   };
   anomalies: {
     total: number;
@@ -103,6 +104,7 @@ interface SummaryData {
     open: number;
     byPriority: Record<string, number>;
     byDefectType: Record<string, number>;
+    defectTypeDetails?: Record<string, Array<{ qid: string; inspectionTypeName: string }>>;
   };
   findings: {
     total: number;
@@ -111,6 +113,22 @@ interface SummaryData {
     byPriority: Record<string, number>;
   };
   attachmentGroups: Record<string, { count: number; total: number }>;
+  componentSummary?: Record<string, Record<string, {
+    totalRecords: number;
+    inspectionTypes: Record<string, {
+        completed: number;
+        incomplete: number;
+        anomaly: number;
+        pending: number;
+    }>;
+  }>>;
+  inspectionTypeSummary?: Record<string, Record<string, Record<string, {
+    completed: number;
+    incomplete: number;
+    anomaly: number;
+    pending: number;
+    total: number;
+  }>>>;
 }
 
 interface InspectionSummaryPanelProps {
@@ -339,6 +357,7 @@ function InspTypeCard({
   anomaly,
   finding,
   colorIndex,
+  componentsData,
 }: {
   code: string;
   name: string;
@@ -348,68 +367,184 @@ function InspTypeCard({
   anomaly: number;
   finding: number;
   colorIndex: number;
+  componentsData?: Record<string, Record<string, {
+    completed: number;
+    incomplete: number;
+    anomaly: number;
+    pending: number;
+    total: number;
+  }>>;
 }) {
   const accent = TYPE_ACCENT_PALETTE[colorIndex % TYPE_ACCENT_PALETTE.length];
   const hasAlert = anomaly > 0 || finding > 0;
-
   const modeStr = [rov > 0 && "ROV", dive > 0 && "Diving"].filter(Boolean).join(" & ");
+
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedCompTypes, setExpandedCompTypes] = useState<Record<string, boolean>>({});
 
   return (
     <div
-      className="rounded-lg border px-3 py-2.5 flex items-center gap-2.5 transition-all hover:scale-[1.005]"
+      className="rounded-lg border transition-all overflow-hidden"
       style={{
         background: accent.bg,
         borderColor: hasAlert ? "rgba(239,68,68,0.45)" : accent.border,
         boxShadow: hasAlert ? "0 0 0 1px rgba(239,68,68,0.12)" : undefined,
       }}
     >
-      {/* Name with Mode in Brackets */}
-      <span className="text-[13px] font-semibold text-slate-200 flex-1 truncate">
-        {formatInspectionTypeName(name)}{" "}
-        <span className="text-slate-300 font-medium ml-1">({modeStr})</span>
-      </span>
-
-      {/* Anomaly badge — only when > 0 */}
-      {anomaly > 0 && (
-        <span
-          className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded flex-shrink-0"
-          style={{
-            background: "rgba(239,68,68,0.18)",
-            color: "#f87171",
-            border: "1px solid rgba(239,68,68,0.40)",
-          }}
-        >
-          <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 flex-shrink-0" fill="currentColor">
-            <path d="M6 1L11 10H1L6 1z" />
-          </svg>
-          {anomaly} {anomaly === 1 ? "Anomaly" : "Anomalies"}
-        </span>
-      )}
-
-      {/* Finding badge — only when > 0 */}
-      {finding > 0 && (
-        <span
-          className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded flex-shrink-0"
-          style={{
-            background: "rgba(168,85,247,0.18)",
-            color: "#c084fc",
-            border: "1px solid rgba(168,85,247,0.40)",
-          }}
-        >
-          <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 flex-shrink-0" fill="currentColor">
-            <circle cx="6" cy="6" r="5" />
-          </svg>
-          {finding} {finding === 1 ? "Finding" : "Findings"}
-        </span>
-      )}
-
-      {/* Total count */}
-      <span
-        className="text-lg font-black flex-shrink-0 min-w-[20px] text-right ml-2"
-        style={{ color: accent.text }}
+      {/* Level 1 Header (Inspection Type) */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-slate-900/40 transition-colors text-left"
       >
-        {count}
-      </span>
+        <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+        <span className="text-[13px] font-semibold text-slate-200 flex-1 truncate">
+          {formatInspectionTypeName(name)}{" "}
+          <span className="text-slate-300 font-medium ml-1">({modeStr})</span>
+        </span>
+
+        {/* Anomaly badge — only when > 0 */}
+        {anomaly > 0 && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded flex-shrink-0"
+            style={{
+              background: "rgba(239,68,68,0.18)",
+              color: "#f87171",
+              border: "1px solid rgba(239,68,68,0.40)",
+            }}
+          >
+            <svg viewBox="0 0 12 12" className="w-2 h-2 flex-shrink-0" fill="currentColor">
+              <path d="M6 1L11 10H1L6 1z" />
+            </svg>
+            {anomaly}
+          </span>
+        )}
+
+        {/* Finding badge — only when > 0 */}
+        {finding > 0 && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded flex-shrink-0"
+            style={{
+              background: "rgba(168,85,247,0.18)",
+              color: "#c084fc",
+              border: "1px solid rgba(168,85,247,0.40)",
+            }}
+          >
+            <svg viewBox="0 0 12 12" className="w-2 h-2 flex-shrink-0" fill="currentColor">
+              <circle cx="6" cy="6" r="5" />
+            </svg>
+            {finding}
+          </span>
+        )}
+
+        {/* Total count */}
+        <span
+          className="text-lg font-black flex-shrink-0 min-w-[20px] text-right ml-2"
+          style={{ color: accent.text }}
+        >
+          {count}
+        </span>
+      </button>
+
+      {/* Level 2 (Component Types under Inspection Type) */}
+      {isExpanded && componentsData && Object.keys(componentsData).length > 0 && (
+        <div className="border-t border-slate-800/60 bg-slate-950/40 p-2.5 space-y-2">
+          {Object.entries(componentsData).map(([compType, qids]) => {
+            const isCompExpanded = !!expandedCompTypes[compType];
+
+            // Calculate split counts for component type level
+            let compCompleted = 0;
+            let compIncomplete = 0;
+            let compAnomaly = 0;
+            let compPending = 0;
+            let compTotal = 0;
+
+            Object.values(qids).forEach(q => {
+              compCompleted += q.completed;
+              compIncomplete += q.incomplete;
+              compAnomaly += q.anomaly;
+              compPending += q.pending;
+              compTotal += q.total;
+            });
+
+            return (
+              <div key={compType} className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/30">
+                <button
+                  onClick={() => setExpandedCompTypes(prev => ({ ...prev, [compType]: !prev[compType] }))}
+                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-800/40 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isCompExpanded ? "rotate-90" : ""}`} />
+                    <span className="text-[11px] font-black uppercase text-slate-300">
+                      {compType}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {compCompleted > 0 && (
+                      <span className="text-[8px] font-bold bg-emerald-500/10 text-emerald-400 px-1 py-0.5 rounded">
+                        ✓ {compCompleted}
+                      </span>
+                    )}
+                    {compIncomplete > 0 && (
+                      <span className="text-[8px] font-bold bg-amber-500/10 text-amber-400 px-1 py-0.5 rounded">
+                        ⚠ {compIncomplete}
+                      </span>
+                    )}
+                    {compAnomaly > 0 && (
+                      <span className="text-[8px] font-bold bg-red-500/10 text-red-400 px-1 py-0.5 rounded">
+                        ▲ {compAnomaly}
+                      </span>
+                    )}
+                    {compPending > 0 && (
+                      <span className="text-[8px] font-bold bg-slate-700/30 text-slate-400 px-1 py-0.5 rounded">
+                        … {compPending}
+                      </span>
+                    )}
+                    <Badge variant="secondary" className="text-[9px] font-black h-4 px-1 bg-slate-800 text-slate-400">
+                      {compTotal}
+                    </Badge>
+                  </div>
+                </button>
+
+                {/* Level 3 (QIDs under Component Type) */}
+                {isCompExpanded && (
+                  <div className="border-t border-slate-800/40 bg-slate-950/60 divide-y divide-slate-900/40 px-2.5 py-1.5 space-y-1.5">
+                    {Object.entries(qids).map(([qid, qidData]) => (
+                      <div key={qid} className="flex flex-col sm:flex-row sm:items-center justify-between py-1.5 gap-2.5">
+                        <span className="text-[10.5px] font-bold text-slate-200 font-mono pl-5">
+                          {qid}
+                        </span>
+
+                        <div className="flex flex-wrap gap-1 pl-5 sm:pl-0">
+                          {qidData.completed > 0 && (
+                            <Badge className="text-[8.5px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                              Complete: {qidData.completed}
+                            </Badge>
+                          )}
+                          {qidData.incomplete > 0 && (
+                            <Badge className="text-[8.5px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                              Incomplete: {qidData.incomplete}
+                            </Badge>
+                          )}
+                          {qidData.anomaly > 0 && (
+                            <Badge className="text-[8.5px] font-black bg-red-500/10 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded">
+                              Anomaly: {qidData.anomaly}
+                            </Badge>
+                          )}
+                          {qidData.pending > 0 && (
+                            <Badge className="text-[8.5px] font-black bg-slate-700/30 text-slate-400 border border-slate-700/30 px-1.5 py-0.5 rounded">
+                              Pending: {qidData.pending}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -429,6 +564,11 @@ export function InspectionSummaryPanel({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("all");
+  const [expandedCompTypes, setExpandedCompTypes] = useState<Record<string, boolean>>({});
+  const [expandedQIDs, setExpandedQIDs] = useState<Record<string, boolean>>({});
+  const [expandedCpTypes, setExpandedCpTypes] = useState<Record<string, boolean>>({});
+  const [expandedCpQIDs, setExpandedCpQIDs] = useState<Record<string, boolean>>({});
+  const [expandedDefectTypes, setExpandedDefectTypes] = useState<Record<string, boolean>>({});
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
@@ -499,6 +639,7 @@ export function InspectionSummaryPanel({
   const navSections = [
     { id: "all", label: "All Summary" },
     { id: "sow", label: "Scope of Work", show: !!sow },
+    { id: "components", label: "Component Breakdown", show: !!data?.componentSummary },
     { id: "overview", label: "Inspection Overview", show: !!records },
     { id: "fmd", label: "FMD Details", show: !!(fmd && fmd.total > 0) },
     { id: "anode", label: "Anode Inspection", show: !!(anodeGvi && anodeGvi.total > 0) },
@@ -726,6 +867,118 @@ export function InspectionSummaryPanel({
             </div>
           </section>
 
+          {/* ═══ SECTION: COMPONENT BREAKDOWN ═══════════════════════════════════ */}
+          {data?.componentSummary && Object.keys(data.componentSummary).length > 0 && (
+            <section id="summary-sec-components">
+              <SectionHeader icon={Layers} title="Component Breakdown" color="blue" />
+              <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl p-4 space-y-3">
+                {Object.entries(data.componentSummary).map(([compType, qids]) => {
+                  const isCompExpanded = !!expandedCompTypes[compType];
+                  const qidCount = Object.keys(qids).length;
+                  const totalInspectionsForType = Object.values(qids).reduce((acc, q) => acc + q.totalRecords, 0);
+
+                  return (
+                    <div key={compType} className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+                      {/* Component Type Header (Level 1) */}
+                      <button
+                        onClick={() => setExpandedCompTypes(prev => ({ ...prev, [compType]: !prev[compType] }))}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-slate-900/80 hover:bg-slate-800/60 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${isCompExpanded ? "rotate-90" : ""}`} />
+                          <span className="text-[12px] font-black uppercase tracking-wider text-white">
+                            {compType}
+                          </span>
+                          <Badge variant="secondary" className="text-[9px] font-bold h-4 px-1.5 bg-slate-800 text-slate-300">
+                            {qidCount} QID{qidCount !== 1 ? "s" : ""}
+                          </Badge>
+                        </div>
+                        <div className="text-[11px] font-black text-blue-400">
+                          {totalInspectionsForType} Inspection{totalInspectionsForType !== 1 ? "s" : ""}
+                        </div>
+                      </button>
+
+                      {/* QIDs list under Component Type (Level 2) */}
+                      {isCompExpanded && (
+                        <div className="border-t border-slate-800/60 divide-y divide-slate-800/40 bg-slate-950/20 px-3 py-2 space-y-2">
+                          {Object.entries(qids).map(([qid, qidData]) => {
+                            const qidKey = `${compType}_${qid}`;
+                            const isQIDExpanded = !!expandedQIDs[qidKey];
+                            
+                            return (
+                              <div key={qid} className="border border-slate-800/40 rounded-lg overflow-hidden bg-slate-900/20">
+                                <button
+                                  onClick={() => setExpandedQIDs(prev => ({ ...prev, [qidKey]: !prev[qidKey] }))}
+                                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-800/40 transition-colors text-left"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isQIDExpanded ? "rotate-90" : ""}`} />
+                                    <span className="text-[11px] font-bold text-slate-200 font-mono">
+                                      {qid}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge className="text-[9px] font-black bg-blue-500/10 text-blue-400 border border-blue-500/20 h-4.5 px-1.5">
+                                      {qidData.totalRecords} Inspected
+                                    </Badge>
+                                  </div>
+                                </button>
+
+                                {/* Inspection Types Drill-down (Level 3) */}
+                                {isQIDExpanded && (
+                                  <div className="px-3 pb-3 pt-1 border-t border-slate-800/40 bg-slate-950/40">
+                                    <div className="grid grid-cols-1 gap-2 mt-1">
+                                      {Object.entries(qidData.inspectionTypes).map(([inspType, counts]) => (
+                                        <div key={inspType} className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg bg-slate-900/60 border border-slate-800/40 gap-2">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-black uppercase text-slate-300 tracking-wider">
+                                              {inspType}
+                                            </span>
+                                          </div>
+                                          
+                                          {/* Status breakdown metrics */}
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {counts.completed > 0 && (
+                                              <Badge className="text-[9px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                                                Complete: {counts.completed}
+                                              </Badge>
+                                            )}
+                                            {counts.incomplete > 0 && (
+                                              <Badge className="text-[9px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                                                Incomplete: {counts.incomplete}
+                                              </Badge>
+                                            )}
+                                            {counts.anomaly > 0 && (
+                                              <Badge className="text-[9px] font-black bg-red-500/10 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded">
+                                                Anomaly: {counts.anomaly}
+                                              </Badge>
+                                            )}
+                                            {counts.pending > 0 && (
+                                              <Badge className="text-[9px] font-black bg-slate-700/30 text-slate-400 border border-slate-700/30 px-1.5 py-0.5 rounded">
+                                                Pending: {counts.pending}
+                                              </Badge>
+                                            )}
+                                            {counts.completed === 0 && counts.incomplete === 0 && counts.anomaly === 0 && counts.pending === 0 && (
+                                              <span className="text-[9px] font-bold text-slate-500 italic">No records</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {/* ═══ SECTION 2: INSPECTION OVERVIEW ════════════════════════════════ */}
           <section id="summary-sec-overview">
             <SectionHeader
@@ -844,6 +1097,7 @@ export function InspectionSummaryPanel({
                         anomaly={info.anomaly}
                         finding={info.finding}
                         colorIndex={idx}
+                        componentsData={data?.inspectionTypeSummary?.[code]}
                       />
                     ))}
                 </div>
@@ -1199,6 +1453,95 @@ export function InspectionSummaryPanel({
                   <span className="text-2xl font-black text-white">{cp.totalCount}</span>
                 </div>
 
+                {/* ── CP Stab Details Drill-Down ── */}
+                {cp.cpDetails && Object.keys(cp.cpDetails).length > 0 && (
+                  <div className="border-t border-slate-700/40 pt-3">
+                    <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2 flex items-center gap-1.5">
+                      <LayoutGrid className="w-3.5 h-3.5 text-cyan-400" />
+                      CP Readings Drill Down
+                    </div>
+                    <div className="space-y-2.5">
+                      {Object.entries(cp.cpDetails).map(([inspType, qids]) => {
+                        const isCpTypeExpanded = !!expandedCpTypes[inspType];
+                        const readingsCount = Object.values(qids).reduce((acc, r) => acc + r.length, 0);
+
+                        return (
+                          <div key={inspType} className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/40">
+                            {/* Inspection Type Header (Level 1) */}
+                            <button
+                              onClick={() => setExpandedCpTypes(prev => ({ ...prev, [inspType]: !prev[inspType] }))}
+                              className="w-full flex items-center justify-between px-3 py-2 bg-slate-900/80 hover:bg-slate-800/60 transition-colors text-left"
+                            >
+                              <div className="flex items-center gap-2">
+                                <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isCpTypeExpanded ? "rotate-90" : ""}`} />
+                                <span className="text-[11px] font-black uppercase text-slate-300">
+                                  {inspType}
+                                </span>
+                              </div>
+                              <Badge variant="secondary" className="text-[9px] font-black h-4 px-1.5 bg-slate-800 text-cyan-400">
+                                {readingsCount} Reading{readingsCount !== 1 ? "s" : ""}
+                              </Badge>
+                            </button>
+
+                            {/* QIDs List under Inspection Type (Level 2) */}
+                            {isCpTypeExpanded && (
+                              <div className="border-t border-slate-800/60 divide-y divide-slate-800/40 bg-slate-950/20 px-2.5 py-1.5 space-y-1.5">
+                                {Object.entries(qids).map(([qid, readings]) => {
+                                  const qidKey = `${inspType}_${qid}`;
+                                  const isQidExpanded = !!expandedCpQIDs[qidKey];
+
+                                  return (
+                                    <div key={qid} className="border border-slate-800/50 rounded overflow-hidden bg-slate-900/10">
+                                      {/* QID Header */}
+                                      <button
+                                        onClick={() => setExpandedCpQIDs(prev => ({ ...prev, [qidKey]: !prev[qidKey] }))}
+                                        className="w-full flex items-center justify-between px-2.5 py-1.5 hover:bg-slate-800/40 transition-colors text-left"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <ChevronRight className={`w-3 h-3 text-slate-500 transition-transform ${isQidExpanded ? "rotate-90" : ""}`} />
+                                          <span className="text-[10px] font-bold text-slate-200 font-mono">
+                                            {qid}
+                                          </span>
+                                        </div>
+                                        <Badge className="text-[8.5px] font-black bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 h-4 px-1.5">
+                                          {readings.length} reading{readings.length !== 1 ? "s" : ""}
+                                        </Badge>
+                                      </button>
+
+                                      {/* Readings list showing values (Level 3) */}
+                                      {isQidExpanded && (
+                                        <div className="px-3 py-2 border-t border-slate-800/50 bg-slate-950/40 flex flex-wrap gap-2">
+                                          {readings.map((r, rIdx) => (
+                                            <div key={rIdx} className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[10px] font-bold">
+                                              <span className="text-slate-400 font-mono">
+                                                {r.val.toFixed(3)} V
+                                              </span>
+                                              <span className={`text-[8px] font-black px-1 rounded uppercase tracking-wider ${
+                                                r.mode === "ROV" 
+                                                  ? "bg-blue-500/10 text-blue-400" 
+                                                  : "bg-cyan-500/10 text-cyan-400"
+                                              }`}>
+                                                {r.mode}
+                                              </span>
+                                              <span className="text-[8px] text-slate-500 uppercase">
+                                                {r.type}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Min / Max ── */}
                 {(cp.minVal !== null || cp.maxVal !== null) && (
                   <div className="border-t border-slate-700/40 pt-3 grid grid-cols-2 gap-3">
@@ -1338,20 +1681,50 @@ export function InspectionSummaryPanel({
                     <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider mb-2">
                       By Defect Type
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       {Object.entries(anomalies.byDefectType)
                         .sort((a, b) => b[1] - a[1])
-                        .map(([type, cnt]) => (
-                          <div key={type} className="flex items-center gap-2 py-1">
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
-                            <span className="text-[10px] text-slate-400 flex-1 truncate">
-                              {type}
-                            </span>
-                            <span className="text-[10px] font-black text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
-                              {cnt}
-                            </span>
-                          </div>
-                        ))}
+                        .map(([type, cnt]) => {
+                          const isExpanded = !!expandedDefectTypes[type];
+                          const details = anomalies.defectTypeDetails?.[type] || [];
+                          return (
+                            <div key={type} className="border border-slate-800/40 rounded-lg overflow-hidden bg-slate-900/20">
+                              <button
+                                onClick={() => setExpandedDefectTypes(prev => ({ ...prev, [type]: !prev[type] }))}
+                                className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-800/40 transition-colors text-left"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                                  <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider">
+                                    {type}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-black text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
+                                  {cnt}
+                                </span>
+                              </button>
+                              
+                              {isExpanded && (
+                                <div className="px-3 pb-2 pt-1 border-t border-slate-800/40 bg-slate-950/40 divide-y divide-slate-900/20">
+                                  {details.length > 0 ? (
+                                    details.map((item, idx) => (
+                                      <div key={idx} className="flex items-center justify-between py-1.5 text-[10px]">
+                                        <span className="font-mono font-bold text-slate-200 pl-4">
+                                          {item.qid}
+                                        </span>
+                                        <span className="text-slate-500 italic">
+                                          ({item.inspectionTypeName})
+                                        </span>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="text-[9px] text-slate-500 italic pl-4 py-1.5">No QID details available</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
                 )}

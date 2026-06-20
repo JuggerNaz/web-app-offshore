@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/utils/supabase/server";
+import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const supabase = createAdminClient();
+  const supabase = createClient();
   const { data, error } = await supabase.from("str_elv").select("*").eq("plat_id", Number(id));
 
   if (error) {
@@ -22,7 +22,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await request.json();
-  const supabase = createAdminClient();
+  const supabase = createClient();
 
   console.log(id, body);
 

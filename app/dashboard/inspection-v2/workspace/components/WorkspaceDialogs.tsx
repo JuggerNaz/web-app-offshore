@@ -49,13 +49,21 @@ import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 import { getReportHeaderData } from "@/utils/company-settings";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
+import { generateROVRSCORV2Report } from "@/utils/report-generators/rov-rscor-v2-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
 import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
+import { generateROVRMGIReport } from "@/utils/report-generators/rov-rmgi-report";
 import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
+import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
+import { generateDivingDCASNUWReport } from "@/utils/report-generators/diving-dcasn-uw-report";
+import { generateDivingDCASNTSReport } from "@/utils/report-generators/diving-dcasn-ts-report";
+import { generateDivingDCONDUWReport } from "@/utils/report-generators/diving-dcond-uw-report";
+import { generateDivingDCONDTSReport } from "@/utils/report-generators/diving-dcond-ts-report";
 
 
 interface WorkspaceDialogsProps {
@@ -97,6 +105,7 @@ interface WorkspaceDialogsProps {
         previewOpen: boolean;
         previewRecord: any;
         mPreviewOpen: boolean;
+        rmgiPreviewOpen: boolean;
         fmdPreviewOpen: boolean;
         utwtPreviewOpen: boolean;
         szciPreviewOpen: boolean;
@@ -108,10 +117,13 @@ interface WorkspaceDialogsProps {
         showCriteriaConfirm: boolean;
         pendingRule: any;
         rscorPreviewOpen: boolean;
+        rscorV2PreviewOpen: boolean;
         anodePreviewOpen: boolean;
         anodeRsaniPreviewOpen: boolean;
         cpPreviewOpen: boolean;
         rswniPreviewOpen: boolean;
+        rovRicmiPreviewOpen: boolean;
+        divingAnmainPreviewOpen: boolean;
         rgviPreviewOpen: boolean;
         rcondSketchPreviewOpen: boolean;
         showRemovalConfirm: boolean;
@@ -159,10 +171,15 @@ interface WorkspaceDialogsProps {
         divingAcfmcPreviewOpen: boolean;
         divingPlcoPreviewOpen: boolean;
         rovRwdiPreviewOpen: boolean;
+        divingDcasnUwPreviewOpen: boolean;
+        divingDcasnTsPreviewOpen: boolean;
+        divingDcondUwPreviewOpen: boolean;
+        divingDcondTsPreviewOpen: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
         isReportWizardOpen: boolean;
+        reportConfig: any;
     };
 
 
@@ -186,6 +203,7 @@ interface WorkspaceDialogsProps {
         setCompSpecDialogOpen: (open: boolean) => void;
         setPreviewOpen: (open: boolean) => void;
         setMPreviewOpen: (open: boolean) => void;
+        setRmgiPreviewOpen: (open: boolean) => void;
         setFmdPreviewOpen: (open: boolean) => void;
         setUtwtPreviewOpen: (open: boolean) => void;
         setSzciPreviewOpen: (open: boolean) => void;
@@ -194,10 +212,13 @@ interface WorkspaceDialogsProps {
         setIsAttachmentManagerOpen: (open: boolean) => void;
         setShowCriteriaConfirm: (open: boolean) => void;
         setRscorPreviewOpen: (open: boolean) => void;
+        setRscorV2PreviewOpen: (open: boolean) => void;
         setAnodePreviewOpen: (open: boolean) => void;
         setAnodeRsaniPreviewOpen: (open: boolean) => void;
         setCpPreviewOpen: (open: boolean) => void;
         setRswniPreviewOpen: (open: boolean) => void;
+        setRovRicmiPreviewOpen: (open: boolean) => void;
+        setDivingAnmainPreviewOpen: (open: boolean) => void;
         setRgviPreviewOpen: (open: boolean) => void;
         setRcondSketchPreviewOpen: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
@@ -235,10 +256,15 @@ interface WorkspaceDialogsProps {
         setDivingAcfmcPreviewOpen: (open: boolean) => void;
         setDivingPlcoPreviewOpen: (open: boolean) => void;
         setRovRwdiPreviewOpen: (open: boolean) => void;
+        setDivingDcasnUwPreviewOpen: (open: boolean) => void;
+        setDivingDcasnTsPreviewOpen: (open: boolean) => void;
+        setDivingDcondUwPreviewOpen: (open: boolean) => void;
+        setDivingDcondTsPreviewOpen: (open: boolean) => void;
         setIsReportWizardOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
 
         setRovCalibrationDialogOpen: (open: boolean) => void;
+        setReportConfig: (cfg: any) => void;
     };
 
 
@@ -258,6 +284,7 @@ interface WorkspaceDialogsProps {
         queryClient: any;
         generateAnomalyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateFMDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTWTReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZCIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -266,6 +293,7 @@ interface WorkspaceDialogsProps {
         generateCUReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateBLReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRSCORV2ReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateITISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -274,6 +302,10 @@ interface WorkspaceDialogsProps {
         generateCPReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSWNIReport: () => void;
         generateRSWNIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateROVRICMIReport: () => void;
+        generateROVRICMIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingANMAINReport: () => void;
+        generateDivingANMAINReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRGVIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCASNReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -302,6 +334,14 @@ interface WorkspaceDialogsProps {
         generateDivingACFMCReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingPLCOReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateROVRWDIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCASNUWReport: () => void;
+        generateDivingDCASNUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCASNTSReport: () => void;
+        generateDivingDCASNTSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCONDUWReport: () => void;
+        generateDivingDCONDUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCONDTSReport: () => void;
+        generateDivingDCONDTSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -362,10 +402,13 @@ export function WorkspaceDialogs({
         showCriteriaConfirm,
         pendingRule,
         rscorPreviewOpen,
+        rscorV2PreviewOpen,
         anodePreviewOpen,
         anodeRsaniPreviewOpen,
         cpPreviewOpen,
         rswniPreviewOpen,
+        rovRicmiPreviewOpen,
+        divingAnmainPreviewOpen,
         rgviPreviewOpen,
         rcondSketchPreviewOpen,
         showRemovalConfirm,
@@ -412,7 +455,13 @@ export function WorkspaceDialogs({
         divingMgiPreviewOpen,
         divingAcfmcPreviewOpen,
         divingPlcoPreviewOpen,
-        rovRwdiPreviewOpen
+        rovRwdiPreviewOpen,
+        divingDcasnUwPreviewOpen,
+        divingDcasnTsPreviewOpen,
+        divingDcondUwPreviewOpen,
+        divingDcondTsPreviewOpen,
+        isReportWizardOpen,
+        reportConfig
     } = states;
 
 
@@ -434,6 +483,7 @@ export function WorkspaceDialogs({
         setCompSpecDialogOpen,
         setPreviewOpen,
         setMPreviewOpen,
+        setRmgiPreviewOpen,
         setFmdPreviewOpen,
         setUtwtPreviewOpen,
         setSzciPreviewOpen,
@@ -442,10 +492,13 @@ export function WorkspaceDialogs({
         setIsAttachmentManagerOpen,
         setShowCriteriaConfirm,
         setRscorPreviewOpen,
+        setRscorV2PreviewOpen,
         setAnodePreviewOpen,
         setAnodeRsaniPreviewOpen,
         setCpPreviewOpen,
         setRswniPreviewOpen,
+        setRovRicmiPreviewOpen,
+        setDivingAnmainPreviewOpen,
         setRgviPreviewOpen,
         setRcondSketchPreviewOpen,
         setShowRemovalConfirm,
@@ -482,7 +535,13 @@ export function WorkspaceDialogs({
         setDivingMgiPreviewOpen,
         setDivingAcfmcPreviewOpen,
         setDivingPlcoPreviewOpen,
-        setRovRwdiPreviewOpen
+        setRovRwdiPreviewOpen,
+        setDivingDcasnUwPreviewOpen,
+        setDivingDcasnTsPreviewOpen,
+        setDivingDcondUwPreviewOpen,
+        setDivingDcondTsPreviewOpen,
+        setIsReportWizardOpen,
+        setReportConfig
     } = setters;
 
 
@@ -500,6 +559,7 @@ export function WorkspaceDialogs({
         queryClient,
         generateAnomalyReportBlob,
         generateMGIReportBlob,
+        generateRMGIReportBlob,
         generateFMDReportBlob,
         generateUTWTReportBlob,
         generateSZCIReportBlob,
@@ -508,6 +568,7 @@ export function WorkspaceDialogs({
         generateCUReportBlob,
         generateBLReportBlob,
         generateRSCORReportBlob,
+        generateRSCORV2ReportBlob,
         generateRRISIReportBlob,
         generateJTISIReportBlob,
         generateITISIReportBlob,
@@ -541,7 +602,15 @@ export function WorkspaceDialogs({
         generateDivingMGIReportBlob,
         generateDivingACFMCReportBlob,
         generateDivingPLCOReportBlob,
-        generateROVRWDIReportBlob
+        generateROVRWDIReportBlob,
+        generateDivingDCASNUWReport,
+        generateDivingDCASNUWReportBlob,
+        generateDivingDCASNTSReport,
+        generateDivingDCASNTSReportBlob,
+        generateDivingDCONDUWReport,
+        generateDivingDCONDUWReportBlob,
+        generateDivingDCONDTSReport,
+        generateDivingDCONDTSReportBlob
     } = handlers;
 
 
@@ -564,6 +633,48 @@ export function WorkspaceDialogs({
         const s = secs % 60;
         return [h, m, s].map(v => v < 10 ? "0" + v : v).join(":");
     };
+
+    // Derive initial toggle values from the Report Wizard config so that
+    // every ReportPreviewDialog opens with the settings the user chose in the wizard.
+    const wizardShowSignatures: boolean = reportConfig?.showSignatures !== false;
+    const wizardPrintFriendly: boolean = reportConfig?.printFriendly === true;
+
+    // Wizard step and template state lifted up to control back-routing from preview dialogs
+    const [wizardStep, setWizardStep] = React.useState(1);
+    const [wizardSelectedTemplate, setWizardSelectedTemplate] = React.useState<any>(null);
+    const isReturningFromPreview = React.useRef(false);
+
+    React.useEffect(() => {
+        if (isReportWizardOpen) {
+            if (isReturningFromPreview.current) {
+                isReturningFromPreview.current = false;
+            } else {
+                setWizardStep(1);
+                setWizardSelectedTemplate(null);
+            }
+        }
+    }, [isReportWizardOpen]);
+
+    const dialogSowList = React.useMemo(() => {
+        return componentsSow.filter((c: any) => {
+            let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
+            const hasValidTask = tasksToFilter.some((tCode: string) => {
+                const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                if (!it) return true;
+                const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                if (inspMethod === "DIVING" && isDiving) return true;
+                if (inspMethod === "ROV" && isRov) return true;
+                return false;
+            });
+            return hasValidTask;
+        });
+    }, [componentsSow, allInspectionTypes, inspMethod]);
+
+    const dialogNonSowList = React.useMemo(() => {
+        const sowCompIdsWithValidTask = new Set(dialogSowList.map(c => c.id));
+        return allComps.filter((c: any) => !sowCompIdsWithValidTask.has(c.id));
+    }, [allComps, dialogSowList]);
 
     return (
         <>
@@ -1191,7 +1302,11 @@ export function WorkspaceDialogs({
                 </DialogContent>
             </Dialog>
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rscorPreviewOpen} 
                 onOpenChange={setRscorPreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1204,30 +1319,139 @@ export function WorkspaceDialogs({
                         contractorLogoUrl = contrData?.logo_url || '';
                     }
 
+                    const generatedConfig = {
+                        jobPackId: Number(jobPackId),
+                        structureId: Number(structureId),
+                        sowReportNo: headerData.sowReportNo,
+                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
+                        reviewedBy: reportConfig.reviewedBy,
+                        approvedBy: reportConfig.approvedBy,
+                        watermark: reportConfig.watermark,
+                        returnBlob: true,
+                        printFriendly: isPrintFriendly,
+                        showSignatures
+                    };
+                    if (typeof window !== 'undefined') {
+                        (window as any).__reportConfig = generatedConfig;
+                    }
                     return await generateROVRSCORReport(
                         scourRecords,
                         { 
-                            ...headerData, 
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
+                             ...headerData, 
+                             contractorLogoUrl,
+                             vessel: headerData.vessel
                         },
                         { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
-                            preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showSignatures
-                        }
+                        generatedConfig
                     );
                 }}
                 title="ROV Scour Survey Report (RSCOR)"
                 fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={rscorV2PreviewOpen} 
+                onOpenChange={setRscorV2PreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.logo_url || '';
+                    }
+
+                    const generatedConfig = {
+                        jobPackId: Number(jobPackId),
+                        structureId: Number(structureId),
+                        sowReportNo: headerData.sowReportNo,
+                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
+                        reviewedBy: reportConfig.reviewedBy,
+                        approvedBy: reportConfig.approvedBy,
+                        watermark: reportConfig.watermark,
+                        returnBlob: true,
+                        printFriendly: isPrintFriendly,
+                        showSignatures
+                    };
+                    if (typeof window !== 'undefined') {
+                        (window as any).__reportConfig = generatedConfig;
+                    }
+                    return await generateROVRSCORV2Report(
+                        scourRecords,
+                        { 
+                             ...headerData, 
+                             contractorLogoUrl,
+                             vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        generatedConfig
+                    );
+                }}
+                title="ROV Scour Survey Sketch v2 Report Preview"
+                fileName={`ROV_Scour_Survey_Sketch_v2_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={states.rmgiPreviewOpen} 
+                onOpenChange={setters.setRmgiPreviewOpen} 
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    const generatedConfig = {
+                        jobPackId: Number(jobPackId),
+                        structureId: Number(structureId),
+                        sowReportNo: headerData.sowReportNo,
+                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
+                        reviewedBy: reportConfig.reviewedBy,
+                        approvedBy: reportConfig.approvedBy,
+                        watermark: reportConfig.watermark,
+                        returnBlob: true,
+                        printFriendly: isPrintFriendly,
+                        showSignatures
+                    };
+                    if (typeof window !== 'undefined') {
+                        (window as any).__reportConfig = generatedConfig;
+                    }
+
+                    return await generateROVRMGIReport(
+                        currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RMGI'),
+                        { 
+                             ...headerData, 
+                             contractorLogoUrl,
+                             vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        generatedConfig
+                    );
+                }}
+                title="Marine Growth Inspection Report (ROV) Preview"
+                fileName={`ROV_RMGI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={anodePreviewOpen} 
                 onOpenChange={setAnodePreviewOpen} 
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1282,6 +1506,10 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cpPreviewOpen}
                 onOpenChange={setCpPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1341,6 +1569,10 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rswniPreviewOpen}
                 onOpenChange={setRswniPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1400,6 +1632,136 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={rovRicmiPreviewOpen}
+                onOpenChange={setRovRicmiPreviewOpen}
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const ricmiRecords = (allRecords || []).filter((r: any) => {
+                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                        return typeCode === 'RICMI';
+                    });
+
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    return await generateROVRICMIReport(
+                        ricmiRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="ROV Inclinometer Reading Report"
+                fileName={`ROV_Inclinometer_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingAnmainPreviewOpen}
+                onOpenChange={setDivingAnmainPreviewOpen}
+                generateReport={async (isPrintFriendly, showSignatures) => {
+                    const settings = await getReportHeaderData();
+                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+                    
+                    const { data: allRecords } = await supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .eq('structure_id', Number(structureId))
+                        .eq('sow_report_no', headerData.sowReportNo);
+
+                    const anmainRecords = (allRecords || []).filter((r: any) => {
+                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                        return typeCode === 'ANMAIN';
+                    });
+
+                    let contractorLogoUrl = '';
+                    if (jobPack?.metadata?.contrac) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cJson = await cRes.json();
+                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        } catch (e) { console.error("Logo fetch error", e); }
+                    }
+
+                    return await generateDivingANMAINReport(
+                        anmainRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        {
+                            ...headerData,
+                            contractorLogoUrl,
+                            vessel: headerData.vessel
+                        },
+                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                        {
+                            jobPackId: Number(jobPackId),
+                            structureId: Number(structureId),
+                            sowReportNo: headerData.sowReportNo,
+                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
+                            returnBlob: true,
+                            printFriendly: isPrintFriendly,
+                            showPageNumbers: true,
+                            showSignatures
+                        }
+                    );
+                }}
+                title="Diving Anode Maintenance Report"
+                fileName={`Diving_Anode_Maintenance_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rgviPreviewOpen}
                 onOpenChange={setRgviPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1458,6 +1820,10 @@ export function WorkspaceDialogs({
             />
 
             <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcondSketchPreviewOpen}
                 onOpenChange={setRcondSketchPreviewOpen}
                 generateReport={async (isPrintFriendly, showSignatures) => {
@@ -1634,6 +2000,7 @@ export function WorkspaceDialogs({
                             <div className="space-y-1.5">
                                 {selectedComp?.taskStatuses
                                     ?.filter((ts: any) => {
+                                        if (['CPCLB', 'UTCLB', 'RCPCLB', 'RUTCLB'].includes(ts.code)) return false;
                                         const it = allInspectionTypes.find(type => type.code === ts.code);
                                         if (!it) return true;
                                         if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
@@ -1671,6 +2038,8 @@ export function WorkspaceDialogs({
                             <div className="space-y-1">
                                 {allInspectionTypes
                                     .filter(it => {
+                                        if (it.is_active !== true) return false;
+                                        if (['CPCLB', 'UTCLB', 'RCPCLB', 'RUTCLB'].includes(it.code)) return false;
                                         const isInSow = (selectedComp?.taskStatuses || []).some((ts: any) => ts.code === it.code);
                                         if (isInSow) return false;
                                         const matchesSearch = it.name.toLowerCase().includes(addTaskSearch.toLowerCase()) || 
@@ -1680,7 +2049,6 @@ export function WorkspaceDialogs({
                                         if (inspMethod === 'ROV') return it.metadata?.rov === 1;
                                         return true;
                                     })
-                                    .slice(0, 10)
                                     .map((it: any) => (
                                          <button 
                                             key={it.id} 
@@ -1735,19 +2103,8 @@ export function WorkspaceDialogs({
                     </div>
                      <div className="p-2 space-y-1 max-h-[50vh] overflow-y-auto bg-white dark:bg-slate-950">
                         <div className="px-2 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-50 dark:bg-slate-950 mb-1 rounded">SOW Items</div>
-                        {componentsSow
+                        {dialogSowList
                             .filter(c => {
-                                let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
-                                const hasValidTask = tasksToFilter.some((tCode: string) => {
-                                    const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
-                                    if (!it) return true;
-                                    const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                    const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                    if (inspMethod === "DIVING" && isDiving) return true;
-                                    if (inspMethod === "ROV" && isRov) return true;
-                                    return false;
-                                });
-                                if (!hasValidTask) return false;
                                 return JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
                             })
                             .map((c: any) => (
@@ -1777,10 +2134,9 @@ export function WorkspaceDialogs({
                             {selectorShowAll ? (
                             <>
                                 <div className="mt-4 px-2 py-1 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-50 dark:bg-slate-950 mb-1 rounded">Platform Library (Non-SOW)</div>
-                                {allComps
+                                {dialogNonSowList
                                     .filter(c => {
-                                        const isInSow = componentsSow.some(sc => sc.id === c.id);
-                                        return !isInSow && JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
+                                        return JSON.stringify(c).toLowerCase().includes(compSelectorSearch.toLowerCase());
                                     })
                                     .map((c: any) => (
                                         <button 
@@ -1845,6 +2201,7 @@ export function WorkspaceDialogs({
                             telemetryData={dataAcqFields}
                             isStreamRecording={manualOverride || vidState !== "IDLE"}
                             isStreamPaused={manualOverride ? false : (vidState === "PAUSED")}
+                            manualOverride={manualOverride}
                             onRefreshInspection={() => {
                                 syncDeploymentState();
                                 if (queryClient) {
@@ -1857,175 +2214,286 @@ export function WorkspaceDialogs({
                 </div>
             )}
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={previewOpen} 
                 onOpenChange={setPreviewOpen} 
                 title="Anomaly Report Preview" 
                 fileName={`Anomaly_Report_${previewRecord?.anomaly_ref_no || 'Draft'}`} 
                 generateReport={generateAnomalyReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={mPreviewOpen} 
                 onOpenChange={setMPreviewOpen} 
                 title="ROV MGI Survey Report Preview" 
                 fileName={`ROV_MGI_Report_${headerData.sowReportNo}`} 
                 generateReport={handlers.generateMGIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={fmdPreviewOpen} 
                 onOpenChange={setFmdPreviewOpen} 
                 title="ROV FMD Survey Report Preview" 
                 fileName={`ROV_FMD_Report_${headerData.sowReportNo}`} 
                 generateReport={handlers.generateFMDReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={utwtPreviewOpen} 
                 onOpenChange={setUtwtPreviewOpen} 
                 title="ROV UTWT Survey Report Preview" 
                 fileName={`ROV_UTWT_Report_${headerData.sowReportNo}`} 
                 generateReport={handlers.generateUTWTReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={szciPreviewOpen} 
                 onOpenChange={setSzciPreviewOpen} 
                 title="ROV SZCI Survey Report Preview" 
                 fileName={`ROV_SZCI_Report_${headerData.sowReportNo}`} 
                 generateReport={generateSZCIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rgPreviewOpen} 
                 onOpenChange={setRgPreviewOpen} 
                 title="ROV Riser Guard Inspection Report Preview" 
                 fileName={`ROV_Riser_Guard_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRGReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={sgPreviewOpen} 
                 onOpenChange={setSgPreviewOpen} 
                 title="ROV Caisson Guard Inspection Report Preview" 
                 fileName={`ROV_Caisson_Guard_Report_${headerData.sowReportNo}`} 
                 generateReport={generateSGReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cuPreviewOpen} 
                 onOpenChange={setCuPreviewOpen} 
                 title="ROV Conductor Guard Inspection Report Preview" 
                 fileName={`ROV_Conductor_Guard_Report_${headerData.sowReportNo}`} 
                 generateReport={generateCUReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={blPreviewOpen} 
                 onOpenChange={setBlPreviewOpen} 
                 title="ROV Boatlanding Survey Report Preview" 
                 fileName={`ROV_Boatlanding_Report_${headerData.sowReportNo}`} 
                 generateReport={generateBLReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rscorPreviewOpen} 
                 onOpenChange={setRscorPreviewOpen} 
                 title="ROV Scour Survey Report Preview" 
                 fileName={`ROV_Scour_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRSCORReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={rscorV2PreviewOpen} 
+                onOpenChange={setRscorV2PreviewOpen} 
+                title="ROV Scour Survey Sketch v2 Report Preview" 
+                fileName={`ROV_Scour_Survey_Sketch_v2_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRSCORV2ReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rrisiPreviewOpen} 
                 onOpenChange={setRrisiPreviewOpen} 
                 title="ROV Riser Survey Report Preview" 
                 fileName={`ROV_Riser_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRRISIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={jtisiPreviewOpen} 
                 onOpenChange={setJtisiPreviewOpen} 
                 title="ROV J-Tube Inspection Report Preview" 
                 fileName={`ROV_JTube_Report_${headerData.sowReportNo}`} 
                 generateReport={generateJTISIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={itisiPreviewOpen} 
                 onOpenChange={setItisiPreviewOpen} 
                 title="ROV I-Tube Inspection Report Preview" 
                 fileName={`ROV_ITube_Report_${headerData.sowReportNo}`} 
                 generateReport={generateITISIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={anodePreviewOpen} 
                 onOpenChange={setAnodePreviewOpen} 
                 title="ROV Anode Survey Report Preview" 
                 fileName={`ROV_Anode_Report_${headerData.sowReportNo}`} 
                 generateReport={generateAnodeReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={anodeRsaniPreviewOpen} 
                 onOpenChange={setAnodeRsaniPreviewOpen} 
                 title="ROV Selected Anode Report (SANI) Preview" 
                 fileName={`ROV_Selected_Anode_Report_${headerData.sowReportNo}`} 
                 generateReport={generateAnodeRsaniReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cpPreviewOpen} 
                 onOpenChange={setCpPreviewOpen} 
                 title="ROV CP Survey Report Preview" 
                 fileName={`ROV_CP_Report_${headerData.sowReportNo}`} 
                 generateReport={generateCPReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingAnodePreviewOpen} 
                 onOpenChange={setDivingAnodePreviewOpen} 
                 title="Diving Selected Anode Report Preview" 
                 fileName={`Diving_Anode_Report_${headerData.sowReportNo}`} 
                 generateReport={generateDivingAnodeReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rgviPreviewOpen} 
                 onOpenChange={setRgviPreviewOpen} 
                 title="ROV General Visual Inspection Report Preview" 
                 fileName={`ROV_RGVI_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRGVIReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcasnPreviewOpen} 
                 onOpenChange={setRcasnPreviewOpen} 
                 title="ROV Caisson Inspection Report Preview" 
                 fileName={`ROV_Caisson_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCASNReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcasnSketchPreviewOpen} 
                 onOpenChange={setRcasnSketchPreviewOpen} 
                 title="ROV Caisson Sketch Report Preview" 
                 fileName={`ROV_Caisson_Sketch_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCASNSketchReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcondPreviewOpen} 
                 onOpenChange={setRcondPreviewOpen} 
                 title="ROV Conductor Inspection Report Preview" 
                 fileName={`ROV_Conductor_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCONDReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rcondSketchPreviewOpen} 
                 onOpenChange={setRcondSketchPreviewOpen} 
                 title="ROV Conductor Sketch Report Preview" 
                 fileName={`ROV_Conductor_Sketch_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCONDSketchReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={seabedPreviewOpen} 
                 onOpenChange={setSeabedPreviewOpen} 
                 title="ROV Seabed Survey Report Preview" 
                 fileName={`ROV_Seabed_Report_${headerData.sowReportNo}`} 
                 generateReport={generateSeabedReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={photographyPreviewOpen} 
                 onOpenChange={setPhotographyPreviewOpen} 
                 title="ROV Photography Report Preview" 
                 fileName={`ROV_Photography_Report_${headerData.sowReportNo}`} 
                 generateReport={generatePhotographyReportBlob} 
             />
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={photographyLogPreviewOpen} 
                 onOpenChange={setPhotographyLogPreviewOpen} 
                 title="ROV Photography Log Report Preview" 
@@ -2033,7 +2501,11 @@ export function WorkspaceDialogs({
                 generateReport={generatePhotographyLogReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={gvinsPreviewOpen} 
                 onOpenChange={setGvinsPreviewOpen} 
                 title="Diving General Visual Inspection Report Preview" 
@@ -2041,7 +2513,11 @@ export function WorkspaceDialogs({
                 generateReport={generateGVINSReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={bsinsPreviewOpen} 
                 onOpenChange={setBsinsPreviewOpen} 
                 title="Diving Bolted Support (BSINS) Report Preview" 
@@ -2049,7 +2525,11 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateBSINSReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cleanPreviewOpen} 
                 onOpenChange={setCleanPreviewOpen} 
                 title="Diving Cleaning Inspection (CLEAN) Report Preview" 
@@ -2057,7 +2537,11 @@ export function WorkspaceDialogs({
                 generateReport={generateCLEANReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cvinsPreviewOpen} 
                 onOpenChange={setCvinsPreviewOpen} 
                 title="Diving Close Visual Inspection (CVINS) Report Preview" 
@@ -2065,7 +2549,11 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateCVINSReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={mpinsPreviewOpen} 
                 onOpenChange={setMpinsPreviewOpen} 
                 title="Diving Magnetic Particle (MPINS) Report Preview" 
@@ -2073,7 +2561,11 @@ export function WorkspaceDialogs({
                 generateReport={generateMPINSReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={utwtkPreviewOpen} 
                 onOpenChange={setUtwtkPreviewOpen} 
                 title="Diving UT Wall Thickness Inspection (UTWTK) Report Preview" 
@@ -2081,7 +2573,11 @@ export function WorkspaceDialogs({
                 generateReport={generateUTWTKReportBlob} 
             />
             
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={szonePreviewOpen} 
                 onOpenChange={setSzonePreviewOpen} 
                 title="Diving Splash Zone Inspection Report Preview" 
@@ -2089,7 +2585,11 @@ export function WorkspaceDialogs({
                 generateReport={handlers.generateSZONEReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cpclbPreviewOpen} 
                 onOpenChange={setCpclbPreviewOpen} 
                 title="Diving CP Calibration Report Preview" 
@@ -2097,7 +2597,11 @@ export function WorkspaceDialogs({
                 generateReport={generateCPCLBReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={utclbPreviewOpen} 
                 onOpenChange={setUtclbPreviewOpen} 
                 title="Diving UT Calibration Report Preview" 
@@ -2105,7 +2609,11 @@ export function WorkspaceDialogs({
                 generateReport={generateUTCLBReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingMgiPreviewOpen} 
                 onOpenChange={setDivingMgiPreviewOpen} 
                 title="Diving Marine Growth Inspection Report Preview" 
@@ -2113,15 +2621,23 @@ export function WorkspaceDialogs({
                 generateReport={generateDivingMGIReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingAcfmcPreviewOpen} 
                 onOpenChange={setDivingAcfmcPreviewOpen} 
-                title="Diving ACFMC Inspection Report Preview" 
-                fileName={`Diving_ACFMC_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                title="ACFM Inspection Report (Diving) Preview" 
+                fileName={`ACFM_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingACFMCReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingPlcoPreviewOpen} 
                 onOpenChange={setDivingPlcoPreviewOpen} 
                 title="Diving Coating Damage Inspection Report Preview" 
@@ -2129,12 +2645,64 @@ export function WorkspaceDialogs({
                 generateReport={generateDivingPLCOReportBlob} 
             />
 
-            <ReportPreviewDialog 
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={rovRwdiPreviewOpen} 
                 onOpenChange={setRovRwdiPreviewOpen} 
                 title="ROV Water Depth Inspection Report Preview" 
                 fileName={`ROV_Water_Depth_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateROVRWDIReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingDcasnUwPreviewOpen} 
+                onOpenChange={setDivingDcasnUwPreviewOpen} 
+                title="Caisson Inspection Underwater Diving Report Preview" 
+                fileName={`Diving_Caisson_UW_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingDCASNUWReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingDcasnTsPreviewOpen} 
+                onOpenChange={setDivingDcasnTsPreviewOpen} 
+                title="Caisson Inspection Topside Diving Report Preview" 
+                fileName={`Diving_Caisson_TS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingDCASNTSReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingDcondUwPreviewOpen} 
+                onOpenChange={setDivingDcondUwPreviewOpen} 
+                title="Conductor Inspection Underwater Diving Report Preview" 
+                fileName={`Diving_Conductor_UW_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingDCONDUWReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingDcondTsPreviewOpen} 
+                onOpenChange={setDivingDcondTsPreviewOpen} 
+                title="Conductor Inspection Topside Diving Report Preview" 
+                fileName={`Diving_Conductor_TS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingDCONDTSReportBlob} 
             />
 
 
@@ -2276,12 +2844,18 @@ export function WorkspaceDialogs({
                 }}
             />
             <ReportWizardDialog
-                open={states.isReportWizardOpen}
-                onOpenChange={setters.setIsReportWizardOpen}
+                open={isReportWizardOpen}
+                onOpenChange={setIsReportWizardOpen}
+                currentStep={wizardStep}
+                setCurrentStep={setWizardStep}
+                selectedTemplate={wizardSelectedTemplate}
+                setSelectedTemplate={setWizardSelectedTemplate}
                 inspMethod={inspMethod}
                 currentRecords={currentRecords}
                 headerData={headerData}
-                allInspectionTypes={states.allInspectionTypes}
+                allInspectionTypes={allInspectionTypes}
+                config={reportConfig}
+                setConfig={setReportConfig}
                 handlers={{
                     generateRGVIReport: () => setters.setRgviPreviewOpen(true),
                     generateGVINSReport: () => setters.setGvinsPreviewOpen(true),
@@ -2293,6 +2867,8 @@ export function WorkspaceDialogs({
                     generateSZONEReport: () => setSzonePreviewOpen(true),
                     generateCPReport: () => setters.setCpPreviewOpen(true),
                     generateRSWNIReport: () => setters.setRswniPreviewOpen(true),
+                    generateROVRICMIReport: () => setters.setRovRicmiPreviewOpen(true),
+                    generateDivingANMAINReport: () => setters.setDivingAnmainPreviewOpen(true),
                     generateCPCLBReport: () => setters.setCpclbPreviewOpen(true),
                     generateUTCLBReport: () => setters.setUtclbPreviewOpen(true),
                     generateAnodeReport: () => setters.setAnodePreviewOpen(true),
@@ -2306,8 +2882,11 @@ export function WorkspaceDialogs({
                     generateFMDReport: () => setters.setFmdPreviewOpen(true),
                     generateUTWTReport: () => setters.setUtwtPreviewOpen(true),
                     generateMGIReport: () => setters.setMPreviewOpen(true),
+                    generateRMGIReport: () => setters.setRmgiPreviewOpen(true),
+                    generateDivingMGIReport: () => setters.setDivingMgiPreviewOpen(true),
                     generateSZCIReport: () => setters.setSzciPreviewOpen(true),
                     generateRSCORReport: () => setters.setRscorPreviewOpen(true),
+                    generateRSCORV2Report: () => setters.setRscorV2PreviewOpen(true),
                     generateRRISIReport: () => setters.setRrisiPreviewOpen(true),
                     generateJTISIReport: () => setters.setJtisiPreviewOpen(true),
                     generateITISIReport: () => setters.setItisiPreviewOpen(true),
@@ -2319,6 +2898,10 @@ export function WorkspaceDialogs({
                     generateRGReport: () => setters.setRgPreviewOpen(true),
                     generateSGReport: () => setters.setSgPreviewOpen(true),
                     generateCUReport: () => setters.setCuPreviewOpen(true),
+                    generateDivingDCASNUWReport: () => setters.setDivingDcasnUwPreviewOpen(true),
+                    generateDivingDCASNTSReport: () => setters.setDivingDcasnTsPreviewOpen(true),
+                    generateDivingDCONDUWReport: () => setters.setDivingDcondUwPreviewOpen(true),
+                    generateDivingDCONDTSReport: () => setters.setDivingDcondTsPreviewOpen(true),
                     generateSeabedReport: (templateId: string) => setters.setSeabedPreviewOpen(true),
                     generateFullInspectionReport: () => toast.info("Generating full inspection report..."),
                     generateInspectionReportByType: (id: any) => {
@@ -2339,6 +2922,8 @@ export function WorkspaceDialogs({
                             case 'CP': setters.setCpPreviewOpen(true); break;
                             case 'RSWNI':
                             case 'SWNI': setters.setRswniPreviewOpen(true); break;
+                            case 'RICMI': setters.setRovRicmiPreviewOpen(true); break;
+                            case 'ANMAIN': setters.setDivingAnmainPreviewOpen(true); break;
                             case 'CPCLB': setters.setCpclbPreviewOpen(true); break;
                             case 'UTCLB': setters.setUtclbPreviewOpen(true); break;
                             case 'ANODE': setters.setAnodePreviewOpen(true); break;
@@ -2352,6 +2937,7 @@ export function WorkspaceDialogs({
                             case 'FMD': setters.setFmdPreviewOpen(true); break;
                             case 'UTWT': setters.setUtwtPreviewOpen(true); break;
                             case 'MGI': setters.setMPreviewOpen(true); break;
+                            case 'RMGI': setters.setRmgiPreviewOpen(true); break;
                             case 'SZCI': setters.setSzciPreviewOpen(true); break;
                             case 'RSCOR': setters.setRscorPreviewOpen(true); break;
                             case 'RRISI': setters.setRrisiPreviewOpen(true); break;

@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 function formatTimecode(val: any): string {
     if (!val && val !== 0) return "";
@@ -189,7 +189,9 @@ export const generateDiverLogReport = async (
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
         doc.text("No diver log records found.", pageWidth / 2, 80, { align: "center" });
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${config.reportNoPrefix}_DiverLog.pdf`);
         return;
     }
@@ -339,6 +341,8 @@ export const generateDiverLogReport = async (
         doc.text(printedDateStr, pageWidth - margin, footerLineY + 4, { align: "right" });
     }
 
+    applyWatermarkAndSignaturesGlobal(doc, config);
     if (config.returnBlob) return doc.output("blob");
+    applyWatermarkAndSignaturesGlobal(doc, config);
     doc.save(`${config.reportNoPrefix}_DiverLog.pdf`);
 };

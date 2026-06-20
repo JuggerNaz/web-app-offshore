@@ -76,12 +76,27 @@ export default function UserManagementPage() {
   const [editingMember, setEditingMember] = useState<any | null>(null);
   const [editSystemRole, setEditSystemRole] = useState<string>("User");
   const [editModules, setEditModules] = useState<string[]>([]);
+  const [editRestrictionType, setEditRestrictionType] = useState<string>("always");
+  const [editStartTime, setEditStartTime] = useState<string>("08:00:00");
+  const [editEndTime, setEditEndTime] = useState<string>("17:00:00");
+  const [editAllowedDays, setEditAllowedDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [editTimezone, setEditTimezone] = useState<string>("Asia/Kuala_Lumpur");
+  const [editDeviceRestrictionType, setEditDeviceRestrictionType] = useState<string>("none");
   const [isSavingAccess, setIsSavingAccess] = useState(false);
 
   const handleOpenAccessDialog = (member: any) => {
     setEditingMember(member);
     setEditSystemRole(member.systemRole || "User");
     setEditModules(member.modules || []);
+    
+    // Load existing profile scheduling parameters
+    const userProfile = member.user || {};
+    setEditRestrictionType(userProfile.login_restriction_type || "always");
+    setEditStartTime(userProfile.allowed_start_time || "08:00:00");
+    setEditEndTime(userProfile.allowed_end_time || "17:00:00");
+    setEditAllowedDays(userProfile.allowed_days || [1, 2, 3, 4, 5]);
+    setEditTimezone(userProfile.timezone || "Asia/Kuala_Lumpur");
+    setEditDeviceRestrictionType(userProfile.device_restriction_type || "none");
   };
 
   const handleModuleToggle = (moduleName: string) => {
@@ -89,6 +104,14 @@ export default function UserManagementPage() {
       prev.includes(moduleName)
         ? prev.filter((m) => m !== moduleName)
         : [...prev, moduleName]
+    );
+  };
+
+  const handleDayToggle = (dayNumber: number) => {
+    setEditAllowedDays((prev) =>
+      prev.includes(dayNumber)
+        ? prev.filter((d) => d !== dayNumber)
+        : [...prev, dayNumber].sort()
     );
   };
 
@@ -107,6 +130,12 @@ export default function UserManagementPage() {
         body: JSON.stringify({
           systemRole: editSystemRole,
           modules: editModules,
+          login_restriction_type: editRestrictionType,
+          allowed_start_time: editStartTime,
+          allowed_end_time: editEndTime,
+          allowed_days: editAllowedDays,
+          timezone: editTimezone,
+          device_restriction_type: editDeviceRestrictionType
         }),
       });
 
@@ -517,14 +546,14 @@ export default function UserManagementPage() {
 
       {/* Access Configuration Dialog */}
       <Dialog open={!!editingMember} onOpenChange={(open) => !open && setEditingMember(null)}>
-        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl">
+        <DialogContent className="sm:max-w-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl overflow-y-auto max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white">
               <Shield className="h-5 w-5 text-amber-500" />
               Access Configuration
             </DialogTitle>
             <DialogDescription className="text-slate-500 dark:text-slate-400">
-              Change role and module permissions for {editingMember?.user?.email || editingMember?.user?.email || "this user"}
+              Change role, module permissions, and scheduling for {editingMember?.user?.email || "this user"}
             </DialogDescription>
           </DialogHeader>
 
@@ -547,7 +576,113 @@ export default function UserManagementPage() {
               </p>
             </div>
 
-            <div className="space-y-2">
+            {/* Device Restriction Section */}
+            <div className="border-t border-slate-100 dark:border-slate-850 pt-5 space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Device Restriction</label>
+              <Select value={editDeviceRestrictionType} onValueChange={setEditDeviceRestrictionType}>
+                <SelectTrigger className="h-10 rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
+                  <SelectValue placeholder="Select device access rule" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-950 border-slate-850 text-white">
+                  <SelectItem value="none">Any Device (No Restrictions)</SelectItem>
+                  <SelectItem value="enforced">Registered Devices Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Login Scheduling Section */}
+            <div className="border-t border-slate-100 dark:border-slate-850 pt-5 space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Access Schedule</label>
+                <Select value={editRestrictionType} onValueChange={setEditRestrictionType}>
+                  <SelectTrigger className="h-10 rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
+                    <SelectValue placeholder="Select schedule type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-950 border-slate-850 text-white">
+                    <SelectItem value="always">Always Allowed (24/7)</SelectItem>
+                    <SelectItem value="scheduled">Scheduled Access</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {editRestrictionType === "scheduled" && (
+                <div className="space-y-4 p-4 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-850 animate-in fade-in duration-200">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Start Time</label>
+                      <Input
+                        type="time"
+                        step="1"
+                        value={editStartTime}
+                        onChange={(e) => setEditStartTime(e.target.value)}
+                        className="h-9 rounded-lg bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">End Time</label>
+                      <Input
+                        type="time"
+                        step="1"
+                        value={editEndTime}
+                        onChange={(e) => setEditEndTime(e.target.value)}
+                        className="h-9 rounded-lg bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Allowed Days</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { num: 1, label: "M" },
+                        { num: 2, label: "T" },
+                        { num: 3, label: "W" },
+                        { num: 4, label: "T" },
+                        { num: 5, label: "F" },
+                        { num: 6, label: "S" },
+                        { num: 7, label: "S" }
+                      ].map((day) => {
+                        const active = editAllowedDays.includes(day.num);
+                        return (
+                          <button
+                            key={day.num}
+                            type="button"
+                            onClick={() => handleDayToggle(day.num)}
+                            className={`h-9 w-9 rounded-lg font-bold text-xs transition-all active:scale-90 ${
+                              active
+                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                            }`}
+                          >
+                            {day.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Timezone</label>
+                    <Select value={editTimezone} onValueChange={setEditTimezone}>
+                      <SelectTrigger className="h-9 rounded-lg bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-950 border-slate-850 text-white">
+                        <SelectItem value="Asia/Kuala_Lumpur">Kuala Lumpur / Singapore (GMT+8)</SelectItem>
+                        <SelectItem value="UTC">UTC / GMT</SelectItem>
+                        <SelectItem value="Asia/Jakarta">Jakarta (GMT+7)</SelectItem>
+                        <SelectItem value="Asia/Dubai">Dubai (GMT+4)</SelectItem>
+                        <SelectItem value="Europe/London">London (GMT+0/+1)</SelectItem>
+                        <SelectItem value="America/New_York">New York (EST/EDT)</SelectItem>
+                        <SelectItem value="Australia/Sydney">Sydney (AEST/AEDT)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 dark:border-slate-850 pt-5 space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Module Access</label>
               <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-850">
                 {AVAILABLE_MODULES.map((mod) => (

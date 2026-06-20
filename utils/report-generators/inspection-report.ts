@@ -6,7 +6,7 @@ import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 // Helper to load image for PDF
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -302,7 +302,9 @@ export const generateInspectionReport = async (
             }
         }
 
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config?.returnBlob) return doc.output("blob");
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${isAnomaly ? 'Anomaly' : 'Inspection'}_Report_${inspectionId}.pdf`);
 
     } catch (e) {

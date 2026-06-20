@@ -36,10 +36,10 @@ export function FacesDialog() {
 
   const { data } = useSWR(`/api/${pageType}/${pageId}`, fetcher);
 
-  const legs = data?.data ? Object.keys(data.data)
+  const legs = data?.data ? Array.from(new Map(Object.keys(data.data)
     .filter((x) => x.startsWith("leg_t"))
-    .map((x) => ({ label: x.toUpperCase().replace('_', ' '), value: data.data[x] }))
-    .filter((x) => x.value) : [];
+    .map((x) => [data.data[x], { label: data.data[x] || x.toUpperCase().replace('_', ' '), value: data.data[x] }])
+  ).values()).filter((x: any) => x.value) : [];
 
   const onSubmit = async (values: z.infer<typeof FacesSchema>) => {
     const facesObject = {
@@ -93,21 +93,15 @@ export function FacesDialog() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="p-8 space-y-6">
             <div className="grid grid-cols-2 gap-6">
-              <FormFieldWrap
-                label="Face Name"
-                name="face"
-                form={form}
-                placeholder="e.g. FACE A"
-                ftype="normal"
-              />
-              <FormFieldWrap
-                label="Work Unit"
-                name="workunit"
-                form={form}
-                placeholder="m"
-                ftype="normal"
-                maxLength="3"
-              />
+              <div className="col-span-2">
+                <FormFieldWrap
+                  label="Face Name"
+                  name="face"
+                  form={form}
+                  placeholder="e.g. FACE A"
+                  ftype="normal"
+                />
+              </div>
               <div className="col-span-2">
                 <FormFieldWrap
                   label="Face Description"
@@ -118,14 +112,14 @@ export function FacesDialog() {
                 />
               </div>
               <FormFieldWrap
-                label="From Point"
+                label="Start Leg"
                 name="face_from"
                 options={legs}
                 form={form}
                 ftype="select"
               />
               <FormFieldWrap
-                label="To Point"
+                label="End Leg"
                 name="face_to"
                 options={legs}
                 form={form}

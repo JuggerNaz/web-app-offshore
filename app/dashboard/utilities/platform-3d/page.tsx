@@ -17,8 +17,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Structural3DViewer } from "./_components/Structural3DViewer";
+import dynamic from "next/dynamic";
+
+const Structural3DViewer = dynamic(
+    () => import("./_components/Structural3DViewer").then((mod) => mod.Structural3DViewer),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-3xl min-h-[450px]">
+                <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-2" />
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Loading 3D Engine...</p>
+            </div>
+        )
+    }
+);
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
+import { useAtom } from "jotai";
+import { urlId, urlType } from "@/utils/client-state";
 
 interface Platform {
     plat_id: number;
@@ -47,6 +62,19 @@ export default function Platform3DPage() {
     const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
     const [isSpecOpen, setIsSpecOpen] = useState(false);
 
+    const [, setGlobalUrlId] = useAtom(urlId);
+    const [, setGlobalUrlType] = useAtom(urlType);
+
+    React.useEffect(() => {
+        if (selectedPlatform) {
+            setGlobalUrlId(selectedPlatform.plat_id);
+            setGlobalUrlType(selectedPlatform.ptype === "PIPELINE" ? "pipeline" : "platform");
+        } else {
+            setGlobalUrlId(0);
+            setGlobalUrlType("");
+        }
+    }, [selectedPlatform, setGlobalUrlId, setGlobalUrlType]);
+
     // 1. Fetch Platforms
     const { data: platformsData, isLoading: isPlatformsLoading } = useSWR("/api/platform", fetcher);
     const platforms: Platform[] = useMemo(() => platformsData?.data || [], [platformsData]);
@@ -58,13 +86,23 @@ export default function Platform3DPage() {
     );
     const components: Component[] = useMemo(() => {
         const all = componentsData?.data || [];
-        return all.filter((c: any) => !c.is_deleted).map((c: any) => ({
-            ...c,
-            created_at: c.created_at || null,
-            updated_at: c.updated_at || null,
-            created_by: c.created_by || null,
-            modified_by: c.modified_by || null,
-        }));
+        return all
+            .filter((c: any) => {
+                if (c.is_deleted) return false;
+                // Exclude node weld components (code 'WN') that have a dash '-' in their q_id
+                const isNodeWeld = c.code?.toUpperCase() === "WN";
+                if (isNodeWeld && c.q_id && c.q_id.includes("-")) {
+                    return false;
+                }
+                return true;
+            })
+            .map((c: any) => ({
+                ...c,
+                created_at: c.created_at || null,
+                updated_at: c.updated_at || null,
+                created_by: c.created_by || null,
+                modified_by: c.modified_by || null,
+            }));
     }, [componentsData]);
 
     // 3. Fetch Platform Details
@@ -73,6 +111,20 @@ export default function Platform3DPage() {
         fetcher
     );
     const platformDetails = platformDetailData?.data;
+
+    // 4. Fetch Elevations
+    const { data: elevationsData } = useSWR(
+        selectedPlatform ? `/api/platform/elevation/${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const elevations = elevationsData?.data || [];
+
+    // 5. Fetch Structural Faces
+    const { data: facesData } = useSWR(
+        selectedPlatform ? `/api/platform/faces/${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const faces = facesData?.data || [];
 
     const filteredPlatforms = useMemo(() => {
         return platforms.filter(p => 
@@ -135,6 +187,8 @@ export default function Platform3DPage() {
                     <Structural3DViewer 
                         components={components} 
                         platformDetails={platformDetails}
+                        elevations={elevations}
+                        faces={faces}
                         onSelectComponent={handleSelectComponent}
                     />
                 </div>

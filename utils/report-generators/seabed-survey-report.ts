@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 export const generateSeabedSurveyReport = async (
     jobPack: any,
@@ -176,8 +176,10 @@ export const generateSeabedSurveyReport = async (
         doc.setTextColor(0, 0, 0);
         const emptyMsg = itemTypeFilter ? `${itemTypeFilter} records` : "records";
         doc.text(`No ${emptyMsg} found for this seabed survey.`, pageWidth / 2, 80, { align: "center" });
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         const fileSuffix = itemTypeFilter ? itemTypeFilter.replace(/\s+/g,'_') : "General";
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${config.reportNoPrefix}_Seabed_${fileSuffix}.pdf`);
         return;
     }
@@ -452,7 +454,9 @@ export const generateSeabedSurveyReport = async (
         doc.text(printedDateStr, pageWidth - margin, footerLineY + 4, { align: "right" });
     }
 
+    applyWatermarkAndSignaturesGlobal(doc, config);
     if (config.returnBlob) return doc.output("blob");
     const fileSuffix = itemTypeFilter ? itemTypeFilter.replace(/\s+/g,'_') : "General";
+    applyWatermarkAndSignaturesGlobal(doc, config);
     doc.save(`${config.reportNoPrefix}_Seabed_${fileSuffix}.pdf`);
 };
