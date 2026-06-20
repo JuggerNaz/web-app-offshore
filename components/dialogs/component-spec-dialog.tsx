@@ -50,6 +50,7 @@ type Component = {
   modified_by: string | null;
   created_by_name?: string | null;
   modified_by_name?: string | null;
+  is_deleted?: boolean | null;
 };
 
 // Helper to build ID No in the format:
@@ -207,6 +208,19 @@ export function ComponentSpecDialog({
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [assocSearch, setAssocSearch] = useState("");
   const [isSavingAssoc, setIsSavingAssoc] = useState(false);
+
+  // Helper to deduplicate library items by lib_id (used to avoid duplicate keys/values in selects)
+  const getUniqueLibItems = (data: any[], libCode: string) => {
+    if (!data) return [];
+    const filtered = data.filter((x: any) => x.lib_code === libCode);
+    const seen = new Set();
+    return filtered.filter((x: any) => {
+      const key = String(x.lib_id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
 
   // Persisted associated_comp_id for view mode (mirrors DB value)
   const [viewAssocId, setViewAssocId] = useState<number | null>(
@@ -1451,6 +1465,17 @@ export function ComponentSpecDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-8 pt-6">
+          {!isCreateMode && (component?.is_deleted || component?.metadata?.del === 1 || component?.metadata?.del === true || component?.metadata?.del === '1' || component?.metadata?.del === 'true') && (
+            <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+              <AlertCircle className="h-5 w-5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <h4 className="font-bold text-sm tracking-tight">Archived / Deleted Component</h4>
+                <p className="text-xs opacity-90 mt-0.5">
+                  This component has been archived or deleted. The specifications shown below are for historical reference only.
+                </p>
+              </div>
+            </div>
+          )}
           <Tabs defaultValue="specifications" className="w-full">
             <TabsList
               className={`grid w-full mb-8 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl ${isCreateMode ? "grid-cols-1" : "grid-cols-4 h-12"}`}
@@ -1831,7 +1856,7 @@ export function ComponentSpecDialog({
                             : (component?.metadata?.clk_pos ?? "")
                         }
                         onValueChange={(val) => handleInputChange("clk_pos", val)}
-                        disabled={!isCreateMode || !positionLib}
+                        disabled={!(isCreateMode || isEditMode) || !positionLib}
                       >
                         <SelectTrigger
                           id="clockPos"
@@ -1843,10 +1868,7 @@ export function ComponentSpecDialog({
                           <SelectValue placeholder="Select position" />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          {Array.from(new Map(positionLib?.data
-                            ?.filter((x: any) => x.lib_code === "POSITION")
-                            .map((x: any) => [x.lib_id, x]) || []).values())
-                            .map((x: any) => (
+                          {getUniqueLibItems(positionLib?.data, "POSITION").map((x: any) => (
                               <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                 {x.lib_id}
                               </SelectItem>
@@ -1981,10 +2003,7 @@ export function ComponentSpecDialog({
                           <SelectValue placeholder="Select group" />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          {Array.from(new Map(compGroupLib?.data
-                            ?.filter((x: any) => x.lib_code === "COMPGRP")
-                            .map((x: any) => [x.lib_id, x]) || []).values())
-                            .map((x: any) => (
+                          {getUniqueLibItems(compGroupLib?.data, "COMPGRP").map((x: any) => (
                               <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                 {x.lib_desc}
                               </SelectItem>
@@ -2161,7 +2180,7 @@ export function ComponentSpecDialog({
                                 : (component?.metadata?.clk_pos ?? "")
                             }
                             onValueChange={(val) => handleInputChange("clk_pos", val)}
-                            disabled={!isCreateMode || !positionLib}
+                            disabled={!(isCreateMode || isEditMode) || !positionLib}
                           >
                             <SelectTrigger
                               id="clockPos"
@@ -2170,10 +2189,7 @@ export function ComponentSpecDialog({
                               <SelectValue placeholder="Select position" />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
-                              {Array.from(new Map(positionLib?.data
-                                ?.filter((x: any) => x.lib_code === "POSITION")
-                                .map((x: any) => [x.lib_id, x]) || []).values())
-                                .map((x: any) => (
+                              {getUniqueLibItems(positionLib?.data, "POSITION").map((x: any) => (
                                   <SelectItem key={x.lib_id} value={String(x.lib_id)}>
                                     {x.lib_id}
                                   </SelectItem>

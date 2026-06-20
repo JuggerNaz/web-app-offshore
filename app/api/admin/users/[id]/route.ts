@@ -14,7 +14,7 @@ export const PATCH = withRole(
     try {
       const { id } = await params;
       const json = await request.json();
-      const { role, is_active, systemRole, modules } = json;
+      const { role, is_active, systemRole, modules, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone } = json;
 
       const supabase = createClient() as any;
 
@@ -37,6 +37,27 @@ export const PATCH = withRole(
       const updateData: any = {};
       if (role !== undefined) updateData.role = role;
       if (is_active !== undefined) updateData.is_active = is_active;
+
+      // Handle profile updates (scheduling fields)
+      const profileUpdate: any = {};
+      if (login_restriction_type !== undefined) profileUpdate.login_restriction_type = login_restriction_type;
+      if (allowed_start_time !== undefined) profileUpdate.allowed_start_time = allowed_start_time;
+      if (allowed_end_time !== undefined) profileUpdate.allowed_end_time = allowed_end_time;
+      if (allowed_days !== undefined) profileUpdate.allowed_days = allowed_days;
+      if (timezone !== undefined) profileUpdate.timezone = timezone;
+
+      if (Object.keys(profileUpdate).length > 0) {
+        const targetUserId = targetMembership.user_id;
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update(profileUpdate)
+          .eq("id", targetUserId);
+
+        if (profileError) {
+          console.error("[PATCH /api/admin/users/[id]] Profile update error:", profileError);
+          return apiError("Failed to update user profile schedule", 500);
+        }
+      }
 
       // Handle user_roles update
       if (systemRole !== undefined || modules !== undefined) {

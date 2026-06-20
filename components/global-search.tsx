@@ -118,31 +118,86 @@ export function GlobalSearch() {
               </div>
             </CommandPrimitive.Empty>
             
-            {results.length > 0 && (
-              <CommandPrimitive.Group heading="Global Results" className="px-2 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 opacity-60">
-                {results.map((item) => (
-                  <CommandPrimitive.Item
-                    key={`${item.type}-${item.id}`}
-                    value={`${item.title} ${item.subtitle}`}
-                    onSelect={() => onSelect(item.url)}
-                    className="flex cursor-pointer select-none items-center rounded-2xl px-4 py-3 text-sm outline-none aria-selected:bg-blue-50 dark:aria-selected:bg-blue-900/20 aria-selected:text-blue-700 dark:aria-selected:text-blue-400 transition-all duration-200 group"
-                  >
-                    {getIcon(item.type)}
-                    <div className="flex flex-col flex-1 overflow-hidden">
-                      <span className="font-bold tracking-tight text-slate-900 dark:text-slate-100 group-aria-selected:text-blue-700 dark:group-aria-selected:text-blue-400 truncate uppercase">
-                        {item.title}
+            {(() => {
+              if (results.length === 0) return null;
+
+              const assets = results.filter(r => r.type === "platform" || r.type === "pipeline");
+              const jobpacks = results.filter(r => r.type === "jobpack");
+              const components = results.filter(r => r.type === "component");
+              const anomalies = results.filter(r => r.type === "anomaly");
+              const inspections = results.filter(r => r.type === "inspection");
+
+              const inspectionsByYear: Record<string, SearchResult[]> = {};
+              inspections.forEach(item => {
+                const year = item.year || "Unknown Year";
+                if (!inspectionsByYear[year]) {
+                  inspectionsByYear[year] = [];
+                }
+                inspectionsByYear[year].push(item);
+              });
+
+              const sortedYears = Object.keys(inspectionsByYear).sort((a, b) => {
+                if (a === "Unknown Year") return 1;
+                if (b === "Unknown Year") return -1;
+                return b.localeCompare(a);
+              });
+
+              const renderSearchItem = (item: SearchResult) => (
+                <CommandPrimitive.Item
+                  key={`${item.type}-${item.id}`}
+                  value={`${item.title} ${item.subtitle}`}
+                  onSelect={() => onSelect(item.url)}
+                  className="flex cursor-pointer select-none items-center rounded-2xl px-4 py-3 text-sm outline-none aria-selected:bg-blue-50 dark:aria-selected:bg-blue-900/20 aria-selected:text-blue-700 dark:aria-selected:text-blue-400 transition-all duration-200 group"
+                >
+                  {getIcon(item.type)}
+                  <div className="flex flex-col flex-1 overflow-hidden">
+                    <span className="font-bold tracking-tight text-slate-900 dark:text-slate-100 group-aria-selected:text-blue-700 dark:group-aria-selected:text-blue-400 truncate uppercase">
+                      {item.title}
+                    </span>
+                    {item.subtitle && (
+                      <span className="text-[10px] text-slate-400 font-medium truncate mt-0.5 opacity-80">
+                        {item.subtitle}
                       </span>
-                      {item.subtitle && (
-                        <span className="text-[10px] text-slate-400 font-medium truncate mt-0.5 opacity-80">
-                          {item.subtitle}
-                        </span>
-                      )}
-                    </div>
-                    <ArrowRight className="ml-auto h-4 w-4 opacity-0 group-aria-selected:opacity-100 transition-opacity translate-x-2 group-aria-selected:translate-x-0" />
-                  </CommandPrimitive.Item>
-                ))}
-              </CommandPrimitive.Group>
-            )}
+                    )}
+                  </div>
+                  <ArrowRight className="ml-auto h-4 w-4 opacity-0 group-aria-selected:opacity-100 transition-opacity translate-x-2 group-aria-selected:translate-x-0" />
+                </CommandPrimitive.Item>
+              );
+
+              return (
+                <>
+                  {assets.length > 0 && (
+                    <CommandPrimitive.Group heading="Assets (Platforms & Pipelines)" className="px-2 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 opacity-60">
+                      {assets.map(renderSearchItem)}
+                    </CommandPrimitive.Group>
+                  )}
+
+                  {jobpacks.length > 0 && (
+                    <CommandPrimitive.Group heading="Jobpacks" className="px-2 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 opacity-60">
+                      {jobpacks.map(renderSearchItem)}
+                    </CommandPrimitive.Group>
+                  )}
+
+                  {components.length > 0 && (
+                    <CommandPrimitive.Group heading="Components" className="px-2 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 opacity-60">
+                      {components.map(renderSearchItem)}
+                    </CommandPrimitive.Group>
+                  )}
+
+                  {anomalies.length > 0 && (
+                    <CommandPrimitive.Group heading="Anomalies" className="px-2 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 opacity-60">
+                      {anomalies.map(renderSearchItem)}
+                    </CommandPrimitive.Group>
+                  )}
+
+                  {sortedYears.map(year => (
+                    <CommandPrimitive.Group key={year} heading={`Inspections (Year ${year})`} className="px-2 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 opacity-60">
+                      {inspectionsByYear[year].map(renderSearchItem)}
+                    </CommandPrimitive.Group>
+                  ))}
+                </>
+              );
+            })()}
             
             {query.length < 2 && (
               <div className="p-4 space-y-4">

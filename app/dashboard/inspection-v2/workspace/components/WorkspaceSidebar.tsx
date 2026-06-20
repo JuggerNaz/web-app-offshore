@@ -97,7 +97,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       {/* 1. Diver / ROV Log */}
       <Card className="border-2 border-slate-300 dark:border-slate-500 shadow-xl rounded-lg bg-white dark:bg-slate-950 overflow-hidden flex flex-col min-w-0">
         <div className="bg-slate-800 dark:bg-slate-950 text-white px-3 py-2 text-sm font-bold uppercase tracking-widest flex justify-between items-center rounded-t-md border-b dark:border-slate-800">
-          <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV DIVE LOG"}</span>
+          <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV LOG"}</span>
           <div className="flex items-center gap-2 text-slate-300">
             <button
               onClick={() => {

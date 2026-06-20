@@ -85,6 +85,23 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
         return 0;
     };
 
+    const nonSowList = React.useMemo(() => {
+        const sowCompsWithoutValidTask = componentsSow.filter((c: any) => {
+            let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
+            const hasValidTask = tasksToFilter.some((tCode: string) => {
+                const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                if (!it) return true;
+                const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                if (inspMethod === "DIVING" && isDiving) return true;
+                if (inspMethod === "ROV" && isRov) return true;
+                return false;
+            });
+            return !hasValidTask;
+        });
+        return [...componentsNonSow, ...sowCompsWithoutValidTask];
+    }, [componentsSow, componentsNonSow, allInspectionTypes, inspMethod]);
+
     return (
         <div className="flex-1 flex flex-col gap-3 overflow-hidden">
         <Card className="flex flex-col border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden h-[300px]">
@@ -239,7 +256,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                 <div>
                                     <div className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200 dark:border-slate-800">Non-SOW</div>
                                     <div className="space-y-1">
-                                        {componentsNonSow.filter((c: any) => {
+                                        {nonSowList.filter((c: any) => {
                                             const term = compSearchTerm.toLowerCase().trim();
                                             if (!term) return true;
                                             const qid = (c.name || '').toLowerCase();

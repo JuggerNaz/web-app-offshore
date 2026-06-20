@@ -105,6 +105,7 @@ const COMPONENT_FULL_NAMES: Record<string, string> = {
   "INSP_DIVING": "Diving Primary Inspections",
   "ANOMALY": "Anomalies & Defects",
   "INSP_ATTACHMENT": "Inspection Attachments",
+  "COMP_NOT_INSP": "Incomplete Inspections Details",
 
   // ROV Inspection Sub-Types
   "INSP_ROV_RGVI": "ROV – General Visual",
@@ -272,6 +273,8 @@ export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "P
       return { oracle: "U_LIB_COMBO", pg: "u_lib_combo" };
     case "U_MGI_PROFILE":
       return { oracle: "U_MGI_PROFILE", pg: "mgi_profiles" };
+    case "COMP_NOT_INSP":
+      return { oracle: "COMP_NOT_INSP", pg: "insp_records" };
     default:
       if (upperKey.startsWith("INSP_ROV_")) {
         return { oracle: "PLATGI", pg: "insp_records" };

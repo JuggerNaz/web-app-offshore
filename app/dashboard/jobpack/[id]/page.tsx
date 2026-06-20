@@ -629,6 +629,80 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                   SOW
                 </Button>
               )}
+              {!isNew && selectedStructures.length > 0 && (
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    if (!activeStructKey) {
+                      toast.error("Please select a structure first");
+                      return;
+                    }
+                    const activeStruct = selectedStructures.find(
+                      (s) => `${s.type}-${s.id}` === activeStructKey
+                    );
+                    if (!activeStruct) return;
+
+                    try {
+                      const res = await fetch(`/api/sow?jobpack_id=${id}&structure_id=${activeStruct.id}`);
+                      const json = await res.json();
+                      const sows = json.data || [];
+
+                      if (sows.length === 0) {
+                        window.location.href = `/dashboard/inspection-v2?jobpack=${id}&structure=${activeStruct.id}&mode=ROV`;
+                        return;
+                      }
+
+                      const selectedSow = sows[0];
+                      const sowId = selectedSow.id;
+                      let sowReportNo = "";
+                      if (selectedSow.report_numbers && selectedSow.report_numbers.length > 0) {
+                        sowReportNo = selectedSow.report_numbers[0].number || selectedSow.report_numbers[0];
+                      }
+
+                      const detailRes = await fetch(`/api/sow?sow_id=${sowId}`);
+                      const detailJson = await detailRes.json();
+                      const sowDetails = detailJson.data || {};
+                      const items = sowDetails.items || [];
+
+                      let hasRov = false;
+                      if (selectedSow.report_numbers && selectedSow.report_numbers.some((rn: any) => (rn.job_type || "").toUpperCase() === 'ROV')) {
+                        hasRov = true;
+                      }
+
+                      if (!hasRov && items.length > 0) {
+                        const rovCodes = ['RGVI', 'CP', 'RSWNI', 'SWNI', 'RICMI', 'ANODE', 'FMD', 'RFMD', 'RUTWT', 'RSEAB', 'SEABED', 'RWDI', 'RMGI', 'RSZCI', 'RSCOR', 'SCOUR', 'RRISI', 'JTISI', 'ITISI', 'RCASN', 'RCOND', 'BL', 'RG', 'SG', 'CU'];
+                        hasRov = items.some((item: any) => {
+                          const code = (item.inspection_code || item.inspection_type_code || item.inspection_type?.code || "").toUpperCase();
+                          return code.startsWith('R') || rovCodes.includes(code);
+                        });
+                      }
+
+                      let mode = "ROV";
+                      if (!hasRov) {
+                        const diverCodes = ['DGVI', 'GVINS', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'UTWTK', 'SZONE', 'CPCLB', 'UTCLB', 'DMGI', 'ANMAIN', 'ACFMC', 'PLCO'];
+                        const hasDiver = (selectedSow.report_numbers && selectedSow.report_numbers.some((rn: any) => (rn.job_type || "").toUpperCase() === 'DIVING')) ||
+                          items.some((item: any) => {
+                            const code = (item.inspection_code || item.inspection_type_code || item.inspection_type?.code || "").toUpperCase();
+                            return code.startsWith('D') || diverCodes.includes(code);
+                          });
+                        if (hasDiver) {
+                          mode = "DIVING";
+                        }
+                      }
+
+                      const url = `/dashboard/inspection-v2?jobpack=${id}&structure=${activeStruct.id}&sow=${sowId}${sowReportNo ? `&sowReport=${sowReportNo}` : ""}&mode=${mode}`;
+                      window.location.href = url;
+                    } catch (err) {
+                      console.error("Failed to route to Inspection Workspace:", err);
+                      window.location.href = `/dashboard/inspection-v2?jobpack=${id}&structure=${activeStruct.id}`;
+                    }
+                  }}
+                  className="rounded-xl h-12 px-6 font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xl shadow-rose-500/20 transition-all gap-2"
+                >
+                  <Activity className="h-4 w-4" />
+                  Inspection
+                </Button>
+              )}
               <Button
                 type="button"
                 onClick={() => form.handleSubmit((v) => onSubmit(v))()}

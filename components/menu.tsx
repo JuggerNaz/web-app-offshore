@@ -23,6 +23,7 @@ import {
   Paperclip,
   Box,
   Building2,
+  Laptop,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -227,6 +228,15 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
                 />
               </RoleGate>
             )}
+            <RoleGate allowedRoles={["super_admin"]} hide>
+              <MenuLink
+                href="/dashboard/utilities/backup"
+                isCollapsed={isCollapsed}
+                label="Database Backup"
+                icon={<Database className="h-[18px] w-[18px] text-emerald-500" />}
+                text="Database Backup"
+              />
+            </RoleGate>
             {isModuleAllowed("Library") && (
               <MenuLink
                 href="/dashboard/utilities/library"
@@ -308,6 +318,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
                 label="User Management"
                 icon={<ShieldAlert className="h-[18px] w-[18px] text-red-500" />}
                 text="User Management"
+              />
+              <MenuLink
+                href="/dashboard/admin/devices"
+                isCollapsed={isCollapsed}
+                label="Device Registry"
+                icon={<Laptop className="h-[18px] w-[18px] text-amber-500" />}
+                text="Device Registry"
               />
               <RoleGate minRole="super_admin" hide>
                 <MenuLink

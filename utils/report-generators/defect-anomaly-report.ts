@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -280,8 +280,10 @@ export const generateDefectAnomalyReport = async (
         doc.setFontSize(12);
         const noDataMsg = config.isFindingsReport ? "No findings found." : "No anomalies found.";
         doc.text(noDataMsg, pageWidth / 2, 80, { align: "center" });
+        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
         return;
     }
@@ -728,9 +730,11 @@ export const generateDefectAnomalyReport = async (
     }
 
     if (config.returnBlob) {
+        applyWatermarkAndSignaturesGlobal(doc, config);
         return doc.output("blob");
     } else {
         const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
     }
 };
