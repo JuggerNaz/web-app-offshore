@@ -7,15 +7,14 @@ const supabase = createClient(
 );
 
 async function run() {
-  const { data, error } = await supabase
-    .from('defect_criteria_rules')
-    .select('*')
-    .limit(1);
-
+  const { data: members, error } = await supabase
+    .from('company_memberships')
+    .select('id, user_id, company_id, role, is_active');
   if (error) {
-    console.error('Error fetching rule:', error);
-  } else {
-    console.log('Sample rule columns:', data.length > 0 ? Object.keys(data[0]) : 'No rules in table');
+    console.error('Error fetching memberships:', error);
+    return;
   }
+  console.log('Memberships:', JSON.stringify(members, null, 2));
 }
+
 run();

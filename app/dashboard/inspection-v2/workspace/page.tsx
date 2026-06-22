@@ -948,6 +948,7 @@ function V10PreviewLayout() {
     "Complete"
   );
   const [isUserInteraction, setIsUserInteraction] = useState(false);
+  const hasUserInteracted = useRef(false);
 
   useEffect(() => {
     if (isUserInteraction) {
@@ -1144,11 +1145,13 @@ function V10PreviewLayout() {
       }
       return updated;
     });
+    hasUserInteracted.current = true;
     setIsUserInteraction(true);
   };
 
   const handleRequiredPropChange = (name: string, value: any) => {
     setRequiredProps((prev) => ({ ...prev, [name]: value }));
+    hasUserInteracted.current = true;
     setIsUserInteraction(true);
   };
 
@@ -1282,14 +1285,36 @@ function V10PreviewLayout() {
             alertMessage: r.alert_message,
             order: r.rule_order,
             evaluationPriority: r.evaluation_priority,
-            referenceNo: r.reference_no,
             autoFlag: r.auto_flag,
+            findings: r.findings,
           }))
         );
       }
     }
     fetchRules();
+
+    // Subscribe to realtime updates for defect_criteria_rules
+    const channel = supabase
+      .channel("realtime-criteria-rules")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "defect_criteria_rules" },
+        () => {
+          console.log("[Realtime] Defect criteria rules changed, re-fetching...");
+          fetchRules();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [selectedComp, supabase]);
+
+  // Reset user interaction when specification/task scope changes
+  useEffect(() => {
+    hasUserInteracted.current = false;
+  }, [activeSpec]);
 
   // Anomaly Library States
   const [defectCodes, setDefectCodes] = useState<any[]>([]);
@@ -5101,10 +5126,20 @@ function V10PreviewLayout() {
       defectCode: codeDesc,
       defectType: typeDesc,
       priority: prioDesc,
-      referenceNo: pendingRule.referenceNo || "",
+      referenceNo: "",
       description:
         pendingRule.alertMessage || "Automatically detected anomaly based on defect criteria.",
     }));
+    if (pendingRule.findings) {
+      const trimmedNotes = recordNotes ? String(recordNotes).trim() : "";
+      if (trimmedNotes) {
+        if (!trimmedNotes.includes(pendingRule.findings)) {
+          setRecordNotes(`${trimmedNotes}; ${pendingRule.findings}`);
+        }
+      } else {
+        setRecordNotes(pendingRule.findings);
+      }
+    }
     setLastAutoMatchedRuleId(pendingRule.id);
     setShowCriteriaConfirm(false);
     setIsManualOverride(false);
@@ -5112,6 +5147,23 @@ function V10PreviewLayout() {
   };
 
   const handleConfirmRemoval = () => {
+    // Clean defect criteria findings from record notes
+    if (lastAutoMatchedRuleId && criteriaRules.length) {
+      const matchedRule = criteriaRules.find((r) => r.id === lastAutoMatchedRuleId);
+      if (matchedRule?.findings) {
+        setRecordNotes((prev: string) => {
+          if (!prev) return "";
+          const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const findingText = matchedRule.findings;
+          let clean = prev;
+          clean = clean.replace(new RegExp(`\\s*;\\s*${escapeRegExp(findingText)}`, 'g'), '');
+          clean = clean.replace(new RegExp(`${escapeRegExp(findingText)}\\s*;\\s*`, 'g'), '');
+          clean = clean.replace(new RegExp(`^${escapeRegExp(findingText)}$`, 'g'), '');
+          return clean.trim();
+        });
+      }
+    }
+
     if (!editingRecordId) {
       // Draft mode - just reset
       setFindingType("Complete");
@@ -5176,12 +5228,15 @@ function V10PreviewLayout() {
       }));
       toast.info("Anomaly marked as Rectified (Priority NONE) to preserve sequence.");
     }
+    hasUserInteracted.current = false;
     setShowRemovalConfirm(false);
   };
 
   useEffect(() => {
     const runCheck = async () => {
-      if (isManualOverride || !criteriaRules.length || !isUserInteraction || editingRecordId)
+      // Removed editingRecordId from early return so validation runs when editing existing records.
+      // hasUserInteracted.current prevents validation from firing on initial load.
+      if (isManualOverride || !criteriaRules.length || !hasUserInteracted.current)
         return;
 
       const hasAnomaly = findingType === "Anomaly";
@@ -5190,7 +5245,10 @@ function V10PreviewLayout() {
       // 1. Evaluate all potential matches
       for (const rule of criteriaRules) {
         const fName = rule.fieldName || "*";
-        const fNameClean = fName.toLowerCase().replace(/[^a-z0-9]/g, "");
+        // Support comma-separated field names by splitting, cleaning, and filtering
+        const targetFields = fName === "*"
+          ? ["*"]
+          : fName.split(",").map((f: string) => f.trim().toLowerCase().replace(/[^a-z0-9]/g, "")).filter(Boolean);
 
         const ignoreFields = [
           "northing",
@@ -5216,13 +5274,8 @@ function V10PreviewLayout() {
                 return !isNaN(parseFloat(debouncedProps[k]));
               })
             : Object.keys(debouncedProps).filter((k) => {
-                if (ignoreFields.some((ign) => k.toLowerCase().includes(ign))) return false;
                 const kClean = k.toLowerCase().replace(/[^a-z0-9]/g, "");
-                return (
-                  kClean === fNameClean ||
-                  fNameClean.includes(kClean) ||
-                  kClean.includes(fNameClean)
-                );
+                return targetFields.some((tf: string) => tf === kClean);
               });
 
         for (const field of relevantFields) {
@@ -5231,9 +5284,10 @@ function V10PreviewLayout() {
 
           let isMatch = false;
           const val = parseFloat(rawVal);
+          const isNumeric = !isNaN(val) && !isNaN(parseFloat(String(rawVal)));
 
-          if (rule.thresholdOperator && !isNaN(val)) {
-            const target = rule.thresholdValue || 0;
+          if (isNumeric && rule.thresholdOperator && rule.thresholdValue !== undefined && rule.thresholdValue !== null) {
+            const target = rule.thresholdValue;
             if (rule.thresholdOperator === ">") isMatch = val > target;
             else if (rule.thresholdOperator === "<") isMatch = val < target;
             else if (rule.thresholdOperator === ">=") isMatch = val >= target;
@@ -5241,7 +5295,17 @@ function V10PreviewLayout() {
             else if (rule.thresholdOperator === "==") isMatch = val === target;
             else if (rule.thresholdOperator === "!=") isMatch = val !== target;
           } else if (rule.thresholdText) {
-            isMatch = String(rawVal).toLowerCase().includes(rule.thresholdText.toLowerCase());
+            const actualText = String(rawVal).trim().toLowerCase();
+            const targetText = String(rule.thresholdText).trim().toLowerCase();
+            
+            if (rule.thresholdOperator === "==") {
+              isMatch = actualText === targetText;
+            } else if (rule.thresholdOperator === "!=") {
+              isMatch = actualText !== targetText;
+            } else {
+              // Default to substring match if no operator/unsupported operator
+              isMatch = actualText.includes(targetText);
+            }
           }
 
           if (isMatch) {
@@ -6196,6 +6260,7 @@ function V10PreviewLayout() {
     // Do not set debounced props immediately to avoid triggering validation without user interaction
     setDynamicProps(mergedProps);
     setDebouncedProps(mergedProps);
+    hasUserInteracted.current = false;
     setIsUserInteraction(false);
     setLastAutoMatchedRuleId(null);
     setPendingRule(null);

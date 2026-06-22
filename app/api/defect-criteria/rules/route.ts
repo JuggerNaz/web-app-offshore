@@ -47,7 +47,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             alertMessage: r.alert_message,
             ruleOrder: r.rule_order,
             evaluationPriority: r.evaluation_priority,
-            referenceNo: r.reference_no,
+            findings: r.findings,
             createdAt: r.created_at,
             updatedAt: r.updated_at
         }));
@@ -84,6 +84,7 @@ export const POST = withTenant(async (request, { companyId }) => {
             autoFlag,
             alertMessage,
             evaluationPriority,
+            findings,
         } = body;
 
         const { data: maxOrderRule } = await (supabase as any)
@@ -118,6 +119,7 @@ export const POST = withTenant(async (request, { companyId }) => {
                 alert_message: alertMessage,
                 rule_order: nextOrder,
                 evaluation_priority: evaluationPriority || 0,
+                findings: findings || null,
                 company_id: companyId,
             })
             .select()

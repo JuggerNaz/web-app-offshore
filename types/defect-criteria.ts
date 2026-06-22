@@ -61,7 +61,7 @@ export interface DefectCriteriaRule {
     alertMessage: string;          // Message to show user
     order: number;                 // Rule evaluation order
     evaluationPriority: number;    // Priority for conflict resolution
-    referenceNo?: string;          // Pre-defined reference number for this rule (e.g. from a specification)
+    findings?: string;             // Suggested findings notes
 }
 
 // ============================================================================
@@ -112,6 +112,7 @@ export interface RuleFormData {
     autoFlag: boolean;
     alertMessage: string;
     evaluationPriority: number;
+    findings?: string;
 }
 
 // For procedure creation/editing
