@@ -86,11 +86,18 @@ export default function Platform3DPage() {
     );
     const components: Component[] = useMemo(() => {
         const all = componentsData?.data || [];
+        const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD"];
         return all
             .filter((c: any) => {
                 if (c.is_deleted) return false;
+                const code = (c.code || "").trim().toUpperCase();
+                const qIdUpper = (c.q_id || "").toUpperCase();
+                const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
+                if (excludeCodes.includes(code) && !isRiserSupport) {
+                    return false;
+                }
                 // Exclude node weld components (code 'WN') that have a dash '-' in their q_id
-                const isNodeWeld = c.code?.toUpperCase() === "WN";
+                const isNodeWeld = code === "WN";
                 if (isNodeWeld && c.q_id && c.q_id.includes("-")) {
                     return false;
                 }
