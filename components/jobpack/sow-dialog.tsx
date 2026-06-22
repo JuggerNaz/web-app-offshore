@@ -355,9 +355,9 @@ export function SOWDialog({
             .filter(t => !['EXSUM', 'LOG', 'CALIB', 'SETUP'].some(k => t.code.toUpperCase().includes(k)))
             .map(it => ({ ...it, mode: getTaskMode(it) }))
             .sort((a, b) => {
-                // Group by mode (ROV vs DIVING)
+                // Group by mode (ROV vs DIVING, ROV first)
                 if (a.mode !== b.mode) {
-                    return a.mode.localeCompare(b.mode);
+                    return b.mode.localeCompare(a.mode);
                 }
                 // Then sort alphabetically by name
                 return (a.name || '').localeCompare(b.name || '');

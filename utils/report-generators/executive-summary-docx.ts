@@ -1,3 +1,4 @@
+import { applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, Footer, PageNumber } from "docx";
 import { saveAs } from "file-saver";
 

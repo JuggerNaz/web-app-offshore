@@ -40,7 +40,7 @@ interface CompanySettings {
     logo_url?: string;
 }
 
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 const fetchContractorDetails = async (id: string): Promise<{ name: string; address: string; logoUrl?: string }> => {
     try {
@@ -465,8 +465,10 @@ export const generateJobPackSummaryReport = async (
     }
 
     if (config?.returnBlob) {
+        applyWatermarkAndSignaturesGlobal(doc, config);
         return doc.output('blob');
     } else {
+        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`JobPack_Summary_${jobPack.id}.pdf`);
     }
 };

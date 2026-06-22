@@ -80,6 +80,7 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 function formatCounter(seconds: number | string): string {
   const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
@@ -96,7 +97,7 @@ import { toast } from "sonner";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
-import { generateROVMGIReport } from "@/utils/report-generators/rov-mgi-report";
+import { generateROVMGIGraphReport } from "@/utils/report-generators/rov-mgi-report";
 import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
 import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
 import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
@@ -222,6 +223,7 @@ function V10PreviewLayout() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const { activeCompanyId } = useUserProfile();
   const jobPackId = searchParams.get("jobpack");
   const structureId = searchParams.get("structure");
   const sowIdFull = searchParams.get("sow");
@@ -804,6 +806,32 @@ function V10PreviewLayout() {
   const [pipWindow, setPipWindow] = useState<any>(null);
   const [capturedEventsPipWindow, setCapturedEventsPipWindow] = useState<any>(null);
 
+  // Auto-edit record when recordIdParam is provided in URL (e.g. clicked from Global Search)
+  const [lastLoadedRecordId, setLastLoadedRecordId] = useState<string | null>(null);
+  useEffect(() => {
+    if (recordIdParam && lastLoadedRecordId !== recordIdParam) {
+      const record = currentRecords.find((r) => String(r.insp_id) === String(recordIdParam)) || 
+                     allWorkspaceRecords.find((r) => String(r.insp_id) === String(recordIdParam));
+      if (record) {
+        handleEditRecord(record);
+        setLastLoadedRecordId(recordIdParam);
+      } else {
+        const loadAndEdit = async () => {
+          const { data } = await supabase
+            .from("insp_records")
+            .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*)")
+            .eq("insp_id", Number(recordIdParam))
+            .maybeSingle();
+          if (data) {
+            handleEditRecord(data);
+            setLastLoadedRecordId(recordIdParam);
+          }
+        };
+        loadAndEdit();
+      }
+    }
+  }, [recordIdParam, currentRecords, allWorkspaceRecords, lastLoadedRecordId, supabase]);
+
   // Multiple Attachment State
   const [pendingAttachments, setPendingAttachments] = useState<
     Array<{
@@ -1379,6 +1407,8 @@ function V10PreviewLayout() {
     setSzciPreviewOpen,
     rscorPreviewOpen,
     setRscorPreviewOpen,
+    rscorV2PreviewOpen,
+    setRscorV2PreviewOpen,
     rrisiPreviewOpen,
     setRrisiPreviewOpen,
     jtisiPreviewOpen,
@@ -1393,6 +1423,10 @@ function V10PreviewLayout() {
     setCpPreviewOpen,
     rswniPreviewOpen,
     setRswniPreviewOpen,
+    rovRicmiPreviewOpen,
+    setRovRicmiPreviewOpen,
+    divingAnmainPreviewOpen,
+    setDivingAnmainPreviewOpen,
     rgviPreviewOpen,
     setRgviPreviewOpen,
     rcasnPreviewOpen,
@@ -1445,6 +1479,10 @@ function V10PreviewLayout() {
     generateAnomalyReportBlob,
     generateMGIReport,
     generateMGIReportBlob,
+    generateRMGIReport,
+    generateRMGIReportBlob,
+    rmgiPreviewOpen,
+    setRmgiPreviewOpen,
     generateFMDReport,
     generateFMDReportBlob,
     generateSZCIReport,
@@ -1461,6 +1499,8 @@ function V10PreviewLayout() {
     generateBLReportBlob,
     generateRSCORReport,
     generateRSCORReportBlob,
+    generateRSCORV2Report,
+    generateRSCORV2ReportBlob,
     generateRRISIReport,
     generateRRISIReportBlob,
     generateJTISIReport,
@@ -1475,6 +1515,10 @@ function V10PreviewLayout() {
     generateCPReportBlob,
     generateRSWNIReport,
     generateRSWNIReportBlob,
+    generateROVRICMIReport,
+    generateROVRICMIReportBlob,
+    generateDivingANMAINReport,
+    generateDivingANMAINReportBlob,
     generateRGVIReport,
     generateRGVIReportBlob,
     generateRCASNReport,
@@ -1523,8 +1567,28 @@ function V10PreviewLayout() {
     setRovRwdiPreviewOpen,
     generateROVRWDIReportBlob,
 
+    divingDcasnUwPreviewOpen,
+    setDivingDcasnUwPreviewOpen,
+    divingDcasnTsPreviewOpen,
+    setDivingDcasnTsPreviewOpen,
+    generateDivingDCASNUWReport,
+    generateDivingDCASNUWReportBlob,
+    generateDivingDCASNTSReport,
+    generateDivingDCASNTSReportBlob,
+
+    divingDcondUwPreviewOpen,
+    setDivingDcondUwPreviewOpen,
+    divingDcondTsPreviewOpen,
+    setDivingDcondTsPreviewOpen,
+    generateDivingDCONDUWReport,
+    generateDivingDCONDUWReportBlob,
+    generateDivingDCONDTSReport,
+    generateDivingDCONDTSReportBlob,
+
     generateInspectionReportByType,
     generateFullInspectionReport,
+    reportConfig,
+    setReportConfig,
   } = useWorkspaceReports(
     supabase,
     jobPackId,
@@ -1575,6 +1639,7 @@ function V10PreviewLayout() {
           const { data: newSow } = await supabase
             .from("u_sow")
             .insert({
+              company_id: activeCompanyId,
               jobpack_id: Number(jobPackId),
               structure_id: Number(structureId),
               structure_type: headerData.structureType === "pipeline" ? "PIPELINE" : "PLATFORM",
@@ -1729,6 +1794,7 @@ function V10PreviewLayout() {
         );
 
         const { error: insertError } = await supabase.from("u_sow_items").insert({
+          company_id: activeCompanyId,
           sow_id: activeSowId,
           component_id: compId,
           component_qid: compObj?.name || compObj?.q_id || `COMP-${compId}`,
@@ -2193,15 +2259,15 @@ function V10PreviewLayout() {
         try {
           const cssRules = styleSheet.cssRules;
           if (cssRules) {
-            const newStyleEl = document.createElement("style");
+            const newStyleEl = pip.document.createElement("style");
             Array.from(cssRules).forEach((rule) => {
-              newStyleEl.appendChild(document.createTextNode(rule.cssText));
+              newStyleEl.appendChild(pip.document.createTextNode(rule.cssText));
             });
             pip.document.head.appendChild(newStyleEl);
           }
         } catch (e) {
           if (styleSheet.href) {
-            const newLinkEl = document.createElement("link");
+            const newLinkEl = pip.document.createElement("link");
             newLinkEl.rel = "stylesheet";
             newLinkEl.href = styleSheet.href;
             pip.document.head.appendChild(newLinkEl);
@@ -2209,10 +2275,29 @@ function V10PreviewLayout() {
         }
       });
 
-      // Add basic HTML structure overlay
+      // Sync dark mode configuration and base classes
+      const isDark = document.documentElement.classList.contains("dark");
+      if (isDark) {
+        pip.document.documentElement.classList.add("dark");
+      }
+      pip.document.body.className = document.body.className;
+
+      const bg = isDark ? "#0b0f19" : "#ffffff";
+      const text = isDark ? "#f8fafc" : "#0f172a";
+
+      // Add basic HTML structure overlay with matching theme color
       pip.document.head.insertAdjacentHTML(
         "beforeend",
-        "<style>body { margin: 0; padding: 0; overflow: hidden; background: #fff; font-family: system-ui, -apple-system, sans-serif; }</style>"
+        `<style>
+          body { 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background: ${bg} !important; 
+            color: ${text} !important; 
+            font-family: system-ui, -apple-system, sans-serif; 
+          }
+        </style>`
       );
 
       setCapturedEventsPipWindow(pip);
@@ -2422,6 +2507,11 @@ function V10PreviewLayout() {
   };
 
   const handleComponentSelection = (c: any) => {
+    if (selectedComp && activeSpec && !showCompSelector) {
+      toast.warning("To switch components, please click the 'Change' button in the form header.");
+      return;
+    }
+
     if (editingRecordId && selectedComp && c.id !== selectedComp.id) {
       const orphaned = diffSpecifications(c, activeSpec || "");
       setPendingReclass({
@@ -2503,7 +2593,7 @@ function V10PreviewLayout() {
       if (updateErr) throw updateErr;
 
       // 3. SOW Status Synchronization (Rollback Old & Commit New)
-      if (sowId && originalRecordContext) {
+      if ((sowId || (jobPackId && structureId)) && originalRecordContext) {
         // Rollback original component/task
         await syncSowStatus(
           originalRecordContext.component_id,
@@ -2538,6 +2628,11 @@ function V10PreviewLayout() {
   };
 
   const handleTaskChange = (newTask: string) => {
+    if (selectedComp && activeSpec && !showTaskSelector) {
+      toast.warning("To switch inspection types, please click the 'Change' button in the form header.");
+      return;
+    }
+
     if (!selectedComp || !editingRecordId) {
       setActiveSpec(newTask);
       setShowTaskSelector(false);
@@ -3128,7 +3223,6 @@ function V10PreviewLayout() {
             `
         )
         .eq("jobpack_id", parseInt(jobPackId || "0"))
-        .not(inspCol, "is", null)
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
@@ -3168,11 +3262,10 @@ function V10PreviewLayout() {
         .eq(movCol, depId)
         .order("tape_id", { ascending: false });
 
-      let [movsRes, tapesRes, inspsRes, allInspsRes] = await Promise.all([
+      let [movsRes, tapesRes, inspsRes] = await Promise.all([
         movementsPromise,
         tapesPromise,
         inspsQuery,
-        allInspsQuery,
       ]);
 
       const movs = movsRes.data;
@@ -3409,20 +3502,29 @@ function V10PreviewLayout() {
 
         setCurrentRecords(inspsWithCounts);
 
-        if (allInspsRes && allInspsRes.data) {
-          const mappedAll = allInspsRes.data.map((r) => ({
-            ...r,
-            inspection_type: r.inspection_type
-              ? {
-                  ...r.inspection_type,
-                  name: formatInspectionTypeName(r.inspection_type.name),
-                }
-              : null,
-          }));
-          setAllWorkspaceRecords(mappedAll);
-        } else {
-          setAllWorkspaceRecords([]);
-        }
+        // Fetch all workspace records asynchronously in the background so it doesn't block the main UI loading
+        const fetchAllWorkspaceRecords = async () => {
+          try {
+            const { data: allInspsData } = await allInspsQuery;
+            if (allInspsData) {
+              const mappedAll = allInspsData.map((r: any) => ({
+                ...r,
+                inspection_type: r.inspection_type
+                  ? {
+                      ...r.inspection_type,
+                      name: formatInspectionTypeName(r.inspection_type.name),
+                    }
+                  : null,
+              }));
+              setAllWorkspaceRecords(mappedAll);
+            } else {
+              setAllWorkspaceRecords([]);
+            }
+          } catch (err) {
+            console.error("[Sync] Background allInsps fetch error:", err);
+          }
+        };
+        fetchAllWorkspaceRecords();
 
         // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
         const logInspectionIds = new Set(allEv.map((ev) => ev.inspectionId).filter(Boolean));
@@ -4160,114 +4262,115 @@ function V10PreviewLayout() {
       setRequiredProps({});
       setRequiredRecordId(null);
 
-      if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) return;
-      const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
-      const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
-
-      console.log(
-        `[fetchDeps] Starting fetch from ${table} | jobpack: ${queryJobPackId} | structure: ${structureId}`
-      );
-
-      // Use the primary key column for ordering (created_at / cr_date may not exist)
-      const idCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-
-      let query = supabase
-        .from(table)
-        .select("*")
-        .eq("jobpack_id", queryJobPackId)
-        .order(idCol, { ascending: false });
-
-      if (structureId && !isNaN(Number(structureId))) {
-        query = query.eq("structure_id", Number(structureId));
+      if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) {
+        setIsFetchingDeps(false);
+        setIsReadyForComps(true);
+        return;
       }
 
-      const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+      try {
+        const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
+        const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
 
-      let recQuery = supabase
-        .from("insp_records")
-        .select(targetColumn)
-        .eq("jobpack_id", queryJobPackId)
-        .eq("structure_id", Number(structureId))
-        .not(targetColumn, "is", null)
-        .limit(20); // Check for potential orphans
-
-      if (
-        headerData.sowReportNo &&
-        headerData.sowReportNo !== "N/A" &&
-        headerData.sowReportNo !== "Unknown Report"
-      ) {
-        recQuery = recQuery.eq("sow_report_no", headerData.sowReportNo);
-      }
-
-      // Execute primary deployment query and records fallback query in parallel
-      const [primaryRes, recJobsRes] = await Promise.all([
-        query,
-        recQuery,
-      ]);
-
-      let results = primaryRes.data || [];
-      if (primaryRes.error) {
-        console.warn("[fetchDeps] Primary fetch error:", primaryRes.error.message);
-        results = [];
-      }
-
-      const recJobs = recJobsRes.data;
-      const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
-
-      if (recJobs && recJobs.length > 0) {
-        const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
-          (id) => !existingJobIds.has(id)
-        );
-
-        if (orphanedJobIds.length > 0) {
-          console.log("[fetchDeps] Merging orphaned job IDs from records:", orphanedJobIds);
-          const virtualJobs = orphanedJobIds.map((jid) => ({
-            [targetColumn]: jid,
-            dive_no: `Legacy-${jid}`,
-            diver_name: "Legacy Records",
-            status: "COMPLETED",
-            is_legacy: true,
-          }));
-          results = [...results, ...virtualJobs];
-        }
-      }
-
-      if (results.length > 0) {
-        console.log(`[fetchDeps] Mapping ${results.length} results from ${table}`);
-        const mapped = results.map((d) => {
-          // CRITICAL: Ensure we get the numeric ID for lookups
-          const rawId = d.dive_job_id || d.rov_job_id || d.id;
-          const idStr = String(rawId);
-
-          // jobNo: Prefer dive_no/deployment_no for display
-          let jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
-
-          // Add legacy indicator if applicable
-          if ((d as any).is_legacy) {
-            jNo = `Legacy-${rawId}`;
-          }
-
-          // name: Prefer diver_name/rov_system for display
-          const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
-
-          console.log(`[fetchDeps] Mapped: No=${jNo}, Name=${dName}, ID=${idStr}`);
-          return { id: idStr, jobNo: jNo, name: dName, raw: d };
-        });
-        setDeployments(mapped);
-
-        // If we have a saved selection or just pick the first
-        setActiveDep(mapped[0]);
         console.log(
-          `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
+          `[fetchDeps] Starting fetch from ${table} | jobpack: ${queryJobPackId} | structure: ${structureId}`
         );
-        setIsReadyForComps(true);
-      } else {
-        console.warn("[fetchDeps] No deployment records found.");
-        setDeployments([]);
-        setActiveDep(null);
+
+        // Use the primary key column for ordering (created_at / cr_date may not exist)
+        const idCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+
+        let query = supabase
+          .from(table)
+          .select("*")
+          .eq("jobpack_id", queryJobPackId)
+          .order(idCol, { ascending: false });
+
+        if (structureId && !isNaN(Number(structureId))) {
+          query = query.eq("structure_id", Number(structureId));
+        }
+
+        const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+
+        let recQuery = supabase
+          .from("insp_records")
+          .select(targetColumn)
+          .eq("jobpack_id", queryJobPackId)
+          .eq("structure_id", Number(structureId))
+          .not(targetColumn, "is", null)
+          .limit(20); // Check for potential orphans
+
+        // Execute primary deployment query and records fallback query in parallel
+        const [primaryRes, recJobsRes] = await Promise.all([
+          query,
+          recQuery,
+        ]);
+
+        let results = primaryRes.data || [];
+        if (primaryRes.error) {
+          console.warn("[fetchDeps] Primary fetch error:", primaryRes.error.message);
+          results = [];
+        }
+
+        const recJobs = recJobsRes.data;
+        const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
+
+        if (recJobs && recJobs.length > 0) {
+          const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
+            (id) => !existingJobIds.has(id)
+          );
+
+          if (orphanedJobIds.length > 0) {
+            console.log("[fetchDeps] Merging orphaned job IDs from records:", orphanedJobIds);
+            const virtualJobs = orphanedJobIds.map((jid) => ({
+              [targetColumn]: jid,
+              dive_no: `Legacy-${jid}`,
+              diver_name: "Legacy Records",
+              status: "COMPLETED",
+              is_legacy: true,
+            }));
+            results = [...results, ...virtualJobs];
+          }
+        }
+
+        if (results.length > 0) {
+          console.log(`[fetchDeps] Mapping ${results.length} results from ${table}`);
+          const mapped = results.map((d) => {
+            // CRITICAL: Ensure we get the numeric ID for lookups
+            const rawId = d.dive_job_id || d.rov_job_id || d.id;
+            const idStr = String(rawId);
+
+            // jobNo: Prefer dive_no/deployment_no for display
+            let jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
+
+            // Add legacy indicator if applicable
+            if ((d as any).is_legacy) {
+              jNo = `Legacy-${rawId}`;
+            }
+
+            // name: Prefer diver_name/rov_system for display
+            const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
+
+            console.log(`[fetchDeps] Mapped: No=${jNo}, Name=${dName}, ID=${idStr}`);
+            return { id: idStr, jobNo: jNo, name: dName, raw: d };
+          });
+          setDeployments(mapped);
+
+          // If we have a saved selection or just pick the first
+          setActiveDep(mapped[0]);
+          console.log(
+            `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
+          );
+        } else {
+          console.warn("[fetchDeps] No deployment records found.");
+          setDeployments([]);
+          setActiveDep(null);
+        }
+      } catch (err) {
+        console.error("[fetchDeps] Critical error in fetchDeps:", err);
+      } finally {
+        setIsFetchingDeps(false);
         setIsReadyForComps(true);
       }
-      setIsFetchingDeps(false);
     }
     fetchDeps();
   }, [inspMethod, jobPackId, structureId, headerData.sowReportNo, supabase]);
@@ -4565,7 +4668,8 @@ function V10PreviewLayout() {
         });
 
         const discardedCodes = ["PLATGI", "LOGS", "EXSUM", "NAVIG"];
-        setAllInspectionTypes(mergedTypes.filter((it) => !discardedCodes.includes(it.code)));
+        const activeTypes = mergedTypes.filter((it) => !discardedCodes.includes(it.code) && it.is_active === true);
+        setAllInspectionTypes(activeTypes);
       }
 
       if (codesRes.data) setDefectCodes(codesRes.data);
@@ -5423,6 +5527,7 @@ function V10PreviewLayout() {
       }
 
       const payload: any = {
+        company_id: activeCompanyId,
         [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep.id,
         structure_id: parseInt(structureId || "0"),
         component_id: selectedComp.id,
@@ -5574,6 +5679,7 @@ function V10PreviewLayout() {
       // Commit Calibration/Required Record if needed
       if (requiredSpec && Object.keys(requiredProps).length > 0) {
         const reqPayload: any = {
+          company_id: activeCompanyId,
           [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep.id,
           structure_id: parseInt(structureId || "0"),
           component_id: selectedComp.id,
@@ -5633,7 +5739,7 @@ function V10PreviewLayout() {
       const newStatus = findingType === "Incomplete" ? "incomplete" : "completed";
 
       // Robust SOW Status Synchronization
-      if (sowId) {
+      if (sowId || (jobPackId && structureId)) {
         // 1. Sync the CURRENT component/task with elevation support
         await syncSowStatus(
           selectedComp.id,
@@ -6981,6 +7087,7 @@ function V10PreviewLayout() {
         generateInspectionReportByType={generateInspectionReportByType}
         generateSeabedReport={generateSeabedReport}
         generateMGIReport={generateMGIReport}
+        generateRMGIReport={generateRMGIReport}
         generateFMDReport={generateFMDReport}
         generateSZCIReport={generateSZCIReport}
         generateUTWTReport={generateUTWTReport}
@@ -7293,21 +7400,12 @@ function V10PreviewLayout() {
         })()}
 
         {/* INSERT SEABED SURVEY MAP BUTTON */}
-        {activeDep && inspMethod === "ROV" && (
+        {inspMethod === "ROV" && (
           <Button
             variant="default"
             size="sm"
             className="ml-auto bg-blue-600 hover:bg-blue-700 text-white h-7 px-3 shadow-blue-500/20 shadow-lg text-[10px] font-black uppercase tracking-wider"
             onClick={async () => {
-              if (vidState === "IDLE") {
-                toast.error("Video recording must be actively started to open the Seabed Map.");
-                return;
-              }
-              if (!tapeId) {
-                toast.error("No active tape available. Please configure a tape first.");
-                return;
-              }
-
               // Pre-fetch check for Inspection Type (optional, fallbacks exist)
               const { data, error } = await supabase
                 .from("inspection_type")
@@ -7451,6 +7549,11 @@ function V10PreviewLayout() {
             model={layoutModel} 
             factory={layoutFactory} 
             onModelChange={onLayoutChange} 
+            onRenderTab={(node: TabNode, renderValues: any) => {
+              if (node.getComponent() === "opsLog") {
+                renderValues.content = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
+              }
+            }}
           />
         )}
       </div>
@@ -7493,6 +7596,7 @@ function V10PreviewLayout() {
           previewOpen,
           previewRecord,
           mPreviewOpen,
+          rmgiPreviewOpen,
           fmdPreviewOpen,
           utwtPreviewOpen,
           szciPreviewOpen,
@@ -7504,10 +7608,13 @@ function V10PreviewLayout() {
           showCriteriaConfirm,
           pendingRule,
           rscorPreviewOpen,
+          rscorV2PreviewOpen,
           anodePreviewOpen,
           anodeRsaniPreviewOpen,
           cpPreviewOpen,
           rswniPreviewOpen,
+          rovRicmiPreviewOpen,
+          divingAnmainPreviewOpen,
           rgviPreviewOpen,
           rcondSketchPreviewOpen,
           showRemovalConfirm,
@@ -7555,7 +7662,12 @@ function V10PreviewLayout() {
           divingAcfmcPreviewOpen,
           divingPlcoPreviewOpen,
           rovRwdiPreviewOpen,
+          divingDcasnUwPreviewOpen,
+          divingDcasnTsPreviewOpen,
+          divingDcondUwPreviewOpen,
+          divingDcondTsPreviewOpen,
           isReportWizardOpen,
+          reportConfig,
         }}
         setters={{
           setIsDiveSetupOpen,
@@ -7577,6 +7689,7 @@ function V10PreviewLayout() {
           setCompSpecDialogOpen,
           setPreviewOpen,
           setMPreviewOpen,
+          setRmgiPreviewOpen,
           setFmdPreviewOpen,
           setUtwtPreviewOpen,
           setSzciPreviewOpen,
@@ -7585,10 +7698,13 @@ function V10PreviewLayout() {
           setIsAttachmentManagerOpen,
           setShowCriteriaConfirm,
           setRscorPreviewOpen,
+          setRscorV2PreviewOpen,
           setAnodePreviewOpen,
           setAnodeRsaniPreviewOpen,
           setCpPreviewOpen,
           setRswniPreviewOpen,
+          setRovRicmiPreviewOpen,
+          setDivingAnmainPreviewOpen,
           setRgviPreviewOpen,
           setRcondSketchPreviewOpen,
           setShowRemovalConfirm,
@@ -7626,7 +7742,12 @@ function V10PreviewLayout() {
           setDivingAcfmcPreviewOpen,
           setDivingPlcoPreviewOpen,
           setRovRwdiPreviewOpen,
+          setDivingDcasnUwPreviewOpen,
+          setDivingDcasnTsPreviewOpen,
+          setDivingDcondUwPreviewOpen,
+          setDivingDcondTsPreviewOpen,
           setIsReportWizardOpen,
+          setReportConfig,
         }}
         handlers={{
           handleEditEventSave,
@@ -7642,6 +7763,7 @@ function V10PreviewLayout() {
           queryClient,
           generateAnomalyReportBlob,
           generateMGIReportBlob,
+          generateRMGIReportBlob,
           generateFMDReportBlob,
           generateUTWTReportBlob,
           generateSZCIReportBlob,
@@ -7650,6 +7772,7 @@ function V10PreviewLayout() {
           generateCUReportBlob,
           generateBLReportBlob,
           generateRSCORReportBlob,
+          generateRSCORV2ReportBlob,
           generateRRISIReportBlob,
           generateJTISIReportBlob,
           generateITISIReportBlob,
@@ -7658,6 +7781,10 @@ function V10PreviewLayout() {
           generateCPReportBlob,
           generateRSWNIReport,
           generateRSWNIReportBlob,
+          generateROVRICMIReport,
+          generateROVRICMIReportBlob,
+          generateDivingANMAINReport,
+          generateDivingANMAINReportBlob,
           generateRGVIReportBlob,
           generateRCASNReportBlob,
           generateRCASNSketchReportBlob,
@@ -7686,6 +7813,14 @@ function V10PreviewLayout() {
           generateDivingACFMCReportBlob,
           generateDivingPLCOReportBlob,
           generateROVRWDIReportBlob,
+          generateDivingDCASNUWReport,
+          generateDivingDCASNUWReportBlob,
+          generateDivingDCASNTSReport,
+          generateDivingDCASNTSReportBlob,
+          generateDivingDCONDUWReport,
+          generateDivingDCONDUWReportBlob,
+          generateDivingDCONDTSReport,
+          generateDivingDCONDTSReportBlob,
         }}
         refs={{
           fileInputRef,

@@ -21,7 +21,9 @@ import {
     ChevronLeft,
     Settings2,
     Eye,
-    Globe
+    Globe,
+    List,
+    LayoutGrid
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface ReportTemplate {
     id: string;
@@ -43,6 +49,207 @@ interface ReportTemplate {
     available: boolean;
 }
 
+export function getMatchingRecordsForTemplate(templateOrId: any, records: any[]): any[] {
+    if (!templateOrId) return [];
+
+    const templateId = typeof templateOrId === "object" ? templateOrId.id : templateOrId;
+    const templateCode = (typeof templateOrId === "object" ? templateOrId.code : templateOrId) || "";
+
+    const idLower = templateId.toLowerCase();
+    const codeUpper = templateCode.toUpperCase();
+
+    const hasCode = (r: any, codes: string[]) => {
+        const rCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+        return codes.includes(rCode);
+    };
+
+    // 1. Anomaly / Defect templates
+    if (
+        idLower.includes("anomaly") || 
+        idLower.includes("defect") || 
+        codeUpper === "ANOM" || 
+        codeUpper === "DEFECT"
+    ) {
+        return records.filter(r => 
+            r.has_anomaly === true || 
+            r.is_anomaly === true || 
+            r.has_anomaly === 1 ||
+            r.has_anomaly === "true" ||
+            r.component_condition === 'Anomalous' || 
+            (r.description && r.description.toLowerCase().includes('anomaly')) || 
+            (r.insp_anomalies && r.insp_anomalies.length > 0)
+        );
+    }
+
+    // 2. Generic/All-Records templates
+    const allRecordsTemplates = [
+        'findings', 'photo', 'video_log', 'diver_log', 'compliance', 
+        'jp_summary', 'sow_report', 'struct_over', 'exec_sum', 'insp_report'
+    ];
+    if (allRecordsTemplates.includes(idLower) || allRecordsTemplates.includes(templateCode.toLowerCase())) {
+        return records;
+    }
+
+    // 3. Specific mapping rules based on code
+    switch (codeUpper) {
+        case 'RGVI':
+        case 'DGVI':
+            return records.filter(r => hasCode(r, ['RGVI', 'DGVI']));
+        case 'CP':
+            return records.filter(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || r.inspection_data?.cp !== undefined);
+        case 'RSWNI':
+        case 'SWNI':
+            return records.filter(r => hasCode(r, ['RSWNI', 'SWNI']));
+        case 'RICMI':
+            return records.filter(r => hasCode(r, ['RICMI']));
+        case 'ANODE':
+        case 'ANOD':
+        case 'RSANI':
+        case 'SANI':
+        case 'PL_AN':
+            // Anode / Selected Anode
+            if (idLower.includes("rsani") || idLower.includes("sani")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    return typeCode === 'RSANI' && compCode === 'AN';
+                });
+            } else if (idLower.includes("diving") || idLower.includes("dive")) {
+                return records.filter(r => hasCode(r, ['PL_AN']));
+            } else {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
+                    return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
+                });
+            }
+        case 'RFMD':
+        case 'FMD':
+        case 'DFMD':
+            return records.filter(r => hasCode(r, ['RFMD', 'FMD', 'DFMD']));
+        case 'RUTWT':
+        case 'UTWT':
+        case 'UTWTK':
+        case 'DUTWT':
+            return records.filter(r => hasCode(r, ['RUTWT', 'UTWT', 'UTWTK', 'DUTWT']));
+        case 'RSEAB':
+        case 'SEABED':
+            return records.filter(r => hasCode(r, ['RSEAB', 'SEABED']));
+        case 'RWDI':
+            return records.filter(r => hasCode(r, ['RWDI']));
+        case 'RMGI':
+        case 'MGROW':
+        case 'DMGI':
+            return records.filter(r => hasCode(r, ['RMGI', 'MGROW', 'DMGI']));
+        case 'RSZCI':
+        case 'SZCI':
+        case 'DSZCI':
+        case 'SZONE':
+            return records.filter(r => hasCode(r, ['RSZCI', 'SZCI', 'DSZCI', 'SZONE']));
+        case 'RSCOR':
+        case 'SCOUR':
+        case 'DSCOR':
+            return records.filter(r => hasCode(r, ['RSCOR', 'SCOUR', 'DSCOR']));
+        case 'RRISI':
+        case 'DRISI':
+            return records.filter(r => hasCode(r, ['RRISI', 'DRISI']));
+        case 'JTISI':
+            return records.filter(r => hasCode(r, ['JTISI']));
+        case 'ITISI':
+            return records.filter(r => hasCode(r, ['ITISI']));
+        case 'RCASN':
+        case 'DCASN':
+        case 'RCASN-S':
+        case 'DCASN-UW':
+        case 'DCASN-TS':
+            // Caisson Topside vs Underwater
+            if (idLower.includes("-uw")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || "").toUpperCase();
+                    const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                    return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_')) && elev < 0;
+                });
+            } else if (idLower.includes("-ts")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || "").toUpperCase();
+                    const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                    return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_')) && elev >= 0;
+                });
+            }
+            return records.filter(r => hasCode(r, ['RCASN', 'DCASN']));
+        case 'RCOND':
+        case 'DCOND':
+        case 'RCON':
+        case 'DCON':
+        case 'DCOND-UW':
+        case 'DCOND-TS':
+            // Conductor Topside vs Underwater
+            if (idLower.includes("-uw")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || "").toUpperCase();
+                    const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                    return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_')) && elev < 0;
+                });
+            } else if (idLower.includes("-ts")) {
+                return records.filter(r => {
+                    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    const compCode = (r.structure_components?.code || "").toUpperCase();
+                    const elev = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
+                    return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_')) && elev >= 0;
+                });
+            }
+            return records.filter(r => hasCode(r, ['RCOND', 'RCON', 'DCOND', 'DCON']));
+        case 'BL':
+        case 'BOATLANDING':
+            return records.filter(r => hasCode(r, ['BL', 'BOATLANDING']));
+        case 'RG':
+        case 'RISERGUARD':
+            return records.filter(r => hasCode(r, ['RG', 'RISERGUARD']));
+        case 'SG':
+        case 'CAISSONGUARD':
+            return records.filter(r => hasCode(r, ['SG', 'CAISSONGUARD']));
+        case 'CU':
+        case 'CONDUCTORGUARD':
+            return records.filter(r => hasCode(r, ['CU', 'CONDUCTORGUARD']));
+        case 'GVINS':
+            return records.filter(r => hasCode(r, ['GVINS']));
+        case 'BSINS':
+            return records.filter(r => hasCode(r, ['BSINS']));
+        case 'CVINS':
+            return records.filter(r => hasCode(r, ['CVINS']));
+        case 'CLEAN':
+            return records.filter(r => hasCode(r, ['CLEAN']));
+        case 'MPINS':
+            return records.filter(r => hasCode(r, ['MPINS']));
+        case 'CPCLB':
+            return records.filter(r => hasCode(r, ['CPCLB']));
+        case 'UTCLB':
+            return records.filter(r => hasCode(r, ['UTCLB']));
+        case 'ACFMC':
+            return records.filter(r => hasCode(r, ['ACFMC']));
+        case 'PL_CO':
+            return records.filter(r => hasCode(r, ['PL_CO']));
+        case 'ANMAIN':
+            return records.filter(r => hasCode(r, ['ANMAIN']));
+        default:
+            // Dynamic fallback: match by template code or ID case-insensitively
+            return records.filter(r => {
+                const rCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const rTypeId = String(r.inspection_type_id || "");
+                return (
+                    rCode === codeUpper ||
+                    rCode === idLower.toUpperCase() ||
+                    rTypeId === templateId
+                );
+            });
+    }
+}
+
+
 interface ReportWizardDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -50,6 +257,12 @@ interface ReportWizardDialogProps {
     currentRecords: any[];
     allInspectionTypes: any[];
     headerData?: any;
+    config: any;
+    setConfig: (cfg: any) => void;
+    currentStep?: number;
+    setCurrentStep?: (step: number) => void;
+    selectedTemplate?: any;
+    setSelectedTemplate?: (t: any) => void;
     handlers: {
         generateRGVIReport: () => void;
         generateGVINSReport: () => void;
@@ -62,6 +275,12 @@ interface ReportWizardDialogProps {
         generateCPCLBReport: () => void;
         generateCPReport: () => void;
         generateRSWNIReport: () => void;
+        generateROVRICMIReport: () => void;
+        generateDivingANMAINReport: () => void;
+        generateDivingDCASNUWReport: () => void;
+        generateDivingDCASNTSReport: () => void;
+        generateDivingDCONDUWReport: () => void;
+        generateDivingDCONDTSReport: () => void;
         generateUTCLBReport: () => void;
         generateAnodeReport: () => void;
         generateAnodeRsaniReport: () => void;
@@ -74,8 +293,11 @@ interface ReportWizardDialogProps {
         generateFMDReport: () => void;
         generateUTWTReport: () => void;
         generateMGIReport: () => void;
+        generateRMGIReport: () => void;
+        generateDivingMGIReport: () => void;
         generateSZCIReport: () => void;
         generateRSCORReport: () => void;
+        generateRSCORV2Report: () => void;
         generateRRISIReport: () => void;
         generateJTISIReport: () => void;
         generateITISIReport: () => void;
@@ -185,22 +407,25 @@ export function ReportWizardDialog({
     currentRecords,
     allInspectionTypes,
     headerData,
-    handlers
+    config,
+    setConfig,
+    handlers,
+    currentStep: propCurrentStep,
+    setCurrentStep: propSetCurrentStep,
+    selectedTemplate: propSelectedTemplate,
+    setSelectedTemplate: propSetSelectedTemplate,
 }: ReportWizardDialogProps) {
-    const [currentStep, setCurrentStep] = useState(1);
-    const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
+    const [localStep, setLocalStep] = useState(1);
+    const currentStep = propCurrentStep ?? localStep;
+    const setCurrentStep = propSetCurrentStep ?? setLocalStep;
+
+    const [localTemplate, setLocalTemplate] = useState<ReportTemplate | null>(null);
+    const selectedTemplate = propSelectedTemplate ?? localTemplate;
+    const setSelectedTemplate = propSetSelectedTemplate ?? setLocalTemplate;
     const [search, setSearch] = useState("");
     const [activeCategory, setActiveCategory] = useState<string>("Inspection");
     const [activeMode, setActiveMode] = useState<string>("ALL");
-    
-    // Configuration State
-    const [config, setConfig] = useState({
-        preparedBy: "",
-        reviewedBy: "",
-        watermark: "DRAFT",
-        includeImages: true,
-        includeAnomalies: true
-    });
+    const [viewMode, setViewMode] = useState<"card" | "table">("card");
 
     const templates: ReportTemplate[] = useMemo(() => {
         const hasRecords = (codes: string[]) => 
@@ -211,6 +436,7 @@ export function ReportWizardDialog({
             { id: 'rgvi', code: 'RGVI', name: 'General Visual (GVI)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
             { id: 'cp_rov', code: 'CP', name: 'CP Survey Report', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
             { id: 'rswni_rov', code: 'RSWNI', name: 'ROV Selected Node Report', description: 'Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSWNIReport, available: hasRecords(['RSWNI', 'SWNI']) },
+            { id: 'rov_ricmi_report', code: 'RICMI', name: 'ROV Inclinometer Survey Report', description: 'Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRICMIReport, available: hasRecords(['RICMI']) },
             { id: 'anode_rov', code: 'ANODE', name: 'ROV Anode Inspection Report (RGVI)', description: 'Detailed depletion measurements and attachment status (excluding RSANI).', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
@@ -223,10 +449,26 @@ export function ReportWizardDialog({
                 return typeCode === 'RSANI' && compCode === 'AN';
             }) },
             { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: true },
-            { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey', description: 'Flooded Member Detection using ultrasonic or gamma methods.', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD']) },
+            { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey', description: 'Flooded Member Detection using ultrasonic or gamma methods.', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
             { id: 'utwt_rov', code: 'RUTWT', name: 'UTWT Survey', description: 'Ultrasonic Wall Thickness measurements of members.', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT']) },
-            { id: 'seabed_rov', code: 'RSEAB', name: 'ROV Seabed Survey', description: 'Debris, gas seepage, and crater survey of the seabed.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB']) },
+            { id: 'seabed_rov', code: 'RSEAB', name: 'ROV Seabed Survey', description: 'Debris, gas seepage, and crater survey of the seabed.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
             { id: 'rwdi', code: 'RWDI', name: 'ROV Water Depth Inspection Report', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
+            { id: 'mgi_rov', code: 'RMGI', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
+            { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI']) },
+            { id: 'szci_rov', code: 'RSZCI', name: 'ROV Splash Zone (SZCI)', description: 'ROV Splash Zone inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
+            { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch v2', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rrisi_rov', code: 'RRISI', name: 'ROV Riser Report (RRISI)', description: 'ROV Riser Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
+            { id: 'jtisi_rov', code: 'JTISI', name: 'ROV J-Tube Report (JTISI)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI']) },
+            { id: 'itisi_rov', code: 'ITISI', name: 'ROV I-Tube Report (ITISI)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI']) },
+            { id: 'rcasn_rov', code: 'RCASN', name: 'ROV Caisson Report (RCASN)', description: 'ROV Caisson Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNReport, available: hasRecords(['RCASN']) },
+            { id: 'rcasn_sketch_rov', code: 'RCASN-S', name: 'ROV Caisson Sketch Report', description: 'ROV Caisson Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNSketchReport, available: hasRecords(['RCASN']) },
+            { id: 'rcond_rov', code: 'RCOND', name: 'ROV Conductor Report (RCOND)', description: 'ROV Conductor Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDReport, available: hasRecords(['RCOND', 'RCON']) },
+            { id: 'rcond_sketch_rov', code: 'RCOND-S', name: 'ROV Conductor Sketch Report', description: 'ROV Conductor Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDSketchReport, available: hasRecords(['RCOND', 'RCON']) },
+            { id: 'bl_rov', code: 'BL', name: 'ROV Boatlanding Report (BL)', description: 'ROV Boatlanding Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateBLReport, available: hasRecords(['BL', 'BOATLANDING']) },
+            { id: 'rg_rov', code: 'RG', name: 'ROV Riser Guard Report (RG)', description: 'ROV Riser Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGReport, available: hasRecords(['RG', 'RISERGUARD']) },
+            { id: 'sg_rov', code: 'SG', name: 'ROV Caisson Guard Report (SG)', description: 'ROV Caisson Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSGReport, available: hasRecords(['SG', 'CAISSONGUARD']) },
+            { id: 'cu_rov', code: 'CU', name: 'ROV Conductor Guard Report (CU)', description: 'ROV Conductor Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCUReport, available: hasRecords(['CU', 'CONDUCTORGUARD']) },
 
             // ── INSPECTION REPORTS (DIVING) ────────────────────────────────────────
             { id: 'dgvi', code: 'DGVI', name: 'Diver GVI', description: 'Diver visual assessment of structural integrity.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['DGVI']) },
@@ -235,15 +477,36 @@ export function ReportWizardDialog({
             { id: 'cvins', code: 'CVINS', name: 'Diving Close Visual (CVINS)', description: 'Close visual inspection report with findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCVINSReport, available: hasRecords(['CVINS']) },
             { id: 'clean', code: 'CLEAN', name: 'Diving Cleaning (CLEAN)', description: 'Cleaning inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCLEANReport, available: hasRecords(['CLEAN']) },
             { id: 'mpins', code: 'MPINS', name: 'Diving Magnetic Particle (MPINS)', description: 'Detailed magnetic particle inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateMPINSReport, available: hasRecords(['MPINS']) },
-            { id: 'utwtk', code: 'UTWTK', name: 'Diving UT Wall Thickness (UTWTK)', description: 'UT Wall Thickness Inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTWTKReport, available: hasRecords(['UTWTK']) },
-            { id: 'szone', code: 'SZONE', name: 'Diving Splash Zone (SZONE)', description: 'Splash zone wall thickness and CP inspection summary with grouped clock positions', mode: 'DIVING', category: 'Inspection', handler: handlers.generateSZONEReport, available: hasRecords(['SZONE']) },
+            { id: 'utwtk', code: 'UTWTK', name: 'Diving UT Wall Thickness (UTWTK)', description: 'UT Wall Thickness Inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTWTKReport, available: hasRecords(['UTWTK', 'DUTWT']) },
+            { id: 'szone', code: 'SZONE', name: 'Diving Splash Zone (SZONE)', description: 'Splash zone wall thickness and CP inspection summary with grouped clock positions', mode: 'DIVING', category: 'Inspection', handler: handlers.generateSZONEReport, available: hasRecords(['SZONE', 'DSZCI']) },
             { id: 'diver_log', code: 'DIVLOG', name: 'Diver Log Report', description: 'Chronological diver activities and findings per dive.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: true },
-            { id: 'acfmc', code: 'ACFMC', name: 'Diving ACFMC Inspection', description: 'Landscape Diving ACFM Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingACFMCReport, available: hasRecords(['ACFMC']) },
+            { id: 'acfmc', code: 'ACFMC', name: 'ACFM', description: 'Landscape Diving ACFM Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingACFMCReport, available: hasRecords(['ACFMC']) },
             { id: 'plco', code: 'PL_CO', name: 'Diving Coating Damage Inspection', description: 'Landscape Diving Coating Damage Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingPLCOReport, available: hasRecords(['PL_CO']) },
             { id: 'cp_div', code: 'CP', name: 'Diving CP Survey', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
             { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
-            
-            // ── INSPECTION REPORTS (BOTH / GENERAL) ────────────────────────────────
+            { id: 'mgi_div', code: 'DMGI', name: 'Diving Marine Growth (DMGI)', description: 'Diving Marine Growth Inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMGIReport, available: hasRecords(['DMGI', 'MGROW']) },
+            { id: 'diving_anmain_report', code: 'ANMAIN', name: 'Diving Anode Maintenance Report (ANMAIN)', description: 'Landscape Anode Maintenance Inspection Report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingANMAINReport, available: hasRecords(['ANMAIN']) },
+            { id: 'diving-dcasn-uw-report', code: 'DCASN-UW', name: 'Caisson Inspection Underwater Diving', description: 'Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNUWReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
+            }) },
+            { id: 'diving-dcasn-ts-report', code: 'DCASN-TS', name: 'Caisson Inspection Topside Diving', description: 'Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNTSReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
+            }) },
+            { id: 'diving-dcond-uw-report', code: 'DCOND-UW', name: 'Conductor Inspection Underwater Diving', description: 'Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDUWReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
+            }) },
+            { id: 'diving-dcond-ts-report', code: 'DCOND-TS', name: 'Conductor Inspection Topside Diving', description: 'Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDTSReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
+            }) },
+
             { id: 'insp_report', code: 'INSP', name: 'Inspection Report', description: 'Detailed inspection findings, observations and results.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
             { id: 'defect_summary', code: 'DEFECT', name: 'Defect Summary Report', description: 'Priority-ordered summary of all anomalies with status.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly) },
             { id: 'findings', code: 'FINDINGS', name: 'Findings Summary Report', description: 'Consolidated summary of all findings across the SOW.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
@@ -275,7 +538,45 @@ export function ReportWizardDialog({
             available: true
         }));
 
-        return [...baseTemplates, ...dynamicReports];
+        const combined = [...baseTemplates, ...dynamicReports];
+        const unique: ReportTemplate[] = [];
+        const seenNames = new Set<string>();
+        const seenIds = new Set<string>();
+        for (const t of combined) {
+            let updatedName = t.name.trim();
+            
+            // Strip redundant mode prefix since the postfix will be added
+            if (t.mode === 'ROV') {
+                if (updatedName.toUpperCase().startsWith('ROV ')) {
+                    updatedName = updatedName.substring(4).trim();
+                }
+            } else if (t.mode === 'DIVING') {
+                if (updatedName.toUpperCase().startsWith('DIVING ')) {
+                    updatedName = updatedName.substring(7).trim();
+                } else if (updatedName.toUpperCase().startsWith('DIVER ')) {
+                    updatedName = updatedName.substring(6).trim();
+                }
+            }
+
+            if (t.mode === 'ROV' && !updatedName.toUpperCase().endsWith('(ROV)')) {
+                updatedName = `${updatedName} (ROV)`;
+            } else if (t.mode === 'DIVING' && !updatedName.toUpperCase().endsWith('(DIVING)')) {
+                updatedName = `${updatedName} (Diving)`;
+            }
+            
+            const nameKey = updatedName.toLowerCase();
+            const idKey = String(t.id).toLowerCase();
+            if (!seenNames.has(nameKey) && !seenIds.has(idKey)) {
+                seenNames.add(nameKey);
+                seenIds.add(idKey);
+                unique.push({
+                    ...t,
+                    name: updatedName
+                });
+            }
+        }
+        unique.sort((a, b) => a.name.localeCompare(b.name));
+        return unique;
     }, [currentRecords, allInspectionTypes, handlers]);
 
     const filteredTemplates = useMemo(() => {
@@ -286,6 +587,18 @@ export function ReportWizardDialog({
             return matchesSearch && matchesCategory && matchesMode;
         });
     }, [templates, search, activeCategory, activeMode]);
+
+    const groupedTemplates = useMemo(() => {
+        const rov = filteredTemplates.filter(t => t.mode === 'ROV');
+        const diving = filteredTemplates.filter(t => t.mode === 'DIVING');
+        const both = filteredTemplates.filter(t => t.mode === 'BOTH');
+        
+        return [
+            { label: "ROV Operations", icon: <Cpu className="w-3.5 h-3.5" />, templates: rov, colorClass: "text-blue-500" },
+            { label: "Diving Operations", icon: <Waves className="w-3.5 h-3.5" />, templates: diving, colorClass: "text-emerald-500" },
+            { label: "Combined Operations", icon: <Activity className="w-3.5 h-3.5" />, templates: both, colorClass: "text-indigo-500" }
+        ].filter(group => group.templates.length > 0);
+    }, [filteredTemplates]);
 
     const categories = ["Structure", "Job Pack", "Planning", "Inspection", "Final", "Others"];
 
@@ -317,9 +630,11 @@ export function ReportWizardDialog({
         if (selectedTemplate) {
             selectedTemplate.handler();
             onOpenChange(false);
-            // Reset wizard for next time
-            setCurrentStep(1);
-            setSelectedTemplate(null);
+            if (!propCurrentStep) {
+                // Reset wizard for next time if not parent-controlled
+                setCurrentStep(1);
+                setSelectedTemplate(null);
+            }
         }
     };
 
@@ -327,11 +642,13 @@ export function ReportWizardDialog({
         <Dialog open={open} onOpenChange={(val) => {
             onOpenChange(val);
             if (!val) {
-                // Reset step when closed
-                setTimeout(() => {
-                    setCurrentStep(1);
-                    setSelectedTemplate(null);
-                }, 300);
+                // Reset step when closed (only for local state)
+                if (!propCurrentStep) {
+                    setTimeout(() => {
+                        setLocalStep(1);
+                        setLocalTemplate(null);
+                    }, 300);
+                }
             }
         }}>
             <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
@@ -432,64 +749,137 @@ export function ReportWizardDialog({
                                             />
                                         </div>
 
-                                        {activeCategory === "Inspection" && (
-                                            <Tabs value={activeMode} onValueChange={setActiveMode} className="w-full md:w-auto">
-                                                <TabsList className="bg-slate-200/50 dark:bg-slate-800 h-11 p-1 gap-1">
-                                                    <TabsTrigger value="ALL" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">All Modes</TabsTrigger>
-                                                    <TabsTrigger value="ROV" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-blue-600 data-[state=active]:text-white flex gap-2">
-                                                        <Cpu className="w-3.5 h-3.5" /> ROV
-                                                    </TabsTrigger>
-                                                    <TabsTrigger value="DIVING" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white flex gap-2">
-                                                        <Waves className="w-3.5 h-3.5" /> Diving
-                                                    </TabsTrigger>
-                                                </TabsList>
-                                            </Tabs>
-                                        )}
+                                        <div className="flex items-center gap-4 shrink-0 w-full md:w-auto justify-between md:justify-end">
+                                            {activeCategory === "Inspection" && (
+                                                <Tabs value={activeMode} onValueChange={setActiveMode} className="w-full md:w-auto">
+                                                    <TabsList className="bg-slate-200/50 dark:bg-slate-800 h-11 p-1 gap-1">
+                                                        <TabsTrigger value="ALL" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">All Modes</TabsTrigger>
+                                                        <TabsTrigger value="ROV" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-blue-600 data-[state=active]:text-white flex gap-2">
+                                                            <Cpu className="w-3.5 h-3.5" /> ROV
+                                                        </TabsTrigger>
+                                                        <TabsTrigger value="DIVING" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white flex gap-2">
+                                                            <Waves className="w-3.5 h-3.5" /> Diving
+                                                        </TabsTrigger>
+                                                    </TabsList>
+                                                </Tabs>
+                                            )}
+
+                                            <div className="flex items-center gap-1 bg-slate-200/50 dark:bg-slate-800 p-1 rounded-lg h-11">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => setViewMode("card")}
+                                                    className={`h-9 w-9 p-0 rounded-md transition-all ${
+                                                        viewMode === "card"
+                                                            ? "bg-white dark:bg-slate-700 shadow-sm text-slate-950 dark:text-white"
+                                                            : "text-slate-500 hover:bg-slate-300/30 dark:hover:bg-slate-700/30"
+                                                    }`}
+                                                >
+                                                    <LayoutGrid className="w-4 h-4" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => setViewMode("table")}
+                                                    className={`h-9 w-9 p-0 rounded-md transition-all ${
+                                                        viewMode === "table"
+                                                            ? "bg-white dark:bg-slate-700 shadow-sm text-slate-950 dark:text-white"
+                                                            : "text-slate-500 hover:bg-slate-300/30 dark:hover:bg-slate-700/30"
+                                                    }`}
+                                                >
+                                                    <List className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
                                 <ScrollArea className="flex-1 -mr-2 pr-4 mt-4">
                                     {filteredTemplates.length > 0 ? (
                                         <div className="space-y-8 pb-4">
-                                            {activeCategory === "Inspection" && activeMode === "ALL" ? (
-                                                <>
-                                                    <div className="space-y-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-                                                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 flex items-center gap-2">
-                                                                <Cpu className="w-3.5 h-3.5" /> ROV Operations
-                                                            </span>
-                                                            <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-                                                        </div>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                            {filteredTemplates.filter(t => t.mode === 'ROV' || t.mode === 'BOTH').map((template) => (
-                                                                <TemplateCard key={template.id} template={template} onSelect={handleTemplateSelect} getIcon={getIcon} />
-                                                            ))}
-                                                        </div>
+                                            {groupedTemplates.map((group) => (
+                                                <div key={group.label} className="space-y-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
+                                                        <span className={`text-[10px] font-black uppercase tracking-widest ${group.colorClass} flex items-center gap-2`}>
+                                                            {group.icon} {group.label}
+                                                        </span>
+                                                        <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
                                                     </div>
 
-                                                    <div className="space-y-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-                                                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-2">
-                                                                <Waves className="w-3.5 h-3.5" /> Diving Operations
-                                                            </span>
-                                                            <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-                                                        </div>
+                                                    {viewMode === "card" ? (
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                            {filteredTemplates.filter(t => t.mode === 'DIVING').map((template) => (
+                                                            {group.templates.map((template) => (
                                                                 <TemplateCard key={template.id} template={template} onSelect={handleTemplateSelect} getIcon={getIcon} />
                                                             ))}
                                                         </div>
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                    {filteredTemplates.map((template) => (
-                                                        <TemplateCard key={template.id} template={template} onSelect={handleTemplateSelect} getIcon={getIcon} />
-                                                    ))}
+                                                    ) : (
+                                                        <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-950 shadow-sm">
+                                                            <Table>
+                                                                <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
+                                                                    <TableRow>
+                                                                        <TableHead className="w-[80px]">Code</TableHead>
+                                                                        <TableHead>Template Name</TableHead>
+                                                                        <TableHead className="hidden md:table-cell">Description</TableHead>
+                                                                        <TableHead className="w-[120px]">Category</TableHead>
+                                                                        <TableHead className="w-[120px] text-right">Status</TableHead>
+                                                                    </TableRow>
+                                                                </TableHeader>
+                                                                <TableBody>
+                                                                    {group.templates.map((template) => (
+                                                                        <TableRow 
+                                                                            key={template.id}
+                                                                            className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors ${
+                                                                                !template.available ? "opacity-60 grayscale cursor-not-allowed bg-slate-50/50 dark:bg-slate-950" : ""
+                                                                            }`}
+                                                                            onClick={() => {
+                                                                                if (template.available) {
+                                                                                    handleTemplateSelect(template);
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <TableCell>
+                                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800">
+                                                                                    {template.code}
+                                                                                </span>
+                                                                            </TableCell>
+                                                                            <TableCell className="font-bold text-slate-800 dark:text-slate-100">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <div className="p-1 rounded bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400">
+                                                                                        {getIcon(template.category)}
+                                                                                    </div>
+                                                                                    {template.name}
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            <TableCell className="text-slate-500 dark:text-slate-400 text-xs hidden md:table-cell">
+                                                                                {template.description}
+                                                                            </TableCell>
+                                                                            <TableCell className="text-slate-500 dark:text-slate-400 text-xs">
+                                                                                <Badge variant="outline" className="text-[9px] font-bold tracking-wider uppercase">
+                                                                                    {template.category}
+                                                                                </Badge>
+                                                                            </TableCell>
+                                                                            <TableCell className="text-right">
+                                                                                {template.available ? (
+                                                                                    <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-250 dark:border-emerald-800 text-[9px] font-black tracking-wide">
+                                                                                        Available
+                                                                                    </Badge>
+                                                                                ) : (
+                                                                                    <span className="text-[10px] text-amber-600 dark:text-amber-500 italic font-bold">
+                                                                                        No Records
+                                                                                    </span>
+                                                                                )}
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
+                                            ))}
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -549,7 +939,11 @@ export function ReportWizardDialog({
                                             </div>
                                             <div>
                                                 <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SOW Record Count</Label>
-                                                <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{currentRecords.length} Records Identified</p>
+                                                <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                                    {selectedTemplate 
+                                                        ? `${getMatchingRecordsForTemplate(selectedTemplate, currentRecords).length} / ${currentRecords.length} Matching Records` 
+                                                        : `${currentRecords.length} Records Identified`}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
@@ -565,71 +959,182 @@ export function ReportWizardDialog({
                         )}
 
                         {currentStep === 3 && (
-                            <motion.div 
-                                key="step3"
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                className="absolute inset-0 p-6 flex flex-col gap-8 items-center justify-center overflow-y-auto"
-                            >
-                                <div className="max-w-lg w-full space-y-6">
-                                    <div className="text-center">
-                                        <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Configuration</h2>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Fine-tune your report output</p>
-                                    </div>
+                             <motion.div 
+                                 key="step3"
+                                 initial={{ opacity: 0, x: 20 }}
+                                 animate={{ opacity: 1, x: 0 }}
+                                 exit={{ opacity: 0, x: -20 }}
+                                 className="absolute inset-0 p-6 flex flex-col gap-8 items-center justify-center overflow-y-auto"
+                             >
+                                 <div className="max-w-lg w-full space-y-6">
+                                     <div className="text-center">
+                                         <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Configuration</h2>
+                                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Fine-tune your report output</p>
+                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prepared By</Label>
-                                            <Input 
-                                                value={config.preparedBy}
-                                                onChange={(e) => setConfig({...config, preparedBy: e.target.value})}
-                                                placeholder="Inspector Name" 
-                                                className="h-10 bg-white dark:bg-slate-950"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reviewed By</Label>
-                                            <Input 
-                                                value={config.reviewedBy}
-                                                onChange={(e) => setConfig({...config, reviewedBy: e.target.value})}
-                                                placeholder="Reviewer Name" 
-                                                className="h-10 bg-white dark:bg-slate-950"
-                                            />
-                                        </div>
-                                        <div className="space-y-2 col-span-2">
-                                            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Watermark Text</Label>
-                                            <Input 
-                                                value={config.watermark}
-                                                onChange={(e) => setConfig({...config, watermark: e.target.value})}
-                                                placeholder="DRAFT, CONFIDENTIAL, etc." 
-                                                className="h-10 bg-white dark:bg-slate-950 font-black"
-                                            />
-                                        </div>
-                                    </div>
+                                     {/* Signatory Section */}
+                                     <div className="space-y-4">
+                                         <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-850">
+                                             <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Signatory Settings</span>
+                                             <div className="flex items-center gap-2">
+                                                 <Label htmlFor="print-signatures" className="text-[10px] font-bold text-slate-500 uppercase">Print Signatory Block</Label>
+                                                 <Switch 
+                                                     id="print-signatures"
+                                                     checked={config.showSignatures !== false}
+                                                     onCheckedChange={(checked) => setConfig({ ...config, showSignatures: checked })}
+                                                 />
+                                             </div>
+                                         </div>
 
-                                    <div className="space-y-4 pt-2">
-                                        <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                                            <div className="flex items-center gap-3">
-                                                <Camera className="w-4 h-4 text-slate-400" />
-                                                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Include High-Res Images</span>
-                                            </div>
-                                            <div className="w-10 h-5 bg-blue-600 rounded-full relative">
-                                                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full" />
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                                            <div className="flex items-center gap-3">
-                                                <Activity className="w-4 h-4 text-slate-400" />
-                                                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Prioritize Anomaly Summary</span>
-                                            </div>
-                                            <div className="w-10 h-5 bg-blue-600 rounded-full relative">
-                                                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </motion.div>
+                                         {config.showSignatures !== false && (
+                                             <div className="space-y-4 animate-in fade-in duration-200">
+                                                 {/* Prepared By */}
+                                                 <div className="grid grid-cols-3 gap-3 items-center">
+                                                     <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prepared By</Label>
+                                                     <Input 
+                                                         value={config.preparedBy?.name || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             preparedBy: { ...(config.preparedBy || {}), name: e.target.value }
+                                                         })}
+                                                         placeholder="Inspector Name" 
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                     <Input 
+                                                         type="date"
+                                                         value={config.preparedBy?.date || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             preparedBy: { ...(config.preparedBy || {}), date: e.target.value }
+                                                         })}
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                 </div>
+
+                                                 {/* Reviewed By */}
+                                                 <div className="grid grid-cols-3 gap-3 items-center">
+                                                     <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reviewed By</Label>
+                                                     <Input 
+                                                         value={config.reviewedBy?.name || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             reviewedBy: { ...(config.reviewedBy || {}), name: e.target.value }
+                                                         })}
+                                                         placeholder="Reviewer Name" 
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                     <Input 
+                                                         type="date"
+                                                         value={config.reviewedBy?.date || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             reviewedBy: { ...(config.reviewedBy || {}), date: e.target.value }
+                                                         })}
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                 </div>
+
+                                                 {/* Approved By */}
+                                                 <div className="grid grid-cols-3 gap-3 items-center">
+                                                     <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Approved By</Label>
+                                                     <Input 
+                                                         value={config.approvedBy?.name || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             approvedBy: { ...(config.approvedBy || {}), name: e.target.value }
+                                                         })}
+                                                         placeholder="Approver Name" 
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                     <Input 
+                                                         type="date"
+                                                         value={config.approvedBy?.date || ""}
+                                                         onChange={(e) => setConfig({
+                                                             ...config,
+                                                             approvedBy: { ...(config.approvedBy || {}), date: e.target.value }
+                                                         })}
+                                                         className="h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                                     />
+                                                 </div>
+                                             </div>
+                                         )}
+                                     </div>
+
+                                     {/* Watermark Section */}
+                                     <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                         <div className="flex items-center justify-between pb-2">
+                                             <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Watermark Settings</span>
+                                             <div className="flex items-center gap-2">
+                                                 <Label htmlFor="print-watermark" className="text-[10px] font-bold text-slate-500 uppercase">Print Watermark</Label>
+                                                 <Switch 
+                                                     id="print-watermark"
+                                                     checked={config.watermark?.enabled || false}
+                                                     onCheckedChange={(checked) => setConfig({
+                                                         ...config,
+                                                         watermark: { ...(config.watermark || {}), enabled: checked }
+                                                     })}
+                                                 />
+                                             </div>
+                                         </div>
+
+                                         {config.watermark?.enabled && (
+                                             <div className="space-y-4 animate-in fade-in duration-200">
+                                                 <div className="grid grid-cols-2 gap-4">
+                                                     <div className="space-y-2">
+                                                         <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Watermark Text</Label>
+                                                         <Input 
+                                                             value={config.watermark?.text || ""}
+                                                             onChange={(e) => setConfig({
+                                                                 ...config,
+                                                                 watermark: { ...(config.watermark || {}), text: e.target.value }
+                                                             })}
+                                                             placeholder="e.g. DRAFT" 
+                                                             className="h-10 bg-white dark:bg-slate-950 font-black text-xs uppercase"
+                                                         />
+                                                     </div>
+
+                                                     <div className="space-y-2">
+                                                         <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Watermark Color</Label>
+                                                         <Select
+                                                             value={config.watermark?.color || "gray"}
+                                                             onValueChange={(val) => setConfig({
+                                                                 ...config,
+                                                                 watermark: { ...(config.watermark || {}), color: val }
+                                                             })}
+                                                         >
+                                                             <SelectTrigger className="h-10 bg-white dark:bg-slate-950 text-xs font-bold">
+                                                                 <SelectValue placeholder="Select color" />
+                                                             </SelectTrigger>
+                                                             <SelectContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+                                                                 <SelectItem value="gray" className="text-xs font-bold">Transparent Gray</SelectItem>
+                                                                 <SelectItem value="red" className="text-xs font-bold text-red-500">Transparent Red</SelectItem>
+                                                                 <SelectItem value="blue" className="text-xs font-bold text-blue-500">Transparent Blue</SelectItem>
+                                                             </SelectContent>
+                                                         </Select>
+                                                     </div>
+                                                 </div>
+
+                                                 <div className="space-y-2">
+                                                     <div className="flex justify-between items-center">
+                                                         <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">How dark it appears (transparency)</Label>
+                                                         <span className="text-[10px] font-bold text-slate-500">{Math.round((config.watermark?.transparency || 0.15) * 100)}%</span>
+                                                     </div>
+                                                     <Slider
+                                                         value={[(config.watermark?.transparency || 0.15) * 100]}
+                                                         onValueChange={(vals) => setConfig({
+                                                             ...config,
+                                                             watermark: { ...(config.watermark || {}), transparency: vals[0] / 100 }
+                                                         })}
+                                                         max={80}
+                                                         min={5}
+                                                         step={5}
+                                                     />
+                                                 </div>
+                                             </div>
+                                         )}
+                                     </div>
+                                 </div>
+                             </motion.div>
                         )}
 
                         {currentStep === 4 && (
@@ -667,23 +1172,37 @@ export function ReportWizardDialog({
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-y-4 gap-x-8 pt-4 border-t border-slate-100 dark:border-slate-900">
-                                            <div>
-                                                <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Records</Label>
-                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{currentRecords.length} Items</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Watermark</Label>
-                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{config.watermark || "None"}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inspector</Label>
-                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{config.preparedBy || "Not Specified"}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Date</Label>
-                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{new Date().toLocaleDateString()}</p>
-                                            </div>
-                                        </div>
+                                             <div>
+                                                 <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filtered Records</Label>
+                                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                     {selectedTemplate ? `${getMatchingRecordsForTemplate(selectedTemplate, currentRecords).length} Items` : "0 Items"}
+                                                 </p>
+                                             </div>
+                                             <div>
+                                                 <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Watermark</Label>
+                                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                     {config.watermark?.enabled ? `${config.watermark.text} (${Math.round((config.watermark.transparency || 0.15) * 100)}% opacity)` : "None"}
+                                                 </p>
+                                             </div>
+                                             <div>
+                                                 <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inspector (Prepared By)</Label>
+                                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{config.preparedBy?.name || "Not Specified"}</p>
+                                             </div>
+                                             <div>
+                                                 <Label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Date</Label>
+                                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                     {(() => {
+                                                         const dateStr = config.preparedBy?.date;
+                                                         if (!dateStr) return new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+                                                         const parts = dateStr.split("-");
+                                                         if (parts.length === 3) {
+                                                             return `${parts[2]}-${parts[1]}-${parts[0]}`;
+                                                         }
+                                                         return dateStr;
+                                                     })()}
+                                                 </p>
+                                             </div>
+                                         </div>
 
                                         <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 flex gap-3">
                                             <Check className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -700,16 +1219,7 @@ export function ReportWizardDialog({
 
                 <div className="p-4 border-t border-slate-100 dark:border-slate-900 bg-slate-50 dark:bg-slate-950 flex justify-between items-center shrink-0">
                     <div className="flex gap-2">
-                        {currentStep === 1 ? (
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => onOpenChange(false)}
-                                className="text-[10px] font-black uppercase tracking-widest h-9 px-6 rounded-full border-slate-200 hover:bg-slate-100"
-                            >
-                                Cancel Wizard
-                            </Button>
-                        ) : (
+                        {currentStep > 1 && (
                             <Button 
                                 variant="outline" 
                                 size="sm" 
@@ -719,6 +1229,22 @@ export function ReportWizardDialog({
                                 <ChevronLeft className="w-4 h-4 mr-1" /> Back
                             </Button>
                         )}
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => {
+                                onOpenChange(false);
+                                if (propSetCurrentStep) {
+                                    propSetCurrentStep(1);
+                                }
+                                if (propSetSelectedTemplate) {
+                                    propSetSelectedTemplate(null);
+                                }
+                            }}
+                            className="text-[10px] font-black uppercase tracking-widest h-9 px-6 rounded-full text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900"
+                        >
+                            Cancel Wizard
+                        </Button>
                     </div>
                     
                     <div className="flex items-center gap-3">

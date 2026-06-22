@@ -37,6 +37,7 @@ interface InspectionHeaderProps {
     generateInspectionReportByType: (id: any) => void;
     generateSeabedReport: (templateId: string) => void;
     generateMGIReport: () => void;
+    generateRMGIReport: () => void;
     generateFMDReport: () => void;
     generateSZCIReport: () => void;
     generateUTWTReport: () => void;
@@ -86,6 +87,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateInspectionReportByType,
     generateSeabedReport,
     generateMGIReport,
+    generateRMGIReport,
     generateFMDReport,
     generateSZCIReport,
     generateUTWTReport,
@@ -126,6 +128,13 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     return (
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0">
             <div className="flex items-center gap-4">
+                <Link href="/dashboard/inspection-v2">
+                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8">
+                        <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                    </Button>
+                </Link>
+                <div className="h-5 w-px bg-slate-700"></div>
+
                 <h1 className="text-lg font-black uppercase tracking-widest flex items-center gap-2 text-blue-400">
                     <Activity className="w-5 h-5" /> INSPECTION
                 </h1>
@@ -185,8 +194,6 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
             </div>
 
             <div className="flex gap-2">
-                <Link href="/dashboard/inspection-v2"><Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Button></Link>
-
                 <Button
                     variant="outline"
                     size="sm"

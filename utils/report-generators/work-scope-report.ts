@@ -3,7 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 
-import { loadLogoWithTransparency, drawLogo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface JobPackData {
     id: number;
@@ -559,6 +559,7 @@ export const generateWorkScopeReport = async (
     }
 
     if (config?.returnBlob) {
+        applyWatermarkAndSignaturesGlobal(doc, config);
         return doc.output('blob');
     }
     return doc;
