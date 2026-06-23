@@ -6825,16 +6825,25 @@ function V10PreviewLayout() {
                 onOpenHistory={() => setVideoLogExpanded(true)}
               />
             </div>
-            <div className="flex-1 min-h-0 border-t border-slate-800 overflow-hidden bg-slate-900/50">
-               <TapeLogEvents
-                videoEvents={videoEvents}
-                handleDeleteEvent={handleDeleteEvent}
-                onEditEvent={(ev) => setEditingEvent(ev)}
-                expanded={videoLogExpanded}
-                setExpanded={setVideoLogExpanded}
-                inline={true}
-              />
-            </div>
+            <Dialog open={videoLogExpanded} onOpenChange={setVideoLogExpanded}>
+              <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
+                <DialogHeader className="p-4 border-b border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shrink-0">
+                  <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">
+                    <History className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Video Log Event History
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50 dark:bg-slate-900/50 p-3">
+                   <TapeLogEvents
+                    videoEvents={videoEvents}
+                    handleDeleteEvent={handleDeleteEvent}
+                    onEditEvent={(ev) => setEditingEvent(ev)}
+                    expanded={videoLogExpanded}
+                    setExpanded={setVideoLogExpanded}
+                    inline={true}
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         );
       case "videoPreview":
