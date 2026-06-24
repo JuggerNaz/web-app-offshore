@@ -299,8 +299,11 @@ interface ReportWizardDialogProps {
         generateRSCORReport: () => void;
         generateRSCORV2Report: () => void;
         generateRRISIReport: () => void;
+        generateRRISIDetailReport: () => void;
         generateJTISIReport: () => void;
+        generateJTISIDetailReport: () => void;
         generateITISIReport: () => void;
+        generateITISIDetailReport: () => void;
         generateRCASNReport: () => void;
         generateRCASNSketchReport: () => void;
         generateRCONDReport: () => void;
@@ -458,9 +461,12 @@ export function ReportWizardDialog({
             { id: 'szci_rov', code: 'RSZCI', name: 'ROV Splash Zone (SZCI)', description: 'ROV Splash Zone inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
             { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
             { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch v2', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
-            { id: 'rrisi_rov', code: 'RRISI', name: 'ROV Riser Report (RRISI)', description: 'ROV Riser Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
-            { id: 'jtisi_rov', code: 'JTISI', name: 'ROV J-Tube Report (JTISI)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI']) },
-            { id: 'itisi_rov', code: 'ITISI', name: 'ROV I-Tube Report (ITISI)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI']) },
+            { id: 'rrisi_rov', code: 'RRISI', name: 'Riser Survey Inspection Sketch Report (ROV)', description: 'ROV Riser inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
+            { id: 'rrisi_detail_rov', code: 'RRISI', name: 'Riser Inspection Report (ROV)', description: 'Detailed portrait Riser inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIDetailReport, available: hasRecords(['RRISI']) },
+            { id: 'jtisi_rov', code: 'JTISI', name: 'J-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI', 'RRISI']) },
+            { id: 'jtisi_detail_rov', code: 'JTISI', name: 'J-Tube Inspection Report (ROV)', description: 'Detailed portrait J-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIDetailReport, available: hasRecords(['JTISI', 'RRISI']) },
+            { id: 'itisi_rov', code: 'ITISI', name: 'I-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI', 'RRISI']) },
+            { id: 'itisi_detail_rov', code: 'ITISI', name: 'I-Tube Inspection Report (ROV)', description: 'Detailed portrait I-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIDetailReport, available: hasRecords(['ITISI', 'RRISI']) },
             { id: 'rcasn_rov', code: 'RCASN', name: 'ROV Caisson Report (RCASN)', description: 'ROV Caisson Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNReport, available: hasRecords(['RCASN']) },
             { id: 'rcasn_sketch_rov', code: 'RCASN-S', name: 'ROV Caisson Sketch Report', description: 'ROV Caisson Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNSketchReport, available: hasRecords(['RCASN']) },
             { id: 'rcond_rov', code: 'RCOND', name: 'ROV Conductor Report (RCOND)', description: 'ROV Conductor Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDReport, available: hasRecords(['RCOND', 'RCON']) },

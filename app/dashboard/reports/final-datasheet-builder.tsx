@@ -57,9 +57,12 @@ const TOC_SECTIONS = [
       { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
-      { id: "rrisi-report", name: "ROV Riser Survey Report", mode: "ROV" },
-      { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", mode: "ROV" },
-      { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", mode: "ROV" }
+      { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
       { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },

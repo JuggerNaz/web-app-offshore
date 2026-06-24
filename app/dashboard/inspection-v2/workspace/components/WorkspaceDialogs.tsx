@@ -152,8 +152,11 @@ interface WorkspaceDialogsProps {
         rcasnPreviewOpen: boolean;
         rcasnSketchPreviewOpen: boolean;
         rrisiPreviewOpen: boolean;
+        rrisiDetailPreviewOpen: boolean;
         jtisiPreviewOpen: boolean;
+        jtisiDetailPreviewOpen: boolean;
         itisiPreviewOpen: boolean;
+        itisiDetailPreviewOpen: boolean;
         rgPreviewOpen: boolean;
         sgPreviewOpen: boolean;
         cuPreviewOpen: boolean;
@@ -237,8 +240,11 @@ interface WorkspaceDialogsProps {
         setRcasnPreviewOpen: (open: boolean) => void;
         setRcasnSketchPreviewOpen: (open: boolean) => void;
         setRrisiPreviewOpen: (open: boolean) => void;
+        setRrisiDetailPreviewOpen: (open: boolean) => void;
         setJtisiPreviewOpen: (open: boolean) => void;
+        setJtisiDetailPreviewOpen: (open: boolean) => void;
         setItisiPreviewOpen: (open: boolean) => void;
+        setItisiDetailPreviewOpen: (open: boolean) => void;
         setRgPreviewOpen: (open: boolean) => void;
         setSgPreviewOpen: (open: boolean) => void;
         setCuPreviewOpen: (open: boolean) => void;
@@ -295,8 +301,11 @@ interface WorkspaceDialogsProps {
         generateRSCORReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORV2ReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRRISIDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateJTISIDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateITISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateITISIDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateAnodeRsaniReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -437,8 +446,11 @@ export function WorkspaceDialogs({
         rcasnPreviewOpen,
         rcasnSketchPreviewOpen,
         rrisiPreviewOpen,
+        rrisiDetailPreviewOpen,
         jtisiPreviewOpen,
+        jtisiDetailPreviewOpen,
         itisiPreviewOpen,
+        itisiDetailPreviewOpen,
         rgPreviewOpen,
         sgPreviewOpen,
         cuPreviewOpen,
@@ -517,8 +529,11 @@ export function WorkspaceDialogs({
         setRcasnPreviewOpen,
         setRcasnSketchPreviewOpen,
         setRrisiPreviewOpen,
+        setRrisiDetailPreviewOpen,
         setJtisiPreviewOpen,
+        setJtisiDetailPreviewOpen,
         setItisiPreviewOpen,
+        setItisiDetailPreviewOpen,
         setRgPreviewOpen,
         setSgPreviewOpen,
         setCuPreviewOpen,
@@ -570,8 +585,11 @@ export function WorkspaceDialogs({
         generateRSCORReportBlob,
         generateRSCORV2ReportBlob,
         generateRRISIReportBlob,
+        generateRRISIDetailReportBlob,
         generateJTISIReportBlob,
+        generateJTISIDetailReportBlob,
         generateITISIReportBlob,
+        generateITISIDetailReportBlob,
         generateAnodeReportBlob,
         generateAnodeRsaniReportBlob,
         generateCPReportBlob,
@@ -2342,7 +2360,7 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rrisiPreviewOpen} 
                 onOpenChange={setRrisiPreviewOpen} 
-                title="ROV Riser Survey Report Preview" 
+                title="Riser Survey Inspection Sketch Report (ROV) Preview" 
                 fileName={`ROV_Riser_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRRISIReportBlob} 
             />
@@ -2351,9 +2369,20 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={rrisiDetailPreviewOpen} 
+                onOpenChange={setRrisiDetailPreviewOpen} 
+                title="Riser Inspection Report (ROV) Preview" 
+                fileName={`Riser_Inspection_Report_ROV_${headerData.sowReportNo}`} 
+                generateReport={generateRRISIDetailReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={jtisiPreviewOpen} 
                 onOpenChange={setJtisiPreviewOpen} 
-                title="ROV J-Tube Inspection Report Preview" 
+                title="J-Tube Survey Inspection Sketch Report (ROV) Preview" 
                 fileName={`ROV_JTube_Report_${headerData.sowReportNo}`} 
                 generateReport={generateJTISIReportBlob} 
             />
@@ -2362,11 +2391,33 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={jtisiDetailPreviewOpen} 
+                onOpenChange={setJtisiDetailPreviewOpen} 
+                title="J-Tube Inspection Report (ROV) Preview" 
+                fileName={`JTube_Inspection_Report_ROV_${headerData.sowReportNo}`} 
+                generateReport={generateJTISIDetailReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={itisiPreviewOpen} 
                 onOpenChange={setItisiPreviewOpen} 
-                title="ROV I-Tube Inspection Report Preview" 
+                title="I-Tube Survey Inspection Sketch Report (ROV) Preview" 
                 fileName={`ROV_ITube_Report_${headerData.sowReportNo}`} 
                 generateReport={generateITISIReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={itisiDetailPreviewOpen} 
+                onOpenChange={setItisiDetailPreviewOpen} 
+                title="I-Tube Inspection Report (ROV) Preview" 
+                fileName={`ITube_Inspection_Report_ROV_${headerData.sowReportNo}`} 
+                generateReport={generateITISIDetailReportBlob} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2888,8 +2939,11 @@ export function WorkspaceDialogs({
                     generateRSCORReport: () => setters.setRscorPreviewOpen(true),
                     generateRSCORV2Report: () => setters.setRscorV2PreviewOpen(true),
                     generateRRISIReport: () => setters.setRrisiPreviewOpen(true),
+                    generateRRISIDetailReport: () => setRrisiDetailPreviewOpen(true),
                     generateJTISIReport: () => setters.setJtisiPreviewOpen(true),
+                    generateJTISIDetailReport: () => setJtisiDetailPreviewOpen(true),
                     generateITISIReport: () => setters.setItisiPreviewOpen(true),
+                    generateITISIDetailReport: () => setters.setItisiDetailPreviewOpen(true),
                     generateRCASNReport: () => setters.setRcasnPreviewOpen(true),
                     generateRCASNSketchReport: () => setters.setRcasnSketchPreviewOpen(true),
                     generateRCONDReport: () => setters.setRcondPreviewOpen(true),
@@ -2943,6 +2997,7 @@ export function WorkspaceDialogs({
                             case 'RRISI': setters.setRrisiPreviewOpen(true); break;
                             case 'JTISI': setters.setJtisiPreviewOpen(true); break;
                             case 'ITISI': setters.setItisiPreviewOpen(true); break;
+                            case 'ITISI-D': setters.setItisiDetailPreviewOpen(true); break;
                             case 'RCASN': setters.setRcasnPreviewOpen(true); break;
                             case 'RCASN-S': setters.setRcasnSketchPreviewOpen(true); break;
                             case 'RCOND': setters.setRcondPreviewOpen(true); break;

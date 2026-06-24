@@ -124,9 +124,12 @@ export const REPORT_TEMPLATES = {
         { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
         { id: "szci-report", name: "ROV Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "utwt-report", name: "ROV UT Thickness Report", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rrisi-report", name: "ROV Riser Survey Report", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (CVI) summary (SANI) with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
@@ -215,9 +218,12 @@ const TOC_SECTIONS = [
       { id: "diving-dcond-ts-report", name: "Conductor Inspection Topside Diving", mode: "Diving" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
-      { id: "rrisi-report", name: "ROV Riser Survey Report", mode: "ROV" },
-      { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", mode: "ROV" },
-      { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", mode: "ROV" }
+      { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
       { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },
@@ -1533,6 +1539,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVSZCIReport } = await import("@/utils/report-generators/rov-szci-report");
             const { generateROVUTWTReport } = await import("@/utils/report-generators/rov-utwt-report");
             const { generateROVRRISIReport } = await import("@/utils/report-generators/rov-rrisi-report");
+            const { generateROVRRISIDetailReport } = await import("@/utils/report-generators/rov-rrisi-detail-report");
+            const { generateROVRRISIJTubeDetailReport } = await import("@/utils/report-generators/rov-jtisi-detail-report");
+            const { generateROVRRISIITubeDetailReport } = await import("@/utils/report-generators/rov-itisi-detail-report");
             const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
             const { generateROVCPReport }    = await import("@/utils/report-generators/rov-cp-report");
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
@@ -2176,7 +2185,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
 
         // ROV RRISI/JTISI/ITISI Survey Report (Unified)
-        if (["rrisi-report", "rov-jtisi-report", "rov-itisi-report"].includes(currentTemplateId)) {
+        if (["rrisi-report", "rrisi-detail-report", "rov-jtisi-report", "rov-jtisi-detail-report", "rov-itisi-report", "rov-itisi-detail-report"].includes(currentTemplateId)) {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -2201,13 +2210,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (error) throw error;
             // Determine Report Type based on Template ID
             let reportType: 'R' | 'J' | 'I' = 'R';
-            if (currentTemplateId === "rov-jtisi-report") reportType = 'J';
-            else if (currentTemplateId === "rov-itisi-report") reportType = 'I';
+            if (currentTemplateId === "rov-jtisi-report" || currentTemplateId === "rov-jtisi-detail-report") reportType = 'J';
+            else if (currentTemplateId === "rov-itisi-report" || currentTemplateId === "rov-itisi-detail-report") reportType = 'I';
 
             const filteredTubeRecords = (records || []).filter(r => {
                 const qid = (r.structure_components?.q_id || "").toUpperCase();
                 const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
+                
+                if (currentTemplateId === "rov-jtisi-detail-report") {
+                    return typeCode === 'RRISI' && qid.startsWith('J') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+                }
+                if (currentTemplateId === "rov-itisi-detail-report") {
+                    return typeCode === 'RRISI' && qid.startsWith('I') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+                }
                 
                 if (reportType === 'R') {
                     // Riser: Must be RRISI AND start with R AND NOT RISG
@@ -2246,6 +2262,30 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             try {
+                if (currentTemplateId === "rrisi-detail-report") {
+                    return await generateROVRRISIDetailReport(
+                        tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                    );
+                }
+                if (currentTemplateId === "rov-jtisi-detail-report") {
+                    return await generateROVRRISIJTubeDetailReport(
+                        tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                    );
+                }
+                if (currentTemplateId === "rov-itisi-detail-report") {
+                    return await generateROVRRISIITubeDetailReport(
+                        tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                    );
+                }
                 return await generateROVRRISIReport(
                     tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
