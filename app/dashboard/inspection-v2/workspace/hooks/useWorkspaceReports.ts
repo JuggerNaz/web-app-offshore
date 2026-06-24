@@ -102,6 +102,7 @@ export function useWorkspaceReports(
     const [sgPreviewOpen, setSgPreviewOpen] = useState(false);
     const [cuPreviewOpen, setCuPreviewOpen] = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
+    const [seabedDetailPreviewOpen, setSeabedDetailPreviewOpen] = useState(false);
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
@@ -222,6 +223,40 @@ export function useWorkspaceReports(
             itemTypeFilter
         );
         return result as Blob;
+    };
+
+    const generateSeabedDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return typeCode === 'RSEAB';
+        });
+        if (records.length === 0) {
+            toast.error("No Seabed Survey records found to generate report");
+            return;
+        }
+        setSeabedDetailPreviewOpen(true);
+    };
+
+    const generateSeabedDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return typeCode === 'RSEAB';
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        const { generateROVRSEABDetailReport } = await import("@/utils/report-generators/rov-rseab-detail-report");
+        return await generateROVRSEABDetailReport(
+            records.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), sowReportNo: headerData.sowReportNo }
+        ) as Blob;
     };
 
     const generateRMGIReport = async () => {
@@ -2087,6 +2122,7 @@ export function useWorkspaceReports(
         sgPreviewOpen, setSgPreviewOpen,
         cuPreviewOpen, setCuPreviewOpen,
         seabedPreviewOpen, setSeabedPreviewOpen,
+        seabedDetailPreviewOpen, setSeabedDetailPreviewOpen,
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
@@ -2168,6 +2204,8 @@ export function useWorkspaceReports(
         generateRCONDSketchReportBlob,
         generateSeabedReport,
         generateSeabedReportBlob,
+        generateSeabedDetailReport,
+        generateSeabedDetailReportBlob,
         generatePhotographyReport,
         generatePhotographyReportBlob,
         generatePhotographyLogReport,

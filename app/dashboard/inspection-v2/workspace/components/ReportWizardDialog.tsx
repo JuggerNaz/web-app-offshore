@@ -313,6 +313,7 @@ interface ReportWizardDialogProps {
         generateSGReport: () => void;
         generateCUReport: () => void;
         generateSeabedReport: (templateId: string) => void;
+        generateSeabedDetailReport: () => void;
         generateFullInspectionReport: () => void;
         generateInspectionReportByType: (id: any) => void;
     };
@@ -454,7 +455,8 @@ export function ReportWizardDialog({
             { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: true },
             { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey', description: 'Flooded Member Detection using ultrasonic or gamma methods.', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
             { id: 'utwt_rov', code: 'RUTWT', name: 'UTWT Survey', description: 'Ultrasonic Wall Thickness measurements of members.', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT']) },
-            { id: 'seabed_rov', code: 'RSEAB', name: 'ROV Seabed Survey', description: 'Debris, gas seepage, and crater survey of the seabed.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov', code: 'RSEAB', name: 'Seabed Survey Inspection Sketch Report (ROV)', description: 'Debris, gas seepage, and crater survey of the seabed.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_detail', code: 'RSEAB', name: 'Seabed Survey Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
             { id: 'rwdi', code: 'RWDI', name: 'ROV Water Depth Inspection Report', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
             { id: 'mgi_rov', code: 'RMGI', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI']) },

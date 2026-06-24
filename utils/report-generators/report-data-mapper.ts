@@ -56,6 +56,7 @@ export const mapInspectionDataForDocx = async (records: any[], aliases: any[]) =
         'rov-gvi-report': ['RGVI'],
         'rov-mgi-report': ['RMGI', 'MGROW'],
         'rov-seabed-report': ['RSEAB'],
+        'rov-rseab-detail-report': ['RSEAB'],
         'rov-cp-report': ['CP', 'RSANI'],
         'rov-fmd-report': ['RFMD'],
         'rov-riser-report': ['RRISI'],

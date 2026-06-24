@@ -82,7 +82,8 @@ const TOC_SECTIONS = [
       { id: "seabed-survey-debris", name: "Seabed Survey For Debris", mode: "General" },
       { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", mode: "General" },
       { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
-      { id: "rov-seabed-report", name: "ROV Seabed Survey Report", mode: "ROV" }
+      { id: "rov-seabed-report", name: "Seabed Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-detail-report", name: "Seabed Survey Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [
       { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }

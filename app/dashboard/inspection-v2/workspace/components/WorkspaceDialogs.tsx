@@ -148,6 +148,7 @@ interface WorkspaceDialogsProps {
         photographyPreviewOpen: boolean;
         photographyLogPreviewOpen: boolean;
         seabedPreviewOpen: boolean;
+        seabedDetailPreviewOpen: boolean;
         rcondPreviewOpen: boolean;
         rcasnPreviewOpen: boolean;
         rcasnSketchPreviewOpen: boolean;
@@ -236,6 +237,7 @@ interface WorkspaceDialogsProps {
         setPhotographyPreviewOpen: (open: boolean) => void;
         setPhotographyLogPreviewOpen: (open: boolean) => void;
         setSeabedPreviewOpen: (open: boolean) => void;
+        setSeabedDetailPreviewOpen: (open: boolean) => void;
         setRcondPreviewOpen: (open: boolean) => void;
         setRcasnPreviewOpen: (open: boolean) => void;
         setRcasnSketchPreviewOpen: (open: boolean) => void;
@@ -321,6 +323,7 @@ interface WorkspaceDialogsProps {
         generateRCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSeabedReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateGVINSReport: () => void;
@@ -442,6 +445,7 @@ export function WorkspaceDialogs({
         photographyPreviewOpen,
         photographyLogPreviewOpen,
         seabedPreviewOpen,
+        seabedDetailPreviewOpen,
         rcondPreviewOpen,
         rcasnPreviewOpen,
         rcasnSketchPreviewOpen,
@@ -525,6 +529,7 @@ export function WorkspaceDialogs({
         setPhotographyPreviewOpen,
         setPhotographyLogPreviewOpen,
         setSeabedPreviewOpen,
+        setSeabedDetailPreviewOpen,
         setRcondPreviewOpen,
         setRcasnPreviewOpen,
         setRcasnSketchPreviewOpen,
@@ -599,6 +604,7 @@ export function WorkspaceDialogs({
         generateRCONDReportBlob,
         generateRCONDSketchReportBlob,
         generateSeabedReportBlob,
+        generateSeabedDetailReportBlob,
         generatePhotographyReportBlob,
         generatePhotographyLogReportBlob,
         generateGVINSReport,
@@ -2525,9 +2531,20 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={seabedPreviewOpen} 
                 onOpenChange={setSeabedPreviewOpen} 
-                title="ROV Seabed Survey Report Preview" 
-                fileName={`ROV_Seabed_Report_${headerData.sowReportNo}`} 
+                title="Seabed Survey Inspection Sketch Report (ROV) Preview" 
+                fileName={`Seabed_Survey_Inspection_Sketch_Report_${headerData.sowReportNo}`} 
                 generateReport={generateSeabedReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={seabedDetailPreviewOpen} 
+                onOpenChange={setSeabedDetailPreviewOpen} 
+                title="Seabed Survey Inspection Report (ROV) Preview" 
+                fileName={`Seabed_Survey_Inspection_Report_${headerData.sowReportNo}`} 
+                generateReport={generateSeabedDetailReportBlob} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2957,6 +2974,7 @@ export function WorkspaceDialogs({
                     generateDivingDCONDUWReport: () => setters.setDivingDcondUwPreviewOpen(true),
                     generateDivingDCONDTSReport: () => setters.setDivingDcondTsPreviewOpen(true),
                     generateSeabedReport: (templateId: string) => setters.setSeabedPreviewOpen(true),
+                    generateSeabedDetailReport: () => setters.setSeabedDetailPreviewOpen(true),
                     generateFullInspectionReport: () => toast.info("Generating full inspection report..."),
                     generateInspectionReportByType: (id: any) => {
                         const type = states.allInspectionTypes.find(t => t.id === id);
