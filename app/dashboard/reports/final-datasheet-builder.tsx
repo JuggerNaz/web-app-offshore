@@ -79,11 +79,13 @@ const TOC_SECTIONS = [
       { id: "rov-scour-report", name: "ROV Scour Survey Report", mode: "ROV" }
   ]},
   { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
-      { id: "seabed-survey-debris", name: "Seabed Survey For Debris", mode: "General" },
-      { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", mode: "General" },
-      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
+      { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", mode: "General" },
       { id: "rov-seabed-report", name: "Seabed Survey Inspection Sketch Report (ROV)", mode: "ROV" },
-      { id: "rov-rseab-detail-report", name: "Seabed Survey Inspection Report (ROV)", mode: "ROV" }
+      { id: "rov-rseab-detail-report", name: "Seabed Survey Debris Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-gas-detail-report", name: "Seabed Survey Gas Seepage Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [
       { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }

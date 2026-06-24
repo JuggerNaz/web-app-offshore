@@ -149,6 +149,8 @@ interface WorkspaceDialogsProps {
         photographyLogPreviewOpen: boolean;
         seabedPreviewOpen: boolean;
         seabedDetailPreviewOpen: boolean;
+        seabedGasDetailPreviewOpen: boolean;
+        seabedCraterDetailPreviewOpen: boolean;
         rcondPreviewOpen: boolean;
         rcasnPreviewOpen: boolean;
         rcasnSketchPreviewOpen: boolean;
@@ -184,6 +186,7 @@ interface WorkspaceDialogsProps {
         rovCalibrationDialogOpen: boolean;
         isReportWizardOpen: boolean;
         reportConfig: any;
+        seabedTemplateType: string;
     };
 
 
@@ -238,6 +241,8 @@ interface WorkspaceDialogsProps {
         setPhotographyLogPreviewOpen: (open: boolean) => void;
         setSeabedPreviewOpen: (open: boolean) => void;
         setSeabedDetailPreviewOpen: (open: boolean) => void;
+        setSeabedGasDetailPreviewOpen: (open: boolean) => void;
+        setSeabedCraterDetailPreviewOpen: (open: boolean) => void;
         setRcondPreviewOpen: (open: boolean) => void;
         setRcasnPreviewOpen: (open: boolean) => void;
         setRcasnSketchPreviewOpen: (open: boolean) => void;
@@ -322,8 +327,11 @@ interface WorkspaceDialogsProps {
         generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedReport: (templateId?: string) => Promise<void>;
         generateSeabedReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSeabedDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedGasDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedCraterDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateGVINSReport: () => void;
@@ -446,6 +454,8 @@ export function WorkspaceDialogs({
         photographyLogPreviewOpen,
         seabedPreviewOpen,
         seabedDetailPreviewOpen,
+        seabedGasDetailPreviewOpen,
+        seabedCraterDetailPreviewOpen,
         rcondPreviewOpen,
         rcasnPreviewOpen,
         rcasnSketchPreviewOpen,
@@ -477,7 +487,8 @@ export function WorkspaceDialogs({
         divingDcondUwPreviewOpen,
         divingDcondTsPreviewOpen,
         isReportWizardOpen,
-        reportConfig
+        reportConfig,
+        seabedTemplateType
     } = states;
 
 
@@ -530,6 +541,8 @@ export function WorkspaceDialogs({
         setPhotographyLogPreviewOpen,
         setSeabedPreviewOpen,
         setSeabedDetailPreviewOpen,
+        setSeabedGasDetailPreviewOpen,
+        setSeabedCraterDetailPreviewOpen,
         setRcondPreviewOpen,
         setRcasnPreviewOpen,
         setRcasnSketchPreviewOpen,
@@ -603,8 +616,11 @@ export function WorkspaceDialogs({
         generateRCASNSketchReportBlob,
         generateRCONDReportBlob,
         generateRCONDSketchReportBlob,
+        generateSeabedReport,
         generateSeabedReportBlob,
         generateSeabedDetailReportBlob,
+        generateSeabedGasDetailReportBlob,
+        generateSeabedCraterDetailReportBlob,
         generatePhotographyReportBlob,
         generatePhotographyLogReportBlob,
         generateGVINSReport,
@@ -2529,10 +2545,20 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
-                open={seabedPreviewOpen} 
-                onOpenChange={setSeabedPreviewOpen} 
-                title="Seabed Survey Inspection Sketch Report (ROV) Preview" 
-                fileName={`Seabed_Survey_Inspection_Sketch_Report_${headerData.sowReportNo}`} 
+                open={seabedPreviewOpen}
+                onOpenChange={setSeabedPreviewOpen}
+                title={(() => {
+                    if (seabedTemplateType === 'seabed-survey-crater') return "Seabed Survey Crater Sketch Report (ROV) Preview";
+                    if (seabedTemplateType === 'seabed-survey-gas') return "Seabed Survey Gas Seepage Sketch Report (ROV) Preview";
+                    if (seabedTemplateType === 'seabed-survey-debris') return "Seabed Survey Debris Sketch Report (ROV) Preview";
+                    return "Seabed Survey Inspection Sketch Report (ROV) Preview";
+                })()}
+                fileName={(() => {
+                    if (seabedTemplateType === 'seabed-survey-crater') return `Seabed_Survey_Crater_Sketch_Report_${headerData.sowReportNo}`;
+                    if (seabedTemplateType === 'seabed-survey-gas') return `Seabed_Survey_Gas_Seepage_Sketch_Report_${headerData.sowReportNo}`;
+                    if (seabedTemplateType === 'seabed-survey-debris') return `Seabed_Survey_Debris_Sketch_Report_${headerData.sowReportNo}`;
+                    return `Seabed_Survey_Inspection_Sketch_Report_${headerData.sowReportNo}`;
+                })()}
                 generateReport={generateSeabedReportBlob} 
             />
             <ReportPreviewDialog
@@ -2542,9 +2568,31 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={seabedDetailPreviewOpen} 
                 onOpenChange={setSeabedDetailPreviewOpen} 
-                title="Seabed Survey Inspection Report (ROV) Preview" 
-                fileName={`Seabed_Survey_Inspection_Report_${headerData.sowReportNo}`} 
+                title="Seabed Survey Debris Inspection Report (ROV) Preview" 
+                fileName={`Seabed_Survey_Debris_Inspection_Report_${headerData.sowReportNo}`} 
                 generateReport={generateSeabedDetailReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={seabedGasDetailPreviewOpen} 
+                onOpenChange={setSeabedGasDetailPreviewOpen} 
+                title="Seabed Survey Gas Seepage Inspection Report (ROV) Preview" 
+                fileName={`Seabed_Survey_Gas_Seepage_Inspection_Report_${headerData.sowReportNo}`} 
+                generateReport={generateSeabedGasDetailReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={seabedCraterDetailPreviewOpen} 
+                onOpenChange={setSeabedCraterDetailPreviewOpen} 
+                title="Seabed Survey Crater Inspection Report (ROV) Preview" 
+                fileName={`Seabed_Survey_Crater_Inspection_Report_${headerData.sowReportNo}`} 
+                generateReport={generateSeabedCraterDetailReportBlob} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2973,8 +3021,10 @@ export function WorkspaceDialogs({
                     generateDivingDCASNTSReport: () => setters.setDivingDcasnTsPreviewOpen(true),
                     generateDivingDCONDUWReport: () => setters.setDivingDcondUwPreviewOpen(true),
                     generateDivingDCONDTSReport: () => setters.setDivingDcondTsPreviewOpen(true),
-                    generateSeabedReport: (templateId: string) => setters.setSeabedPreviewOpen(true),
+                    generateSeabedReport: (templateId: string) => generateSeabedReport(templateId),
                     generateSeabedDetailReport: () => setters.setSeabedDetailPreviewOpen(true),
+                    generateSeabedGasDetailReport: () => setters.setSeabedGasDetailPreviewOpen(true),
+                    generateSeabedCraterDetailReport: () => setters.setSeabedCraterDetailPreviewOpen(true),
                     generateFullInspectionReport: () => toast.info("Generating full inspection report..."),
                     generateInspectionReportByType: (id: any) => {
                         const type = states.allInspectionTypes.find(t => t.id === id);

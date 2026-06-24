@@ -24,19 +24,19 @@ interface ReportConfig {
 }
 
 /**
- * ROV Seabed Survey Debris Inspection Report (Portrait)
+ * ROV Seabed Survey Gas Seepage Inspection Report (Portrait)
  * Columns: Item No. | QID | Dive No. | Tape No. | Findings
  *
- * Filtered by item category = Debris. Ordered by leg name and distance.
+ * Filtered by item category = Gas Seepage. Ordered by leg name and distance.
  */
-export const generateROVRSEABDetailReport = async (
+export const generateROVRSEABGasDetailReport = async (
     records: any[],
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void> => {
     const supabase = createClient();
-    console.log("[ROV Seabed Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
+    console.log("[ROV Seabed Gas Seepage Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -54,14 +54,13 @@ export const generateROVRSEABDetailReport = async (
             rectified: [22, 163, 74] as [number, number, number],
         };
 
-        // ── Filter Records (Strict Seabed Filter: RSEAB + Debris category only) ──
+        // ── Filter Records (Strict Seabed Filter: RSEAB + Gas Seepage category only) ──
         const filteredRecords = records.filter(r => {
             const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
             if (typeCode !== 'RSEAB') return false;
             const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
             const desc = (r.description || '').toLowerCase();
-            // Include if category is Debris, or if no category is set (legacy default is Debris)
-            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || !desc.startsWith('gas') && !desc.startsWith('crater')));
+            return cat === 'gas seepage' || desc.startsWith('gas seepage');
         });
 
         // ── Pre-load logos ──
@@ -97,7 +96,7 @@ export const generateROVRSEABDetailReport = async (
             d.setFontSize(7); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Division", margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(13); d.setFont("helvetica", "bold");
-            d.text("Seabed Survey Debris Inspection Report (ROV)", margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("Seabed Survey Gas Seepage Inspection Report (ROV)", margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`SOW Report No: ${headerData.sowReportNo || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -291,9 +290,9 @@ export const generateROVRSEABDetailReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_Seabed_Survey_Debris_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        doc.save(`ROV_Seabed_Survey_Gas_Seepage_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
     } catch (e) {
-        console.error("ROV Seabed Detail Report Error", e);
+        console.error("ROV Seabed Gas Seepage Detail Report Error", e);
         throw e;
     }
 };

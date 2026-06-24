@@ -115,11 +115,13 @@ export const REPORT_TEMPLATES = {
         { id: "findings-report", name: "Findings Report", icon: FileCheck, description: "Detailed findings report with images", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diver-log-report", name: "Diver Log Report", icon: FileText, description: "Chronological diver log grouped by dive number with inspection findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "video-log-report", name: "Video Log Report", icon: FileText, description: "Video log entries grouped by tape number with timecodes and dive references", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "seabed-survey-debris", name: "Seabed Survey For Debris", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "seabed-survey-crater", name: "Seabed Survey For Crater", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-seabed-report", name: "Seabed Survey Inspection Sketch Report (ROV)", icon: FileCheck, description: "Unfiltered Seabed GUI maps showing all debris, craters and gas seepages", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rseab-detail-report", name: "Seabed Survey Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rseab-detail-report", name: "Seabed Survey Debris Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Debris inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rseab-gas-detail-report", name: "Seabed Survey Gas Seepage Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Gas Seepage inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Crater inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", icon: FileBarChart, description: "Marine Growth Graph Report (ROV) RMGI with Graph", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", icon: FileBarChart, description: "Marine Growth Inspection Report (ROV) RMGI Standard Table", requires: ["jobpack", "structure", "sow_report"] },
         { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
@@ -244,11 +246,13 @@ const TOC_SECTIONS = [
       { id: "rov-scour-report", name: "ROV Scour Survey Report", mode: "ROV" }
   ]},
   { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
-      { id: "seabed-survey-debris", name: "Seabed Survey For Debris", mode: "General" },
-      { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", mode: "General" },
-      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
+      { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", mode: "General" },
       { id: "rov-seabed-report", name: "Seabed Survey Inspection Sketch Report (ROV)", mode: "ROV" },
-      { id: "rov-rseab-detail-report", name: "Seabed Survey Inspection Report (ROV)", mode: "ROV" }
+      { id: "rov-rseab-detail-report", name: "Seabed Survey Debris Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-gas-detail-report", name: "Seabed Survey Gas Seepage Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [
       { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }
@@ -1545,6 +1549,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRRISIJTubeDetailReport } = await import("@/utils/report-generators/rov-jtisi-detail-report");
             const { generateROVRRISIITubeDetailReport } = await import("@/utils/report-generators/rov-itisi-detail-report");
             const { generateROVRSEABDetailReport } = await import("@/utils/report-generators/rov-rseab-detail-report");
+            const { generateROVRSEABGasDetailReport } = await import("@/utils/report-generators/rov-rseab-gas-detail-report");
+            const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
             const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
             const { generateROVCPReport }    = await import("@/utils/report-generators/rov-cp-report");
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
@@ -1784,7 +1790,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             });
 
             if (filteredRecords.length === 0) {
-                alert("No Seabed Survey records found in this SOW.");
+                alert("No Seabed Survey Debris records found in this SOW.");
                 return null;
             }
 
@@ -1808,6 +1814,132 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             return await generateROVRSEABDetailReport(
+                filteredRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Detailed Seabed Survey Gas Seepage Report
+        if (currentTemplateId === "rov-rseab-gas-detail-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+
+            const filteredRecords = (records || []).filter(r => {
+                const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                return typeCode === 'RSEAB';
+            });
+
+            if (filteredRecords.length === 0) {
+                alert("No Seabed Survey Gas Seepage records found in this SOW.");
+                return null;
+            }
+
+            // Fetch Contractor Logo if available
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateROVRSEABGasDetailReport(
+                filteredRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Detailed Seabed Survey Crater Report
+        if (currentTemplateId === "rov-rseab-crater-detail-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+
+            const filteredRecords = (records || []).filter(r => {
+                const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                return typeCode === 'RSEAB';
+            });
+
+            if (filteredRecords.length === 0) {
+                alert("No Seabed Survey Crater records found in this SOW.");
+                return null;
+            }
+
+            // Fetch Contractor Logo if available
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateROVRSEABCraterDetailReport(
                 filteredRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                 headerData,
                 companySettings,

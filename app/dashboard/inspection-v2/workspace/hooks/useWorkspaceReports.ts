@@ -103,6 +103,8 @@ export function useWorkspaceReports(
     const [cuPreviewOpen, setCuPreviewOpen] = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
     const [seabedDetailPreviewOpen, setSeabedDetailPreviewOpen] = useState(false);
+    const [seabedGasDetailPreviewOpen, setSeabedGasDetailPreviewOpen] = useState(false);
+    const [seabedCraterDetailPreviewOpen, setSeabedCraterDetailPreviewOpen] = useState(false);
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
@@ -166,17 +168,29 @@ export function useWorkspaceReports(
         const filterMap: Record<string, string> = {
             "seabed-survey-debris": "Debris",
             "seabed-survey-gas": "Gas Seepage",
-            "seabed-survey-crater": "Crater"
+            "seabed-survey-crater": "Crater",
+            "rov-seabed-report": ""
         };
         
-        const itemTypeFilter = filterMap[tid] || "Debris";
-        const recordsToPrint = currentRecords.filter(r => 
-            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SEABED') && 
-            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
-        );
+        const itemTypeFilter = filterMap[tid] !== undefined ? filterMap[tid] : "Debris";
+        const recordsToPrint = currentRecords.filter(r => {
+            if (!(r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SEABED')) {
+                return false;
+            }
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            if (tid === 'seabed-survey-gas') {
+                return cat === 'gas seepage' || desc.startsWith('gas seepage');
+            } else if (tid === 'seabed-survey-crater') {
+                return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+            } else if (tid === 'seabed-survey-debris') {
+                return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
+            }
+            return true;
+        });
 
         if (recordsToPrint.length === 0) {
-            toast.error(`No ${itemTypeFilter} records found for Seabed Survey.`);
+            toast.error(`No ${itemTypeFilter || "Seabed"} records found for Seabed Survey.`);
             return;
         }
 
@@ -188,14 +202,26 @@ export function useWorkspaceReports(
         const filterMap: Record<string, string> = {
             "seabed-survey-debris": "Debris",
             "seabed-survey-gas": "Gas Seepage",
-            "seabed-survey-crater": "Crater"
+            "seabed-survey-crater": "Crater",
+            "rov-seabed-report": ""
         };
         
-        const itemTypeFilter = filterMap[seabedTemplateType] || "Debris";
-        const recordsToPrint = currentRecords.filter(r => 
-            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && 
-            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
-        );
+        const itemTypeFilter = filterMap[seabedTemplateType] !== undefined ? filterMap[seabedTemplateType] : "Debris";
+        const recordsToPrint = currentRecords.filter(r => {
+            if (!(r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SEABED')) {
+                return false;
+            }
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            if (seabedTemplateType === 'seabed-survey-gas') {
+                return cat === 'gas seepage' || desc.startsWith('gas seepage');
+            } else if (seabedTemplateType === 'seabed-survey-crater') {
+                return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+            } else if (seabedTemplateType === 'seabed-survey-debris') {
+                return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
+            }
+            return true;
+        });
 
         if (recordsToPrint.length === 0) return;
 
@@ -228,10 +254,13 @@ export function useWorkspaceReports(
     const generateSeabedDetailReport = async () => {
         const records = currentRecords.filter(r => {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return typeCode === 'RSEAB';
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || !desc.startsWith('gas') && !desc.startsWith('crater')));
         });
         if (records.length === 0) {
-            toast.error("No Seabed Survey records found to generate report");
+            toast.error("No Seabed Survey Debris records found to generate report");
             return;
         }
         setSeabedDetailPreviewOpen(true);
@@ -240,7 +269,10 @@ export function useWorkspaceReports(
     const generateSeabedDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return typeCode === 'RSEAB';
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || !desc.startsWith('gas') && !desc.startsWith('crater')));
         });
         if (records.length === 0) return;
         const settings = await getReportHeaderData();
@@ -252,6 +284,86 @@ export function useWorkspaceReports(
         }
         const { generateROVRSEABDetailReport } = await import("@/utils/report-generators/rov-rseab-detail-report");
         return await generateROVRSEABDetailReport(
+            records.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), sowReportNo: headerData.sowReportNo }
+        ) as Blob;
+    };
+
+    const generateSeabedGasDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'gas seepage' || desc.startsWith('gas seepage');
+        });
+        if (records.length === 0) {
+            toast.error("No Seabed Survey Gas Seepage records found to generate report");
+            return;
+        }
+        setSeabedGasDetailPreviewOpen(true);
+    };
+
+    const generateSeabedGasDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'gas seepage' || desc.startsWith('gas seepage');
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        const { generateROVRSEABGasDetailReport } = await import("@/utils/report-generators/rov-rseab-gas-detail-report");
+        return await generateROVRSEABGasDetailReport(
+            records.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), sowReportNo: headerData.sowReportNo }
+        ) as Blob;
+    };
+
+    const generateSeabedCraterDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+        });
+        if (records.length === 0) {
+            toast.error("No Seabed Survey Crater records found to generate report");
+            return;
+        }
+        setSeabedCraterDetailPreviewOpen(true);
+    };
+
+    const generateSeabedCraterDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
+        return await generateROVRSEABCraterDetailReport(
             records.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
             { ...headerData, contractorLogoUrl },
             { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
@@ -2206,6 +2318,12 @@ export function useWorkspaceReports(
         generateSeabedReportBlob,
         generateSeabedDetailReport,
         generateSeabedDetailReportBlob,
+        generateSeabedGasDetailReport,
+        generateSeabedGasDetailReportBlob,
+        seabedGasDetailPreviewOpen, setSeabedGasDetailPreviewOpen,
+        generateSeabedCraterDetailReport,
+        generateSeabedCraterDetailReportBlob,
+        seabedCraterDetailPreviewOpen, setSeabedCraterDetailPreviewOpen,
         generatePhotographyReport,
         generatePhotographyReportBlob,
         generatePhotographyLogReport,
