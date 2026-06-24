@@ -2280,24 +2280,9 @@ function V10PreviewLayout() {
         height: 600,
       });
 
-      Array.from(document.styleSheets).forEach((styleSheet) => {
-        try {
-          const cssRules = styleSheet.cssRules;
-          if (cssRules) {
-            const newStyleEl = pip.document.createElement("style");
-            Array.from(cssRules).forEach((rule) => {
-              newStyleEl.appendChild(pip.document.createTextNode(rule.cssText));
-            });
-            pip.document.head.appendChild(newStyleEl);
-          }
-        } catch (e) {
-          if (styleSheet.href) {
-            const newLinkEl = pip.document.createElement("link");
-            newLinkEl.rel = "stylesheet";
-            newLinkEl.href = styleSheet.href;
-            pip.document.head.appendChild(newLinkEl);
-          }
-        }
+      // Copy stylesheets (both link tags and inline styles) to the new window
+      Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
+        pip.document.head.appendChild(stylesheet.cloneNode(true));
       });
 
       // Sync dark mode configuration and base classes
@@ -3044,29 +3029,9 @@ function V10PreviewLayout() {
         height: 480,
       });
 
-      // Copy styles to new window
-      Array.from(document.styleSheets).forEach((styleSheet) => {
-        try {
-          if (styleSheet.cssRules) {
-            const newStyle = pw.document.createElement("style");
-            Array.from(styleSheet.cssRules).forEach((rule) => {
-              newStyle.appendChild(pw.document.createTextNode(rule.cssText));
-            });
-            pw.document.head.appendChild(newStyle);
-          } else if (styleSheet.href) {
-            const newLink = pw.document.createElement("link");
-            newLink.rel = "stylesheet";
-            newLink.href = styleSheet.href;
-            pw.document.head.appendChild(newLink);
-          }
-        } catch (e) {
-          if (styleSheet.href) {
-            const newLink = pw.document.createElement("link");
-            newLink.rel = "stylesheet";
-            newLink.href = styleSheet.href;
-            pw.document.head.appendChild(newLink);
-          }
-        }
+      // Copy stylesheets (both link tags and inline styles) to the new window
+      Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
+        pw.document.head.appendChild(stylesheet.cloneNode(true));
       });
 
       // Handle background
