@@ -75,12 +75,16 @@ const ComponentMesh = ({
     if (isAnode) baseThickness = 0.15;
     else if (isClamp) baseThickness = baseThickness * 1.8;
     else if (isWeld) {
-        baseThickness = baseThickness * 1.15;
-        if (baseThickness < 0.25) {
-            baseThickness = component.metadata?.s_leg ? 0.55 : 0.3;
+        if (component.metadata?.associated_comp_id) {
+            baseThickness = baseThickness * 1.1;
+        } else {
+            baseThickness = baseThickness * 1.15;
+            if (baseThickness < 0.25) {
+                baseThickness = component.metadata?.s_leg ? 0.55 : 0.3;
+            }
         }
     }
-    const meshLength = isAnode ? 0.8 : isClamp ? 0.8 : isWeld ? 1.2 : length;
+    const meshLength = isAnode ? 0.8 : isClamp ? 0.8 : isWeld ? 0.35 : length;
 
     const safeMeshLength = Math.max(meshLength, 0.01);
 
@@ -1039,6 +1043,15 @@ export function Structural3DViewer({
 
                     // Add layout to intermediateLayouts immediately
                     let thickness = 0.15; // default weld thickness
+                    if (parentComp) {
+                        const parentCode = (parentComp.code || "").toUpperCase();
+                        let parentThickness = 0.2;
+                        if (parentCode.includes("LG")) parentThickness = 0.5;
+                        else if (parentCode === "RS" || parentCode.includes("RISER")) parentThickness = 0.3;
+                        else if (parentCode.includes("HM") || parentCode.includes("HD")) parentThickness = 0.2;
+                        else if (parentCode.includes("VM") || parentCode.includes("VD")) parentThickness = 0.16;
+                        thickness = parentThickness * 1.15;
+                    }
                     const start = pos.clone();
                     const end = pos.clone();
                     if (direction.lengthSq() > 0.1) {
@@ -1046,6 +1059,73 @@ export function Structural3DViewer({
                     }
                     intermediateLayouts.set(c.id, { component: c, start, end, thickness });
                 });
+            });
+
+            // Project cantilever/protruding members with clk_pos & dist
+            components.forEach((c) => {
+                const md = c.metadata || {};
+                const code = (c.code || "").toUpperCase();
+                const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(code);
+                if (isMember && md.clk_pos && md.clk_pos !== "N/A" && md.dist) {
+                    const sNodePos = lookupNode(md.s_node, md.s_leg);
+                    if (!sNodePos) return;
+
+                    // Find parent component to get direction reference
+                    let parentComp: any = null;
+                    const parentWeld = components.find(
+                        (w) =>
+                            (w.code || "").toUpperCase() === "WN" &&
+                            (w.metadata?.s_node || "").toUpperCase() === (md.s_node || "").toUpperCase() &&
+                            w.metadata?.associated_comp_id
+                    );
+                    if (parentWeld) {
+                        parentComp = components.find((pc) => pc.id === parentWeld.metadata.associated_comp_id);
+                    }
+
+                    const dir = new THREE.Vector3(0, 0, -1); // default fallback direction
+                    if (parentComp) {
+                        const pStart = lookupNode(parentComp.metadata.s_node, parentComp.metadata.s_leg);
+                        const pEnd = lookupNode(parentComp.metadata.f_node, parentComp.metadata.f_leg);
+                        if (pStart && pEnd && pStart.distanceTo(pEnd) > 0.01) {
+                            dir.copy(pEnd).sub(pStart).normalize();
+                        }
+                    }
+
+                    // Compute orthogonal plane vectors
+                    const up = new THREE.Vector3(0, 1, 0);
+                    if (Math.abs(dir.y) > 0.99) {
+                        up.set(0, 0, -1);
+                    }
+                    up.sub(dir.clone().multiplyScalar(up.dot(dir))).normalize();
+                    const right = new THREE.Vector3().crossVectors(dir, up).normalize();
+
+                    // Calculate offset direction using clock position
+                    const clockPos = parseFloat(md.clk_pos);
+                    if (!isNaN(clockPos)) {
+                        const angle = (clockPos / 12) * Math.PI * 2;
+                        const offsetDir = right
+                            .clone()
+                            .multiplyScalar(Math.sin(angle))
+                            .add(up.clone().multiplyScalar(Math.cos(angle)))
+                            .normalize();
+
+                        const distance = parseFloat(md.dist);
+                        if (!isNaN(distance)) {
+                            const fNodePos = sNodePos.clone().add(offsetDir.multiplyScalar(distance));
+
+                            // Update/register f_node in nodeMap
+                            const fNodeName = (md.f_node || "").toUpperCase();
+                            if (fNodeName) {
+                                const fNodeVec = lookupNode(fNodeName, "");
+                                if (fNodeVec) {
+                                    fNodeVec.copy(fNodePos);
+                                } else {
+                                    registerNodeAlias(fNodeName, fNodePos, "");
+                                }
+                            }
+                        }
+                    }
+                }
             });
         }
 
@@ -1508,21 +1588,26 @@ export function Structural3DViewer({
                         .trim();
                     if (nodeName) {
                         let foundMemberLayout: any = null;
-                        for (const otherLayout of Array.from(intermediateLayouts.values())) {
-                            const otherComp = otherLayout.component;
-                            const otherCode = (otherComp.code || "").toUpperCase();
-                            const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(otherCode);
-                            if (isMember) {
-                                const otherMd = otherComp.metadata || {};
-                                const sNodeStr = String(otherMd.s_node || "")
-                                    .toUpperCase()
-                                    .trim();
-                                const fNodeStr = String(otherMd.f_node || "")
-                                    .toUpperCase()
-                                    .trim();
-                                if (sNodeStr === nodeName || fNodeStr === nodeName) {
-                                    foundMemberLayout = otherLayout;
-                                    break;
+                        if (md.associated_comp_id) {
+                            foundMemberLayout = intermediateLayouts.get(md.associated_comp_id);
+                        }
+                        if (!foundMemberLayout) {
+                            for (const otherLayout of Array.from(intermediateLayouts.values())) {
+                                const otherComp = otherLayout.component;
+                                const otherCode = (otherComp.code || "").toUpperCase();
+                                const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(otherCode);
+                                if (isMember) {
+                                    const otherMd = otherComp.metadata || {};
+                                    const sNodeStr = String(otherMd.s_node || "")
+                                        .toUpperCase()
+                                        .trim();
+                                    const fNodeStr = String(otherMd.f_node || "")
+                                        .toUpperCase()
+                                        .trim();
+                                    if (sNodeStr === nodeName || fNodeStr === nodeName) {
+                                        foundMemberLayout = otherLayout;
+                                        break;
+                                    }
                                 }
                             }
                         }
