@@ -20,9 +20,11 @@ import {
     ArrowRight,
     Settings,
     FileCheck,
-    BookOpen
+    BookOpen,
+    BarChart3
 } from "lucide-react";
 import { SummaryTemplatesDialog } from "./SummaryTemplatesDialog";
+import { InspectionAnalyticsDialog } from "./InspectionAnalyticsDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -124,6 +126,70 @@ export default function ExecutiveSummaryPage() {
         fetcher
     );
 
+    const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+
+    // Fetch templates for the active section to evaluate conditional rules
+    const { data: sectionTemplatesRes, mutate: refreshSectionTemplates } = useSWR(
+        selections.sowReportNo
+            ? `/api/executive-summary/templates?section_id=${activeSectionId}`
+            : null,
+        fetcher
+    );
+    const sectionTemplates = sectionTemplatesRes?.data || [];
+    const conditionalTemplate = sectionTemplates.find((t: any) => t.metadata?.template_type === "conditional");
+    const existingRules = conditionalTemplate?.metadata || null;
+
+    const customVariables = summaryData?.data?.metadata?.custom_variables || {};
+
+    const handleSaveRules = async (rules: any) => {
+        const res = await fetch("/api/executive-summary/templates", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                template_name: `Conditional Rules - ${activeSectionId}`,
+                section_id: activeSectionId,
+                content: "[Conditional Rules]",
+                client_name: companySettings?.data?.company_name || "",
+                metadata: {
+                    template_type: "conditional",
+                    ...rules
+                }
+            })
+        });
+        if (!res.ok) throw new Error("Failed to save conditional rules");
+        refreshSectionTemplates();
+    };
+
+    const handleSaveCustomVariables = async (vars: Record<string, string>) => {
+        if (!selections.jobpackId || !selections.structureId || !selections.sowReportNo) return;
+        
+        const sections = EXECUTIVE_SUMMARY_TOC.map(s => ({
+            id: s.id,
+            title: s.title,
+            content: sectionsData[s.id] || ""
+        }));
+        
+        const updatedMetadata = {
+            ...(summaryData?.data?.metadata || {}),
+            custom_variables: vars
+        };
+        
+        const res = await fetch("/api/executive-summary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                jobpack_id: Number(selections.jobpackId),
+                structure_id: Number(selections.structureId),
+                sow_report_no: selections.sowReportNo,
+                sections,
+                metadata: updatedMetadata
+            })
+        });
+        
+        if (!res.ok) throw new Error("Failed to save custom variables");
+        refreshSummary();
+    };
+
     useEffect(() => {
         if (summaryData?.data?.sections) {
             const data: Record<string, string> = {};
@@ -220,6 +286,15 @@ export default function ExecutiveSummaryPage() {
                 aliases = Array.isArray(aliasesData?.data) ? aliasesData.data : [];
             }
 
+            // Fetch Contractors
+            const contractorsRes = await fetch("/api/jobpack/utils/contractors");
+            let contractors = [];
+            if (contractorsRes.ok) {
+                const contrData = await contractorsRes.json();
+                contractors = Array.isArray(contrData?.data) ? contrData.data : [];
+            }
+            const activeContractor = contractors.find((c: any) => String(c.lib_id) === String(jp?.metadata?.contrac));
+
             // Fetch Detailed Records
             const recordsRes = await fetch(`/api/inspection-records?jobpack_id=${selections.jobpackId}&structure_id=${selections.structureId}&sow_report_no=${selections.sowReportNo}`);
             if (!recordsRes.ok) {
@@ -262,6 +337,11 @@ export default function ExecutiveSummaryPage() {
             }
 
             const reportData = {
+                // ── Custom User Variables ────────────────────────────
+                ...Object.fromEntries(
+                    Object.entries(customVariables).map(([k, v]) => [k.toUpperCase(), v])
+                ),
+
                 // ── Core Project Identifiers ─────────────────────────
                 PLATFORM_TITLE: str?.name || "N/A",
                 PLATFORM_NAME: str?.name || "N/A",
@@ -270,6 +350,20 @@ export default function ExecutiveSummaryPage() {
                 SOW_REPORT_NO: selections.sowReportNo,
                 REPORT_TYPE: reportType.toUpperCase(),
                 DATE: new Date().toLocaleDateString("en-GB"),
+                SHORT_DATE: (() => {
+                    const dateStr = jp?.metadata?.istart || jp?.start_date;
+                    if (!dateStr) return "N/A";
+                    const d = new Date(dateStr);
+                    if (isNaN(d.getTime())) return "N/A";
+                    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    return `${months[d.getMonth()]} ${d.getFullYear()}`;
+                })(),
+                TODAY_SHORT: (() => {
+                    const d = new Date();
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    return `${day}-${months[d.getMonth()]}-${d.getFullYear()}`;
+                })(),
 
                 // ── Company / Client Info ────────────────────────────
                 CLIENT_NAME: companySettings?.data?.company_name || jp?.metadata?.contrac || "N/A",
@@ -282,6 +376,34 @@ export default function ExecutiveSummaryPage() {
                 CONTRACTOR: jp?.metadata?.contrac || "N/A",
                 START_DATE: jp?.metadata?.istart ? new Date(jp.metadata.istart).toLocaleDateString("en-GB") : (jp?.start_date || "N/A"),
                 END_DATE: jp?.metadata?.iend ? new Date(jp.metadata.iend).toLocaleDateString("en-GB") : (jp?.end_date || "N/A"),
+                TASK_TYPE: jp?.metadata?.tasktype || "N/A",
+                PLAN_TYPE: jp?.metadata?.plantype || "N/A",
+                INSPECTION_MODE: (() => {
+                    const modes = [];
+                    if (jp?.metadata?.rov === 1 || jp?.metadata?.methods?.includes("ROV")) {
+                        modes.push("ROV");
+                    }
+                    if (jp?.metadata?.divetyp) {
+                        modes.push(jp.metadata.divetyp.toUpperCase());
+                    } else if (jp?.metadata?.methods?.includes("DIVE")) {
+                        modes.push("DIVING");
+                    }
+                    return modes.join(" / ") || "N/A";
+                })(),
+                PROJECT_SCOPE: (() => {
+                    const scopes = [];
+                    if (Number(jp?.metadata?.topside) === 1) scopes.push("Topside");
+                    if (Number(jp?.metadata?.subsea) === 1) scopes.push("Subsea");
+                    return scopes.join(" / ") || "N/A";
+                })(),
+                COMPANY_REP: jp?.metadata?.comprep || "N/A",
+                CONTRACT_REF: jp?.metadata?.contract_ref || "N/A",
+                CONTRACTOR_REF: jp?.metadata?.contractor_ref || "N/A",
+                STATUS: jp?.status || "N/A",
+                CONTRACTOR_NAME: activeContractor?.lib_desc || jp?.metadata?.contrac || "N/A",
+                CONTRACTOR_SHORT: jp?.metadata?.contrac || "N/A",
+                CONTRACTOR_ADDRESS: activeContractor?.lib_com || "N/A",
+                CONTRACTOR_LOGO: activeContractor?.logo_url ? { data: activeContractor.logo_url, extension: '.jpg' } : "",
 
                 // ── Signatories ──────────────────────────────────────
                 PREPARED_BY: insightData?.data?.prepared_by?.name || "System",
@@ -303,9 +425,25 @@ export default function ExecutiveSummaryPage() {
                 // ── Inspection Metrics ───────────────────────────────
                 CP_MIN: insightData?.data?.cp?.minVal || "N/A",
                 CP_MAX: insightData?.data?.cp?.maxVal || "N/A",
+                MGI_MIN: insightData?.data?.mgi?.min || 0,
+                MGI_MIN_COMP: insightData?.data?.mgi?.minComp || "N/A",
                 MGI_MAX: insightData?.data?.mgi?.max || 0,
+                MGI_MAX_COMP: insightData?.data?.mgi?.maxComp || "N/A",
+                MGI_HARD_MIN_PCT: insightData?.data?.mgi?.hardMinPct || 0,
+                MGI_HARD_MIN_PCT_COMP: insightData?.data?.mgi?.hardMinPctComp || "N/A",
+                MGI_HARD_MAX_PCT: insightData?.data?.mgi?.hardMaxPct || 0,
+                MGI_HARD_MAX_PCT_COMP: insightData?.data?.mgi?.hardMaxPctComp || "N/A",
+                MGI_SOFT_MIN_PCT: insightData?.data?.mgi?.softMinPct || 0,
+                MGI_SOFT_MIN_PCT_COMP: insightData?.data?.mgi?.softMinPctComp || "N/A",
+                MGI_SOFT_MAX_PCT: insightData?.data?.mgi?.softMaxPct || 0,
+                MGI_SOFT_MAX_PCT_COMP: insightData?.data?.mgi?.softMaxPctComp || "N/A",
                 MGI_AVG: Math.round(insightData?.data?.mgi?.avg || 0),
                 SCOUR_EXPOSED: insightData?.data?.scour?.exposed || 0,
+                SCOUR_EXPOSED_LOCATIONS: insightData?.data?.scour?.exposedLocationsStr || "None",
+                SCOUR_MAX_DEPTH: insightData?.data?.scour?.maxDepth || 0,
+                SCOUR_MAX_LEG: insightData?.data?.scour?.maxDepthLeg || "N/A",
+                SCOUR_MAX_FACE: insightData?.data?.scour?.maxDepthFace || "N/A",
+                SCOUR_MAX_QID: insightData?.data?.scour?.maxDepthQid || "N/A",
 
                 // ── Sections (User-Written) ──────────────────────────
                 SECTIONS: sections,
@@ -346,53 +484,179 @@ export default function ExecutiveSummaryPage() {
         }
 
         const data = insightData.data;
-        let wording = "";
+        
+        // Evaluate condition for the active section
+        let selectedTemplateText = "";
+        
+        if (existingRules) {
+            // Helper to check if a component type exists in the SOW
+            const isComponentTypeRegistered = (codes: string[]) => {
+                if (!data.componentSummary) return false;
+                return Object.keys(data.componentSummary).some(compType => 
+                    codes.some(c => compType.toUpperCase().includes(c.toUpperCase()))
+                );
+            };
 
-        switch(activeSectionId) {
-            case "intro":
-                const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
-                const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
-                wording = `This Executive Summary provides a comprehensive overview of the structural integrity inspection conducted for ${str?.name || 'the platform'} under Job Pack ${jp?.name || selections.jobpackId}. The scope of work was defined in SOW Report ${selections.sowReportNo}.`;
-                break;
-            case "cp":
-                if (data.cp) {
-                    const { minVal, maxVal, totalCount } = data.cp;
-                    wording = `The Cathodic Potential (CP) survey was successfully conducted, with a total of ${totalCount} readings recorded. The measured potentials ranged from ${minVal || 'N/A'} mV to ${maxVal || 'N/A'} mV. Overall, the protection levels are [within/outside] acceptable criteria.`;
+            // Map sectionId to component codes
+            const sectionComponentCodes: Record<string, string[]> = {
+                cp: ["Anode", "Cathodic Protection", "AN", "CP"],
+                fmd: ["Member", "Leg", "MB", "LG", "FMD"],
+                mgi: ["Leg", "Member", "LG", "MB", "MGI", "Marine Growth"],
+                scour: ["Pile", "Leg", "Scour", "SC"],
+                gvi: ["Leg", "Member", "Riser", "Conductor", "Caisson", "Boat Landing", "Riser Guard"],
+                riser: ["Riser", "RS"],
+                conductor: ["Conductor", "CD"],
+                caisson: ["Caisson", "CA"],
+                boatlanding: ["Boat Landing", "BL"],
+                riserguard: ["Riser Guard", "RG"]
+            };
+
+            const targetCodes = sectionComponentCodes[activeSectionId];
+            const isRegistered = !targetCodes || isComponentTypeRegistered(targetCodes);
+
+            // Determine condition
+            if (!isRegistered) {
+                selectedTemplateText = existingRules.cond_not_registered || "";
+            } else {
+                // Determine inspection count specific to section
+                let sectionRecordsCount = 0;
+                let sectionAnomaliesCount = 0;
+                
+                if (activeSectionId === "cp") {
+                    sectionRecordsCount = data.cp?.totalCount || 0;
+                    sectionAnomaliesCount = data.anomalies?.items?.filter((itm: any) => itm.description?.toLowerCase().includes("cp") || itm.ref?.toLowerCase().includes("cp")).length || 0;
+                } else if (activeSectionId === "fmd") {
+                    sectionRecordsCount = data.fmd?.total || 0;
+                    sectionAnomaliesCount = data.anomalies?.items?.filter((itm: any) => itm.description?.toLowerCase().includes("fmd") || itm.description?.toLowerCase().includes("flood")).length || 0;
+                } else if (activeSectionId === "mgi") {
+                    sectionRecordsCount = data.mgi?.total || 0;
+                    sectionAnomaliesCount = data.mgi?.anomaliesCount || 0;
+                } else if (activeSectionId === "scour") {
+                    sectionRecordsCount = data.scour?.total || 0;
+                    sectionAnomaliesCount = data.anomalies?.items?.filter((itm: any) => itm.description?.toLowerCase().includes("scour") || itm.description?.toLowerCase().includes("burial")).length || 0;
+                } else {
+                    // Generic fallback: check if any records exist in the category
+                    sectionRecordsCount = data.records?.total || 0;
+                    sectionAnomaliesCount = data.anomalies?.total || 0;
                 }
-                break;
-            case "fmd":
-                if (data.fmd) {
-                    const { total, conditions } = data.fmd;
-                    wording = `Flooded Member Detection (FMD) was performed on ${total} members. Results identified ${conditions.flooded || 0} flooded members and ${conditions.dry || 0} dry members. ${conditions.inconclusive || 0} members returned inconclusive results.`;
+
+                if (sectionRecordsCount === 0) {
+                    selectedTemplateText = existingRules.cond_no_inspection || "";
+                } else if (sectionAnomaliesCount > 0) {
+                    selectedTemplateText = existingRules.cond_has_anomaly || "";
+                } else {
+                    selectedTemplateText = existingRules.cond_has_data || "";
                 }
-                break;
-            case "mgi":
-                if (data.mgi) {
-                    wording = `Marine Growth Inspection (MGI) was conducted across the structure. The maximum thickness recorded was ${data.mgi.max} mm, with an overall average of ${Math.round(data.mgi.avg)} mm. These values remain [within/above] the design thresholds.`;
-                }
-                break;
-            case "scour":
-                if (data.scour) {
-                    wording = `The Base Level / Scour Survey identified ${data.scour.exposed} exposed piles. The minimum burial recorded was ${data.scour.minBurial}%. Further monitoring is [recommended/not required].`;
-                }
-                break;
-            case "anomaly_finding":
-                if (data.anomalies) {
-                    const { total, open, byPriority } = data.anomalies;
-                    wording = `A total of ${total} structural anomalies were tracked during this period. Currently, ${open} anomalies remain open. The breakdown by priority includes ${byPriority.P1 || 0} P1, ${byPriority.P2 || 0} P2, and ${byPriority.P3 || 0} P3 anomalies.`;
-                }
-                break;
-            case "incomplete":
-                if (data.sow) {
-                    const { incomplete, pending } = data.sow;
-                    wording = `The current inspection scope has ${incomplete} items marked as incomplete and ${pending} items pending. These items are scheduled for follow-up in the next mobilization.`;
-                }
-                break;
-            default:
-                wording = `The ${activeSection?.title} was completed successfully. Findings indicate that the structural components are in [Good/Fair/Poor] condition.`;
+            }
         }
 
-        setSectionsData(prev => ({ ...prev, [activeSectionId]: wording }));
+        // If no custom template text matched/existed, fall back to default builder logic
+        let wording = selectedTemplateText;
+        if (!wording) {
+            switch(activeSectionId) {
+                case "intro":
+                    const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
+                    const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
+                    wording = `This Executive Summary provides a comprehensive overview of the structural integrity inspection conducted for ${str?.name || 'the platform'} under Job Pack ${jp?.name || selections.jobpackId}. The scope of work was defined in SOW Report ${selections.sowReportNo}.`;
+                    break;
+                case "cp":
+                    if (data.cp) {
+                        const { minVal, maxVal, totalCount } = data.cp;
+                        wording = `The Cathodic Potential (CP) survey was successfully conducted, with a total of ${totalCount} readings recorded. The measured potentials ranged from ${minVal || 'N/A'} mV to ${maxVal || 'N/A'} mV. Overall, the protection levels are [within/outside] acceptable criteria.`;
+                    }
+                    break;
+                case "fmd":
+                    if (data.fmd) {
+                        const { total, conditions } = data.fmd;
+                        wording = `Flooded Member Detection (FMD) was performed on ${total} members. Results identified ${conditions.flooded || 0} flooded members and ${conditions.dry || 0} dry members. ${conditions.inconclusive || 0} members returned inconclusive results.`;
+                    }
+                    break;
+                case "mgi":
+                    if (data.mgi) {
+                        wording = `Marine Growth Inspection (MGI) was conducted across the structure. The maximum thickness recorded was ${data.mgi.max} mm, with an overall average of ${Math.round(data.mgi.avg)} mm. These values remain [within/above] the design thresholds.`;
+                    }
+                    break;
+                case "scour":
+                    if (data.scour) {
+                        wording = `The Base Level / Scour Survey identified ${data.scour.exposed} exposed piles. The minimum burial recorded was ${data.scour.minBurial}%. Further monitoring is [recommended/not required].`;
+                    }
+                    break;
+                case "anomaly_finding":
+                    if (data.anomalies) {
+                        const { total, open, byPriority } = data.anomalies;
+                        wording = `A total of ${total} structural anomalies were tracked during this period. Currently, ${open} anomalies remain open. The breakdown by priority includes ${byPriority.P1 || 0} P1, ${byPriority.P2 || 0} P2, and ${byPriority.P3 || 0} P3 anomalies.`;
+                    }
+                    break;
+                case "incomplete":
+                    if (data.sow) {
+                        const { incomplete, pending } = data.sow;
+                        wording = `The current inspection scope has ${incomplete} items marked as incomplete and ${pending} items pending. These items are scheduled for follow-up in the next mobilization.`;
+                    }
+                    break;
+                default:
+                    wording = `The ${activeSection?.title} was completed successfully. Findings indicate that the structural components are in [Good/Fair/Poor] condition.`;
+            }
+        }
+
+        // Apply variable databank replacements
+        const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
+        const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
+        
+        // Format dates cleanly
+        const formatDateStr = (dStr: any) => {
+            if (!dStr) return "N/A";
+            return new Date(dStr).toLocaleDateString("en-GB");
+        };
+
+        const vars: Record<string, string> = {
+            "{{PLATFORM}}": str?.name || "[PLATFORM]",
+            "{{JOB_PACK}}": jp?.name || "[JOB_PACK]",
+            "{{REPORT_NO}}": selections.sowReportNo || "[REPORT_NO]",
+            "{{CLIENT}}": companySettings?.data?.company_name || jp?.metadata?.contrac || "[CLIENT]",
+            "{{VESSEL_NAME}}": jp?.metadata?.vessel || "NONE",
+            "{{DATE}}": new Date().toLocaleDateString("en-GB"),
+            "{{INSP_START_DATE}}": formatDateStr(data.records?.startDate),
+            "{{INSP_END_DATE}}": formatDateStr(data.records?.endDate),
+            "{{TOTAL_ANOMALIES}}": String(data.anomalies?.total || 0),
+            "{{OPEN_ANOMALIES}}": String(data.anomalies?.open || 0),
+            "{{P1_ANOMALIES}}": String(data.anomalies?.byPriority?.P1 || 0),
+            "{{P2_ANOMALIES}}": String(data.anomalies?.byPriority?.P2 || 0),
+            "{{P3_ANOMALIES}}": String(data.anomalies?.byPriority?.P3 || 0),
+            "{{CP_MIN}}": data.cp?.minVal != null ? `${data.cp.minVal} mV` : "N/A",
+            "{{CP_MAX}}": data.cp?.maxVal != null ? `${data.cp.maxVal} mV` : "N/A",
+            "{{MGI_MIN}}": data.mgi?.min != null ? `${data.mgi.min} mm` : "0 mm",
+            "{{MGI_MIN_COMP}}": data.mgi?.minComp || "N/A",
+            "{{MGI_MAX}}": data.mgi?.max != null ? `${data.mgi.max} mm` : "0 mm",
+            "{{MGI_MAX_COMP}}": data.mgi?.maxComp || "N/A",
+            "{{MGI_HARD_MIN_PCT}}": data.mgi?.hardMinPct != null ? `${data.mgi.hardMinPct}%` : "0%",
+            "{{MGI_HARD_MIN_PCT_COMP}}": data.mgi?.hardMinPctComp || "N/A",
+            "{{MGI_HARD_MAX_PCT}}": data.mgi?.hardMaxPct != null ? `${data.mgi.hardMaxPct}%` : "0%",
+            "{{MGI_HARD_MAX_PCT_COMP}}": data.mgi?.hardMaxPctComp || "N/A",
+            "{{MGI_SOFT_MIN_PCT}}": data.mgi?.softMinPct != null ? `${data.mgi.softMinPct}%` : "0%",
+            "{{MGI_SOFT_MIN_PCT_COMP}}": data.mgi?.softMinPctComp || "N/A",
+            "{{MGI_SOFT_MAX_PCT}}": data.mgi?.softMaxPct != null ? `${data.mgi.softMaxPct}%` : "0%",
+            "{{MGI_SOFT_MAX_PCT_COMP}}": data.mgi?.softMaxPctComp || "N/A",
+            "{{SCOUR_MAX_DEPTH}}": data.scour?.maxDepth != null ? `${data.scour.maxDepth} m` : "0 m",
+            "{{SCOUR_MAX_LEG}}": data.scour?.maxDepthLocation || data.scour?.maxDepthLeg || "N/A",
+            "{{SCOUR_MAX_LOCATION}}": data.scour?.maxDepthLocation || data.scour?.maxDepthLeg || "N/A",
+            "{{SCOUR_MAX_FACE}}": data.scour?.maxDepthFace || "N/A",
+            "{{SCOUR_MAX_QID}}": data.scour?.maxDepthQid || "N/A",
+            "{{SCOUR_EXPOSED_LOCATIONS}}": data.scour?.exposedLocationsStr || "None",
+            "{{MGI_ANOMALIES}}": String(data.mgi?.anomaliesCount || 0)
+        };
+
+        // Inject Custom Variables
+        Object.entries(customVariables).forEach(([k, v]) => {
+            vars[`{{${k.toUpperCase()}}}`] = String(v);
+        });
+
+        // Replace all placeholders
+        let finalWording = wording;
+        Object.entries(vars).forEach(([k, v]) => {
+            finalWording = finalWording.replaceAll(k, v);
+        });
+
+        setSectionsData(prev => ({ ...prev, [activeSectionId]: finalWording }));
         toast.info(`Auto-populated ${activeSection?.title}`);
     };
 
@@ -452,6 +716,11 @@ export default function ExecutiveSummaryPage() {
                     </div>
 
                     <Separator orientation="vertical" className="h-6 mx-1" />
+
+                    <Button variant="outline" size="sm" onClick={() => setIsAnalyticsOpen(true)} disabled={!selections.sowReportNo} className="gap-2 h-9 border-blue-200 text-blue-700 hover:bg-blue-50">
+                        <BarChart3 className="h-4 w-4" />
+                        <span className="hidden xl:inline">Live Analytics</span>
+                    </Button>
 
                     <Button variant="outline" size="icon" onClick={() => setIsSettingsOpen(true)} className="h-9 w-9">
                         <Settings className="h-4 w-4" />
@@ -692,6 +961,25 @@ export default function ExecutiveSummaryPage() {
                     jobpack: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.name,
                     reportNo: selections.sowReportNo,
                     client: companySettings?.data?.company_name
+                }}
+                existingRules={existingRules}
+                onSaveRules={async (rules) => {
+                    await handleSaveRules(rules);
+                    refreshSectionTemplates();
+                }}
+                customVariables={customVariables}
+                onSaveCustomVariables={handleSaveCustomVariables}
+            />
+
+            <InspectionAnalyticsDialog
+                open={isAnalyticsOpen}
+                onOpenChange={setIsAnalyticsOpen}
+                insightData={insightData}
+                projectContext={{
+                    platform: filteredStructures.find(s => s.id.toString() === selections.structureId)?.name,
+                    jobpack: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.name,
+                    reportNo: selections.sowReportNo,
+                    vessel: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.metadata?.vessel
                 }}
             />
         </div>

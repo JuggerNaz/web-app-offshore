@@ -119,11 +119,46 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
             }
         }
 
+        // ── Image cache (tagValue → Uint8Array) ─────────────────
+        const imageCache: Record<string, Uint8Array> = {};
+        if (logoBytes) {
+            imageCache["CLIENT_LOGO"] = logoBytes;
+        }
+
         // ── Build clean data ─────────────────────────────────────
         const finalData: Record<string, any> = {};
         for (const [key, value] of Object.entries(data)) {
             if (value === undefined || value === null) {
                 finalData[key] = "";
+            } else if (value && typeof value === "object" && !Array.isArray(value) && (value as any).data && (value as any).extension) {
+                // It's an image object (like MGI_GRAPH or SEABED_GRAPH or CONTRACTOR_LOGO)
+                const imgObj = value as any;
+                let bytes: Uint8Array | null = null;
+                if (imgObj.data instanceof Uint8Array) {
+                    bytes = imgObj.data;
+                } else if (typeof imgObj.data === "string") {
+                    if (imgObj.data.startsWith("data:image")) {
+                        const base64 = imgObj.data.split(",")[1];
+                        bytes = toUint8Array(Buffer.from(base64, "base64"));
+                    } else if (imgObj.data.startsWith("http")) {
+                        try {
+                            const imgRes = await fetch(imgObj.data);
+                            if (imgRes.ok) {
+                                bytes = toUint8Array(await imgRes.arrayBuffer());
+                            }
+                        } catch (e) {
+                            console.warn(`Failed to fetch image for ${key}:`, e);
+                        }
+                    } else {
+                        bytes = toUint8Array(Buffer.from(imgObj.data, "base64"));
+                    }
+                }
+                if (bytes) {
+                    imageCache[key] = bytes;
+                    finalData[key] = key;
+                } else {
+                    finalData[key] = "";
+                }
             } else if (Array.isArray(value)) {
                 finalData[key] = value.map((item: any) => {
                     if (item && typeof item === 'object') {
@@ -155,12 +190,6 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         finalData["T_VESSEL"] = finalData["VESSEL_NAME"] || "";
 
         console.log("[ReportGen] Data keys:", Object.keys(finalData).join(", "));
-
-        // ── Image cache (tagValue → Uint8Array) ─────────────────
-        const imageCache: Record<string, Uint8Array> = {};
-        if (logoBytes) {
-            imageCache["CLIENT_LOGO"] = logoBytes;
-        }
 
         // ── Build and render ─────────────────────────────────────
         const zip = new PizZip(content);

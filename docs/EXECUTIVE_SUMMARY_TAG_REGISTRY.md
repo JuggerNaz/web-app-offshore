@@ -19,12 +19,15 @@ This document serves as the definitive reference for designing DOCX templates fo
 | `{{SOW_REPORT_NO}}` | Selected SOW | Alias for REPORT_NO |
 | `{{REPORT_TYPE}}` | UI Toggle | "PRELIMINARY" or "FINAL" |
 | `{{DATE}}` | System | Current date (DD/MM/YYYY) |
+| `{{SHORT_DATE}}` | JobPack metadata → istart | Short date with month and year from jobpack start date (e.g. Jun 2026) |
+| `{{TODAY_SHORT}}` | System | Current date formatted as dd-Mon-yyyy (e.g. 27-Jun-2026) |
 | `{{CLIENT_NAME}}` | Company Settings → company_name | Name of the client |
 | `{{DEPARTMENT}}` | Company Settings → department_name | Department name |
 | `{{PROJECT_NAME}}` | Company Settings → project_name | Project name |
 | `{{VESSEL_NAME}}` | JobPack metadata → vessel | Inspection vessel name |
 | `{{PROJECT_NO}}` | JobPack metadata → inspno | Job pack project number |
 | `{{CONTRACTOR}}` | JobPack metadata → contrac | Contractor name |
+| `{{CONTRACTOR_SHORT}}` | JobPack metadata → contrac | Contractor short name / Library ID |
 | `{{START_DATE}}` | JobPack metadata → istart | Job start date (DD/MM/YYYY) |
 | `{{END_DATE}}` | JobPack metadata → iend | Job end date (DD/MM/YYYY) |
 | `{{PREPARED_BY}}` | Insight data | Name of the person who prepared the report |

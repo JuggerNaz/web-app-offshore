@@ -12,6 +12,30 @@ const ATTACHMENT_GROUPS: Record<string, string[]> = {
     "Boat Landing": ["BL", "BLTG", "BOAT_LANDING", "BOATLANDING", "BLD"],
 };
 
+const getInspectionFindings = (r: any, anomaly: any): string => {
+    const data = r.inspection_data || {};
+    const fields = [
+        "findings", "finding", "findings_comments", "finding_comments", 
+        "comments", "COMMENTS", "comment", "observation", "observations", 
+        "defect_description", "description", "defectDescription"
+    ];
+    for (const field of fields) {
+        if (data[field] !== undefined && data[field] !== null && String(data[field]).trim() !== "" && String(data[field]).trim().toUpperCase() !== "N/A") {
+            return String(data[field]).trim();
+        }
+    }
+    if (r.description !== undefined && r.description !== null && String(r.description).trim() !== "" && String(r.description).trim().toUpperCase() !== "N/A") {
+        return String(r.description).trim();
+    }
+    if (anomaly?.defect_description && String(anomaly.defect_description).trim() !== "" && String(anomaly.defect_description).trim().toUpperCase() !== "N/A") {
+        return String(anomaly.defect_description).trim();
+    }
+    if (anomaly?.description && String(anomaly.description).trim() !== "" && String(anomaly.description).trim().toUpperCase() !== "N/A") {
+        return String(anomaly.description).trim();
+    }
+    return "N/A";
+};
+
 export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
@@ -102,7 +126,6 @@ export const GET = withTenant(async (request, { companyId }) => {
         const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
         const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
 
-        // ─── 3. INSPECTION RECORDS ─────────────────────────────────────────────
         let recQuery = (supabase as any)
             .from("insp_records")
             .select(`
@@ -112,6 +135,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 inspection_type_id,
                 inspection_type_code,
                 inspection_data,
+                description,
                 component_type,
                 component_id,
                 dive_job_id,
@@ -122,7 +146,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     id, q_id, code, metadata
                 ),
                 inspection_type:inspection_type_id!left(id, code, name),
-                insp_anomalies(anomaly_id, status, defect_type_code, defect_category_code, priority_code, record_category)
+                insp_anomalies(anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description)
             `)
             .eq("company_id", companyId);
 
@@ -142,25 +166,39 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         const dbRecords = allRecordsData || [];
         const rawRecords = dbRecords.filter((r: any) => {
-            const matchesJobpack = !isNaN(jpNum) && r.jobpack_id === jpNum;
-            const matchesReport = r.sow_report_no && sowReportNumbers.has(r.sow_report_no.trim());
-            return matchesJobpack || matchesReport;
+            const matchesJobpack = !isNaN(jpNum) ? r.jobpack_id === jpNum : true;
+            return matchesJobpack;
         });
         
         // Determine if we should filter the overview by the current report
         const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all";
 
         // Filter records by report locally if requested
-        // Using loose matching (includes) to handle variations like "2026-01" vs "2026-01 MAJOR"
+        // Using strict matching after trim and lowercase conversion to match selected report number exactly
         const records = isReportSpecific
             ? rawRecords.filter((r: any) => {
-                const recRep = String(r.sow_report_no || "").toLowerCase();
-                const filterRep = String(sowReportNo).toLowerCase();
-                return recRep === filterRep || recRep.includes(filterRep) || filterRep.includes(recRep);
+                const recRep = String(r.sow_report_no || "").trim().toLowerCase();
+                const filterRep = String(sowReportNo).trim().toLowerCase();
+                return recRep === filterRep;
               })
             : rawRecords;
 
         // ─── 3. INSPECTIONS BY MODE ────────────────────────────────────────────
+        let minDate: string | null = null;
+        let maxDate: string | null = null;
+        records.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const dateStr = d.date || d.date_time || r.updated_at;
+            if (dateStr) {
+                const time = Date.parse(dateStr);
+                if (!isNaN(time)) {
+                    const parsed = new Date(time);
+                    if (!minDate || parsed < new Date(minDate)) minDate = parsed.toISOString();
+                    if (!maxDate || parsed > new Date(maxDate)) maxDate = parsed.toISOString();
+                }
+            }
+        });
+
         // Analysis sections use rawRecords to show the full history of the structure
         const rovRecords = rawRecords.filter((r: any) => !!r.rov_job_id);
         const diveRecords = rawRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id);
@@ -368,29 +406,231 @@ export const GET = withTenant(async (request, { companyId }) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === "RMGI" || code === "MGROW" || code === "MGI";
         });
-        const mgiThicknesses = mgiRecords.map((r: any) => parseFloat(r.inspection_data?.avg_thickness || r.inspection_data?.thickness || '0')).filter((v: number) => !isNaN(v) && v > 0);
-        const mgiMax = mgiThicknesses.length > 0 ? Math.max(...mgiThicknesses) : 0;
-        const mgiAvg = mgiThicknesses.length > 0 ? mgiThicknesses.reduce((a: number, b: number) => a + b, 0) / mgiThicknesses.length : 0;
+        
+        let mgiMax = 0;
+        let mgiMaxComp = "N/A";
+        let mgiMin = 999999;
+        let mgiMinComp = "N/A";
+        let mgiSum = 0;
+        let mgiCount = 0;
+
+        const cleanCovVal = (v: any) => {
+            if (v === null || v === undefined || v === "") return NaN;
+            return parseFloat(String(v).replace('%', '').trim());
+        };
+
+        const parseMGI_Coverage = (mg: string) => {
+            if (!mg || typeof mg !== 'string') return { h: NaN, s: NaN };
+            const lower = mg.toLowerCase();
+            let rawVal = mg.split(':').pop()?.replace(/coverage/i, '').trim() || '';
+            let val = parseFloat(rawVal.replace('%', ''));
+            if (isNaN(val) && rawVal.toLowerCase() === 'all over') val = 100;
+            
+            const getHighestVal = (vStr: string) => {
+                if (vStr.includes('-')) {
+                    const parts = vStr.split('-');
+                    return parseFloat(parts[parts.length - 1].trim());
+                }
+                return parseFloat(vStr);
+            };
+
+            if (lower.startsWith('hard:')) return { h: getHighestVal(rawVal), s: NaN };
+            if (lower.startsWith('soft:')) return { h: NaN, s: getHighestVal(rawVal) };
+            if (lower.startsWith('hard and soft:') || lower.startsWith('mgi:')) {
+                if (rawVal.includes('-')) {
+                    const parts = rawVal.split('-');
+                    if (parts.length === 2) {
+                        return { h: parseFloat(parts[0].trim()), s: parseFloat(parts[1].trim()) };
+                    }
+                }
+                const fv = parseFloat(rawVal);
+                return { h: fv, s: fv };
+            }
+            return { h: NaN, s: NaN };
+        };
+
+        // Thickness calculations (only RMGI/MGROW/MGI)
+        mgiRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const qid = r.structure_components?.q_id || d.q_id || "Unknown Component";
+            
+            const hList = ['mgi_hard_thickness_at_12','mgi_hard_thickness_at_3','mgi_hard_thickness_at_6','mgi_hard_thickness_at_9'];
+            const sList = ['mgi_soft_thickness_at_12','mgi_soft_thickness_at_3','mgi_soft_thickness_at_6','mgi_soft_thickness_at_9'];
+            const hVals = hList.map(v => parseFloat(d[v]) || (v === 'mgi_hard_thickness_at_12' ? parseFloat(d.mgi_hard_thickness) : 0) || 0);
+            const sVals = sList.map(v => parseFloat(d[v]) || (v === 'mgi_soft_thickness_at_12' ? parseFloat(d.mgi_soft_thickness) : 0) || 0);
+            const recordMaxThickness = Math.max(...hVals, ...sVals, parseFloat(d.avg_thickness || d.thickness || '0'));
+            const recordMinThickness = Math.min(...hVals.filter(v => v > 0), ...sVals.filter(v => v > 0), parseFloat(d.avg_thickness || d.thickness || '999999'));
+
+            if (recordMaxThickness > 0) {
+                mgiSum += recordMaxThickness;
+                mgiCount++;
+                if (recordMaxThickness > mgiMax) {
+                    mgiMax = recordMaxThickness;
+                    mgiMaxComp = qid;
+                }
+                if (recordMinThickness < mgiMin && recordMinThickness > 0 && recordMinThickness !== 999999) {
+                    mgiMin = recordMinThickness;
+                    mgiMinComp = qid;
+                }
+            }
+        });
+
+        if (mgiMin === 999999) mgiMin = 0;
+        const mgiAvg = mgiCount > 0 ? mgiSum / mgiCount : 0;
+        const mgiAnomaliesCount = mgiRecords.filter((r: any) => !!r.has_anomaly).length;
+
+        // Coverage calculations (split Hard and Soft from ALL inspection records)
+        let mgiHardMaxPct = 0;
+        let mgiHardMaxPctComp = "N/A";
+        let mgiHardMinPct = 9999;
+        let mgiHardMinPctComp = "N/A";
+        let hasMgiHardPct = false;
+
+        let mgiSoftMaxPct = 0;
+        let mgiSoftMaxPctComp = "N/A";
+        let mgiSoftMinPct = 9999;
+        let mgiSoftMinPctComp = "N/A";
+        let hasMgiSoftPct = false;
+
+        rawRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const qid = r.structure_components?.q_id || d.q_id || "Unknown Component";
+
+            const mgData = parseMGI_Coverage(d.marine_growth || d.marine_growth_coverage || "");
+            const hc = cleanCovVal(d.marine_growth_hard) ?? cleanCovVal(d.mgi_hard_coverage) ?? cleanCovVal(d.hard_coverage) ?? mgData.h;
+            const sc = cleanCovVal(d.marine_growth_soft) ?? cleanCovVal(d.mgi_soft_coverage) ?? cleanCovVal(d.soft_coverage) ?? mgData.s;
+
+            if (!isNaN(hc) && hc >= 0 && hc <= 100) {
+                hasMgiHardPct = true;
+                if (hc > mgiHardMaxPct) {
+                    mgiHardMaxPct = hc;
+                    mgiHardMaxPctComp = qid;
+                }
+                if (hc < mgiHardMinPct) {
+                    mgiHardMinPct = hc;
+                    mgiHardMinPctComp = qid;
+                }
+            }
+
+            if (!isNaN(sc) && sc >= 0 && sc <= 100) {
+                hasMgiSoftPct = true;
+                if (sc > mgiSoftMaxPct) {
+                    mgiSoftMaxPct = sc;
+                    mgiSoftMaxPctComp = qid;
+                }
+                if (sc < mgiSoftMinPct) {
+                    mgiSoftMinPct = sc;
+                    mgiSoftMinPctComp = qid;
+                }
+            }
+        });
+
+        if (mgiHardMinPct === 9999) mgiHardMinPct = 0;
+        if (mgiSoftMinPct === 9999) mgiSoftMinPct = 0;
+
+        // Thickness readings exceeding effective thickness and reported as Anomaly
+        const mgiExceeded: Array<{
+            qid: string;
+            thickness: number;
+            effectiveThickness: number;
+            elevation: string;
+            date: string;
+        }> = [];
+
+        mgiRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const qid = r.structure_components?.q_id || d.q_id || "Unknown Component";
+            
+            const hList = ['mgi_hard_thickness_at_12','mgi_hard_thickness_at_3','mgi_hard_thickness_at_6','mgi_hard_thickness_at_9'];
+            const sList = ['mgi_soft_thickness_at_12','mgi_soft_thickness_at_3','mgi_soft_thickness_at_6','mgi_soft_thickness_at_9'];
+            const hVals = hList.map(v => parseFloat(d[v]) || (v === 'mgi_hard_thickness_at_12' ? parseFloat(d.mgi_hard_thickness) : 0) || 0);
+            const sVals = sList.map(v => parseFloat(d[v]) || (v === 'mgi_soft_thickness_at_12' ? parseFloat(d.mgi_soft_thickness) : 0) || 0);
+            const recordMaxThickness = Math.max(...hVals, ...sVals, parseFloat(d.avg_thickness || d.thickness || '0'));
+            
+            const effThickness = parseFloat(d.effective_thickness || d.eff_thk);
+            if (!isNaN(effThickness) && recordMaxThickness > effThickness && !!r.has_anomaly) {
+                const elevation = r.structure_components?.metadata?.elevation || d.elevation || d.depth || d.elevation_m || "N/A";
+                const date = d.date || r.inspection_data?.date || new Date(r.created_at || Date.now()).toLocaleDateString("en-GB");
+                mgiExceeded.push({
+                    qid,
+                    thickness: recordMaxThickness,
+                    effectiveThickness: effThickness,
+                    elevation,
+                    date
+                });
+            }
+        });
 
         // --- 9. SCOUR ANALYSIS ---
         const scourRecords = rawRecords.filter((r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === "RSCOR" || code === "SCOUR";
         });
-        const scourExposedCount = scourRecords.filter((r: any) => r.inspection_data?.Exposed_pile === "Yes" || r.inspection_data?.Exposed_pile === true).length;
+        const scourExposedRecords = scourRecords.filter((r: any) => r.inspection_data?.Exposed_pile === "Yes" || r.inspection_data?.Exposed_pile === true);
+        const scourExposedCount = scourExposedRecords.length;
+        const scourExposedComponents = scourExposedRecords.map((r: any) => {
+            const d = r.inspection_data || {};
+            const qid = r.structure_components?.q_id || d.q_id || "N/A";
+            const loc = d.scour_location || r.structure_components?.metadata?.location || r.structure_components?.metadata?.leg || d.location || d.leg || "N/A";
+            return { qid, location: loc };
+        });
+        const scourExposedLocationsStr = scourExposedComponents.map((c: any) => `${c.qid} (${c.location})`).join(", ") || "None";
+
         const scourBurials = scourRecords.map((r: any) => parseFloat(r.inspection_data?.Burial_percent || '0')).filter((v: number) => !isNaN(v));
         const scourMinBurial = scourBurials.length > 0 ? Math.min(...scourBurials) : 100;
+
+        let maxScourDepth = 0;
+        let maxScourLocation = "N/A";
+        let maxScourFace = "N/A";
+        let maxScourQid = "N/A";
+
+        scourRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const depth = parseFloat(d.scour_depth || '0');
+            if (!isNaN(depth) && depth > maxScourDepth) {
+                maxScourDepth = depth;
+                maxScourQid = r.structure_components?.q_id || d.q_id || "N/A";
+                maxScourLocation = d.scour_location || r.structure_components?.metadata?.location || r.structure_components?.metadata?.leg || d.location || d.leg || "N/A";
+                
+                const meta = r.structure_components?.metadata || {};
+                const face = r.structure_components?.metadata?.face || d.face || r.structure_components?.metadata?.elevation || "";
+                
+                const sNode = meta.start_node || meta.f_node || meta.Node_1 || meta.startNode || meta.StNode || d.start_node || d.f_node || "";
+                const eNode = meta.end_node || meta.s_node || meta.Node_2 || meta.endNode || meta.EndNode || d.end_node || d.s_node || "";
+                const sLeg = meta.start_leg || meta.startLeg || meta.s_leg || d.start_leg || "";
+                const eLeg = meta.end_leg || meta.endLeg || meta.f_leg || d.end_leg || "";
+                
+                let nodesOrLegs = "";
+                if (sLeg && eLeg) {
+                    nodesOrLegs = `Legs: ${sLeg} - ${eLeg}`;
+                } else if (sNode && eNode) {
+                    nodesOrLegs = `Nodes: ${sNode} - ${eNode}`;
+                } else if (sNode) {
+                    nodesOrLegs = `Node: ${sNode}`;
+                } else if (sLeg) {
+                    nodesOrLegs = `Leg: ${sLeg}`;
+                }
+                
+                if (face && nodesOrLegs) {
+                    maxScourFace = `${face} (${nodesOrLegs})`;
+                } else if (nodesOrLegs) {
+                    maxScourFace = nodesOrLegs;
+                } else {
+                    maxScourFace = face || "N/A";
+                }
+            }
+        });
 
         // ─── 10. ANOMALIES ─────────────────────────────────────────────────────
         // Anomaly = has_anomaly=true AND _meta_status != "Finding"
         // Finding = has_anomaly=true AND _meta_status == "Finding"
-        const anomalyRecords = rawRecords.filter((r: any) => {
+        const anomalyRecords = records.filter((r: any) => {
             if (!r.has_anomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus !== "finding";
         });
 
-        const findingRecords = rawRecords.filter((r: any) => {
+        const findingRecords = records.filter((r: any) => {
             if (!r.has_anomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus === "finding";
@@ -415,12 +655,10 @@ export const GET = withTenant(async (request, { companyId }) => {
                 ? (anomaly.priority_code || "")
                 : (r.inspection_data?.priority || "");
 
-            if (!VALID_PRIORITY(rawPriority)) return; // skip unknown/no-priority
-
             anomalyValidTotal++;
             if (anomaly?.status === "CLOSED") rectifiedCount++;
 
-            const priority = rawPriority.trim().toUpperCase();
+            const priority = VALID_PRIORITY(rawPriority) ? rawPriority.trim().toUpperCase() : "N/A";
             anomalyByPriority[priority] = (anomalyByPriority[priority] || 0) + 1;
         });
 
@@ -473,12 +711,10 @@ export const GET = withTenant(async (request, { companyId }) => {
                 ? (anomaly.priority_code || "")
                 : (r.inspection_data?.priority || "");
 
-            if (!VALID_PRIORITY(rawPriority)) return; // skip unknown/no-priority
-
             findingValidTotal++;
             if (anomaly?.status === "CLOSED") findingRectifiedCount++;
 
-            const priority = rawPriority.trim().toUpperCase();
+            const priority = VALID_PRIORITY(rawPriority) ? rawPriority.trim().toUpperCase() : "N/A";
             findingByPriority[priority] = (findingByPriority[priority] || 0) + 1;
         });
 
@@ -837,7 +1073,9 @@ export const GET = withTenant(async (request, { companyId }) => {
                     hasBothModes, 
                     uniqueRovJobs, 
                     uniqueDiveJobs, 
-                    inspTypeBreakdown 
+                    inspTypeBreakdown,
+                    startDate: minDate,
+                    endDate: maxDate
                 },
                 fmd: {
                     total: fmdTotal,
@@ -877,14 +1115,25 @@ export const GET = withTenant(async (request, { companyId }) => {
                     defectTypeDetails: anomalyByDefectTypeDetails,
                     items: anomalyRecords.map((r: any) => {
                         const anomaly = r.insp_anomalies?.[0];
+                        const defectCode = (
+                            anomaly?.defect_type_code ||
+                            anomaly?.defect_category_code ||
+                            r.inspection_data?.defectCode ||
+                            r.inspection_data?.defect_code ||
+                            r.inspection_data?.defect_type ||
+                            "N/A"
+                        ).trim();
                         return {
                             ref: anomaly?.anomaly_ref_no || `ID: ${r.insp_id}`,
-                            description: anomaly?.defect_description || r.inspection_data?.observation || "N/A",
+                            qid: r.structure_components?.q_id || r.inspection_data?.q_id || "N/A",
+                            inspectionType: formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_code || "UNKNOWN"),
+                            description: getInspectionFindings(r, anomaly),
                             priority: anomaly?.priority_code || r.inspection_data?.priority || "N/A",
                             status: anomaly?.status || "OPEN",
-                            rectification: anomaly?.follow_up_notes || "N/A"
+                            rectification: anomaly?.follow_up_notes || "N/A",
+                            defectCode: defectCode || "N/A"
                         };
-                    })
+                    }).sort((a: any, b: any) => a.ref.localeCompare(b.ref, undefined, { numeric: true, sensitivity: 'base' }))
                 },
                 findings: {
                     total: findingValidTotal,
@@ -893,16 +1142,60 @@ export const GET = withTenant(async (request, { companyId }) => {
                     byPriority: findingByPriority,
                     items: findingRecords.map((r: any) => {
                         const anomaly = r.insp_anomalies?.[0];
+                        const defectCode = (
+                            anomaly?.defect_type_code ||
+                            anomaly?.defect_category_code ||
+                            r.inspection_data?.defectCode ||
+                            r.inspection_data?.defect_code ||
+                            r.inspection_data?.defect_type ||
+                            "N/A"
+                        ).trim();
                         return {
                             ref: anomaly?.anomaly_ref_no || `ID: ${r.insp_id}`,
-                            description: anomaly?.defect_description || r.inspection_data?.observation || "N/A",
+                            qid: r.structure_components?.q_id || r.inspection_data?.q_id || "N/A",
+                            inspectionType: formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_code || "UNKNOWN"),
+                            description: getInspectionFindings(r, anomaly),
                             priority: anomaly?.priority_code || r.inspection_data?.priority || "N/A",
-                            status: anomaly?.status || "OPEN"
+                            status: anomaly?.status || "OPEN",
+                            defectCode: defectCode || "N/A"
                         };
-                    })
+                    }).sort((a: any, b: any) => a.ref.localeCompare(b.ref, undefined, { numeric: true, sensitivity: 'base' }))
                 },
-                mgi: { total: mgiRecords.length, max: mgiMax, avg: mgiAvg },
-                scour: { total: scourRecords.length, exposed: scourExposedCount, minBurial: scourMinBurial },
+                mgi: { 
+                    total: mgiRecords.length, 
+                    max: mgiMax, 
+                    maxComp: mgiMaxComp, 
+                    min: mgiMin, 
+                    minComp: mgiMinComp, 
+                    avg: mgiAvg, 
+                    
+                    // Split coverage percentage
+                    hardMaxPct: mgiHardMaxPct,
+                    hardMaxPctComp: mgiHardMaxPctComp,
+                    hardMinPct: mgiHardMinPct,
+                    hardMinPctComp: mgiHardMinPctComp,
+                    
+                    softMaxPct: mgiSoftMaxPct,
+                    softMaxPctComp: mgiSoftMaxPctComp,
+                    softMinPct: mgiSoftMinPct,
+                    softMinPctComp: mgiSoftMinPctComp,
+
+                    // Readings exceeding effective thickness reported as anomalies
+                    exceeded: mgiExceeded,
+                    anomaliesCount: mgiAnomaliesCount 
+                },
+                scour: { 
+                    total: scourRecords.length, 
+                    exposed: scourExposedCount, 
+                    exposedComponents: scourExposedComponents,
+                    exposedLocationsStr: scourExposedLocationsStr,
+                    minBurial: scourMinBurial,
+                    maxDepth: maxScourDepth,
+                    maxDepthQid: maxScourQid,
+                    maxDepthLeg: maxScourLocation, // alias
+                    maxDepthLocation: maxScourLocation,
+                    maxDepthFace: maxScourFace
+                },
                 attachmentGroups: attachmentGroupBreakdown,
                 
                  // Detailed Item Lists for Tables
