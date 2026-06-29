@@ -649,7 +649,7 @@ export function Structural3DViewer({
         const nodeLegMap = new Map<string, string>();
 
         // Helper to scan nodeMap for any existing aliases of the target node and return its vector reference
-        const getExistingNodeVector = (nodeId: string): THREE.Vector3 | undefined => {
+        const getExistingNodeVector = (nodeId: string, legKey?: string): THREE.Vector3 | undefined => {
             const normalized = nodeId.toUpperCase().trim();
             const aliases = [normalized];
             if (/^N\d+$/.test(normalized)) aliases.push(normalized.slice(1));
@@ -658,9 +658,29 @@ export function Structural3DViewer({
                 aliases.push(`WN ${normalized}`);
                 aliases.push(`WN${normalized}`);
             }
+            // 1. Prioritize weld vectors if they exist in nodeMap
             for (const alias of aliases) {
+                if (alias.startsWith("WN") && nodeMap.has(alias)) {
+                    const vec = nodeMap.get(alias)!;
+                    if (vec.x !== 0 || vec.z !== 0) return vec;
+                }
+            }
+            // 2. Standard composite/alias lookups
+            for (const alias of aliases) {
+                if (legKey) {
+                    const compositeKey = `${alias}|${legKey.toUpperCase()}`;
+                    if (nodeMap.has(compositeKey)) {
+                        const vec = nodeMap.get(compositeKey)!;
+                        if (vec.x !== 0 || vec.z !== 0) return vec;
+                    }
+                }
                 if (nodeMap.has(alias)) {
                     const vec = nodeMap.get(alias)!;
+                    const nodeLeg = nodeLegMap.get(alias);
+                    if (nodeLeg && legKey && nodeLeg.toUpperCase() !== legKey.toUpperCase()) {
+                        // Associated with a different leg, do not reuse as default fallback
+                        continue;
+                    }
                     if (vec.x !== 0 || vec.z !== 0) return vec;
                 }
             }
@@ -672,7 +692,7 @@ export function Structural3DViewer({
             const key = alias.toUpperCase();
 
             // Look for any existing vector instance for this node name to share reference
-            const existingVec = getExistingNodeVector(key);
+            const existingVec = getExistingNodeVector(key, legKey);
             const activeVec = existingVec || vec;
 
             if (!nodeMap.has(key) || (nodeMap.get(key)!.x === 0 && nodeMap.get(key)!.z === 0)) {
@@ -680,7 +700,7 @@ export function Structural3DViewer({
                 if (legKey) nodeLegMap.set(key, legKey);
             }
             if (legKey) {
-                const compositeKey = `${key}|${legKey}`;
+                const compositeKey = `${key}|${legKey.toUpperCase()}`;
                 if (
                     !nodeMap.has(compositeKey) ||
                     (nodeMap.get(compositeKey)!.x === 0 && nodeMap.get(compositeKey)!.z === 0)
@@ -752,7 +772,8 @@ export function Structural3DViewer({
                 const fNode = (md.f_node || "").toUpperCase();
 
                 // If it has s_node and f_node, and neither is itself, it's an intermediate weld on a member!
-                const isIntermediate = sNode && fNode && sNode !== bareNode && fNode !== bareNode;
+                // Point welds (where s_node === f_node) represent the root node itself, and are not intermediate.
+                const isIntermediate = sNode && fNode && sNode !== fNode && sNode !== bareNode && fNode !== bareNode;
 
                 if (isIntermediate) {
                     intermediateWelds.push(c);
@@ -823,6 +844,15 @@ export function Structural3DViewer({
                 }
             }
 
+            // 1. Prioritize authoritative node weld references (e.g. "WN N4") if they exist in nodeMap
+            for (const alias of aliases) {
+                if (alias.startsWith("WN") && nodeMap.has(alias)) {
+                    const vec = nodeMap.get(alias)!;
+                    if (vec.x !== 0 || vec.z !== 0) return vec;
+                }
+            }
+
+            // 2. Standard composite/alias fallback lookup
             for (const alias of aliases) {
                 if (legKey) {
                     const compositeKey = `${alias}|${legKey}`;
