@@ -12,7 +12,8 @@ import {
     Activity, 
     Maximize2, 
     ChevronRight,
-    Waves
+    Waves,
+    RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,7 +81,12 @@ export default function Platform3DPage() {
     const platforms: Platform[] = useMemo(() => platformsData?.data || [], [platformsData]);
 
     // 2. Fetch Components for Selected Platform
-    const { data: componentsData, isLoading: isComponentsLoading } = useSWR(
+    const { 
+        data: componentsData, 
+        isLoading: isComponentsLoading, 
+        isValidating: isComponentsValidating, 
+        mutate: mutateComponents 
+    } = useSWR(
         selectedPlatform ? `/api/structure-components/${selectedPlatform.plat_id}` : null,
         fetcher
     );
@@ -171,7 +177,18 @@ export default function Platform3DPage() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
+                        <Button 
+                            variant="outline"
+                            size="sm"
+                            onClick={() => mutateComponents()}
+                            disabled={isComponentsValidating}
+                            className="h-9 px-3 gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", isComponentsValidating && "animate-spin")} />
+                            <span>Sync</span>
+                        </Button>
+
                         <div className="flex flex-col items-end">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Status</span>
                             <span className="text-xs font-bold text-emerald-500 uppercase tracking-tight flex items-center gap-1.5">
@@ -197,6 +214,8 @@ export default function Platform3DPage() {
                         elevations={elevations}
                         faces={faces}
                         onSelectComponent={handleSelectComponent}
+                        onSync={mutateComponents}
+                        isSyncing={isComponentsValidating}
                     />
                 </div>
 
@@ -206,6 +225,10 @@ export default function Platform3DPage() {
                     open={isSpecOpen}
                     onOpenChange={setIsSpecOpen}
                     mode="view"
+                    onSuccess={(updatedComponent) => {
+                        mutateComponents();
+                        setSelectedComponent(updatedComponent);
+                    }}
                 />
             </div>
         );

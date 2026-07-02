@@ -17,7 +17,7 @@ import {
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass } from "lucide-react";
+import { Play, Box, Radio, Compass, RefreshCw } from "lucide-react";
 
 interface Component3D {
     id: number;
@@ -33,6 +33,8 @@ interface Structural3DViewerProps {
     faces?: any[];
     selectedCompId?: number;
     onSelectComponent: (component: Component3D) => void;
+    onSync?: () => void;
+    isSyncing?: boolean;
 }
 
 const ComponentMesh = ({
@@ -356,6 +358,8 @@ export function Structural3DViewer({
     faces = [],
     selectedCompId,
     onSelectComponent,
+    onSync,
+    isSyncing = false,
 }: Structural3DViewerProps) {
     const components = useMemo(() => {
         const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD"];
@@ -676,11 +680,6 @@ export function Structural3DViewer({
                 }
                 if (nodeMap.has(alias)) {
                     const vec = nodeMap.get(alias)!;
-                    const nodeLeg = nodeLegMap.get(alias);
-                    if (nodeLeg && legKey && nodeLeg.toUpperCase() !== legKey.toUpperCase()) {
-                        // Associated with a different leg, do not reuse as default fallback
-                        continue;
-                    }
                     if (vec.x !== 0 || vec.z !== 0) return vec;
                 }
             }
@@ -1044,6 +1043,18 @@ export function Structural3DViewer({
                     return (a.q_id || "").localeCompare(b.q_id || "");
                 });
 
+                // Determine the real physical length of the parent member.
+                // We look for a child weld that is located at the end node (f_node) of the parent.
+                let realParentLength = 0;
+                const endNodeWeld = children.find(c => {
+                    const cNode = (c.metadata?.s_node || "").toUpperCase().trim();
+                    const parentFNode = (parentMd.f_node || "").toUpperCase().trim();
+                    return cNode === parentFNode && parentFNode !== "";
+                });
+                if (endNodeWeld) {
+                    realParentLength = parseFloat(endNodeWeld.metadata?.dist || "0");
+                }
+
                 const count = children.length;
                 children.forEach((c, idx) => {
                     let t = (idx + 1) / (count + 1);
@@ -1053,7 +1064,9 @@ export function Structural3DViewer({
                         const dy = Math.abs(pEnd.y - pStart.y);
                         const dz = Math.abs(pEnd.z - pStart.z);
                         const model_projected_span = Math.max(dx, dy, dz);
-                        if (model_projected_span > 0.01) {
+                        if (realParentLength > 0.01) {
+                            t = Math.max(0, Math.min(1, distVal / realParentLength));
+                        } else if (model_projected_span > 0.01) {
                             t = Math.max(0, Math.min(1, distVal / model_projected_span));
                         }
                     }
@@ -1227,7 +1240,9 @@ export function Structural3DViewer({
             let resolved = false;
 
             if (md.associated_comp_id) {
-                pendingAttachments.push(c);
+                if (code !== "WN") {
+                    pendingAttachments.push(c);
+                }
                 return;
             } else if (
                 isPointAccessory &&
@@ -2079,6 +2094,23 @@ export function Structural3DViewer({
             )}
 
             <div className="absolute top-6 right-6 flex items-center gap-3 z-50">
+                {/* Sync Button */}
+                {onSync && (
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={onSync}
+                        disabled={isSyncing}
+                        className={cn(
+                            "bg-white/90 backdrop-blur-md h-9 w-9 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-800 transition-all shadow-sm flex items-center justify-center",
+                            isSyncing && "border-blue-200 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
+                        )}
+                        title="Sync Component Data"
+                    >
+                        <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
+                    </Button>
+                )}
+
                 {/* Elevation Filter */}
                 <div className="relative">
                     <Button
