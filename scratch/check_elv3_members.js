@@ -15,27 +15,19 @@ async function fetchJson(url) {
 
 async function run() {
     try {
-        const platforms = await fetchJson(`${SUPABASE_URL}/rest/v1/platform?title=ilike.*BKP-A*&select=*`);
-        if (!platforms.length) return;
-        const platId = platforms[0].plat_id;
-        
-        const rawComponents = await fetchJson(`${SUPABASE_URL}/rest/v1/structure_components?structure_id=eq.${platId}&is_deleted=eq.false&limit=2000`);
-        
-        const filtered = rawComponents.filter(c => {
+        const platId = 204;
+        const comps = await fetchJson(`${SUPABASE_URL}/rest/v1/structure_components?structure_id=eq.${platId}&is_deleted=eq.false&limit=2000`);
+        const elv3Comps = comps.filter(c => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
-            const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(code);
-            return isMember && md.clk_pos && md.clk_pos !== "N/A";
+            const isMember = ["HM", "HOM", "HD", "HDM"].includes(code);
+            return isMember && (md.elv_1 === "3" || md.elv_2 === "3");
         });
-        
-        console.log(`Found ${filtered.length} member components with non-N/A clk_pos:`);
-        filtered.forEach(c => {
-            console.log(`- q_id: ${c.q_id}`);
-            console.log(`  id: ${c.id}`);
-            console.log(`  code: ${c.code}`);
+        console.log("Elevation 3 members:");
+        elv3Comps.forEach(c => {
+            console.log(`- q_id: ${c.q_id}, code: ${c.code}`);
             console.log(`  metadata:`, JSON.stringify(c.metadata, null, 2));
         });
-        
     } catch (err) {
         console.error(err);
     }

@@ -44,6 +44,7 @@ const ComponentMesh = ({
     start,
     end,
     thickness = 0.3,
+    showWeldNumbering = true,
 }: {
     component: Component3D;
     isSelected: boolean;
@@ -51,6 +52,7 @@ const ComponentMesh = ({
     start: [number, number, number];
     end: [number, number, number];
     thickness?: number;
+    showWeldNumbering?: boolean;
 }) => {
     const [hovered, setHovered] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
@@ -96,7 +98,7 @@ const ComponentMesh = ({
     }
     const euler = new THREE.Euler().setFromQuaternion(quaternion);
 
-    const showLabel = hovered || isSelected || isWeld;
+    const showLabel = hovered || isSelected || (isWeld && showWeldNumbering);
 
     let labelText = component.q_id;
     if (isWeld) {
@@ -378,9 +380,10 @@ export function Structural3DViewer({
 
     const [showGrid, setShowGrid] = useState(true);
     const [showWater, setShowWater] = useState(true);
+    const [showWeldNumbering, setShowWeldNumbering] = useState(true);
     const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
     const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
-    const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | null>(null);
+    const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | null>(null);
     const [isActivated, setIsActivated] = useState(false);
     const [isActivating, setIsActivating] = useState(false);
 
@@ -1979,6 +1982,7 @@ export function Structural3DViewer({
                                 start={layout.start}
                                 end={layout.end}
                                 thickness={layout.thickness}
+                                showWeldNumbering={showWeldNumbering}
                             />
                         ))}
                     </SelectToZoom>
@@ -2231,31 +2235,61 @@ export function Structural3DViewer({
                     )}
                 </div>
 
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowWater(!showWater)}
-                    className={cn(
-                        "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
-                        showWater
-                            ? "border-sky-300 text-sky-600 shadow-[0_0_15px_rgba(14,165,233,0.15)]"
-                            : "border-slate-200 text-slate-400"
-                    )}
-                >
-                    {showWater ? "Water: ON" : "Water: OFF"}
-                </Button>
+                {/* Display options dropdown */}
+                <div className="relative">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setOpenDropdown(openDropdown === "display" ? null : "display")}
+                        className={cn(
+                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                            openDropdown === "display"
+                                ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
+                                : "border-slate-200 text-slate-500"
+                        )}
+                    >
+                        Display ▼
+                    </Button>
 
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowGrid(!showGrid)}
-                    className={cn(
-                        "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
-                        showGrid ? "border-blue-200 text-blue-600" : "border-slate-200 text-slate-400"
+                    {openDropdown === "display" && (
+                        <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-48 flex flex-col gap-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    Display
+                                </span>
+                            </div>
+                            <div className="flex flex-col gap-2 py-1">
+                                <label className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={showWater}
+                                        onChange={() => setShowWater(!showWater)}
+                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-bold text-slate-700">Water</span>
+                                </label>
+                                <label className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={showGrid}
+                                        onChange={() => setShowGrid(!showGrid)}
+                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-bold text-slate-700">Grid</span>
+                                </label>
+                                <label className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={showWeldNumbering}
+                                        onChange={() => setShowWeldNumbering(!showWeldNumbering)}
+                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-bold text-slate-700">Node Numbers</span>
+                                </label>
+                            </div>
+                        </div>
                     )}
-                >
-                    {showGrid ? "Grid: ON" : "Grid: OFF"}
-                </Button>
+                </div>
 
                 <div className="bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border border-blue-100 shadow-lg flex items-center gap-3">
                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
