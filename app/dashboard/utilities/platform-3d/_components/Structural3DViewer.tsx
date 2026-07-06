@@ -63,6 +63,7 @@ const ComponentMesh = ({
     const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
     const isClamp = code === "CL" || code.includes("CLAM") || component.q_id.includes("SUPP") || component.q_id.includes("CLP");
     const isRiser = code === "RS" || code.includes("RISER") || code.includes("RISR");
+    const isConductor = code === "CD" || code.includes("COND");
 
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
@@ -164,7 +165,9 @@ const ComponentMesh = ({
                                                 ? "#b45309"
                                                 : isRiser
                                                     ? "#334155"
-                                                    : "#DDDADA"
+                                                    : isConductor
+                                                        ? "#475569"
+                                                        : "#DDDADA"
                         }
                         metalness={isAnode ? 0.9 : 0.5}
                         roughness={isAnode ? 0.2 : 0.4}
@@ -256,10 +259,10 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                    ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
-                                    : isWeld
-                                        ? "bg-orange-500 text-white border-orange-400 scale-100 opacity-90 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
-                                        : "bg-white/90 text-blue-900 border-blue-200"
+                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
+                                : isWeld
+                                    ? "bg-orange-500 text-white border-orange-400 scale-100 opacity-90 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
+                                    : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
                             {labelText}
@@ -1189,6 +1192,11 @@ export function Structural3DViewer({
                 return;
             }
 
+            const isConductor = code === "CD" || code.includes("COND");
+            if (isConductor) {
+                return;
+            }
+
             const qIdUpper = (c.q_id || "").toUpperCase();
             const clampMatch = qIdUpper.match(/RIS-?(\d+)-SUPP-?(\d+)M/i) || qIdUpper.match(/RIS-?(\d+)-CLP-?(\d+)M/i);
             if (clampMatch) {
@@ -1230,8 +1238,8 @@ export function Structural3DViewer({
             else if (code === "RS" || code.includes("RISER") || code.includes("RISR")) thickness = 0.3;
             else if (code.includes("HM") || code.includes("HD")) thickness = 0.2;
             else if (code.includes("VM") || code.includes("VD")) thickness = 0.16;
-            else if (code === "CO" || code === "CA" || code.includes("COND") || code.includes("CAIS"))
-                thickness = 0.35;
+            else if (code === "CO" || code === "CA" || code.includes("COND") || code.includes("CAIS") || code === "CD")
+                thickness = 0.20;
 
             const startNode = lookupNode(md.s_node, md.s_leg);
             const endNode = lookupNode(md.f_node, md.f_leg);
@@ -1298,10 +1306,10 @@ export function Structural3DViewer({
                     const getCoordsAtElv = (p: THREE.Vector3, yRef: number, yTarget: number) => {
                         const sRef = getScaleFactor(yRef);
                         const sTarget = getScaleFactor(yTarget);
-                        
+
                         const nominalX = p.x / (sRef.x || 1.0);
                         const nominalZ = p.z / (sRef.z || 1.0);
-                        
+
                         return new THREE.Vector3(
                             nominalX * sTarget.x,
                             yTarget,
@@ -1312,7 +1320,7 @@ export function Structural3DViewer({
                     // Compute start and end node coords at both elevations
                     const sNode1 = getCoordsAtElv(startNode, startNode.y, y1);
                     const eNode1 = getCoordsAtElv(endNode, endNode.y, y1);
-                    
+
                     const sNode2 = getCoordsAtElv(startNode, startNode.y, y2);
                     const eNode2 = getCoordsAtElv(endNode, endNode.y, y2);
 
@@ -1428,10 +1436,10 @@ export function Structural3DViewer({
             if (parentLayout) {
                 const start = new THREE.Vector3();
                 const end = new THREE.Vector3();
-                
+
                 const y1 = parentLayout.start.y;
                 const y2 = parentLayout.end.y;
-                
+
                 if (Math.abs(y2 - y1) > 0.001) {
                     const t = (targetElv - y1) / (y2 - y1);
                     const clampedT = Math.max(0, Math.min(1, t));
@@ -1440,7 +1448,7 @@ export function Structural3DViewer({
                     start.copy(parentLayout.start);
                     start.setY(targetElv);
                 }
-                
+
                 // Align with riser direction
                 const direction = parentLayout.end.clone().sub(parentLayout.start).normalize();
                 if (direction.lengthSq() > 0.1) {
@@ -1448,7 +1456,7 @@ export function Structural3DViewer({
                 } else {
                     end.copy(start).add(new THREE.Vector3(0, 0.4, 0));
                 }
-                
+
                 const thickness = parentLayout.thickness * 1.35;
                 intermediateLayouts.set(component.id, { component, start, end, thickness });
             } else {
@@ -1674,7 +1682,7 @@ export function Structural3DViewer({
             }
         });
 
-        const resolvedLayouts = Array.from(intermediateLayouts.values())
+        const initialResolvedLayouts = Array.from(intermediateLayouts.values())
             // Filter out any layouts where coordinates are NaN or non-finite
             .filter((layout) => {
                 const coords = [
@@ -1687,18 +1695,126 @@ export function Structural3DViewer({
                 ];
                 return coords.every((v) => isFinite(v));
             })
-            // Filter out leg components from the 3D visualization to keep only the vertical member structures
+            // Filter out leg and CGF guide frame components from the 3D visualization
             .filter((layout) => {
                 const code = (layout.component.code || "").toUpperCase();
                 const qId = (layout.component.q_id || "").toUpperCase();
-                return !(code === "LG" || code === "LEG" || qId.includes("LEG"));
+                const isCgf = code === "CF" || qId.includes("CGF");
+                return !(code === "LG" || code === "LEG" || qId.includes("LEG") || isCgf);
             })
             .map((layout) => ({
+                id: `${layout.component.id}`,
                 component: layout.component,
                 start: [layout.start.x, layout.start.y, layout.start.z] as [number, number, number],
                 end: [layout.end.x, layout.end.y, layout.end.z] as [number, number, number],
                 thickness: layout.thickness,
             }));
+
+        const conductorLayouts: {
+            id: string;
+            component: any;
+            start: [number, number, number];
+            end: [number, number, number];
+            thickness: number;
+        }[] = [];
+
+        const conductors = components.filter(c => {
+            const code = (c.code || "").toUpperCase();
+            return code === "CD" || (c.q_id || "").toUpperCase().includes("CON");
+        });
+
+        conductors.forEach(c => {
+            const md = c.metadata || {};
+            const topElv = sanitizeElevation(md.elv_1 || 3);
+            const botElv = sanitizeElevation(md.elv_2 || -55);
+            const condName = (c.q_id || "").toUpperCase();
+            const numMatch = condName.match(/\d+/);
+            if (!numMatch) return;
+            const indexStr = numMatch[0];
+
+            // Find all CGF (Conductor Guide Frame) components that match this index
+            const matchingCgfs = components.filter(other => {
+                const otherCode = (other.code || "").toUpperCase();
+                const otherQId = (other.q_id || "").toUpperCase();
+                const isCgf = otherCode === "CF" || otherQId.includes("CGF");
+                return isCgf && otherQId.includes(indexStr);
+            });
+
+            // Map CGFs to their elevations and midpoints
+            const cgfMidpoints: { elv: number; midpoint: THREE.Vector3 }[] = [];
+            matchingCgfs.forEach(cgf => {
+                const cgfMd = cgf.metadata || {};
+                const sPos = lookupNode(cgfMd.s_node, cgfMd.s_leg);
+                const fPos = lookupNode(cgfMd.f_node, cgfMd.f_leg);
+                if (sPos && fPos) {
+                    const midpoint = new THREE.Vector3(
+                        (sPos.x + fPos.x) / 2,
+                        (sPos.y + fPos.y) / 2,
+                        (sPos.z + fPos.z) / 2
+                    );
+                    const elv = sanitizeElevation(cgfMd.elv_1 || cgfMd.elv_2 || sPos.y);
+                    cgfMidpoints.push({ elv, midpoint });
+                }
+            });
+
+            // Sort midpoints by elevation descending (top to bottom)
+            cgfMidpoints.sort((a, b) => b.elv - a.elv);
+
+            // Generate segments
+            if (cgfMidpoints.length > 0) {
+                // Generate segments between consecutive midpoints
+                for (let i = 0; i < cgfMidpoints.length - 1; i++) {
+                    const startMid = cgfMidpoints[i];
+                    const endMid = cgfMidpoints[i + 1];
+                    conductorLayouts.push({
+                        id: `${c.id}-seg-${i}`,
+                        component: c,
+                        start: [startMid.midpoint.x, startMid.elv, startMid.midpoint.z],
+                        end: [endMid.midpoint.x, endMid.elv, endMid.midpoint.z],
+                        thickness: 0.10,
+                    });
+                }
+                // Append bottom extension segment if target botElv is lower than the last guide frame
+                const lastFrame = cgfMidpoints[cgfMidpoints.length - 1];
+                if (botElv < lastFrame.elv - 0.1) {
+                    conductorLayouts.push({
+                        id: `${c.id}-seg-bottom`,
+                        component: c,
+                        start: [lastFrame.midpoint.x, lastFrame.elv, lastFrame.midpoint.z],
+                        end: [lastFrame.midpoint.x, botElv, lastFrame.midpoint.z],
+                        thickness: 0.10,
+                    });
+                }
+                // Prepend top extension segment if target topElv is higher than the first guide frame
+                const firstFrame = cgfMidpoints[0];
+                if (topElv > firstFrame.elv + 0.1) {
+                    conductorLayouts.push({
+                        id: `${c.id}-seg-top`,
+                        component: c,
+                        start: [firstFrame.midpoint.x, topElv, firstFrame.midpoint.z],
+                        end: [firstFrame.midpoint.x, firstFrame.elv, firstFrame.midpoint.z],
+                        thickness: 0.10,
+                    });
+                }
+            } else {
+                // Fallback to vertical line at s_node coordinate if no guide frame matched
+                const startNode = lookupNode(md.s_node, md.s_leg);
+                if (startNode) {
+                    conductorLayouts.push({
+                        id: `${c.id}-fallback`,
+                        component: c,
+                        start: [startNode.x, topElv, startNode.z],
+                        end: [startNode.x, botElv, startNode.z],
+                        thickness: 0.10,
+                    });
+                }
+            }
+        });
+
+        const resolvedLayouts = [
+            ...initialResolvedLayouts,
+            ...conductorLayouts
+        ];
 
         const getComponentLegs = (comp: any) => {
             const compMd = comp.metadata || {};
@@ -1973,9 +2089,9 @@ export function Structural3DViewer({
                         ))}
 
                         {/* Existing Components */}
-                        {componentLayouts.map((layout) => (
+                        {componentLayouts.map((layout, idx) => (
                             <ComponentMesh
-                                key={layout.component.id}
+                                key={(layout as any).id || `${layout.component.id}-${idx}`}
                                 component={layout.component}
                                 isSelected={selectedCompId === layout.component.id}
                                 onClick={() => onSelectComponent(layout.component)}
