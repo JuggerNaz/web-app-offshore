@@ -17,7 +17,7 @@ import {
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass, RefreshCw } from "lucide-react";
+import { Play, Box, Radio, Compass, RefreshCw, Maximize2 } from "lucide-react";
 
 interface Component3D {
     id: number;
@@ -349,11 +349,25 @@ function SelectToZoom({ children }: { children: React.ReactNode }) {
     return (
         <group
             onClick={(e) => (e.stopPropagation(), e.delta <= 2 && api.refresh(e.object).fit())}
-            onPointerMissed={(e) => e.button === 0 && api.refresh().fit()}
         >
             {children}
         </group>
     );
+}
+
+function ResetViewHandler({ trigger }: { trigger: number }) {
+    const api = useBounds();
+    const isFirstRun = React.useRef(true);
+
+    React.useEffect(() => {
+        if (isFirstRun.current) {
+            isFirstRun.current = false;
+            return;
+        }
+        api.refresh().fit();
+    }, [trigger, api]);
+
+    return null;
 }
 
 export function Structural3DViewer({
@@ -377,11 +391,17 @@ export function Structural3DViewer({
             if (isNodeWeld && c.q_id && c.q_id.includes("-")) {
                 return false;
             }
+            // Exclude fender support components like FEND 1-SUPP-A2 / FEND x-SUPP-xx
+            const qIdUpper = (c.q_id || "").toUpperCase();
+            if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) {
+                return false;
+            }
             return true;
         });
     }, [rawComponents]);
 
     const [showGrid, setShowGrid] = useState(true);
+    const [resetTrigger, setResetTrigger] = useState(0);
     const [showWater, setShowWater] = useState(true);
     const [showWeldNumbering, setShowWeldNumbering] = useState(true);
     const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
@@ -1146,7 +1166,7 @@ export function Structural3DViewer({
                         up.set(0, 0, -1);
                     }
                     up.sub(dir.clone().multiplyScalar(up.dot(dir))).normalize();
-                    const right = new THREE.Vector3().crossVectors(dir, up).normalize();
+                    const right = new THREE.Vector3().crossVectors(up, dir).normalize();
 
                     // Calculate offset direction using clock position
                     const clockPos = parseFloat(md.clk_pos);
@@ -1239,7 +1259,7 @@ export function Structural3DViewer({
             else if (code.includes("HM") || code.includes("HD")) thickness = 0.2;
             else if (code.includes("VM") || code.includes("VD")) thickness = 0.16;
             else if (code === "CO" || code === "CA" || code.includes("COND") || code.includes("CAIS") || code === "CD")
-                thickness = 0.20;
+                thickness = 0.50;
 
             const startNode = lookupNode(md.s_node, md.s_leg);
             const endNode = lookupNode(md.f_node, md.f_leg);
@@ -2067,7 +2087,8 @@ export function Structural3DViewer({
                 <pointLight position={[50, 50, 50]} intensity={1.5} />
                 <spotLight position={[-50, 50, 50]} angle={0.3} penumbra={1} intensity={1.5} />
 
-                <Bounds fit clip observe margin={1.0}>
+                <Bounds fit clip margin={1.0}>
+                    <ResetViewHandler trigger={resetTrigger} />
                     <SelectToZoom>
                         {/* Elevation Markers */}
                         {elvMarkers.map((m, i) => (
@@ -2186,24 +2207,7 @@ export function Structural3DViewer({
                 />
             </Canvas>
 
-            {/* UI Overlay */}
-            <div className="absolute bottom-6 left-6 flex flex-col gap-1 pointer-events-none">
-                <div className="flex items-center gap-2 mb-2">
-                    <div className="px-2 py-1 bg-white/80 backdrop-blur rounded-lg border border-slate-200 shadow-sm">
-                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-tighter">
-                            Click component for details
-                        </span>
-                    </div>
-                    <div className="px-2 py-1 bg-white/80 backdrop-blur rounded-lg border border-slate-200 shadow-sm">
-                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-tighter">
-                            Double-click to focus
-                        </span>
-                    </div>
-                </div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                    Left: Orbit | Right: Pan | Scroll: Zoom
-                </span>
-            </div>
+
 
             {/* Click-outside backdrop */}
             {openDropdown && (
@@ -2350,6 +2354,18 @@ export function Structural3DViewer({
                         </div>
                     )}
                 </div>
+
+                {/* Reset View Button */}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setResetTrigger((prev) => prev + 1)}
+                    className="bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm flex items-center gap-1.5"
+                    title="Reset 3D View"
+                >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                    <span>Reset View</span>
+                </Button>
 
                 {/* Display options dropdown */}
                 <div className="relative">

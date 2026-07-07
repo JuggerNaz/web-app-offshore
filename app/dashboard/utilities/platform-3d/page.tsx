@@ -13,7 +13,8 @@ import {
     Maximize2, 
     ChevronRight,
     Waves,
-    RefreshCw
+    RefreshCw,
+    X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,6 +106,10 @@ export default function Platform3DPage() {
                 // Exclude node weld components (code 'WN') that have a dash '-' in their q_id
                 const isNodeWeld = code === "WN";
                 if (isNodeWeld && c.q_id && c.q_id.includes("-")) {
+                    return false;
+                }
+                // Exclude fender support components like FEND 1-SUPP-A2 / FEND x-SUPP-xx
+                if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) {
                     return false;
                 }
                 return true;
@@ -200,36 +205,53 @@ export default function Platform3DPage() {
                 </div>
 
                 {/* Viewer Container */}
-                <div className="flex-1 p-6 relative">
-                    {(isComponentsLoading || isPlatformDetailLoading) ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm z-10">
-                            <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4" />
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Constructing Structural Mesh...</p>
-                        </div>
-                    ) : null}
-                    
-                    <Structural3DViewer 
-                        components={components} 
-                        platformDetails={platformDetails}
-                        elevations={elevations}
-                        faces={faces}
-                        onSelectComponent={handleSelectComponent}
-                        onSync={mutateComponents}
-                        isSyncing={isComponentsValidating}
-                    />
-                </div>
+                <div className="flex-1 p-6 flex gap-6 relative overflow-hidden h-[calc(100vh-130px)]">
+                    <div className="flex-1 h-full min-w-0 bg-slate-900 rounded-[2rem] relative overflow-hidden">
+                        {(isComponentsLoading || isPlatformDetailLoading) ? (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm z-10 rounded-[2rem]">
+                                <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4" />
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Constructing Structural Mesh...</p>
+                            </div>
+                        ) : null}
+                        
+                        <Structural3DViewer 
+                            components={components} 
+                            platformDetails={platformDetails}
+                            elevations={elevations}
+                            faces={faces}
+                            onSelectComponent={handleSelectComponent}
+                            onSync={mutateComponents}
+                            isSyncing={isComponentsValidating}
+                        />
+                    </div>
 
-                {/* Component Spec Dialog */}
-                <ComponentSpecDialog 
-                    component={selectedComponent}
-                    open={isSpecOpen}
-                    onOpenChange={setIsSpecOpen}
-                    mode="view"
-                    onSuccess={(updatedComponent) => {
-                        mutateComponents();
-                        setSelectedComponent(updatedComponent);
-                    }}
-                />
+                    {isSpecOpen && selectedComponent && (
+                        <div className="w-[500px] shrink-0 h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 relative">
+                            {/* Close button for inline panel */}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setIsSpecOpen(false)}
+                                className="absolute top-6 right-6 z-50 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+                            >
+                                <X className="h-5 w-5" />
+                            </Button>
+                            <div className="flex-1 min-h-0 h-full flex flex-col">
+                                <ComponentSpecDialog 
+                                    component={selectedComponent}
+                                    open={isSpecOpen}
+                                    onOpenChange={setIsSpecOpen}
+                                    mode="view"
+                                    inline={true}
+                                    onSuccess={(updatedComponent) => {
+                                        mutateComponents();
+                                        setSelectedComponent(updatedComponent);
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         );
     }
