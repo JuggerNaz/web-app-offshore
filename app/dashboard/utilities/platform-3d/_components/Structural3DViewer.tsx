@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useMemo, useState, useRef } from "react";
+import { Fender } from "./Fender";
+import { RiserGuard } from "./RiserGuard";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
     OrbitControls,
@@ -136,6 +138,267 @@ const ComponentMesh = ({
     ].some((v) => !isFinite(v));
 
     if (hasNaN) return null;
+
+    const isFender = code === "FD";
+    if (isFender) {
+        const md = component.metadata || {};
+        let clockPos = parseFloat(md.clk_pos || "12");
+        if (isNaN(clockPos)) clockPos = 12;
+        const yawAngle = (clockPos / 12) * Math.PI * 2;
+
+        const fenderDepth = 1.0;
+        // Increase horizontal offset distance by adding a 1.2m buffer (makes default 2.4m)
+        const fenderDist = parseFloat(md.dist || "1.2") + 1.2;
+        const offsetDistance = fenderDist + fenderDepth / 2;
+        const offset = new THREE.Vector3(
+            Math.sin(yawAngle) * offsetDistance,
+            0,
+            Math.cos(yawAngle) * offsetDistance
+        );
+
+        const legMidpoint = startVec.clone().add(endVec).multiplyScalar(0.5);
+
+        // Detect if offset vector points inwards (towards the center of the platform at 0,0,0)
+        // If so, negate the offset vector and adjust rotation to ensure it renders on the exterior (blue spot)
+        const radialVec = new THREE.Vector3(legMidpoint.x, 0, legMidpoint.z);
+        let finalOffset = offset.clone();
+        let finalGroupRotationAngle = yawAngle; // default: unflipped
+
+        if (offset.dot(radialVec) < 0) {
+            finalOffset.negate();
+            finalGroupRotationAngle += Math.PI;
+        }
+
+        const fenderHeight = Math.abs(endVec.y - startVec.y) > 1.0 ? Math.abs(endVec.y - startVec.y) : 6.0;
+        const spanWidth = new THREE.Vector2(startVec.x, startVec.z).distanceTo(new THREE.Vector2(endVec.x, endVec.z));
+        const yTop = Math.max(startVec.y, endVec.y);
+
+        // Lower the fender center so that the Upper Platform (H/6) is exactly at yTop
+        const fenderCenter = legMidpoint.clone().add(finalOffset);
+        fenderCenter.y = yTop - fenderHeight / 6;
+
+        // Compute leg node coordinates in fender local space
+        const leg1Top = new THREE.Vector3(startVec.x, yTop, startVec.z);
+        const leg2Top = new THREE.Vector3(endVec.x, yTop, endVec.z);
+
+        const loc1Top = leg1Top.clone().sub(fenderCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
+        const loc2Top = leg2Top.clone().sub(fenderCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
+
+        let localLeftTop: THREE.Vector3;
+        let localRightTop: THREE.Vector3;
+
+        if (loc1Top.x < loc2Top.x) {
+            localLeftTop = loc1Top;
+            localRightTop = loc2Top;
+        } else {
+            localLeftTop = loc2Top;
+            localRightTop = loc1Top;
+        }
+
+        const fenderGroup = useMemo(() => {
+            return new Fender({
+                height: fenderHeight,
+                widthBack: spanWidth,
+                widthFront: spanWidth * 0.7,
+                color: "#DDDADA",
+                isSelected,
+                isHovered: hovered,
+                localLeftTop,
+                localRightTop,
+            });
+        }, [
+            fenderHeight,
+            spanWidth,
+            isSelected,
+            hovered,
+            localLeftTop.x, localLeftTop.y, localLeftTop.z,
+            localRightTop.x, localRightTop.y, localRightTop.z
+        ]);
+
+        return (
+            <group
+                position={[fenderCenter.x, fenderCenter.y, fenderCenter.z]}
+                rotation={[0, finalGroupRotationAngle, 0]}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClick();
+                }}
+                onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setHovered(true);
+                }}
+                onPointerOut={(e) => {
+                    e.stopPropagation();
+                    setHovered(false);
+                }}
+            >
+                <primitive object={fenderGroup} />
+
+                {/* Large click/hover target wrapper for Fender cage */}
+                <mesh>
+                    <boxGeometry args={[spanWidth + 0.4, fenderHeight, 1.0]} />
+                    <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+
+                {showLabel && (
+                    <Html
+                        distanceFactor={15}
+                        position={[0, fenderHeight / 2 + 0.5, 0]}
+                        center
+                    >
+                        <div
+                            className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
+                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
+                                : "bg-white/90 text-blue-900 border-blue-200"
+                                }`}
+                        >
+                            {labelText}
+                        </div>
+                    </Html>
+                )}
+            </group>
+        );
+    }
+
+    const isRiserGuard = code === "RG";
+    if (isRiserGuard) {
+        const md = component.metadata || {};
+        const guardDepth = 0.2;
+        // Horizontal offset distance from the leg midpoint (default: 1.8m + depth/2)
+        // Add a 1.0m buffer (makes default 2.8m) to push it forward
+        const guardDist = parseFloat(md.dist || "1.8") + 2.0;
+        const offsetDistance = guardDist + guardDepth / 2;
+
+        const legMidpoint = startVec.clone().add(endVec).multiplyScalar(0.5);
+
+        // 1. Calculate span direction vector horizontally (along XZ plane)
+        const spanDir = new THREE.Vector3(
+            endVec.x - startVec.x,
+            0,
+            endVec.z - startVec.z
+        ).normalize();
+
+        // 2. Compute the two horizontal normals perpendicular to the span
+        const normal1 = new THREE.Vector3(-spanDir.z, 0, spanDir.x);
+        const normal2 = new THREE.Vector3(spanDir.z, 0, -spanDir.x);
+
+        // 3. Choose the normal pointing outwards from the platform center (0, 0, 0)
+        const radialVec = new THREE.Vector3(legMidpoint.x, 0, legMidpoint.z);
+        const outwardNormal = normal1.dot(radialVec) >= 0 ? normal1 : normal2;
+
+        // 4. Calculate offset along this outward normal (so it never goes inside)
+        const finalOffset = outwardNormal.clone().multiplyScalar(offsetDistance);
+
+        // 5. The group rotation must align local Z with outwardNormal
+        // This ensures the local X axis aligns parallel to the leg span
+        const finalGroupRotationAngle = Math.atan2(outwardNormal.x, outwardNormal.z);
+
+        const spanWidth = new THREE.Vector2(startVec.x, startVec.z).distanceTo(new THREE.Vector2(endVec.x, endVec.z));
+        // Clamp height between 3.0m and 5.0m based on width to keep proportions realistic
+        const guardHeight = Math.max(3.0, Math.min(5.0, spanWidth / 2));
+        const yTop = Math.max(startVec.y, endVec.y);
+
+        // Position riser guard center vertically so that the top rail (at H/2) aligns with yTop
+        const guardCenter = legMidpoint.clone().add(finalOffset);
+        guardCenter.y = yTop - guardHeight / 2;
+
+        // Compute leg coordinates at top and middle elevations
+        const leg1Top = new THREE.Vector3(startVec.x, yTop, startVec.z);
+        const leg2Top = new THREE.Vector3(endVec.x, yTop, endVec.z);
+        const leg1Mid = new THREE.Vector3(startVec.x, guardCenter.y + guardHeight / 6, startVec.z);
+        const leg2Mid = new THREE.Vector3(endVec.x, guardCenter.y + guardHeight / 6, endVec.z);
+
+        // Convert coordinates to riser guard local space
+        const loc1Top = leg1Top.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
+        const loc2Top = leg2Top.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
+        const loc1Mid = leg1Mid.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
+        const loc2Mid = leg2Mid.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
+
+        // Determine left vs right legs horizontally in local space
+        let localLeftTop: THREE.Vector3;
+        let localRightTop: THREE.Vector3;
+        let localLeftMid: THREE.Vector3;
+        let localRightMid: THREE.Vector3;
+
+        if (loc1Top.x < loc2Top.x) {
+            localLeftTop = loc1Top;
+            localRightTop = loc2Top;
+            localLeftMid = loc1Mid;
+            localRightMid = loc2Mid;
+        } else {
+            localLeftTop = loc2Top;
+            localRightTop = loc1Top;
+            localLeftMid = loc2Mid;
+            localRightMid = loc1Mid;
+        }
+
+        const riserGuardGroup = useMemo(() => {
+            return new RiserGuard({
+                height: guardHeight,
+                width: spanWidth,
+                color: "#DDDADA",
+                isSelected,
+                isHovered: hovered,
+                localLeftTop,
+                localRightTop,
+                localLeftMid,
+                localRightMid,
+            });
+        }, [
+            guardHeight,
+            spanWidth,
+            isSelected,
+            hovered,
+            localLeftTop.x, localLeftTop.y, localLeftTop.z,
+            localRightTop.x, localRightTop.y, localRightTop.z,
+            localLeftMid.x, localLeftMid.y, localLeftMid.z,
+            localRightMid.x, localRightMid.y, localRightMid.z
+        ]);
+
+        return (
+            <group
+                position={[guardCenter.x, guardCenter.y, guardCenter.z]}
+                rotation={[0, finalGroupRotationAngle, 0]}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClick();
+                }}
+                onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setHovered(true);
+                }}
+                onPointerOut={(e) => {
+                    e.stopPropagation();
+                    setHovered(false);
+                }}
+            >
+                <primitive object={riserGuardGroup} />
+
+                {/* Click target wrapper for RiserGuard panel */}
+                <mesh>
+                    <boxGeometry args={[spanWidth + 0.4, guardHeight, 0.4]} />
+                    <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+
+                {showLabel && (
+                    <Html
+                        distanceFactor={15}
+                        position={[0, guardHeight / 2 + 0.5, 0]}
+                        center
+                    >
+                        <div
+                            className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
+                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
+                                : "bg-white/90 text-blue-900 border-blue-200"
+                                }`}
+                        >
+                            {labelText}
+                        </div>
+                    </Html>
+                )}
+            </group>
+        );
+    }
 
     return (
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
@@ -1894,6 +2157,12 @@ export function Structural3DViewer({
         const filteredLayouts = resolvedLayouts.filter((layout) => {
             const c = layout.component;
             const md = c.metadata || {};
+
+            // Filter out riser guard supports (e.g. RISG 1-SUPP-A1) from the 3D scene representation
+            const qidUpper = (c.q_id || "").toUpperCase();
+            if (qidUpper.startsWith("RISG") && qidUpper.includes("-SUPP-")) {
+                return false;
+            }
 
             if (selectedElevations.length > 0) {
                 const startY = layout.start[1];

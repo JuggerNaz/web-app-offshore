@@ -226,7 +226,7 @@ export default function Platform3DPage() {
                     </div>
 
                     {isSpecOpen && selectedComponent && (
-                        <div className="w-[500px] shrink-0 h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 relative">
+                        <div className="w-[400px] shrink-0 h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 relative">
                             {/* Close button for inline panel */}
                             <Button
                                 variant="ghost"
