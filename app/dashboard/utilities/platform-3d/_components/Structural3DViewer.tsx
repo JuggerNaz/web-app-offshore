@@ -65,7 +65,7 @@ const ComponentMesh = ({
     const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
     const isClamp = code === "CL" || code.includes("CLAM") || component.q_id.includes("SUPP") || component.q_id.includes("CLP");
     const isRiser = code === "RS" || code.includes("RISER") || code.includes("RISR");
-    const isConductor = code === "CD" || code.includes("COND");
+    const isConductor = code === "CD" || code.includes("COND") || code === "CS" || code === "CO" || code === "CA" || code.includes("CAIS");
 
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
@@ -657,6 +657,10 @@ export function Structural3DViewer({
             // Exclude fender support components like FEND 1-SUPP-A2 / FEND x-SUPP-xx
             const qIdUpper = (c.q_id || "").toUpperCase();
             if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) {
+                return false;
+            }
+            // Exclude components whose q_id ends with TERM
+            if (qIdUpper.endsWith("TERM")) {
                 return false;
             }
             return true;
@@ -1521,8 +1525,8 @@ export function Structural3DViewer({
             else if (code === "RS" || code.includes("RISER") || code.includes("RISR")) thickness = 0.3;
             else if (code.includes("HM") || code.includes("HD")) thickness = 0.2;
             else if (code.includes("VM") || code.includes("VD")) thickness = 0.16;
-            else if (code === "CO" || code === "CA" || code.includes("COND") || code.includes("CAIS") || code === "CD")
-                thickness = 0.50;
+            else if (code === "CO" || code === "CA" || code === "CS" || code.includes("COND") || code.includes("CAIS") || code === "CD")
+                thickness = 0.30;
 
             const startNode = lookupNode(md.s_node, md.s_leg);
             const endNode = lookupNode(md.f_node, md.f_leg);
@@ -1567,7 +1571,15 @@ export function Structural3DViewer({
                 }
                 end.copy(start);
                 resolved = true;
-            } else if (code === "RS" || code.includes("RISER") || code.includes("RISR")) {
+            } else if (
+                code === "RS" ||
+                code === "CS" ||
+                code === "CO" ||
+                code === "CA" ||
+                code.includes("RISER") ||
+                code.includes("RISR") ||
+                code.includes("CAIS")
+            ) {
                 if (hasStartNode && hasEndNode) {
                     const distVal = parseFloat(md.dist || "0");
                     const y1 = sanitizeElevation(md.elv_1);
@@ -1639,13 +1651,18 @@ export function Structural3DViewer({
                     }
 
                     // Apply straight-slant constraint based on member horizontal direction:
+                    // If the member has no horizontal direction (length close to 0, e.g., caissons):
+                    // - Simply use the computed finalStart and finalEnd.
                     // If the member is parallel to X (along row/face):
                     // - Riser does not slant along X (start.x == end.x).
                     // - Riser slants along Z (start.z = finalStart.z, end.z = finalEnd.z).
                     // If the member is parallel to Z:
                     // - Riser does not slant along Z (start.z == end.z).
                     // - Riser slants along X (start.x = finalStart.x, end.x = finalEnd.x).
-                    if (Math.abs(dir1.x) >= Math.abs(dir1.z)) {
+                    if (len1 < 0.001) {
+                        start.copy(finalStart);
+                        end.copy(finalEnd);
+                    } else if (Math.abs(dir1.x) >= Math.abs(dir1.z)) {
                         start.set(finalStart.x, y1, finalStart.z);
                         end.set(finalStart.x, y2, finalEnd.z);
                     } else {

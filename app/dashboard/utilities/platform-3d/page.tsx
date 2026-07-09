@@ -112,6 +112,10 @@ export default function Platform3DPage() {
                 if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) {
                     return false;
                 }
+                // Exclude components whose q_id ends with TERM
+                if (qIdUpper.endsWith("TERM")) {
+                    return false;
+                }
                 return true;
             })
             .map((c: any) => ({
