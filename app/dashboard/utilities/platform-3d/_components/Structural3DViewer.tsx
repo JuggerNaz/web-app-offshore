@@ -11,6 +11,7 @@ import {
     Html,
     ContactShadows,
     Edges,
+    Outlines,
     Bounds,
     useBounds,
     Float,
@@ -235,9 +236,21 @@ const ComponentMesh = ({
                 <primitive object={fenderGroup} />
 
                 {/* Large click/hover target wrapper for Fender cage */}
-                <mesh>
+                <mesh castShadow={false} receiveShadow={false}>
                     <boxGeometry args={[spanWidth + 0.4, fenderHeight, 1.0]} />
                     <meshBasicMaterial transparent opacity={0} />
+                    {isSelected && (
+                        <Outlines
+                            thickness={0.08}
+                            color="#f97316"
+                        />
+                    )}
+                    {hovered && !isSelected && (
+                        <Outlines
+                            thickness={0.04}
+                            color="#38bdf8"
+                        />
+                    )}
                 </mesh>
 
                 {showLabel && (
@@ -248,7 +261,7 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
+                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
                                 : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
@@ -375,9 +388,21 @@ const ComponentMesh = ({
                 <primitive object={riserGuardGroup} />
 
                 {/* Click target wrapper for RiserGuard panel */}
-                <mesh>
+                <mesh castShadow={false} receiveShadow={false}>
                     <boxGeometry args={[spanWidth + 0.4, guardHeight, 0.4]} />
                     <meshBasicMaterial transparent opacity={0} />
+                    {isSelected && (
+                        <Outlines
+                            thickness={0.08}
+                            color="#f97316"
+                        />
+                    )}
+                    {hovered && !isSelected && (
+                        <Outlines
+                            thickness={0.04}
+                            color="#38bdf8"
+                        />
+                    )}
                 </mesh>
 
                 {showLabel && (
@@ -388,7 +413,7 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
+                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
                                 : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
@@ -404,7 +429,7 @@ const ComponentMesh = ({
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
             <group position={offsetPos as [number, number, number]}>
                 { }
-                <mesh>
+                <mesh castShadow receiveShadow>
                     {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
                         <sphereGeometry args={[Math.max(thickness * 1.5, 0.01), 16, 16]} />
                     ) : isAnode ? (
@@ -417,66 +442,89 @@ const ComponentMesh = ({
                     <meshStandardMaterial
                         color={
                             isSelected
-                                ? "#3b82f6"
+                                ? "#f97316"
                                 : hovered
                                     ? "#60a5fa"
                                     : isAnode
-                                        ? "#D6D6D6"
+                                        ? "#f1f5f9"
                                         : isWeld
                                             ? "#d946ef"
                                             : isClamp
-                                                ? "#b45309"
+                                                ? "#d97706"
                                                 : isRiser
                                                     ? "#334155"
                                                     : isConductor
                                                         ? "#475569"
-                                                        : "#DDDADA"
+                                                        : "#cbd5e1"
                         }
-                        metalness={isAnode ? 0.9 : 0.5}
-                        roughness={isAnode ? 0.2 : 0.4}
-                        emissive={isSelected ? "#2563eb" : isAnode ? "#000000" : isWeld ? "#c026d3" : "#000000"}
-                        emissiveIntensity={isSelected ? 0.3 : hovered ? 0.1 : 0}
+                        metalness={isAnode ? 0.95 : isWeld ? 0.2 : isClamp ? 0.8 : isRiser || isConductor ? 0.75 : 0.7}
+                        roughness={isAnode ? 0.1 : isWeld ? 0.5 : isClamp ? 0.25 : isRiser || isConductor ? 0.45 : 0.3}
+                        emissive={isSelected ? "#ea580c" : isWeld ? "#a21caf" : "#000000"}
+                        emissiveIntensity={isSelected ? 0.6 : isWeld ? 0.4 : 0}
                     />
-                    {!isAnode && !isWeld && !isClamp && !isNode && length > 0.001 && (
-                        <Edges
-                            scale={1.01}
-                            threshold={15}
-                            color="#000000"
-                            opacity={0.5}
-                            transparent
+                    <Edges
+                        threshold={20}
+                        color="#0f172a"
+                        opacity={0.35}
+                        transparent
+                    />
+                    {isSelected && (
+                        <Outlines
+                            thickness={0.04}
+                            color="#f97316"
+                        />
+                    )}
+                    {hovered && !isSelected && (
+                        <Outlines
+                            thickness={0.02}
+                            color="#38bdf8"
                         />
                     )}
                     {isClamp && (
-                        <mesh position={[0, 0, 0]}>
+                        <mesh position={[0, 0, 0]} castShadow receiveShadow>
                             <boxGeometry args={[baseThickness + 0.4, 0.6, 0.05]} />
-                            <meshStandardMaterial color="#b45309" metalness={0.8} />
+                            <meshStandardMaterial color="#d97706" metalness={0.8} roughness={0.25} />
+                            <Edges
+                                threshold={20}
+                                color="#0f172a"
+                                opacity={0.35}
+                                transparent
+                            />
                         </mesh>
                     )}
                     {isAnode && (
                         <group>
                             { }
-                            <mesh position={[0, safeMeshLength / 2 + 0.05, 0]}>
+                            <mesh position={[0, safeMeshLength / 2 + 0.05, 0]} castShadow receiveShadow>
                                 <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
-                                <meshStandardMaterial color="#374151" roughness={0.4} />
+                                <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+                                <Edges threshold={20} color="#0f172a" opacity={0.3} transparent />
                             </mesh>
                             <mesh
                                 position={[-ox / 2, safeMeshLength / 2 + 0.1, -oz / 2]}
                                 rotation={[Math.PI / 2, angle, 0]}
+                                castShadow
+                                receiveShadow
                             >
                                 <cylinderGeometry args={[0.03, 0.03, offsetDistance, 8]} />
-                                <meshStandardMaterial color="#374151" roughness={0.4} />
+                                <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+                                <Edges threshold={20} color="#0f172a" opacity={0.3} transparent />
                             </mesh>
                             { }
-                            <mesh position={[0, -safeMeshLength / 2 - 0.05, 0]}>
+                            <mesh position={[0, -safeMeshLength / 2 - 0.05, 0]} castShadow receiveShadow>
                                 <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
-                                <meshStandardMaterial color="#374151" roughness={0.4} />
+                                <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+                                <Edges threshold={20} color="#0f172a" opacity={0.3} transparent />
                             </mesh>
                             <mesh
                                 position={[-ox / 2, -safeMeshLength / 2 - 0.1, -oz / 2]}
                                 rotation={[Math.PI / 2, angle, 0]}
+                                castShadow
+                                receiveShadow
                             >
                                 <cylinderGeometry args={[0.03, 0.03, offsetDistance, 8]} />
-                                <meshStandardMaterial color="#374151" roughness={0.4} />
+                                <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+                                <Edges threshold={20} color="#0f172a" opacity={0.3} transparent />
                             </mesh>
                         </group>
                     )}
@@ -577,9 +625,9 @@ const FoundationMember = ({
     return (
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
             {renderMesh && (
-                <mesh>
+                <mesh castShadow receiveShadow>
                     <cylinderGeometry args={[thickness, thickness, safeLength, 8]} />
-                    <meshStandardMaterial color={color} metalness={0.5} roughness={0.4} />
+                    <meshStandardMaterial color={color} metalness={0.7} roughness={0.3} />
                 </mesh>
             )}
             {showLabel && label && (
@@ -2362,16 +2410,28 @@ export function Structural3DViewer({
 
     return (
         <div className="w-full h-full bg-slate-900 relative rounded-3xl overflow-hidden shadow-2xl">
-            <Canvas gl={{ antialias: true }} dpr={[1, 2]}>
+            <Canvas shadows gl={{ antialias: true }} dpr={[1, 2]}>
                 <color attach="background" args={["#bce1f1"]} />
                 <fog attach="fog" args={["#bce1f1", 50, 250]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
 
-                <ambientLight intensity={1} />
-                <hemisphereLight intensity={0.5} groundColor="#f0f9ff" />
-                <pointLight position={[50, 50, 50]} intensity={1.5} />
-                <spotLight position={[-50, 50, 50]} angle={0.3} penumbra={1} intensity={1.5} />
+                <ambientLight intensity={0.35} />
+                <hemisphereLight intensity={0.3} color="#bae6fd" groundColor="#0f172a" />
+                <directionalLight
+                    position={[40, 80, 40]}
+                    intensity={1.2}
+                    castShadow
+                    shadow-mapSize={[2048, 2048]}
+                    shadow-bias={-0.0001}
+                    shadow-camera-near={1}
+                    shadow-camera-far={250}
+                    shadow-camera-left={-60}
+                    shadow-camera-right={60}
+                    shadow-camera-top={60}
+                    shadow-camera-bottom={-60}
+                />
+                <spotLight position={[-40, 60, -40]} angle={0.3} penumbra={1} intensity={0.8} />
 
                 <Bounds fit clip margin={1.0}>
                     <ResetViewHandler trigger={resetTrigger} />
@@ -2484,12 +2544,13 @@ export function Structural3DViewer({
                 )}
 
                 <ContactShadows
-                    resolution={256}
+                    resolution={512}
                     scale={150}
-                    blur={2}
-                    opacity={0.1}
-                    far={40}
-                    color="#1e293b"
+                    blur={2.5}
+                    opacity={0.5}
+                    far={80}
+                    color="#0f172a"
+                    position={[0, seabedY + 0.05, 0]}
                 />
             </Canvas>
 

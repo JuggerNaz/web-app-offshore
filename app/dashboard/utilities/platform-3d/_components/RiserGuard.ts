@@ -25,19 +25,19 @@ export class RiserGuard extends THREE.Group {
     const braceRadius = options.braceRadius ?? 0.05;
 
     // Highlight colors on hover or selection
-    let baseColorHex = options.color ?? '#DDDADA';
+    let baseColorHex = options.color ?? '#cbd5e1';
     if (options.isSelected) {
-      baseColorHex = '#3b82f6';
+      baseColorHex = '#f97316';
     } else if (options.isHovered) {
       baseColorHex = '#60a5fa';
     }
 
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(baseColorHex),
-      metalness: 0.5,
-      roughness: 0.4,
-      emissive: options.isSelected ? new THREE.Color('#2563eb') : new THREE.Color('#000000'),
-      emissiveIntensity: options.isSelected ? 0.3 : options.isHovered ? 0.1 : 0,
+      metalness: 0.7,
+      roughness: 0.3,
+      emissive: options.isSelected ? new THREE.Color('#ea580c') : new THREE.Color('#000000'),
+      emissiveIntensity: options.isSelected ? 0.6 : options.isHovered ? 0.1 : 0,
     });
 
     const addTube = (p1: THREE.Vector3, p2: THREE.Vector3, radius: number) => {
@@ -98,6 +98,8 @@ export class RiserGuard extends THREE.Group {
 
     const geometry = new THREE.CylinderGeometry(radius, radius, safeLength, 8);
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
 
     // Position at midpoint
     const midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
