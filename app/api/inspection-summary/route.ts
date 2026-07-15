@@ -177,8 +177,8 @@ export const GET = withTenant(async (request, { companyId }) => {
         // Using strict matching after trim and lowercase conversion to match selected report number exactly
         const records = isReportSpecific
             ? rawRecords.filter((r: any) => {
-                const recRep = String(r.sow_report_no || "").trim().toLowerCase();
-                const filterRep = String(sowReportNo).trim().toLowerCase();
+                const recRep = String(r.sow_report_no || "").replace(/\s+/g, "").toLowerCase();
+                const filterRep = String(sowReportNo).replace(/\s+/g, "").toLowerCase();
                 return recRep === filterRep;
               })
             : rawRecords;
@@ -1115,25 +1115,80 @@ export const GET = withTenant(async (request, { companyId }) => {
                     defectTypeDetails: anomalyByDefectTypeDetails,
                     items: anomalyRecords.map((r: any) => {
                         const anomaly = r.insp_anomalies?.[0];
-                        const defectCode = (
+                        let defectCode = (
                             anomaly?.defect_type_code ||
                             anomaly?.defect_category_code ||
                             r.inspection_data?.defectCode ||
                             r.inspection_data?.defect_code ||
                             r.inspection_data?.defect_type ||
+                            r.inspection_type_code ||
+                            r.inspection_type?.code ||
                             "N/A"
-                        ).trim();
+                        );
+                        if (typeof defectCode === 'string') {
+                            defectCode = defectCode.trim();
+                            if (defectCode.toLowerCase() === 'undefined' || defectCode === '') {
+                                defectCode = r.inspection_type_code || r.inspection_type?.code || "N/A";
+                            }
+                        } else {
+                            defectCode = "N/A";
+                        }
+
+                        const compMeta = r.structure_components?.metadata || {};
+                        const elv1 = compMeta.elv_1 !== undefined && compMeta.elv_1 !== null ? compMeta.elv_1 : null;
+                        const elv2 = compMeta.elv_2 !== undefined && compMeta.elv_2 !== null ? compMeta.elv_2 : null;
+                        const compElev = elv1 !== null
+                            ? (elv2 !== null && elv1 !== elv2
+                                ? `${elv1} to ${elv2}`
+                                : `${elv1}`)
+                            : null;
+
+                        let inspectionElev = null;
+                        if (r.inspection_data && typeof r.inspection_data === 'object') {
+                            const keys = Object.keys(r.inspection_data);
+                            const targetKey = keys.find(k => {
+                                const lk = k.toLowerCase();
+                                return (lk.includes('elevation') || lk.includes('depth') || lk === 'elv' || lk === 'dep');
+                            });
+                            if (targetKey) {
+                                inspectionElev = r.inspection_data[targetKey];
+                            }
+                        }
+
+                        const elevation = (
+                            r.elevation ||
+                            inspectionElev ||
+                            r.inspection_data?.elevation ||
+                            r.inspection_data?.depth ||
+                            r.inspection_data?.water_depth ||
+                            compElev ||
+                            "-"
+                        );
+
                         return {
                             ref: anomaly?.anomaly_ref_no || `ID: ${r.insp_id}`,
                             qid: r.structure_components?.q_id || r.inspection_data?.q_id || "N/A",
+                            elevation: elevation,
                             inspectionType: formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_code || "UNKNOWN"),
                             description: getInspectionFindings(r, anomaly),
                             priority: anomaly?.priority_code || r.inspection_data?.priority || "N/A",
                             status: anomaly?.status || "OPEN",
                             rectification: anomaly?.follow_up_notes || "N/A",
-                            defectCode: defectCode || "N/A"
+                            defectCode: defectCode,
+                            anomaly: defectCode,
+                            anomaly_code: defectCode,
+                            anomalyCode: defectCode,
+                            defect_code: defectCode,
+                            defect_type: defectCode,
+                            defectType: defectCode
                         };
-                    }).sort((a: any, b: any) => a.ref.localeCompare(b.ref, undefined, { numeric: true, sensitivity: 'base' }))
+                    })
+                    .sort((a: any, b: any) => String(a.ref || "").localeCompare(String(b.ref || ""), undefined, { numeric: true, sensitivity: 'base' }))
+                    .map((item: any, idx: number) => ({
+                        ...item,
+                        id: idx + 1,
+                        no: idx + 1
+                    }))
                 },
                 findings: {
                     total: findingValidTotal,
@@ -1142,24 +1197,79 @@ export const GET = withTenant(async (request, { companyId }) => {
                     byPriority: findingByPriority,
                     items: findingRecords.map((r: any) => {
                         const anomaly = r.insp_anomalies?.[0];
-                        const defectCode = (
+                        let defectCode = (
                             anomaly?.defect_type_code ||
                             anomaly?.defect_category_code ||
                             r.inspection_data?.defectCode ||
                             r.inspection_data?.defect_code ||
                             r.inspection_data?.defect_type ||
+                            r.inspection_type_code ||
+                            r.inspection_type?.code ||
                             "N/A"
-                        ).trim();
+                        );
+                        if (typeof defectCode === 'string') {
+                            defectCode = defectCode.trim();
+                            if (defectCode.toLowerCase() === 'undefined' || defectCode === '') {
+                                defectCode = r.inspection_type_code || r.inspection_type?.code || "N/A";
+                            }
+                        } else {
+                            defectCode = "N/A";
+                        }
+
+                        const compMeta = r.structure_components?.metadata || {};
+                        const elv1 = compMeta.elv_1 !== undefined && compMeta.elv_1 !== null ? compMeta.elv_1 : null;
+                        const elv2 = compMeta.elv_2 !== undefined && compMeta.elv_2 !== null ? compMeta.elv_2 : null;
+                        const compElev = elv1 !== null
+                            ? (elv2 !== null && elv1 !== elv2
+                                ? `${elv1} to ${elv2}`
+                                : `${elv1}`)
+                            : null;
+
+                        let inspectionElev = null;
+                        if (r.inspection_data && typeof r.inspection_data === 'object') {
+                            const keys = Object.keys(r.inspection_data);
+                            const targetKey = keys.find(k => {
+                                const lk = k.toLowerCase();
+                                return (lk.includes('elevation') || lk.includes('depth') || lk === 'elv' || lk === 'dep');
+                            });
+                            if (targetKey) {
+                                inspectionElev = r.inspection_data[targetKey];
+                            }
+                        }
+
+                        const elevation = (
+                            r.elevation ||
+                            inspectionElev ||
+                            r.inspection_data?.elevation ||
+                            r.inspection_data?.depth ||
+                            r.inspection_data?.water_depth ||
+                            compElev ||
+                            "-"
+                        );
+
                         return {
                             ref: anomaly?.anomaly_ref_no || `ID: ${r.insp_id}`,
                             qid: r.structure_components?.q_id || r.inspection_data?.q_id || "N/A",
+                            elevation: elevation,
                             inspectionType: formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_code || "UNKNOWN"),
                             description: getInspectionFindings(r, anomaly),
                             priority: anomaly?.priority_code || r.inspection_data?.priority || "N/A",
                             status: anomaly?.status || "OPEN",
-                            defectCode: defectCode || "N/A"
+                            defectCode: defectCode,
+                            anomaly: defectCode,
+                            anomaly_code: defectCode,
+                            anomalyCode: defectCode,
+                            defect_code: defectCode,
+                            defect_type: defectCode,
+                            defectType: defectCode
                         };
-                    }).sort((a: any, b: any) => a.ref.localeCompare(b.ref, undefined, { numeric: true, sensitivity: 'base' }))
+                    })
+                    .sort((a: any, b: any) => String(a.ref || "").localeCompare(String(b.ref || ""), undefined, { numeric: true, sensitivity: 'base' }))
+                    .map((item: any, idx: number) => ({
+                        ...item,
+                        id: idx + 1,
+                        no: idx + 1
+                    }))
                 },
                 mgi: { 
                     total: mgiRecords.length, 

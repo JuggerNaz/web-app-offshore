@@ -1,32 +1,45 @@
-const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
+const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing Supabase credentials");
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-async function checkLatestAttachments() {
-  console.log("Checking latest 5 attachments...");
-  
-  const { data, error } = await supabase
+async function run() {
+  console.log("Fetching attachments...");
+  const { data: attachments, error } = await supabase
     .from('attachment')
-    .select('id, title, file_url, created_at')
-    .order('created_at', { ascending: false })
-    .limit(5);
+    .select('*')
+    .eq('source_id', 44) // Let's check structure 44 (PLAT-C) or all structure attachments
+    .limit(10);
 
   if (error) {
-    console.error("Error fetching attachments:", error);
-    return;
+    console.error(error);
+  } else {
+    console.log("Attachments found:", attachments.map(a => ({
+      id: a.id,
+      name: a.name,
+      source_id: a.source_id,
+      source_type: a.source_type,
+      is_deleted: a.is_deleted
+    })));
   }
 
-  console.log(JSON.stringify(data, null, 2));
-  process.exit(0);
+  // Let's also query all attachments with source_type containing 'structure'
+  const { data: structAtts } = await supabase
+    .from('attachment')
+    .select('*')
+    .ilike('source_type', '%structure%')
+    .limit(10);
+  console.log("Structure Attachments:", structAtts.map(a => ({
+    id: a.id,
+    name: a.name,
+    source_id: a.source_id,
+    source_type: a.source_type,
+    is_deleted: a.is_deleted,
+    meta: a.meta
+  })));
 }
 
-checkLatestAttachments();
+run();

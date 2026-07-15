@@ -318,7 +318,10 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                                         { tag: "{{REPORT_TYPE}}", desc: "PRELIMINARY or FINAL" },
                                         { tag: "{%CLIENT_LOGO}", desc: "Image tag for client logo" },
                                         { tag: "{{CLIENT_NAME}}", desc: "Name of the client" },
+                                        { tag: "{{CLIENT_SHORT}}", desc: "The short name for the client (Client ID)" },
                                         { tag: "{{VESSEL_NAME}}", desc: "Inspection vessel name" },
+                                        { tag: "{{VESSELS_INVOLVED}}", desc: "The Vessel names involved in the inspection" },
+                                        { tag: "{{INSPECTION_YEAR}}", desc: "The year of the inspection based on the inspection date year" },
                                         { tag: "{{PROJECT_NO}}", desc: "Job pack project number" },
                                         { tag: "{{START_DATE}}", desc: "Job start date (DD/MM/YYYY)" },
                                         { tag: "{{END_DATE}}", desc: "Job end date (DD/MM/YYYY)" },
@@ -351,10 +354,13 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                                     <h4 className="font-bold text-sm border-l-4 border-emerald-600 pl-2">Detailed Tables (Loops)</h4>
                                     <TagList items={[
                                         { tag: "{{#SECTIONS}}...{{/SECTIONS}}", desc: "Loop for all summary sections (title, content)" },
-                                        { tag: "{{#ANOMALIES}}...{{/ANOMALIES}}", desc: "Loop for structural anomalies (ref, description, priority, status)" },
+                                        { tag: "{{#ANOMALIES}}...{{/ANOMALIES}}", desc: "Loop for structural anomalies. Inner columns: no/id, qid, elevation, anomaly/defectCode, ref, priority, description, status, rectification" },
+                                        { tag: "{{#FINDINGS}}...{{/FINDINGS}}", desc: "Loop for structural findings. Inner columns: no/id, qid, elevation, anomaly/defectCode, ref, priority, description, status" },
                                         { tag: "{{#CP_RECORDS}}...{{/CP_RECORDS}}", desc: "Loop for CP results (component, reading, status)" },
                                         { tag: "{{#FMD_RECORDS}}...{{/FMD_RECORDS}}", desc: "Loop for FMD results (component, status, mode)" },
                                         { tag: "{{#MGI_RECORDS}}...{{/MGI_RECORDS}}", desc: "Loop for Marine Growth (component, thickness, date)" },
+                                        { tag: "{{#STRUCTURE_VISUALS}}...{{/STRUCTURE_VISUALS}}", desc: "Loop for structure visuals/photos. Inner tags: {{title}}, {{description}}, {%photo}" },
+                                        { tag: "{{HAS_VISUALS}}", desc: "True if the structure has visual documentation photos" },
                                     ]} />
 
                                 </div>

@@ -7,15 +7,16 @@ const supabase = createClient(
 );
 
 async function run() {
-  console.log("Fetching company settings...");
-  const { data, error } = await supabase
-    .from('company_settings')
-    .select('*');
+  console.log("Searching platform table for 'PLAT-C'...");
+  const { data: platforms, error } = await supabase
+    .from('platform')
+    .select('*')
+    .ilike('title', '%PLAT-C%');
 
   if (error) {
     console.error(error);
   } else {
-    console.log("Company Settings:", JSON.stringify(data, null, 2));
+    console.log("Platforms found:", JSON.stringify(platforms, null, 2));
   }
 }
 

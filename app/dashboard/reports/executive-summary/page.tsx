@@ -49,6 +49,22 @@ export default function ExecutiveSummaryPage() {
         structureId: "",
         sowReportNo: ""
     });
+
+    // Safe load on mount
+    useEffect(() => {
+        const saved = localStorage.getItem("executive_summary_selections");
+        if (saved) {
+            try {
+                setSelections(JSON.parse(saved));
+            } catch (e) {}
+        }
+    }, []);
+
+    // Safe save on selections change
+    useEffect(() => {
+        localStorage.setItem("executive_summary_selections", JSON.stringify(selections));
+    }, [selections]);
+
     const [activeSectionId, setActiveSectionId] = useState("intro");
     const [sectionsData, setSectionsData] = useState<Record<string, string>>({});
     const [isSaving, setIsSaving] = useState(false);
@@ -62,6 +78,7 @@ export default function ExecutiveSummaryPage() {
     const { data: jobpacksData } = useSWR("/api/jobpack?has_inspection=true", fetcher);
     const { data: companySettings } = useSWR("/api/company-settings", fetcher);
     const { data: templatesRes } = useSWR("/api/report-templates", fetcher);
+    const { data: structuresRes } = useSWR("/api/structures", fetcher);
     const { data: sowsData } = useSWR(
         selections.jobpackId && selections.structureId 
             ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${selections.structureId}` 
@@ -75,29 +92,24 @@ export default function ExecutiveSummaryPage() {
         );
     }, [jobpacksData]);
 
-    const { data: sowsForJobpackData } = useSWR(
-        selections.jobpackId ? `/api/sow?jobpack_id=${selections.jobpackId}` : null,
+    const structures = useMemo(() => {
+        return [...(structuresRes?.data || [])].sort((a, b) => 
+            (a.str_name || "").localeCompare(b.str_name || "", undefined, { numeric: true })
+        );
+    }, [structuresRes]);
+
+    const { data: sowsForStructureData } = useSWR(
+        selections.structureId ? `/api/sow?structure_id=${selections.structureId}` : null,
         fetcher
     );
 
-    const filteredStructures = useMemo(() => {
-        if (!selections.jobpackId || !sowsForJobpackData?.data || !Array.isArray(sowsForJobpackData.data)) return [];
+    const filteredJobpacks = useMemo(() => {
+        if (!selections.structureId || !sowsForStructureData?.data || !Array.isArray(sowsForStructureData.data)) return [];
         
-        // Extract unique structures from SOWs
-        const uniqueMap = new Map();
-        sowsForJobpackData.data.forEach((sow: any) => {
-            if (sow && sow.structure_id && !uniqueMap.has(sow.structure_id)) {
-                uniqueMap.set(sow.structure_id, {
-                    id: sow.structure_id,
-                    name: sow.structure_title || `Structure ${sow.structure_id}`
-                });
-            }
-        });
-
-        return Array.from(uniqueMap.values()).sort((a, b) => 
-            a.name.localeCompare(b.name, undefined, { numeric: true })
-        );
-    }, [selections.jobpackId, sowsForJobpackData]);
+        const jobpackIds = new Set(sowsForStructureData.data.map((sow: any) => Number(sow.jobpack_id)));
+        
+        return jobpacks.filter((jp: any) => jobpackIds.has(Number(jp.id)));
+    }, [selections.structureId, sowsForStructureData, jobpacks]);
 
     const availableSowReports = useMemo(() => {
         if (!sowsData?.data || typeof sowsData.data !== 'object') return [];
@@ -248,7 +260,7 @@ export default function ExecutiveSummaryPage() {
         if (!selections.jobpackId || !selections.structureId || !selections.sowReportNo) return;
         
         const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
-        const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
+        const str = structures.find((s:any) => s.id.toString() === selections.structureId);
         
         // Find default template for selected type
         const allTemplates = templatesRes?.data || [];
@@ -305,7 +317,14 @@ export default function ExecutiveSummaryPage() {
             const allRecords = Array.isArray(recordsData?.data) ? recordsData.data : [];
 
             // Map data for DOCX
-            const mappedData = await mapInspectionDataForDocx(allRecords, aliases);
+            const mappedData = await mapInspectionDataForDocx(
+                allRecords,
+                aliases,
+                jp,
+                str,
+                selections.sowReportNo,
+                companySettings?.data
+            );
 
             // Generate MGI Graph if applicable
             const mgiRecords = allRecords.filter((r: any) => 
@@ -336,15 +355,70 @@ export default function ExecutiveSummaryPage() {
                 }
             }
 
+            // Fetch Structure Visuals (Visual Documentation from Engineering Library)
+            let structureVisuals: any[] = [];
+            try {
+                const structType = (str?.str_type || "PLATFORM").toLowerCase();
+                const sourceType = `${structType}_structure_image`;
+                const apiRes = await fetch(`/api/attachment/${sourceType}/${selections.structureId}`);
+                if (apiRes.ok) {
+                    const apiJson = await apiRes.json();
+                    const visualAtts = apiJson.data;
+
+                    if (visualAtts && Array.isArray(visualAtts)) {
+                        const { createClient } = await import("@/utils/supabase/client");
+                        const supabase = createClient();
+
+                        structureVisuals = await Promise.all(visualAtts.map(async (att: any) => {
+                            const title = att.meta?.title || att.name || "Visual Documentation";
+                            const description = att.meta?.description || att.description || "";
+
+                            let imgData: any = null;
+                            try {
+                                const { data: blob, error: downloadError } = await supabase.storage
+                                    .from("attachments")
+                                    .download(att.path);
+
+                                if (blob && !downloadError) {
+                                    const arrayBuffer = await blob.arrayBuffer();
+                                    imgData = new Uint8Array(arrayBuffer);
+                                } else if (downloadError) {
+                                    console.error("Error downloading visual attachment:", downloadError);
+                                }
+                            } catch (downloadErr) {
+                                console.error("Failed to download attachment from storage:", downloadErr);
+                            }
+
+                            if (!imgData) {
+                                imgData = `/api/attachment/url?id=${att.id}`;
+                            }
+
+                            const fileExt = att.meta?.file_type?.split('/')[1] ? `.${att.meta.file_type.split('/')[1]}` : '.jpg';
+
+                            return {
+                                title,
+                                description,
+                                photo: { data: imgData, extension: fileExt }
+                            };
+                        }));
+                    }
+                }
+            } catch (e) {
+                console.error("Error fetching structure visuals for docx:", e);
+            }
+
             const reportData = {
+                STRUCTURE_VISUALS: structureVisuals,
+                HAS_VISUALS: structureVisuals.length > 0,
+
                 // ── Custom User Variables ────────────────────────────
                 ...Object.fromEntries(
                     Object.entries(customVariables).map(([k, v]) => [k.toUpperCase(), v])
                 ),
 
                 // ── Core Project Identifiers ─────────────────────────
-                PLATFORM_TITLE: str?.name || "N/A",
-                PLATFORM_NAME: str?.name || "N/A",
+                PLATFORM_TITLE: str?.str_name || "N/A",
+                PLATFORM_NAME: str?.str_name || "N/A",
                 JOB_PACK_NAME: jp?.name || "N/A",
                 REPORT_NO: selections.sowReportNo,
                 SOW_REPORT_NO: selections.sowReportNo,
@@ -367,11 +441,41 @@ export default function ExecutiveSummaryPage() {
 
                 // ── Company / Client Info ────────────────────────────
                 CLIENT_NAME: companySettings?.data?.company_name || jp?.metadata?.contrac || "N/A",
+                CLIENT_SHORT: (() => {
+                    const clientName = companySettings?.data?.company_name;
+                    if (!clientName) return "N/A";
+                    const matched = contractors.find((c: any) => 
+                        String(c.lib_desc || "").toLowerCase().replace(/[^a-z0-9]/g, "") === 
+                        String(clientName).toLowerCase().replace(/[^a-z0-9]/g, "")
+                    );
+                    if (matched) return matched.lib_id || "N/A";
+                    const partialMatch = contractors.find((c: any) => 
+                        String(c.lib_desc || "").toLowerCase().includes(String(clientName).toLowerCase()) ||
+                        String(clientName).toLowerCase().includes(String(c.lib_desc || "").toLowerCase())
+                    );
+                    if (partialMatch) return partialMatch.lib_id || "N/A";
+                    return "N/A";
+                })(),
                 DEPARTMENT: companySettings?.data?.department_name || "N/A",
                 PROJECT_NAME: companySettings?.data?.project_name || "N/A",
 
                 // ── Job Pack Metadata ────────────────────────────────
                 VESSEL_NAME: jp?.metadata?.vessel || "NONE",
+                VESSELS_INVOLVED: (() => {
+                    if (jp?.metadata?.vessel_history && Array.isArray(jp.metadata.vessel_history)) {
+                        const names = jp.metadata.vessel_history.map((v: any) => v.name).filter(Boolean);
+                        const uniqueNames = Array.from(new Set(names));
+                        if (uniqueNames.length > 0) return uniqueNames.join(", ");
+                    }
+                    return jp?.metadata?.vessel || "NONE";
+                })(),
+                INSPECTION_YEAR: (() => {
+                    const dateStr = jp?.metadata?.istart || jp?.start_date;
+                    if (!dateStr) return "N/A";
+                    const d = new Date(dateStr);
+                    if (isNaN(d.getTime())) return "N/A";
+                    return d.getFullYear().toString();
+                })(),
                 PROJECT_NO: jp?.metadata?.inspno || jp?.project_no || "N/A",
                 CONTRACTOR: jp?.metadata?.contrac || "N/A",
                 START_DATE: jp?.metadata?.istart ? new Date(jp.metadata.istart).toLocaleDateString("en-GB") : (jp?.start_date || "N/A"),
@@ -464,7 +568,7 @@ export default function ExecutiveSummaryPage() {
             await generateTemplateReport({
                 templateUrl: template.storage_path,
                 data: reportData,
-                fileName: `${str?.name}_Executive_Summary_${reportType}.docx`,
+                fileName: `${str?.str_name || "Structure"}_Executive_Summary_${reportType}.docx`,
                 logoUrl: companySettings?.data?.logo_url
             });
 
@@ -556,8 +660,8 @@ export default function ExecutiveSummaryPage() {
             switch(activeSectionId) {
                 case "intro":
                     const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
-                    const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
-                    wording = `This Executive Summary provides a comprehensive overview of the structural integrity inspection conducted for ${str?.name || 'the platform'} under Job Pack ${jp?.name || selections.jobpackId}. The scope of work was defined in SOW Report ${selections.sowReportNo}.`;
+                    const str = structures.find((s:any) => s.id.toString() === selections.structureId);
+                    wording = `This Executive Summary provides a comprehensive overview of the structural integrity inspection conducted for ${str?.str_name || 'the platform'} under Job Pack ${jp?.name || selections.jobpackId}. The scope of work was defined in SOW Report ${selections.sowReportNo}.`;
                     break;
                 case "cp":
                     if (data.cp) {
@@ -600,7 +704,7 @@ export default function ExecutiveSummaryPage() {
 
         // Apply variable databank replacements
         const jp = jobpacks.find((j:any) => j.id.toString() === selections.jobpackId);
-        const str = filteredStructures.find((s:any) => s.id.toString() === selections.structureId);
+        const str = structures.find((s:any) => s.id.toString() === selections.structureId);
         
         // Format dates cleanly
         const formatDateStr = (dStr: any) => {
@@ -609,7 +713,7 @@ export default function ExecutiveSummaryPage() {
         };
 
         const vars: Record<string, string> = {
-            "{{PLATFORM}}": str?.name || "[PLATFORM]",
+            "{{PLATFORM}}": str?.str_name || "[PLATFORM]",
             "{{JOB_PACK}}": jp?.name || "[JOB_PACK]",
             "{{REPORT_NO}}": selections.sowReportNo || "[REPORT_NO]",
             "{{CLIENT}}": companySettings?.data?.company_name || jp?.metadata?.contrac || "[CLIENT]",
@@ -686,21 +790,21 @@ export default function ExecutiveSummaryPage() {
 
                     <div className="flex items-center gap-2">
                         <SearchableSelect 
-                            options={jobpacks.map((jp: any) => ({ value: jp.id.toString(), label: jp.name || jp.id }))}
-                            value={selections.jobpackId}
-                            onValueChange={(v) => setSelections({ jobpackId: v, structureId: "", sowReportNo: "" })}
-                            placeholder="Select Job Pack"
-                            searchPlaceholder="Search Job Pack..."
+                            options={structures.map((s: any) => ({ value: s.id.toString(), label: s.str_name }))}
+                            value={selections.structureId}
+                            onValueChange={(v) => setSelections({ structureId: v, jobpackId: "", sowReportNo: "" })}
+                            placeholder="Select Structure"
+                            searchPlaceholder="Search Structure..."
                             className="w-[240px]"
                         />
 
                         <SearchableSelect 
-                            options={filteredStructures.map((s: any) => ({ value: s.id.toString(), label: s.name }))}
-                            value={selections.structureId}
-                            onValueChange={(v) => setSelections(s => ({...s, structureId: v, sowReportNo: "" }))}
-                            disabled={!selections.jobpackId}
-                            placeholder="Select Structure"
-                            searchPlaceholder="Search Structure..."
+                            options={filteredJobpacks.map((jp: any) => ({ value: jp.id.toString(), label: jp.name || jp.id }))}
+                            value={selections.jobpackId}
+                            onValueChange={(v) => setSelections(s => ({...s, jobpackId: v, sowReportNo: "" }))}
+                            disabled={!selections.structureId}
+                            placeholder="Select Job Pack"
+                            searchPlaceholder="Search Job Pack..."
                             className="w-[240px]"
                         />
 
@@ -708,7 +812,7 @@ export default function ExecutiveSummaryPage() {
                             options={availableSowReports.map((no: string) => ({ value: no, label: no }))}
                             value={selections.sowReportNo}
                             onValueChange={(v) => setSelections(s => ({...s, sowReportNo: v}))}
-                            disabled={!selections.structureId}
+                            disabled={!selections.jobpackId}
                             placeholder="SOW Report No"
                             searchPlaceholder="Search Report No..."
                             className="w-[180px]"
@@ -957,7 +1061,7 @@ export default function ExecutiveSummaryPage() {
                 currentContent={sectionsData[activeSectionId] || ""}
                 onSelect={(content) => setSectionsData(prev => ({ ...prev, [activeSectionId]: content }))}
                 projectContext={{
-                    platform: filteredStructures.find(s => s.id.toString() === selections.structureId)?.name,
+                    platform: structures.find(s => s.id.toString() === selections.structureId)?.str_name,
                     jobpack: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.name,
                     reportNo: selections.sowReportNo,
                     client: companySettings?.data?.company_name
@@ -976,7 +1080,7 @@ export default function ExecutiveSummaryPage() {
                 onOpenChange={setIsAnalyticsOpen}
                 insightData={insightData}
                 projectContext={{
-                    platform: filteredStructures.find(s => s.id.toString() === selections.structureId)?.name,
+                    platform: structures.find(s => s.id.toString() === selections.structureId)?.str_name,
                     jobpack: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.name,
                     reportNo: selections.sowReportNo,
                     vessel: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.metadata?.vessel
