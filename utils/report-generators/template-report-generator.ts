@@ -49,6 +49,10 @@ function normalizeDelimiters(zip: PizZip) {
                 changed = text !== before;
             }
 
+            // Pass 3: Clean up whitespace inside braces (even if split across XML nodes)
+            text = text.replace(/\s+(<\/w:t>.*?<w:t[^>]*>)?\}/g, "$1}");
+            text = text.replace(/\{([#/\%]?)\s+(<\/w:t>.*?<w:t[^>]*>)?/g, "{$1$2");
+
             zip.file(relativePath, text);
         }
     }

@@ -291,12 +291,14 @@ export const generateROVMGIGraphReport = async (
                 didParseCell: (data) => {
                     if (data.section === 'body') {
                         const row = tableData[data.row.index];
-                        if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (row.isRectified) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
+                        if (row) {
+                            if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
+                                data.cell.styles.textColor = colors.anomaly;
+                                data.cell.styles.fontStyle = 'bold';
+                            } else if (row.isRectified) {
+                                data.cell.styles.textColor = colors.rectified;
+                                data.cell.styles.fontStyle = 'bold';
+                            }
                         }
                     }
                 },
@@ -310,23 +312,25 @@ export const generateROVMGIGraphReport = async (
                     if (data.section === 'body' && data.column.index === 1) {
                         const { x, y, width, height } = data.cell;
                         const row = tableData[data.row.index];
-                        const xRatio = width / GRAPH_MAX_MM;
-                        doc.setLineWidth(0.05); doc.setDrawColor(245);
-                        for (let g = 0; g <= GRAPH_MAX_MM; g += 10) { if (g % 100 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height); }
-                        doc.setDrawColor(230); doc.setLineWidth(0.1);
-                        for (let g = 0; g <= GRAPH_MAX_MM; g += 100) {
-                            const gx = x + (g * xRatio); doc.line(gx, y, gx, y + height);
-                            if (data.row.index === 0) { 
-                                doc.setFontSize(6); 
-                                if (isPF) {
-                                    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-                                } else {
-                                    doc.setTextColor(255);
+                        if (row) {
+                            const xRatio = width / GRAPH_MAX_MM;
+                            doc.setLineWidth(0.05); doc.setDrawColor(245);
+                            for (let g = 0; g <= GRAPH_MAX_MM; g += 10) { if (g % 100 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height); }
+                            doc.setDrawColor(230); doc.setLineWidth(0.1);
+                            for (let g = 0; g <= GRAPH_MAX_MM; g += 100) {
+                                const gx = x + (g * xRatio); doc.line(gx, y, gx, y + height);
+                                if (data.row.index === 0) { 
+                                    doc.setFontSize(6); 
+                                    if (isPF) {
+                                        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+                                    } else {
+                                        doc.setTextColor(255);
+                                    }
+                                    doc.text(`${g}`, gx, y - 3, { align: 'center' }); 
                                 }
-                                doc.text(`${g}`, gx, y - 3, { align: 'center' }); 
                             }
+                            plotPoints.push({ x, y: y + (height / 2), h: height, limitX: x + (row.limit * xRatio), actualX: x + (row.maxInRow * xRatio) });
                         }
-                        plotPoints.push({ x, y: y + (height / 2), h: height, limitX: x + (row.limit * xRatio), actualX: x + (row.maxInRow * xRatio) });
                     }
                 },
                 didDrawPage: (data) => {

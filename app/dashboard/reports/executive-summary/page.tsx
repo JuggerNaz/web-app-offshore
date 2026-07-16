@@ -277,11 +277,13 @@ export default function ExecutiveSummaryPage() {
         try {
             const { mapInspectionDataForDocx, generateMgiProfileImage } = await import("@/utils/report-generators/report-data-mapper");
             
-            const sections = EXECUTIVE_SUMMARY_TOC.map(s => {
+            const sections = EXECUTIVE_SUMMARY_TOC.map((s, idx) => {
                 const sectionData: any = {
                     id: s.id,
                     title: s.title,
-                    content: sectionsData[s.id] || ""
+                    content: sectionsData[s.id] || "",
+                    no: idx + 1,
+                    paragraph_no: `1.${idx + 1}`
                 };
                 
                 // Create a boolean flag like 'is_seabed' or 'is_marine_growth'
@@ -407,9 +409,198 @@ export default function ExecutiveSummaryPage() {
                 console.error("Error fetching structure visuals for docx:", e);
             }
 
-            const reportData = {
+            let rawAnomalies = insightData?.data?.anomalies?.items || [];
+            const getFilteredAnomalies = (filterFn: (item: any) => boolean) => {
+                return rawAnomalies
+                    .filter(filterFn)
+                    .map((item: any, idx: number) => ({
+                        ...item,
+                        id: idx + 1,
+                        no: idx + 1
+                    }));
+            };
+
+            // Fetch Priority Colors from AMLYCLR combo
+            let priorityColors: Record<string, string> = {
+                "P1": "255,0,0",
+                "P2": "255,255,0",
+                "P3": "0,255,0",
+                "OBSERVATION": "255,165,0"
+            };
+
+            try {
+                const colorsRes = await fetch("/api/library/combo/ANMLYCLR");
+                if (colorsRes.ok) {
+                    const colorsJson = await colorsRes.json();
+                    const items = Array.isArray(colorsJson?.data) ? colorsJson.data : [];
+                    items.forEach((item: any) => {
+                        if (item.lib_delete !== 1 && item.lib_delete !== true) {
+                            const code1 = String(item.code_1 || "").trim().toUpperCase();
+                            const colorVal = String(item.code_2 || "").trim();
+                            if (code1 && colorVal) {
+                                priorityColors[code1] = colorVal;
+                            }
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to fetch AMLYCLR colors:", err);
+            }
+
+            const rgbToHex = (rgbStr: string): string => {
+                const clean = rgbStr.trim().toUpperCase();
+                if (clean === "RED" || clean === "FF0000") return "FF0000";
+                if (clean === "YELLOW" || clean === "FFFF00") return "FFFF00";
+                if (clean === "GREEN" || clean === "00FF00") return "00FF00";
+                if (clean === "ORANGE" || clean === "FFA500") return "FFA500";
+                if (clean === "BLUE" || clean === "0000FF") return "0000FF";
+                
+                const parts = clean.split(',').map(x => parseInt(x.trim()));
+                if (parts.length === 3 && parts.every(x => !isNaN(x))) {
+                    return parts.map(x => {
+                        const hex = x.toString(16).toUpperCase();
+                        return hex.length === 1 ? '0' + hex : hex;
+                    }).join('');
+                }
+                return "FFFFFF";
+            };
+
+            const obsColorRgb = priorityColors["OBSERVATION"] || "255,165,0";
+            const p1ColorRgb = priorityColors["P1"] || "255,0,0";
+            const p2ColorRgb = priorityColors["P2"] || "255,255,0";
+            const p3ColorRgb = priorityColors["P3"] || "0,255,0";
+
+            const obsColorHex = rgbToHex(obsColorRgb);
+            const p1ColorHex = rgbToHex(p1ColorRgb);
+            const p2ColorHex = rgbToHex(p2ColorRgb);
+            const p3ColorHex = rgbToHex(p3ColorRgb);
+
+            const getPriorityFilter = (prioName: string) => {
+                const upper = prioName.toUpperCase();
+                return (x: any) => {
+                    const itemPrio = String(x.priority || "").trim().toUpperCase();
+                    return itemPrio === upper || 
+                           itemPrio === `PRIORITY ${upper}` || 
+                           itemPrio === `PRIORITY_${upper}` ||
+                           (upper === "P1" && itemPrio === "PRIORITY 1") ||
+                           (upper === "P2" && itemPrio === "PRIORITY 2") ||
+                           (upper === "P3" && itemPrio === "PRIORITY 3") ||
+                           (upper === "OBS" && (itemPrio === "OBSERVATION" || itemPrio === "OBS"));
+                };
+            };
+            const getPriorityKey = (prioStr: string) => {
+                const clean = String(prioStr || "").trim().toUpperCase();
+                if (clean === "P1" || clean === "PRIORITY 1") return "P1";
+                if (clean === "P2" || clean === "PRIORITY 2") return "P2";
+                if (clean === "P3" || clean === "PRIORITY 3") return "P3";
+                if (clean === "OBS" || clean === "OBSERVATION" || clean === "O") return "OBSERVATION";
+                return null;
+            };
+
+            rawAnomalies = rawAnomalies.map((item: any) => {
+                const key = getPriorityKey(item.priority || item.priority_code);
+                let hex = "FFFFFF";
+                let rgb = "255,255,255";
+                
+                if (key === "P1") { hex = p1ColorHex; rgb = p1ColorRgb; }
+                else if (key === "P2") { hex = p2ColorHex; rgb = p2ColorRgb; }
+                else if (key === "P3") { hex = p3ColorHex; rgb = p3ColorRgb; }
+                else if (key === "OBSERVATION") { hex = obsColorHex; rgb = obsColorRgb; }
+
+                return {
+                    ...item,
+                    color_hex: hex,
+                    color_rgb: rgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${hex}"/></w:tcPr>`
+                };
+            });
+            const p1Anoms = rawAnomalies.filter(getPriorityFilter("P1"));
+            const p2Anoms = rawAnomalies.filter(getPriorityFilter("P2"));
+            const p3Anoms = rawAnomalies.filter(getPriorityFilter("P3"));
+            const obsAnoms = rawAnomalies.filter(getPriorityFilter("OBS"));
+
+            const getRectifiedCount = (items: any[]) => items.filter((x: any) => x.is_rectified === true || x.is_rectified === 1 || String(x.status || "").toLowerCase() === "rectified" || (x.rectified === true || x.rectified === 1)).length;
+
+            const categoryStats = [
+                {
+                    name: "Observation",
+                    not_rectified: obsAnoms.length - getRectifiedCount(obsAnoms),
+                    rectified: getRectifiedCount(obsAnoms),
+                    total: obsAnoms.length,
+                    color_hex: obsColorHex,
+                    color_rgb: obsColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`
+                },
+                {
+                    name: "Priority 1",
+                    not_rectified: p1Anoms.length - getRectifiedCount(p1Anoms),
+                    rectified: getRectifiedCount(p1Anoms),
+                    total: p1Anoms.length,
+                    color_hex: p1ColorHex,
+                    color_rgb: p1ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`
+                },
+                {
+                    name: "Priority 2",
+                    not_rectified: p2Anoms.length - getRectifiedCount(p2Anoms),
+                    rectified: getRectifiedCount(p2Anoms),
+                    total: p2Anoms.length,
+                    color_hex: p2ColorHex,
+                    color_rgb: p2ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`
+                },
+                {
+                    name: "Priority 3",
+                    not_rectified: p3Anoms.length - getRectifiedCount(p3Anoms),
+                    rectified: getRectifiedCount(p3Anoms),
+                    total: p3Anoms.length,
+                    color_hex: p3ColorHex,
+                    color_rgb: p3ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`
+                }
+            ];
+
+            const totalNotRectified = categoryStats.reduce((sum, item) => sum + item.not_rectified, 0);
+            const totalRectified = categoryStats.reduce((sum, item) => sum + item.rectified, 0);
+            const totalAnomCount = categoryStats.reduce((sum, item) => sum + item.total, 0);
+
+            const reportData: Record<string, any> = {
                 STRUCTURE_VISUALS: structureVisuals,
                 HAS_VISUALS: structureVisuals.length > 0,
+
+                // ── Anomaly Summary Table Data ───────────────────────
+                ANOMALY_SUMMARY_TABLE: categoryStats,
+                ANOMALY_SUMMARY_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                ANOMALY_SUMMARY_TOTAL_RECTIFIED: totalRectified,
+                ANOMALY_SUMMARY_TOTAL: totalAnomCount,
+
+                OBS_NOT_RECTIFIED: obsAnoms.length - getRectifiedCount(obsAnoms),
+                OBS_RECTIFIED: getRectifiedCount(obsAnoms),
+                OBS_TOTAL: obsAnoms.length,
+                OBS_COLOR_HEX: obsColorHex,
+                OBS_COLOR_RGB: obsColorRgb,
+                OBS_COLOR_XML: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`,
+
+                P1_NOT_RECTIFIED: p1Anoms.length - getRectifiedCount(p1Anoms),
+                P1_RECTIFIED: getRectifiedCount(p1Anoms),
+                P1_TOTAL: p1Anoms.length,
+                P1_COLOR_HEX: p1ColorHex,
+                P1_COLOR_RGB: p1ColorRgb,
+                P1_COLOR_XML: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`,
+
+                P2_NOT_RECTIFIED: p2Anoms.length - getRectifiedCount(p2Anoms),
+                P2_RECTIFIED: getRectifiedCount(p2Anoms),
+                P2_TOTAL: p2Anoms.length,
+                P2_COLOR_HEX: p2ColorHex,
+                P2_COLOR_RGB: p2ColorRgb,
+                P2_COLOR_XML: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`,
+
+                P3_NOT_RECTIFIED: p3Anoms.length - getRectifiedCount(p3Anoms),
+                P3_RECTIFIED: getRectifiedCount(p3Anoms),
+                P3_TOTAL: p3Anoms.length,
+                P3_COLOR_HEX: p3ColorHex,
+                P3_COLOR_RGB: p3ColorRgb,
+                P3_COLOR_XML: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`,
 
                 // ── Custom User Variables ────────────────────────────
                 ...Object.fromEntries(
@@ -553,7 +744,10 @@ export default function ExecutiveSummaryPage() {
                 SECTIONS: sections,
 
                 // ── Detailed Loop Tables ─────────────────────────────
-                ANOMALIES: insightData?.data?.anomalies?.items || [],
+                ANOMALIES: rawAnomalies,
+                ANOMALIES_P1: getFilteredAnomalies((x: any) => String(x.priority || "").trim().toUpperCase() === "P1"),
+                ANOMALIES_P2: getFilteredAnomalies((x: any) => String(x.priority || "").trim().toUpperCase() === "P2"),
+                ANOMALIES_P3: getFilteredAnomalies((x: any) => String(x.priority || "").trim().toUpperCase() === "P3"),
                 FINDINGS: insightData?.data?.findings?.items || [],
                 CP_RECORDS: insightData?.data?.cp_items || [],
                 FMD_RECORDS: insightData?.data?.fmd_items || [],
@@ -563,6 +757,29 @@ export default function ExecutiveSummaryPage() {
                 // ── Mapped Data from Inspection Records ──────────────
                 ...mappedData,
             };
+
+            // Automatically generate dynamically filtered lists inside reportData for type codes & defect codes
+            rawAnomalies.forEach((item: any) => {
+                const typeCode = String(item.inspection_type_code || "").trim().toUpperCase();
+                if (typeCode) {
+                    const key = `ANOMALIES_${typeCode}`;
+                    if (!reportData[key]) {
+                        reportData[key] = getFilteredAnomalies((x: any) => 
+                            String(x.inspection_type_code || "").trim().toUpperCase() === typeCode
+                        );
+                    }
+                }
+
+                const defCode = String(item.defectCode || "").trim().toUpperCase().replace(/\s+/g, '_');
+                if (defCode) {
+                    const key = `ANOMALIES_CODE_${defCode}`;
+                    if (!reportData[key]) {
+                        reportData[key] = getFilteredAnomalies((x: any) => 
+                            String(x.defectCode || "").trim().toUpperCase().replace(/\s+/g, '_') === defCode
+                        );
+                    }
+                }
+            });
 
             const { generateTemplateReport } = await import("@/utils/report-generators/template-report-generator");
             await generateTemplateReport({

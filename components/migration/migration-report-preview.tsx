@@ -106,6 +106,7 @@ const COMPONENT_FULL_NAMES: Record<string, string> = {
   "ANOMALY": "Anomalies & Defects",
   "INSP_ATTACHMENT": "Inspection Attachments",
   "COMP_NOT_INSP": "Incomplete Inspections Details",
+  "EXSUM": "Executive Summaries",
 
   // ROV Inspection Sub-Types
   "INSP_ROV_RGVI": "ROV – General Visual",
@@ -243,6 +244,8 @@ export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "P
       return { oracle: "WORKPL", pg: "jobpack" };
     case "U_SOW":
       return { oracle: "U_SOW", pg: "u_sow" };
+    case "EXSUM":
+      return { oracle: "EXSUM", pg: "u_executive_summaries" };
     case "LOGS_JOBS":
       return { oracle: "LOGS", pg: isPlat ? "insp_rov_jobs" : "insp_dive_jobs" };
     case "LOGS_MOVEMENTS":
@@ -402,7 +405,7 @@ export default function MigrationReportPreview({
   const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
   const jobInspectionKeys = [
     "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
-    "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT"
+    "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT", "EXSUM"
   ];
 
   const groupedReport = (() => {

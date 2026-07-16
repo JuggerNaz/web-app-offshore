@@ -331,27 +331,28 @@ export const generateDivingMGIReport = async (
             didParseCell: (data: any) => {
                 if (data.section === "body") {
                     const row = tableData[data.row.index];
-                    
-                    // Default font style
-                    data.cell.styles.fontStyle = "normal";
+                    if (row) {
+                        // Default font style
+                        data.cell.styles.fontStyle = "normal";
 
-                    // Color columns strictly as per user request
-                    if (data.column.index === 9) { // ET
-                        data.cell.styles.textColor = colors.etLine;
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (data.column.index === 10) { // Max Allow
-                        data.cell.styles.textColor = colors.limit;
-                        data.cell.styles.fontStyle = "bold";
-                    }
+                        // Color columns strictly as per user request
+                        if (data.column.index === 9) { // ET
+                            data.cell.styles.textColor = colors.etLine;
+                            data.cell.styles.fontStyle = "bold";
+                        } else if (data.column.index === 10) { // Max Allow
+                            data.cell.styles.textColor = colors.limit;
+                            data.cell.styles.fontStyle = "bold";
+                        }
 
-                    // For other columns, apply anomaly/rectified colors but EXCLUDE Average (index 8)
-                    if (data.column.index !== 8 && data.column.index !== 9 && data.column.index !== 10) {
-                        if (row.isAnomaly) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = "bold";
-                        } else if (row.isRectified) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = "bold";
+                        // For other columns, apply anomaly/rectified colors but EXCLUDE Average (index 8)
+                        if (data.column.index !== 8 && data.column.index !== 9 && data.column.index !== 10) {
+                            if (row.isAnomaly) {
+                                data.cell.styles.textColor = colors.anomaly;
+                                data.cell.styles.fontStyle = "bold";
+                            } else if (row.isRectified) {
+                                data.cell.styles.textColor = colors.rectified;
+                                data.cell.styles.fontStyle = "bold";
+                            }
                         }
                     }
                 }
@@ -360,32 +361,34 @@ export const generateDivingMGIReport = async (
                 if (data.section === "body" && data.column.index === 2) {
                     const { x, y, width, height } = data.cell;
                     const row = tableData[data.row.index];
-                    const xRatio = width / GRAPH_MAX_MM;
+                    if (row) {
+                        const xRatio = width / GRAPH_MAX_MM;
 
-                    // Grid lines
-                    doc.setLineWidth(0.05); doc.setDrawColor(245, 245, 245);
-                    for (let g = 0; g <= GRAPH_MAX_MM; g += 10) {
-                        if (g % 100 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height);
-                    }
-                    doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.15);
-                    for (let g = 0; g <= GRAPH_MAX_MM; g += 100) {
-                        const gx = x + (g * xRatio); doc.line(gx, y, gx, y + height);
-                        if (data.row.index === 0) {
-                            doc.setFontSize(6); 
-                            if (isPF) doc.setTextColor(0, 0, 0);
-                            else doc.setTextColor(255, 255, 255);
-                            doc.setFont("helvetica", "bold");
-                            doc.text(`${g}`, gx, y - 2.5, { align: 'center' });
-                            doc.setFont("helvetica", "normal");
+                        // Grid lines
+                        doc.setLineWidth(0.05); doc.setDrawColor(245, 245, 245);
+                        for (let g = 0; g <= GRAPH_MAX_MM; g += 10) {
+                            if (g % 100 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height);
                         }
-                    }
+                        doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.15);
+                        for (let g = 0; g <= GRAPH_MAX_MM; g += 100) {
+                            const gx = x + (g * xRatio); doc.line(gx, y, gx, y + height);
+                            if (data.row.index === 0) {
+                                doc.setFontSize(6); 
+                                if (isPF) doc.setTextColor(0, 0, 0);
+                                else doc.setTextColor(255, 255, 255);
+                                doc.setFont("helvetica", "bold");
+                                doc.text(`${g}`, gx, y - 2.5, { align: 'center' });
+                                doc.setFont("helvetica", "normal");
+                            }
+                        }
 
-                    plotPoints.push({ 
-                        x, y: y + (height / 2), h: height, 
-                        limitX: x + (row.limit * xRatio), 
-                        actualX: x + (row.maxThick * xRatio),
-                        etX: x + (row.et * xRatio)
-                    });
+                        plotPoints.push({ 
+                            x, y: y + (height / 2), h: height, 
+                            limitX: x + (row.limit * xRatio), 
+                            actualX: x + (row.maxThick * xRatio),
+                            etX: x + (row.et * xRatio)
+                        });
+                    }
                 }
             },
             didDrawPage: (data: any) => {

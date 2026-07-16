@@ -6,6 +6,7 @@ import specUiConfig from "@/utils/spec-ui-config.json";
 import { getStorageHandler } from "@/utils/storage-factory";
 import fs from "fs";
 import path from "path";
+import { EXECUTIVE_SUMMARY_TOC } from "@/app/dashboard/reports/executive-summary/constants";
 
 
 export const maxDuration = 300; // Allow 5 minutes for this route (Vercel/Next.js config)
@@ -460,7 +461,8 @@ async function setRlsStatus(disable: boolean, logs: string[]): Promise<boolean> 
       'u_lib_list',
       'u_lib_combo',
       'mgi_profiles',
-      'jobpack'
+      'jobpack',
+      'u_executive_summaries'
     ];
 
     for (const table of tables) {
@@ -672,7 +674,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload format" }, { status: 400 });
   }
 
-  const { config, structureId, mappings, selectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
+  const { config, structureId, mappings, selectedInspNo: rawSelectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
+  const selectedInspNo = rawSelectedInspNo || (payload as any).inspNo;
   if (!config || !structureId || !mappings) {
     return NextResponse.json({ error: "Missing required payload parameters" }, { status: 400 });
   }
@@ -829,7 +832,7 @@ export async function POST(request: NextRequest) {
       report["U_LIB_LIST"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
       report["U_LIB_COMBO"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
       report["U_MGI_PROFILE"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
-      ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT", "COMP_NOT_INSP"].forEach(k => {
+      ["STR_ELV", "STR_LEVEL", "STR_FACES", "ATTACHMENT", "COMMENT", "U_ASSOC", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "INSP_ROV", "INSP_DIVING", "ANOMALY", "INSP_ATTACHMENT", "COMP_NOT_INSP", "EXSUM"].forEach(k => {
         report[k] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [], filesCopied: 0 };
       });
 
@@ -2918,6 +2921,85 @@ export async function POST(request: NextRequest) {
               }
             }
             report["U_SOW"].migratedRows++;
+
+            // ─── MIGRATE EXSUM DATA TO u_executive_summaries FOR THIS JOBPACK ───
+            try {
+              logs.push(`[EXSUM Migration] Checking Oracle EXSUM data for STR_ID: ${structureId}, INSPNO: ${oracleInspNo}...`);
+              const exsumQuery = `
+                SELECT STR_ID, INSPNO, INSP_REAS, FINDINGS
+                FROM EXSUM
+                WHERE STR_ID = :strId AND INSPNO = :inspNo
+              `;
+              const exsumRes = await oracleConn.execute(exsumQuery, { strId: structureId, inspNo: oracleInspNo });
+              
+              if (exsumRes.rows && exsumRes.rows.length > 0) {
+                logs.push(`[EXSUM Migration] Found ${exsumRes.rows.length} EXSUM row(s) in Oracle for STR_ID: ${structureId}, INSPNO: ${oracleInspNo}.`);
+                
+                const exsumRows = exsumRes.rows.map((row: any) => {
+                  if (Array.isArray(row)) {
+                    return {
+                      STR_ID: row[0],
+                      INSPNO: row[1],
+                      INSP_REAS: row[2],
+                      FINDINGS: row[3]
+                    };
+                  }
+                  return row;
+                });
+
+                // Map sections based on EXECUTIVE_SUMMARY_TOC
+                const exsumSections = EXECUTIVE_SUMMARY_TOC.map(toc => {
+                  const row = exsumRows.find((r: any) => {
+                    const inspReas = String(r.INSP_REAS || "").trim().toLowerCase();
+                    const tocTitle = toc.title.trim().toLowerCase();
+                    return inspReas === tocTitle || 
+                           inspReas.includes(toc.id.toLowerCase()) ||
+                           tocTitle.includes(inspReas) ||
+                           (toc.id === "mgi" && inspReas.includes("marine growth")) ||
+                           (toc.id === "riser" && inspReas.includes("riser")) ||
+                           (toc.id === "scour" && inspReas.includes("scour")) ||
+                           (toc.id === "seabed" && inspReas.includes("seabed"));
+                  });
+
+                  return {
+                    id: toc.id,
+                    title: toc.title,
+                    content: row ? String(row.FINDINGS || "").trim() : ""
+                  };
+                });
+
+                const { error: exsumErr } = await (supabase as any)
+                  .from("u_executive_summaries")
+                  .upsert({
+                    company_id: resolvedCompanyId || null,
+                    jobpack_id: Number(pgJpId),
+                    structure_id: Number(resolvedStructureId),
+                    sow_report_no: resolvedRepPrefix,
+                    sections: exsumSections,
+                    metadata: { migrated: true, migrated_at: new Date().toISOString() },
+                    updated_at: new Date().toISOString()
+                  }, {
+                    onConflict: 'jobpack_id,structure_id,sow_report_no'
+                  });
+
+                if (exsumErr) {
+                  logs.push(`[EXSUM Migration] WARNING: Failed to upsert executive summary: ${exsumErr.message}`);
+                  report["EXSUM"].errors.push(exsumErr.message);
+                  report["EXSUM"].status = "failed";
+                } else {
+                  logs.push(`[EXSUM Migration] Successfully migrated Executive Summary with ${exsumRows.length} section(s) to PostgreSQL!`);
+                  report["EXSUM"].status = "success";
+                  report["EXSUM"].oracleRows += exsumRows.length;
+                  report["EXSUM"].migratedRows += exsumRows.length;
+                }
+              } else {
+                logs.push(`[EXSUM Migration] No Oracle EXSUM rows found for STR_ID: ${structureId}, INSPNO: ${oracleInspNo}.`);
+                report["EXSUM"].status = "success";
+              }
+            } catch (exsumMigErr: any) {
+              logs.push(`[EXSUM Migration] WARNING: EXSUM migration failed: ${exsumMigErr.message}`);
+              console.error("[EXSUM Migration Fail]:", exsumMigErr);
+            }
           }
 
           report["JOBPACK"].status = "success";
@@ -7506,6 +7588,8 @@ export async function POST(request: NextRequest) {
           logs.push(`WARNING: SOW status synchronization failed: ${sowSyncErr.message}`);
           console.error("[SOW Sync post-migration Fail]:", sowSyncErr);
         }
+
+
 
         logs.push(`================================================================`);
         logs.push(`Relational Inspection Migration Pipeline completed successfully!`);

@@ -339,6 +339,15 @@ export const POST = withAuth(
         inspAttachCount = result.rows?.[0]?.CNT || result.rows?.[0]?.[0] || 0;
       } catch (e) {}
 
+      let exsumCount = 0;
+      try {
+        const result = await connection.execute(
+          `SELECT COUNT(*) AS CNT FROM EXSUM WHERE STR_ID = :strId AND INSPNO = :inspNo`,
+          { strId: str_id, inspNo: String(inspno) }
+        );
+        exsumCount = result.rows?.[0]?.CNT || result.rows?.[0]?.[0] || 0;
+      } catch (e) {}
+
       // Fetch existing Postgres inspection related counts
       let pgJobpackCount = 0;
       let pgSowCount = 0;
@@ -351,6 +360,14 @@ export const POST = withAuth(
       let pgCompAttachCount = 0;
       let pgInspAttachCount = 0;
       let pgCompNotInspCount = 0;
+      let pgExsumCount = 0;
+
+      try {
+        const { count } = await (supabase as any).from('u_executive_summaries').select('*', { count: 'exact', head: true })
+          .eq('jobpack_id', Number(inspno))
+          .eq('structure_id', Number(str_id));
+        pgExsumCount = count || 0;
+      } catch (e) {}
 
       try {
         const { count } = await (supabase as any).from('jobpack').select('*', { count: 'exact', head: true }).eq('jobpack_id', Number(inspno));
@@ -482,7 +499,8 @@ export const POST = withAuth(
           { code: "ANOMALY", name: "Anomalies (insp_anomalies)", row_count: Number(anomalyCount), pg_row_count: pgAnomalyCount },
           { code: "ATTACHMENT", name: "Component Attachments (attachment)", row_count: Number(compAttachCount), pg_row_count: pgCompAttachCount },
           { code: "INSP_ATTACHMENT", name: "Inspection Attachments (attachment)", row_count: Number(inspAttachCount), pg_row_count: pgInspAttachCount },
-          { code: "COMP_NOT_INSP", name: "Incomplete Inspections (comp_not_insp)", row_count: Number(compNotInspCount), pg_row_count: pgCompNotInspCount }
+          { code: "COMP_NOT_INSP", name: "Incomplete Inspections (comp_not_insp)", row_count: Number(compNotInspCount), pg_row_count: pgCompNotInspCount },
+          { code: "EXSUM", name: "Executive Summaries (u_executive_summaries)", row_count: Number(exsumCount), pg_row_count: pgExsumCount }
         ]
       });
 

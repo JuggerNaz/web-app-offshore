@@ -1170,6 +1170,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                             qid: r.structure_components?.q_id || r.inspection_data?.q_id || "N/A",
                             elevation: elevation,
                             inspectionType: formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_code || "UNKNOWN"),
+                            inspection_type_code: r.inspection_type_code || r.inspection_type?.code || "UNKNOWN",
                             description: getInspectionFindings(r, anomaly),
                             priority: anomaly?.priority_code || r.inspection_data?.priority || "N/A",
                             status: anomaly?.status || "OPEN",
