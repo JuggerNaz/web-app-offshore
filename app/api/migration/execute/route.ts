@@ -1420,6 +1420,7 @@ export async function POST(request: NextRequest) {
           if (!queryCols.has('STR_ID')) queryCols.add('STR_ID');
           if (!queryCols.has('ID_NO')) queryCols.add('ID_NO');
           if (!queryCols.has('Q_ID')) queryCols.add('Q_ID');
+          if (!queryCols.has('DEL')) queryCols.add('DEL');
 
           let specTableName = `${code}_comp`.toUpperCase();
           if (code.toLowerCase() === 'an') {
@@ -1427,7 +1428,7 @@ export async function POST(request: NextRequest) {
           }
 
           let query = `
-            SELECT c.COMP_ID, c.STR_ID, c.ID_NO, c.Q_ID, c.CODE, s.* 
+            SELECT c.COMP_ID, c.STR_ID, c.ID_NO, c.Q_ID, c.CODE, c.DEL, s.* 
             FROM ALLCOMPID c
             LEFT JOIN ${specTableName} s ON c.COMP_ID = s.COMP_ID
             WHERE c.STR_ID = :strId AND c.CODE = :code
@@ -1466,10 +1467,11 @@ export async function POST(request: NextRequest) {
             if (rows && rows.length > 0) {
               report[code].oracleRows = rows.length;
               const pgRecords = rows.map(oracleData => {
+                const isDeletedVal = oracleData['DEL'];
                 const pgRecord: Record<string, any> = {
                   structure_id: resolvedStructureId,
                   code: code,
-                  is_deleted: false
+                  is_deleted: (isDeletedVal === 1 || String(isDeletedVal) === '1') ? true : false
                 };
 
                 compMappings.forEach(mapping => {
@@ -1508,7 +1510,8 @@ export async function POST(request: NextRequest) {
                   pgRecord.q_id = String(oracleData['Q_ID']);
                 }
                 if (pgRecord.is_deleted === null || pgRecord.is_deleted === undefined) {
-                  pgRecord.is_deleted = false;
+                  const isDeletedVal = oracleData['DEL'];
+                  pgRecord.is_deleted = (isDeletedVal === 1 || String(isDeletedVal) === '1') ? true : false;
                 }
 
                 return pgRecord;
@@ -4209,6 +4212,7 @@ export async function POST(request: NextRequest) {
               const acSelect = ['COMP_ID', 'CODE'];
               if (allcompCols.has('ID_NO')) acSelect.push('ID_NO');
               if (allcompCols.has('Q_ID')) acSelect.push('Q_ID');
+              if (allcompCols.has('DEL')) acSelect.push('DEL');
               if (allcompCols.has('DESCRIPTION')) acSelect.push('DESCRIPTION');
               else if (allcompCols.has('DESCR')) acSelect.push('DESCR as DESCRIPTION');
 
@@ -4246,13 +4250,14 @@ export async function POST(request: NextRequest) {
                   const qId = rObj.Q_ID ? String(rObj.Q_ID).trim() : null;
                   if (!oracleCompId || !code) continue;
 
+                  const isDeletedVal = rObj.DEL;
                   compsToInsert.push({
                     comp_id: oracleCompId,
                     structure_id: resolvedStructureId,
                     code: code,
                     id_no: idNo || null,
                     q_id: qId,
-                    is_deleted: false,
+                    is_deleted: (isDeletedVal === 1 || String(isDeletedVal) === '1') ? true : false,
                     metadata: { auto_migrated: true, description: desc || null }
                   });
                 }
