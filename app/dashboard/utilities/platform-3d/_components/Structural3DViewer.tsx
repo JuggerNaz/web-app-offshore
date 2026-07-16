@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useRef } from "react";
 import { Fender } from "./Fender";
 import { RiserGuard } from "./RiserGuard";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
     OrbitControls,
     PerspectiveCamera,
@@ -437,7 +437,7 @@ const ComponentMesh = ({
                     ) : isClamp ? (
                         <boxGeometry args={[baseThickness, 0.8, baseThickness]} />
                     ) : (
-                        <cylinderGeometry args={[baseThickness, baseThickness, safeMeshLength, 12]} />
+                        <cylinderGeometry args={[baseThickness, baseThickness, safeMeshLength, 6]} />
                     )}
                     <meshStandardMaterial
                         color={
@@ -462,12 +462,14 @@ const ComponentMesh = ({
                         emissive={isSelected ? "#ea580c" : isWeld ? "#a21caf" : "#000000"}
                         emissiveIntensity={isSelected ? 0.6 : isWeld ? 0.4 : 0}
                     />
-                    <Edges
-                        threshold={20}
-                        color="#0f172a"
-                        opacity={0.35}
-                        transparent
-                    />
+                    {(!isAnode && !isWeld && !isClamp) && (
+                        <Edges
+                            threshold={20}
+                            color="#0f172a"
+                            opacity={0.35}
+                            transparent
+                        />
+                    )}
                     {isSelected && (
                         <Outlines
                             thickness={0.04}
@@ -484,12 +486,6 @@ const ComponentMesh = ({
                         <mesh position={[0, 0, 0]} castShadow receiveShadow>
                             <boxGeometry args={[baseThickness + 0.4, 0.6, 0.05]} />
                             <meshStandardMaterial color="#d97706" metalness={0.8} roughness={0.25} />
-                            <Edges
-                                threshold={20}
-                                color="#0f172a"
-                                opacity={0.35}
-                                transparent
-                            />
                         </mesh>
                     )}
                     {isAnode && (
@@ -498,7 +494,6 @@ const ComponentMesh = ({
                             <mesh position={[0, safeMeshLength / 2 + 0.05, 0]} castShadow receiveShadow>
                                 <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
                                 <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
-                                <Edges threshold={20} color="#0f172a" opacity={0.3} transparent />
                             </mesh>
                             <mesh
                                 position={[-ox / 2, safeMeshLength / 2 + 0.1, -oz / 2]}
@@ -508,13 +503,11 @@ const ComponentMesh = ({
                             >
                                 <cylinderGeometry args={[0.03, 0.03, offsetDistance, 8]} />
                                 <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
-                                <Edges threshold={20} color="#0f172a" opacity={0.3} transparent />
                             </mesh>
                             { }
                             <mesh position={[0, -safeMeshLength / 2 - 0.05, 0]} castShadow receiveShadow>
                                 <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
                                 <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
-                                <Edges threshold={20} color="#0f172a" opacity={0.3} transparent />
                             </mesh>
                             <mesh
                                 position={[-ox / 2, -safeMeshLength / 2 - 0.1, -oz / 2]}
@@ -524,7 +517,6 @@ const ComponentMesh = ({
                             >
                                 <cylinderGeometry args={[0.03, 0.03, offsetDistance, 8]} />
                                 <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
-                                <Edges threshold={20} color="#0f172a" opacity={0.3} transparent />
                             </mesh>
                         </group>
                     )}
@@ -555,7 +547,7 @@ const ComponentMesh = ({
                                 baseThickness + 0.3,
                                 baseThickness + 0.3,
                                 Math.max(isWeld ? safeMeshLength + 0.5 : length + 0.5, 0.01),
-                                8,
+                                6,
                             ]}
                         />
                     )}
@@ -666,6 +658,22 @@ function SelectToZoom({ children }: { children: React.ReactNode }) {
     );
 }
 
+function CameraDistanceController({ onChange }: { onChange: (isClose: boolean) => void }) {
+    const { camera } = useThree();
+    const lastIsClose = useRef(false);
+
+    useFrame(() => {
+        const dist = camera.position.length();
+        const isClose = dist < 45;
+        if (isClose !== lastIsClose.current) {
+            lastIsClose.current = isClose;
+            onChange(isClose);
+        }
+    });
+
+    return null;
+}
+
 function ResetViewHandler({ trigger }: { trigger: number }) {
     const api = useBounds();
     const isFirstRun = React.useRef(true);
@@ -680,6 +688,8 @@ function ResetViewHandler({ trigger }: { trigger: number }) {
 
     return null;
 }
+
+
 
 export function Structural3DViewer({
     components: rawComponents,
@@ -719,6 +729,7 @@ export function Structural3DViewer({
     const [resetTrigger, setResetTrigger] = useState(0);
     const [showWater, setShowWater] = useState(true);
     const [showWeldNumbering, setShowWeldNumbering] = useState(true);
+    const [isCameraClose, setIsCameraClose] = useState(false);
     const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
     const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
     const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | null>(null);
@@ -1585,7 +1596,7 @@ export function Structural3DViewer({
             let end = new THREE.Vector3();
             let resolved = false;
 
-            if (md.associated_comp_id) {
+            if (md.associated_comp_id && code !== "VM") {
                 if (code !== "WN") {
                     pendingAttachments.push(c);
                 }
@@ -1676,7 +1687,7 @@ export function Structural3DViewer({
                     const dir2 = len2 > 0.001 ? eNode2.clone().sub(sNode2).normalize() : new THREE.Vector3(0, 0, 0);
                     const offsetPos2 = sNode2.clone().add(dir2.clone().multiplyScalar(distVal));
 
-                    const offsetDistance = 0.8;
+                    const offsetDistance = 0.0;
                     const finalStart = offsetPos1.clone();
                     const finalEnd = offsetPos2.clone();
 
@@ -2291,7 +2302,7 @@ export function Structural3DViewer({
 
     if (!isActivated) {
         return (
-            <div className="w-full h-full min-h-[450px] relative rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 text-slate-100 shadow-2xl flex flex-col items-center justify-center p-8 transition-all duration-500">
+            <div className="w-full h-full min-h-[450px] relative rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xl flex flex-col items-center justify-center p-8 transition-all duration-500">
                 <style>{`
                   @keyframes loading-bar {
                     0% { transform: translateX(-100%); }
@@ -2300,8 +2311,8 @@ export function Structural3DViewer({
                   }
                 `}</style>
                 {/* Technical Blueprint Grid Pattern background */}
-                <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:3rem_3rem] opacity-30 pointer-events-none" />
-                <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-900/90 to-blue-950/40 pointer-events-none" />
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:3rem_3rem] opacity-40 dark:opacity-30 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-tr from-slate-50 via-white/90 to-blue-50/40 dark:from-slate-950 dark:via-slate-900/90 dark:to-blue-950/40 pointer-events-none" />
 
                 {isActivating ? (
                     /* SCANNING / TELEMETRY LOADING STATE */
@@ -2347,17 +2358,17 @@ export function Structural3DViewer({
 
                         {/* Title & Info */}
                         <div className="space-y-3">
-                            <h2 className="text-2xl font-black uppercase tracking-tight text-white leading-none">
+                            <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900 dark:text-white leading-none">
                                 {platformDetails?.title || "INTERACTIVE PLATFORM"}
                             </h2>
-                            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider max-w-md mx-auto">
+                            <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider max-w-md mx-auto">
                                 Run diagnostics, view elevations, and inspect structural jacket anodes/welds in
                                 interactive 3D.
                             </p>
                         </div>
 
                         {/* Telemetry Stats Grid */}
-                        <div className="grid grid-cols-3 gap-6 w-full max-w-md py-4 px-6 rounded-2xl bg-slate-950/50 border border-slate-800/80 backdrop-blur-sm shadow-inner">
+                        <div className="grid grid-cols-3 gap-6 w-full max-w-md py-4 px-6 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 backdrop-blur-sm shadow-inner">
                             <div className="flex flex-col items-center justify-center text-center">
                                 <span className="text-xl font-black text-blue-400 leading-none mb-1">
                                     {components.length}
@@ -2409,10 +2420,10 @@ export function Structural3DViewer({
     }
 
     return (
-        <div className="w-full h-full bg-slate-900 relative rounded-3xl overflow-hidden shadow-2xl">
-            <Canvas shadows gl={{ antialias: true }} dpr={[1, 2]}>
-                <color attach="background" args={["#bce1f1"]} />
-                <fog attach="fog" args={["#bce1f1", 50, 250]} />
+        <div className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative rounded-3xl overflow-hidden shadow-2xl">
+            <Canvas shadows="soft" gl={{ antialias: true }} dpr={[1, 2]}>
+                <color attach="background" args={["#ffffff"]} />
+                <fog attach="fog" args={["#ffffff", 40, 220]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
 
@@ -2424,6 +2435,7 @@ export function Structural3DViewer({
                     castShadow
                     shadow-mapSize={[2048, 2048]}
                     shadow-bias={-0.0001}
+                    shadow-radius={6}
                     shadow-camera-near={1}
                     shadow-camera-far={250}
                     shadow-camera-left={-60}
@@ -2433,8 +2445,10 @@ export function Structural3DViewer({
                 />
                 <spotLight position={[-40, 60, -40]} angle={0.3} penumbra={1} intensity={0.8} />
 
+
                 <Bounds fit clip margin={1.0}>
                     <ResetViewHandler trigger={resetTrigger} />
+                    <CameraDistanceController onChange={setIsCameraClose} />
                     <SelectToZoom>
                         {/* Elevation Markers */}
                         {elvMarkers.map((m, i) => (
@@ -2465,7 +2479,7 @@ export function Structural3DViewer({
                                 start={layout.start}
                                 end={layout.end}
                                 thickness={layout.thickness}
-                                showWeldNumbering={showWeldNumbering}
+                                showWeldNumbering={isCameraClose && showWeldNumbering}
                             />
                         ))}
                     </SelectToZoom>

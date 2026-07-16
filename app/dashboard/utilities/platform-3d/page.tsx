@@ -210,7 +210,7 @@ export default function Platform3DPage() {
 
                 {/* Viewer Container */}
                 <div className="flex-1 p-6 flex gap-6 relative overflow-hidden h-[calc(100vh-130px)]">
-                    <div className="flex-1 h-full min-w-0 bg-slate-900 rounded-[2rem] relative overflow-hidden">
+                    <div className="flex-1 h-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] relative overflow-hidden">
                         {(isComponentsLoading || isPlatformDetailLoading) ? (
                             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm z-10 rounded-[2rem]">
                                 <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4" />
