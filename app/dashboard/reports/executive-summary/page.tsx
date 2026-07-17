@@ -740,8 +740,32 @@ export default function ExecutiveSummaryPage() {
                 SCOUR_MAX_FACE: insightData?.data?.scour?.maxDepthFace || "N/A",
                 SCOUR_MAX_QID: insightData?.data?.scour?.maxDepthQid || "N/A",
 
-                // ── Sections (User-Written) ──────────────────────────
+                // Sections (User-Written)
                 SECTIONS: sections,
+                NEXT_PARAGRAPH_NO: `1.${sections.length + 1}`,
+                NEXT_NO: sections.length + 1,
+                HAS_OUTSTANDING_TASKS: (insightData?.data?.outstanding_tasks || []).length > 0,
+                NO_OUTSTANDING_TASKS: (insightData?.data?.outstanding_tasks || []).length === 0,
+                OUTSTANDING_TASKS: (insightData?.data?.outstanding_tasks || []).map((t: any, idx: number) => ({
+                    ...t,
+                    no: idx + 1
+                })),
+                OUTSTANDING_GROUPS: (() => {
+                    const groupsMap = new Map<string, any[]>();
+                    (insightData?.data?.outstanding_tasks || []).forEach((t: any) => {
+                        const type = t.inspectionType || "General Inspection";
+                        if (!groupsMap.has(type)) groupsMap.set(type, []);
+                        groupsMap.get(type)!.push(t);
+                    });
+                    return Array.from(groupsMap.entries()).map(([type, items]) => ({
+                        inspectionType: type,
+                        totalCount: items.length,
+                        tasks: items.map((item, idx) => ({
+                            ...item,
+                            no: idx + 1
+                        }))
+                    }));
+                })(),
 
                 // ── Detailed Loop Tables ─────────────────────────────
                 ANOMALIES: rawAnomalies,

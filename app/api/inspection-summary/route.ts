@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-// Last Updated: 2026-05-11T18:01:00
+export const dynamic = "force-dynamic";
 import { createClient } from "@/utils/supabase/server";
 import { withTenant } from "@/utils/tenant-auth";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
@@ -87,6 +87,10 @@ export const GET = withTenant(async (request, { companyId }) => {
                     component_qid,
                     component_type, 
                     inspection_code,
+                    inspection_name,
+                    elevation_required,
+                    elevation_data,
+                    notes,
                     report_number
                 `)
                 .eq("company_id", companyId)
@@ -98,19 +102,67 @@ export const GET = withTenant(async (request, { companyId }) => {
             allSowItems = itemsData || [];
         }
 
-        // Fetch structure components separately to build a lookup for null/missing component_type
-        const { data: compList } = !isNaN(strNum)
-            ? await (supabase as any)
-                .from("structure_components")
-                .select("id, q_id, code, metadata")
-                .eq("structure_id", strNum)
-                .eq("company_id", companyId)
-            : { data: null };
+        const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all";
+        const sowItemsToProcess = isReportSpecific
+            ? allSowItems.filter((i: any) => {
+                const itemRep = String(i.report_number || "").replace(/\s+/g, "").toLowerCase();
+                const filterRep = String(sowReportNo).replace(/\s+/g, "").toLowerCase();
+                return itemRep === filterRep;
+              })
+            : allSowItems;
+
+        // Extract active component IDs and QIDs to query target components specifically
+        // Coerce componentIds strictly to numbers to prevent "operator does not exist: integer = text" SQL errors
+        const componentIds = sowItemsToProcess
+            .map((i: any) => {
+                const val = parseInt(String(i.component_id));
+                return isNaN(val) ? null : val;
+            })
+            .filter(Boolean) as number[];
+        const componentQids = sowItemsToProcess.map((i: any) => String(i.component_qid || "").trim()).filter(q => q !== "");
+
+        let compList: any[] = [];
+        if (!isNaN(strNum)) {
+            const queries: Promise<any>[] = [];
+            if (componentIds.length > 0) {
+                queries.push(
+                    (supabase as any)
+                        .from("structure_components")
+                        .select("id, q_id, code, metadata")
+                        .eq("structure_id", strNum)
+                        .in("id", componentIds)
+                );
+            }
+            if (componentQids.length > 0) {
+                queries.push(
+                    (supabase as any)
+                        .from("structure_components")
+                        .select("id, q_id, code, metadata")
+                        .eq("structure_id", strNum)
+                        .in("q_id", componentQids)
+                );
+            }
+
+            if (queries.length > 0) {
+                const results = await Promise.all(queries);
+                results.forEach((res) => {
+                    if (res.data) {
+                        compList = compList.concat(res.data);
+                    }
+                });
+            }
+        }
+
+        console.log(`[Summary API] Fetched ${compList.length} targeted components for SOW items`);
 
         const compMap = new Map();
+        const qidMap = new Map();
         if (compList) {
             compList.forEach((c: any) => {
-                compMap.set(c.id, c);
+                compMap.set(String(c.id), c);
+                if (c.q_id) {
+                    qidMap.set(String(c.q_id).trim().toUpperCase(), c);
+                }
             });
         }
 
@@ -125,6 +177,78 @@ export const GET = withTenant(async (request, { companyId }) => {
         const completedPct = totalSow > 0 ? Math.round((completedSow / totalSow) * 100) : 0;
         const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
         const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
+
+        const outstandingTasks: any[] = [];
+        sowItemsToProcess.forEach((item: any) => {
+            const statusStr = String(item.status || "").toLowerCase().trim();
+            if (statusStr === "incomplete" || statusStr === "pending") {
+                let comp = compMap.get(String(item.component_id));
+                if (!comp && item.component_qid) {
+                    comp = qidMap.get(String(item.component_qid).trim().toUpperCase());
+                }
+                const compMeta = comp?.metadata || {};
+                const elv1 = compMeta.elv_1 !== undefined && compMeta.elv_1 !== null ? compMeta.elv_1 : null;
+                const elv2 = compMeta.elv_2 !== undefined && compMeta.elv_2 !== null ? compMeta.elv_2 : null;
+
+                // Prefer negative elevation if either is negative (e.g. spans sea level)
+                let compElv: any = null;
+                if (elv1 !== null && parseFloat(String(elv1)) < 0) {
+                    compElv = elv1;
+                } else if (elv2 !== null && parseFloat(String(elv2)) < 0) {
+                    compElv = elv2;
+                } else {
+                    compElv = elv1 !== null ? elv1 : elv2;
+                }
+                
+                const formatElevation = (val: any) => {
+                    if (val === undefined || val === null || String(val).trim() === "" || String(val).trim() === "-") return "-";
+                    const num = parseFloat(String(val));
+                    if (isNaN(num)) return String(val);
+                    if (num < 0) return `(-)${Math.abs(num)}`;
+                    return String(val);
+                };
+
+                if (item.elevation_required && Array.isArray(item.elevation_data) && item.elevation_data.length > 0) {
+                    item.elevation_data.forEach((elev: any) => {
+                        const elevStatus = String(elev.status || "").toLowerCase().trim();
+                        if (elevStatus === "incomplete" || elevStatus === "pending") {
+                            const hasStart = elev.start !== undefined && elev.start !== null && String(elev.start).trim() !== "" && String(elev.start).trim() !== "-";
+                            outstandingTasks.push({
+                                qid: item.component_qid || "N/A",
+                                elevation: formatElevation(hasStart ? elev.start : compElv),
+                                comments: elev.comments || elev.notes || item.notes || `Unable to inspect due to access/visibility constraint`,
+                                inspectionType: item.inspection_name || item.inspection_code || "General Inspection"
+                            });
+                        }
+                    });
+                } else {
+                    outstandingTasks.push({
+                        qid: item.component_qid || "N/A",
+                        elevation: formatElevation(compElv),
+                        comments: item.notes || `Unable to inspect due to access/visibility constraint`,
+                        inspectionType: item.inspection_name || item.inspection_code || "General Inspection"
+                    });
+                }
+            }
+        });
+
+        outstandingTasks.sort((a, b) => {
+            const parseElevationForSort = (elvStr: string) => {
+                if (!elvStr || elvStr === "-") return null;
+                const cleaned = elvStr.replace(/\(-\)/g, "-").replace(/[^\d.-]/g, "");
+                const num = parseFloat(cleaned);
+                return isNaN(num) ? null : num;
+            };
+
+            const valA = parseElevationForSort(a.elevation);
+            const valB = parseElevationForSort(b.elevation);
+
+            if (valA === null && valB === null) return 0;
+            if (valA === null) return 1;
+            if (valB === null) return -1;
+
+            return valB - valA;
+        });
 
         let recQuery = (supabase as any)
             .from("insp_records")
@@ -171,7 +295,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         });
         
         // Determine if we should filter the overview by the current report
-        const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all";
+        // isReportSpecific already declared and evaluated above
 
         // Filter records by report locally if requested
         // Using strict matching after trim and lowercase conversion to match selected report number exactly
@@ -1330,6 +1454,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     thickness: r.inspection_data?.avg_thickness || r.inspection_data?.thickness || "0",
                     date: r.inspection_data?.date || new Date().toLocaleDateString("en-GB")
                 })),
+                outstanding_tasks: outstandingTasks,
             },
         });
     } catch (error: any) {

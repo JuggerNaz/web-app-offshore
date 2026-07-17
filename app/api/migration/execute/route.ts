@@ -1393,16 +1393,32 @@ export async function POST(request: NextRequest) {
       // Fetch all existing components for this structure to update in place and avoid duplicating/deleting them!
       const existingCompMap = new Map<number, number>(); // comp_id -> pg_id
       try {
-        const { data: existingComps } = await supabase
-          .from("structure_components")
-          .select("id, comp_id")
-          .eq("structure_id", resolvedStructureId);
-        if (existingComps) {
-          existingComps.forEach((c: any) => {
-            if (c.comp_id) {
-              existingCompMap.set(Number(c.comp_id), Number(c.id));
+        let page = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+        while (hasMore) {
+          const { data: existingComps, error } = await supabase
+            .from("structure_components")
+            .select("id, comp_id")
+            .eq("structure_id", resolvedStructureId)
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+          if (error) throw error;
+
+          if (!existingComps || existingComps.length === 0) {
+            hasMore = false;
+          } else {
+            existingComps.forEach((c: any) => {
+              if (c.comp_id) {
+                existingCompMap.set(Number(c.comp_id), Number(c.id));
+              }
+            });
+            if (existingComps.length < pageSize) {
+              hasMore = false;
+            } else {
+              page++;
             }
-          });
+          }
         }
       } catch (err: any) {
         logs.push(`WARNING: Could not fetch existing components: ${err.message}`);
