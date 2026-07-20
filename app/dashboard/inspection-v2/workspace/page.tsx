@@ -3462,26 +3462,37 @@ function V10PreviewLayout() {
 
       if (logs) {
         allEv.push(
-          ...logs.map((l: any) => ({
-            id: `log_${l.video_log_id}`,
-            realId: l.video_log_id,
-            time: l.timecode_start || "00:00:00",
-            action:
-              l.event_type === "NEW_LOG_START"
-                ? "Start Tape"
-                : l.event_type === "END"
-                  ? "Stop Tape"
-                  : l.event_type === "PAUSE"
-                    ? "Pause"
-                    : l.event_type === "RESUME"
-                      ? "Resume"
-                      : l.event_type,
-            logType: "video_log",
-            eventTime: parseDbDate(l.event_time).toISOString(),
-            inspectionId: l.inspection_id,
-            tape_id: l.tape_id,
-            tape_counter_start: l.tape_counter_start || 0,
-          }))
+          ...logs.map((l: any) => {
+            const matchedTape = tapes?.find((t: any) => String(t.tape_id) === String(l.tape_id));
+            const tapeNo = matchedTape?.tape_no || "N/A";
+            const chapterNo = matchedTape?.chapter_no != null ? String(matchedTape.chapter_no) : "N/A";
+            const diveNo = activeDep?.jobNo || "N/A";
+            const structure = headerData.platformName || "N/A";
+            return {
+              id: `log_${l.video_log_id}`,
+              realId: l.video_log_id,
+              time: l.timecode_start ? l.timecode_start : (l.tape_counter_start ? formatCounter(l.tape_counter_start) : "00:00:00"),
+              action:
+                l.event_type === "NEW_LOG_START"
+                  ? "Start Tape"
+                  : l.event_type === "END"
+                    ? "Stop Tape"
+                    : l.event_type === "PAUSE"
+                      ? "Pause"
+                      : l.event_type === "RESUME"
+                        ? "Resume"
+                        : l.event_type,
+              logType: "video_log",
+              eventTime: parseDbDate(l.event_time).toISOString(),
+              inspectionId: l.inspection_id,
+              tape_id: l.tape_id,
+              tape_counter_start: l.tape_counter_start || 0,
+              tapeNo,
+              chapterNo,
+              diveNo,
+              structure,
+            };
+          })
         );
       }
 
@@ -3549,10 +3560,16 @@ function V10PreviewLayout() {
               r.has_anomaly || r.status === "Anomaly" || r.status === "Defect"
                 ? "ANOMALY"
                 : "INSPECTION";
+            const matchedTape = tapes?.find((t: any) => String(t.tape_id) === String(r.tape_id));
+            const tapeNo = matchedTape?.tape_no || r.insp_video_tapes?.tape_no || "N/A";
+            const chapterNo = matchedTape?.chapter_no != null ? String(matchedTape.chapter_no) : "N/A";
+            const diveNo = r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || activeDep?.jobNo || "N/A";
+            const structure = headerData.platformName || "N/A";
+
             allEv.push({
               id: `insp_${r.insp_id}`,
               realId: r.insp_id,
-              time: r.inspection_data?._meta_timecode || "00:00:00",
+              time: r.inspection_data?._meta_timecode ? r.inspection_data._meta_timecode : (r.tape_count_no ? formatCounter(r.tape_count_no) : "00:00:00"),
               action: status,
               logType: "insp",
               eventTime:
@@ -3563,6 +3580,10 @@ function V10PreviewLayout() {
                     )
                   : format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"),
               tape_id: r.tape_id,
+              tapeNo,
+              chapterNo,
+              diveNo,
+              structure,
             });
           }
         });
