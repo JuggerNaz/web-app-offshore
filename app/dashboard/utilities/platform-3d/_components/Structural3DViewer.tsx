@@ -2421,7 +2421,14 @@ export function Structural3DViewer({
 
     return (
         <div className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative rounded-3xl overflow-hidden shadow-2xl">
-            <Canvas shadows="soft" gl={{ antialias: true }} dpr={[1, 2]}>
+            <Canvas
+                shadows="soft"
+                gl={{ antialias: true }}
+                dpr={[1, 2]}
+                onCreated={({ gl }) => {
+                    (window as any).renderer = gl;
+                }}
+            >
                 <color attach="background" args={["#ffffff"]} />
                 <fog attach="fog" args={["#ffffff", 40, 220]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
