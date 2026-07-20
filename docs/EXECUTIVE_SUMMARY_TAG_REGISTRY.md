@@ -94,6 +94,7 @@ Wrap content in these tags to hide sections when data is missing.
 {{#HAS_GVI}} ... content ... {{/HAS_GVI}}
 {{#HAS_FMD}} ... content ... {{/HAS_FMD}}
 {{#HAS_VISUALS}} ... content ... {{/HAS_VISUALS}}
+{{#HAS_SOW_SUMMARY}} ... content ... {{/HAS_SOW_SUMMARY}}
 ```
 
 ### Handling Empty / Not Inspected States (Inverted Conditionals)
@@ -132,6 +133,10 @@ Flooded Member Detection (FMD) inspection was not conducted, or this component i
 ### MGI Records
 - **Loop**: `{{#MGI_RECORDS}} ... {{/MGI_RECORDS}}`
 - **Fields**: `{{component}}`, `{{thickness}}`, `{{date}}`
+
+### SOW Status Summary (IDAMS Scope of Work Status)
+- **Loop**: `{{#SOW_SUMMARY}} ... {{/SOW_SUMMARY}}`
+- **Fields**: `{{no}}` (Index), `{{inspectionName}}` (Inspection Name), `{{taskType}}` (Task Type), `{{totalQid}}` (Total No. QID), `{{incompleteQid}}` (No. QID Incomplete), `{{incompletePct}}` (% SOW Incomplete)
 
 ### Structure Visuals (Engineering Library Photos)
 - **Loop**: `{{#STRUCTURE_VISUALS}} ... {{/STRUCTURE_VISUALS}}`

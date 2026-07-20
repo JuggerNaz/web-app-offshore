@@ -41,6 +41,12 @@ interface SummaryTemplatesDialogProps {
         jobpack?: string;
         reportNo?: string;
         client?: string;
+        clientShort?: string;
+        contractor?: string;
+        vessel?: string;
+        fieldName?: string;
+        startDate?: string;
+        endDate?: string;
     };
     existingRules: any;
     onSaveRules: (rules: any) => Promise<void>;
@@ -133,16 +139,53 @@ export function SummaryTemplatesDialog({
 
     const injectVariables = (content: string) => {
         let text = content;
+        
+        const getTodayShort = () => {
+            const d = new Date();
+            const day = String(d.getDate()).padStart(2, '0');
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            return `${day}-${months[d.getMonth()]}-${d.getFullYear()}`;
+        };
+
+        const clientName = projectContext.client || "[CLIENT]";
+        const clientShort = projectContext.clientShort || "[CLIENT_SHORT]";
+        const contractorName = projectContext.contractor || "[CONTRACTOR]";
+        const contractorShort = projectContext.contractor || "[CONTRACTOR_SHORT]";
+        const fieldName = projectContext.fieldName || "[FIELD_NAME]";
+        
         const vars: Record<string, string> = {
             "{{PLATFORM}}": projectContext.platform || "[PLATFORM]",
+            "{{PLATFORM_TITLE}}": projectContext.platform || "[PLATFORM]",
+            "{{PLATFORM_NAME}}": projectContext.platform || "[PLATFORM]",
             "{{JOB_PACK}}": projectContext.jobpack || "[JOB_PACK]",
+            "{{JOB_PACK_NAME}}": projectContext.jobpack || "[JOB_PACK]",
             "{{REPORT_NO}}": projectContext.reportNo || "[REPORT_NO]",
-            "{{CLIENT}}": projectContext.client || "[CLIENT]",
-            "{{DATE}}": new Date().toLocaleDateString("en-GB")
+            "{{SOW_REPORT_NO}}": projectContext.reportNo || "[REPORT_NO]",
+            "{{CLIENT}}": clientName,
+            "{{CLIENT_NAME}}": clientName,
+            "{{CLIENT_NAME_UPPER}}": clientName.toUpperCase(),
+            "{{CLIENT_SHORT}}": clientShort,
+            "{{CLIENT_SHORT_UPPER}}": clientShort.toUpperCase(),
+            "{{FIELD_NAME}}": fieldName,
+            "{{OIL_FIELD}}": fieldName,
+            "{{OIL_FIELD_NAME}}": fieldName,
+            "{{CONTRACTOR}}": contractorName,
+            "{{CONTRACTOR_NAME}}": contractorName,
+            "{{CONTRACTOR_NAME_UPPER}}": contractorName.toUpperCase(),
+            "{{CONTRACTOR_SHORT}}": contractorShort,
+            "{{CONTRACTOR_SHORT_UPPER}}": contractorShort.toUpperCase(),
+            "{{VESSEL_NAME}}": projectContext.vessel || "NONE",
+            "{{START_DATE}}": projectContext.startDate || "[START_DATE]",
+            "{{INSP_START_DATE}}": projectContext.startDate || "[INSP_START_DATE]",
+            "{{END_DATE}}": projectContext.endDate || "[END_DATE]",
+            "{{INSP_END_DATE}}": projectContext.endDate || "[INSP_END_DATE]",
+            "{{DATE}}": new Date().toLocaleDateString("en-GB"),
+            "{{TODAY_SHORT}}": getTodayShort()
         };
 
         Object.entries(vars).forEach(([key, val]) => {
             text = text.replaceAll(key, val);
+            text = text.replaceAll(key.toLowerCase(), val);
         });
 
         return text;
@@ -433,7 +476,7 @@ export function SummaryTemplatesDialog({
 
                         <DialogFooter className="p-4 bg-white dark:bg-slate-950 border-t flex items-center justify-between shrink-0">
                             <div className="text-[10px] text-slate-400 font-medium">
-                                Supported Variables: <code className="text-blue-500">{"{{PLATFORM}}"}</code>, <code className="text-blue-500">{"{{JOB_PACK}}"}</code>, <code className="text-blue-500">{"{{REPORT_NO}}"}</code>, <code className="text-blue-500">{"{{DATE}}"}</code>
+                                Supported Variables: <code className="text-blue-500">{"{{PLATFORM}}"}</code>, <code className="text-blue-500">{"{{CLIENT_NAME}}"}</code>, <code className="text-blue-500">{"{{CLIENT_SHORT}}"}</code>, <code className="text-blue-500">{"{{CONTRACTOR_NAME}}"}</code>, <code className="text-blue-500">{"{{OIL_FIELD}}"}</code>, <code className="text-blue-500">{"{{START_DATE}}"}</code>, <code className="text-blue-500">{"{{END_DATE}}"}</code>, <code className="text-blue-500">{"{{TODAY_SHORT}}"}</code>
                             </div>
                             <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-[11px] font-bold uppercase">Close</Button>
                         </DialogFooter>

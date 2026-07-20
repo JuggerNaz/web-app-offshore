@@ -1181,10 +1181,108 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
+        const sowSummaryMap = new Map<string, {
+            inspectionName: string;
+            taskType: string;
+            totalQid: number;
+            incompleteQid: number;
+        }>();
+
+        const defaultTaskType = (() => {
+            const hasRov = rawRecords.some((r: any) => r.rov_job_id);
+            const hasDive = rawRecords.some((r: any) => r.dive_job_id && !r.rov_job_id);
+            if (hasRov && hasDive) return "ROV / DIVE";
+            if (hasRov) return "ROV";
+            if (hasDive) return "DIVE";
+            return "ROV";
+        })();
+
+        const { data: inspTypes } = await (supabase as any)
+            .from("inspection_type")
+            .select("id, code, name, metadata");
+
+        const inspTypeMap = new Map<string, any>();
+        if (inspTypes) {
+            inspTypes.forEach((t: any) => {
+                if (t.code) inspTypeMap.set(t.code.toUpperCase().trim(), t);
+                if (t.name) inspTypeMap.set(t.name.toUpperCase().trim(), t);
+            });
+        }
+
+        sowItemsToProcess.forEach((item: any) => {
+            const name = item.inspection_name || formatInspectionTypeName(item.inspection_code || "UNKNOWN");
+            const code = String(item.inspection_code || "").trim().toUpperCase();
+            const status = String(item.status || "").toLowerCase().trim();
+            const isIncomplete = status === "incomplete" || status === "pending";
+
+            // Determine task type based on inspection_type metadata
+            let taskType = "ROV";
+
+            // Try to find the inspection type metadata
+            const inspTypeObj = inspTypeMap.get(code) || (item.inspection_name ? inspTypeMap.get(item.inspection_name.toUpperCase().trim()) : null);
+            if (inspTypeObj && inspTypeObj.metadata) {
+                const meta = inspTypeObj.metadata;
+                if (meta.rov === 1 || meta.rov === "1" || meta.rov === true) {
+                    taskType = "ROV";
+                } else if (meta.diving === 1 || meta.diving === "1" || meta.diving === true) {
+                    taskType = "Diving";
+                } else {
+                    // fallback to name/code checking
+                    const lowerName = name.toLowerCase();
+                    const lowerCode = code.toLowerCase();
+                    if (lowerName.includes("rov") || lowerCode.startsWith("r")) {
+                        taskType = "ROV";
+                    } else if (lowerName.includes("dive") || lowerName.includes("diving") || lowerCode.startsWith("d")) {
+                        taskType = "Diving";
+                    }
+                }
+            } else {
+                // fallback to name/code checking if not found in db
+                const lowerName = name.toLowerCase();
+                const lowerCode = code.toLowerCase();
+                if (lowerName.includes("rov") || lowerCode.startsWith("r")) {
+                    taskType = "ROV";
+                } else if (lowerName.includes("dive") || lowerName.includes("diving") || lowerCode.startsWith("d")) {
+                    taskType = "Diving";
+                }
+            }
+
+            if (!sowSummaryMap.has(name)) {
+                sowSummaryMap.set(name, {
+                    inspectionName: name,
+                    taskType: taskType,
+                    totalQid: 0,
+                    incompleteQid: 0
+                });
+            }
+            const group = sowSummaryMap.get(name)!;
+            group.totalQid++;
+            if (isIncomplete) {
+                group.incompleteQid++;
+            }
+        });
+
+        const sowSummary = Array.from(sowSummaryMap.values())
+            .filter(g => g.incompleteQid > 0)
+            .map((g, idx) => {
+                const incompletePctVal = g.totalQid > 0 ? (g.incompleteQid / g.totalQid) * 100 : 0;
+                const incompletePct = Number.isInteger(incompletePctVal) ? `${incompletePctVal}%` : `${incompletePctVal.toFixed(2)}%`;
+                return {
+                    no: idx + 1,
+                    inspectionName: g.inspectionName,
+                    taskType: g.taskType,
+                    tasktype: g.taskType,
+                    totalQid: g.totalQid,
+                    incompleteQid: g.incompleteQid,
+                    incompletePct: incompletePct
+                };
+            });
+
         return NextResponse.json({
             data: {
                 componentSummary,
                 inspectionTypeSummary,
+                sow_summary: sowSummary,
                 sow: { total: totalSow, completed: completedSow, incomplete: incompleteSow, pending: pendingSow, completionPct, completedPct, incompletePct, pendingPct },
                 records: { 
                     total: rawRecords.length, 

@@ -85,6 +85,8 @@ export default function ExecutiveSummaryPage() {
             : null, 
         fetcher
     );
+    const { data: contractorsRes } = useSWR("/api/jobpack/utils/contractors", fetcher);
+    const contractors = useMemo(() => contractorsRes?.data || [], [contractorsRes]);
 
     const jobpacks = useMemo(() => {
         return [...(jobpacksData?.data || [])].sort((a, b) => 
@@ -564,15 +566,73 @@ export default function ExecutiveSummaryPage() {
             const totalRectified = categoryStats.reduce((sum, item) => sum + item.rectified, 0);
             const totalAnomCount = categoryStats.reduce((sum, item) => sum + item.total, 0);
 
+            // ── Findings Summary Table Data ─────────────────────
+            const rawFindings = insightData?.data?.findings?.items || [];
+            const obsFindings = rawFindings.filter(getPriorityFilter("OBS"));
+            const p1Findings = rawFindings.filter(getPriorityFilter("P1"));
+            const p2Findings = rawFindings.filter(getPriorityFilter("P2"));
+            const p3Findings = rawFindings.filter(getPriorityFilter("P3"));
+
+            const findingsCategoryStats = [
+                {
+                    name: "Observation",
+                    not_rectified: obsFindings.length - getRectifiedCount(obsFindings),
+                    rectified: getRectifiedCount(obsFindings),
+                    total: obsFindings.length,
+                    color_hex: obsColorHex,
+                    color_rgb: obsColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`
+                },
+                {
+                    name: "Priority 1",
+                    not_rectified: p1Findings.length - getRectifiedCount(p1Findings),
+                    rectified: getRectifiedCount(p1Findings),
+                    total: p1Findings.length,
+                    color_hex: p1ColorHex,
+                    color_rgb: p1ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`
+                },
+                {
+                    name: "Priority 2",
+                    not_rectified: p2Findings.length - getRectifiedCount(p2Findings),
+                    rectified: getRectifiedCount(p2Findings),
+                    total: p2Findings.length,
+                    color_hex: p2ColorHex,
+                    color_rgb: p2ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`
+                },
+                {
+                    name: "Priority 3",
+                    not_rectified: p3Findings.length - getRectifiedCount(p3Findings),
+                    rectified: getRectifiedCount(p3Findings),
+                    total: p3Findings.length,
+                    color_hex: p3ColorHex,
+                    color_rgb: p3ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`
+                }
+            ];
+
+            const totalFindingsNotRectified = findingsCategoryStats.reduce((sum, item) => sum + item.not_rectified, 0);
+            const totalFindingsRectified = findingsCategoryStats.reduce((sum, item) => sum + item.rectified, 0);
+            const totalFindingsCount = findingsCategoryStats.reduce((sum, item) => sum + item.total, 0);
+
             const reportData: Record<string, any> = {
                 STRUCTURE_VISUALS: structureVisuals,
                 HAS_VISUALS: structureVisuals.length > 0,
+                HAS_ANOMALIES: totalAnomCount > 0,
+                HAS_FINDINGS: totalFindingsCount > 0,
 
                 // ── Anomaly Summary Table Data ───────────────────────
                 ANOMALY_SUMMARY_TABLE: categoryStats,
                 ANOMALY_SUMMARY_TOTAL_NOT_RECTIFIED: totalNotRectified,
                 ANOMALY_SUMMARY_TOTAL_RECTIFIED: totalRectified,
                 ANOMALY_SUMMARY_TOTAL: totalAnomCount,
+
+                // ── Findings Summary Table Data ──────────────────────
+                FINDINGS_SUMMARY_TABLE: findingsCategoryStats,
+                FINDINGS_SUMMARY_TOTAL_NOT_RECTIFIED: totalFindingsNotRectified,
+                FINDINGS_SUMMARY_TOTAL_RECTIFIED: totalFindingsRectified,
+                FINDINGS_SUMMARY_TOTAL: totalFindingsCount,
 
                 OBS_NOT_RECTIFIED: obsAnoms.length - getRectifiedCount(obsAnoms),
                 OBS_RECTIFIED: getRectifiedCount(obsAnoms),
@@ -610,6 +670,7 @@ export default function ExecutiveSummaryPage() {
                 // ── Core Project Identifiers ─────────────────────────
                 PLATFORM_TITLE: str?.str_name || "N/A",
                 PLATFORM_NAME: str?.str_name || "N/A",
+                FIELD_NAME: str?.field_name || "N/A",
                 JOB_PACK_NAME: jp?.name || "N/A",
                 REPORT_NO: selections.sowReportNo,
                 SOW_REPORT_NO: selections.sowReportNo,
@@ -696,7 +757,9 @@ export default function ExecutiveSummaryPage() {
                 CONTRACTOR_REF: jp?.metadata?.contractor_ref || "N/A",
                 STATUS: jp?.status || "N/A",
                 CONTRACTOR_NAME: activeContractor?.lib_desc || jp?.metadata?.contrac || "N/A",
+                CONTRACTOR_NAME_UPPER: (activeContractor?.lib_desc || jp?.metadata?.contrac || "N/A").toUpperCase(),
                 CONTRACTOR_SHORT: jp?.metadata?.contrac || "N/A",
+                CONTRACTOR_SHORT_UPPER: (jp?.metadata?.contrac || "N/A").toUpperCase(),
                 CONTRACTOR_ADDRESS: activeContractor?.lib_com || "N/A",
                 CONTRACTOR_LOGO: activeContractor?.logo_url ? { data: activeContractor.logo_url, extension: '.jpg' } : "",
 
@@ -777,6 +840,8 @@ export default function ExecutiveSummaryPage() {
                 FMD_RECORDS: insightData?.data?.fmd_items || [],
                 MGI_RECORDS: insightData?.data?.mgi_items || [],
                 STATS: insightData?.data?.records || {},
+                SOW_SUMMARY: insightData?.data?.sow_summary || [],
+                HAS_SOW_SUMMARY: (insightData?.data?.sow_summary || []).length > 0,
 
                 // ── Mapped Data from Inspection Records ──────────────
                 ...mappedData,
@@ -953,15 +1018,60 @@ export default function ExecutiveSummaryPage() {
             return new Date(dStr).toLocaleDateString("en-GB");
         };
 
+        const clientName = companySettings?.data?.company_name || jp?.metadata?.contrac || "[CLIENT]";
+        const clientShort = (() => {
+            const clientName = companySettings?.data?.company_name;
+            if (!clientName) return "[CLIENT_SHORT]";
+            const matched = contractors.find((c: any) => 
+                String(c.lib_desc || "").toLowerCase().replace(/[^a-z0-9]/g, "") === 
+                String(clientName).toLowerCase().replace(/[^a-z0-9]/g, "")
+            );
+            if (matched) return matched.lib_id || "[CLIENT_SHORT]";
+            const partialMatch = contractors.find((c: any) => 
+                String(c.lib_desc || "").toLowerCase().includes(String(clientName).toLowerCase()) ||
+                String(clientName).toLowerCase().includes(String(c.lib_desc || "").toLowerCase())
+            );
+            return partialMatch?.lib_id || "[CLIENT_SHORT]";
+        })();
+        const contractorName = jp?.metadata?.contrac || "[CONTRACTOR]";
+        const contractorShort = jp?.metadata?.contrac || "[CONTRACTOR_SHORT]";
+        const fieldName = str?.field_name || "[FIELD_NAME]";
+        
+        const getTodayShort = () => {
+            const d = new Date();
+            const day = String(d.getDate()).padStart(2, '0');
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            return `${day}-${months[d.getMonth()]}-${d.getFullYear()}`;
+        };
+
         const vars: Record<string, string> = {
             "{{PLATFORM}}": str?.str_name || "[PLATFORM]",
+            "{{PLATFORM_TITLE}}": str?.str_name || "[PLATFORM]",
+            "{{PLATFORM_NAME}}": str?.str_name || "[PLATFORM]",
             "{{JOB_PACK}}": jp?.name || "[JOB_PACK]",
+            "{{JOB_PACK_NAME}}": jp?.name || "[JOB_PACK]",
             "{{REPORT_NO}}": selections.sowReportNo || "[REPORT_NO]",
-            "{{CLIENT}}": companySettings?.data?.company_name || jp?.metadata?.contrac || "[CLIENT]",
+            "{{SOW_REPORT_NO}}": selections.sowReportNo || "[REPORT_NO]",
+            "{{CLIENT}}": clientName,
+            "{{CLIENT_NAME}}": clientName,
+            "{{CLIENT_NAME_UPPER}}": clientName.toUpperCase(),
+            "{{CLIENT_SHORT}}": clientShort,
+            "{{CLIENT_SHORT_UPPER}}": clientShort.toUpperCase(),
+            "{{FIELD_NAME}}": fieldName,
+            "{{OIL_FIELD}}": fieldName,
+            "{{OIL_FIELD_NAME}}": fieldName,
+            "{{CONTRACTOR}}": contractorName,
+            "{{CONTRACTOR_NAME}}": contractorName,
+            "{{CONTRACTOR_NAME_UPPER}}": contractorName.toUpperCase(),
+            "{{CONTRACTOR_SHORT}}": contractorShort,
+            "{{CONTRACTOR_SHORT_UPPER}}": contractorShort.toUpperCase(),
             "{{VESSEL_NAME}}": jp?.metadata?.vessel || "NONE",
+            "{{START_DATE}}": formatDateStr(jp?.metadata?.istart || jp?.start_date),
+            "{{INSP_START_DATE}}": formatDateStr(data.records?.startDate || jp?.metadata?.istart || jp?.start_date),
+            "{{END_DATE}}": formatDateStr(jp?.metadata?.iend || jp?.end_date),
+            "{{INSP_END_DATE}}": formatDateStr(data.records?.endDate || jp?.metadata?.iend || jp?.end_date),
             "{{DATE}}": new Date().toLocaleDateString("en-GB"),
-            "{{INSP_START_DATE}}": formatDateStr(data.records?.startDate),
-            "{{INSP_END_DATE}}": formatDateStr(data.records?.endDate),
+            "{{TODAY_SHORT}}": getTodayShort(),
             "{{TOTAL_ANOMALIES}}": String(data.anomalies?.total || 0),
             "{{OPEN_ANOMALIES}}": String(data.anomalies?.open || 0),
             "{{P1_ANOMALIES}}": String(data.anomalies?.byPriority?.P1 || 0),
@@ -1305,7 +1415,36 @@ export default function ExecutiveSummaryPage() {
                     platform: structures.find(s => s.id.toString() === selections.structureId)?.str_name,
                     jobpack: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.name,
                     reportNo: selections.sowReportNo,
-                    client: companySettings?.data?.company_name
+                    client: companySettings?.data?.company_name,
+                    clientShort: (() => {
+                        const clientName = companySettings?.data?.company_name;
+                        if (!clientName) return "N/A";
+                        const matched = contractors.find((c: any) => 
+                            String(c.lib_desc || "").toLowerCase().replace(/[^a-z0-9]/g, "") === 
+                            String(clientName).toLowerCase().replace(/[^a-z0-9]/g, "")
+                        );
+                        if (matched) return matched.lib_id || "N/A";
+                        const partialMatch = contractors.find((c: any) => 
+                            String(c.lib_desc || "").toLowerCase().includes(String(clientName).toLowerCase()) ||
+                            String(clientName).toLowerCase().includes(String(c.lib_desc || "").toLowerCase())
+                        );
+                        return partialMatch?.lib_id || "N/A";
+                    })(),
+                    contractor: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.metadata?.contrac || "N/A",
+                    vessel: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.metadata?.vessel || "NONE",
+                    fieldName: structures.find(s => s.id.toString() === selections.structureId)?.field_name || "N/A",
+                    startDate: (() => {
+                        const jp = jobpacks.find(j => j.id.toString() === selections.jobpackId);
+                        const dateStr = jp?.metadata?.istart || jp?.start_date;
+                        if (!dateStr) return "N/A";
+                        return new Date(dateStr).toLocaleDateString("en-GB");
+                    })(),
+                    endDate: (() => {
+                        const jp = jobpacks.find(j => j.id.toString() === selections.jobpackId);
+                        const dateStr = jp?.metadata?.iend || jp?.end_date;
+                        if (!dateStr) return "N/A";
+                        return new Date(dateStr).toLocaleDateString("en-GB");
+                    })()
                 }}
                 existingRules={existingRules}
                 onSaveRules={async (rules) => {

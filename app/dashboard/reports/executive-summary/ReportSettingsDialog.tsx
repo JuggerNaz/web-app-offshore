@@ -359,6 +359,8 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
                                         { tag: "{{#CP_RECORDS}}...{{/CP_RECORDS}}", desc: "Loop for CP results (component, reading, status)" },
                                         { tag: "{{#FMD_RECORDS}}...{{/FMD_RECORDS}}", desc: "Loop for FMD results (component, status, mode)" },
                                         { tag: "{{#MGI_RECORDS}}...{{/MGI_RECORDS}}", desc: "Loop for Marine Growth (component, thickness, date)" },
+                                        { tag: "{{#SOW_SUMMARY}}...{{/SOW_SUMMARY}}", desc: "Loop for SOW completion status. Inner columns: no, inspectionName, taskType, totalQid, incompleteQid, incompletePct" },
+                                        { tag: "{{HAS_SOW_SUMMARY}}", desc: "True if there are incomplete SOW tasks to display" },
                                         { tag: "{{#STRUCTURE_VISUALS}}...{{/STRUCTURE_VISUALS}}", desc: "Loop for structure visuals/photos. Inner tags: {{title}}, {{description}}, {%photo}" },
                                         { tag: "{{HAS_VISUALS}}", desc: "True if the structure has visual documentation photos" },
                                     ]} />
