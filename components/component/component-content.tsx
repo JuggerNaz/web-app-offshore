@@ -705,12 +705,12 @@ export default function ComponentContent() {
                 setPageSize(Number(val));
                 setCurrentPage(1);
               }}>
-                <SelectTrigger className="h-10 w-20 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-black text-xs">
+                <SelectTrigger className="h-10 w-20 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 font-black text-xs text-slate-900 dark:text-slate-100">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
+                <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
                   {[10, 20, 50, 100].map(size => (
-                    <SelectItem key={size} value={size.toString()} className="text-xs font-black py-2">
+                    <SelectItem key={size} value={size.toString()} className="text-xs font-black py-2 cursor-pointer focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100">
                       {size}
                     </SelectItem>
                   ))}

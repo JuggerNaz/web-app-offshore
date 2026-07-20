@@ -1,5 +1,5 @@
 "use client";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Line, LineChart, Pie, PieChart, Cell } from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Line, LineChart, Pie, PieChart, Cell, Label } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
@@ -86,19 +86,23 @@ export function AnodeCPSection({ data }: { data: AnodeCPData }) {
                                 </div>
                             </div>
 
-                            {/* CP Trend */}
-                            {data.cpTrend && data.cpTrend.length > 1 && (
-                                <ChartContainer config={cpConfig} className="h-[140px] w-full">
-                                    <LineChart data={data.cpTrend} margin={{ left: 10, right: 10 }}>
-                                        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(100,116,139,0.15)" />
-                                        <XAxis dataKey="date" tickLine={false} axisLine={false} className="text-[10px]" />
-                                        <YAxis tickLine={false} axisLine={false} width={50} />
-                                        <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Line dataKey="value" type="monotone" stroke="#10b981" strokeWidth={2}
-                                            dot={{ fill: "#10b981", r: 4 }} activeDot={{ r: 6 }} />
-                                    </LineChart>
-                                </ChartContainer>
-                            )}
+                             {/* CP Trend */}
+                             {data.cpTrend && data.cpTrend.length > 1 && (
+                                 <ChartContainer config={cpConfig} className="h-[180px] w-full">
+                                     <LineChart data={data.cpTrend} margin={{ left: 15, right: 10, bottom: 20, top: 10 }}>
+                                         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(100,116,139,0.15)" />
+                                         <XAxis dataKey="date" tickLine={false} axisLine={false} className="text-[10px]">
+                                             <Label value="Job Pack / Timeline" offset={-15} position="insideBottom" className="fill-slate-400 dark:fill-slate-500 text-[8px] font-black uppercase tracking-wider" />
+                                         </XAxis>
+                                         <YAxis tickLine={false} axisLine={false} width={45}>
+                                             <Label value="CP (mV)" angle={-90} position="insideLeft" offset={-5} className="fill-slate-400 dark:fill-slate-500 text-[8px] font-black uppercase tracking-wider" />
+                                         </YAxis>
+                                         <ChartTooltip content={<ChartTooltipContent />} />
+                                         <Line dataKey="value" type="monotone" stroke="#10b981" strokeWidth={2}
+                                             dot={{ fill: "#10b981", r: 4 }} activeDot={{ r: 6 }} />
+                                     </LineChart>
+                                 </ChartContainer>
+                             )}
                         </div>
                     ) : <div className="h-[220px] flex items-center justify-center text-slate-400 text-xs font-bold">No CP data</div>}
                 </CardContent>
