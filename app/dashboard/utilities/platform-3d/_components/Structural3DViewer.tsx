@@ -82,17 +82,8 @@ const ComponentMesh = ({
 
     if (isAnode) baseThickness = 0.15;
     else if (isClamp) baseThickness = baseThickness * 1.8;
-    else if (isWeld) {
-        if (component.metadata?.associated_comp_id) {
-            baseThickness = baseThickness * 1.1;
-        } else {
-            baseThickness = baseThickness * 1.15;
-            if (baseThickness < 0.25) {
-                baseThickness = component.metadata?.s_leg ? 0.55 : 0.3;
-            }
-        }
-    }
-    const meshLength = isAnode ? 0.8 : isClamp ? 0.8 : isWeld ? 0.35 : length;
+    else if (isWeld) baseThickness = baseThickness + 0.04;
+    const meshLength = isAnode ? 0.8 : isClamp ? 0.8 : isWeld ? 0.55 : length;
 
     const safeMeshLength = Math.max(meshLength, 0.01);
 
@@ -114,17 +105,54 @@ const ComponentMesh = ({
     }
 
     const md = component.metadata || {};
-    let clockPos = parseFloat(md.clk_pos || "12");
-    if (isNaN(clockPos)) clockPos = 12;
+    const rawClockPos = md.clk_pos ?? md.clockPosition;
+    let clockPos: number;
+    if (isAnode && (rawClockPos === undefined || rawClockPos === null || rawClockPos === "" || rawClockPos === "N/A")) {
+        clockPos = 12;
+    } else {
+        clockPos = parseFloat(rawClockPos || "12");
+        if (isNaN(clockPos)) clockPos = 12;
+    }
     const angle = (clockPos / 12) * Math.PI * 2;
     const memberRadius = baseThickness < 0.2 ? 0.25 : baseThickness;
     const offsetDistance = memberRadius + 0.15;
-    let ox = Math.sin(angle) * offsetDistance;
-    let oz = Math.cos(angle) * offsetDistance;
+
+    let ox = 0;
+    let oy = 0;
+    let oz = 0;
+    let anodeRotY = 0;
+
+    if (isAnode) {
+        // Calculate orthogonal basis in global space relative to direction
+        const upVec = new THREE.Vector3(0, 1, 0);
+        if (Math.abs(direction.y) > 0.99) {
+            upVec.set(0, 0, -1);
+        }
+        upVec.sub(direction.clone().multiplyScalar(upVec.dot(direction))).normalize();
+        const rightVec = new THREE.Vector3().crossVectors(upVec, direction).normalize();
+
+        // Calculate global offset vector for the clock position (12 o'clock = UP, 3 o'clock = RIGHT)
+        const globalOffset = rightVec
+            .clone()
+            .multiplyScalar(Math.sin(angle))
+            .add(upVec.clone().multiplyScalar(Math.cos(angle)))
+            .multiplyScalar(offsetDistance);
+
+        // Convert the global offset back to local coordinates of the parent rotated group
+        const localOffset = globalOffset.clone().applyQuaternion(quaternion.clone().invert());
+        ox = localOffset.x;
+        oy = localOffset.y;
+        oz = localOffset.z;
+
+        // Tangent rotation angle for anode group orientation
+        anodeRotY = Math.atan2(ox, oz);
+    }
+
     if (isNaN(ox)) ox = 0;
+    if (isNaN(oy)) oy = 0;
     if (isNaN(oz)) oz = 0;
 
-    const offsetPos: [number, number, number] = isAnode ? [ox, 0, oz] : [0, 0, 0];
+    const offsetPos: [number, number, number] = isAnode ? [ox, oy, oz] : [0, 0, 0];
 
     const hasNaN = [
         startVec.x,
@@ -427,7 +455,10 @@ const ComponentMesh = ({
 
     return (
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
-            <group position={offsetPos as [number, number, number]}>
+            <group
+                position={offsetPos as [number, number, number]}
+                rotation={isAnode ? [0, anodeRotY, 0] : [0, 0, 0]}
+            >
                 { }
                 <mesh castShadow receiveShadow>
                     {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
@@ -436,6 +467,8 @@ const ComponentMesh = ({
                         <boxGeometry args={[0.2, safeMeshLength, 0.2]} />
                     ) : isClamp ? (
                         <boxGeometry args={[baseThickness, 0.8, baseThickness]} />
+                    ) : isWeld ? (
+                        <cylinderGeometry args={[baseThickness, baseThickness, safeMeshLength, 32]} />
                     ) : (
                         <cylinderGeometry args={[baseThickness, baseThickness, safeMeshLength, 6]} />
                     )}
@@ -446,7 +479,7 @@ const ComponentMesh = ({
                                 : hovered
                                     ? "#60a5fa"
                                     : isAnode
-                                        ? "#f1f5f9"
+                                        ? "#F8FAFC"
                                         : isWeld
                                             ? "#d946ef"
                                             : isClamp
@@ -457,8 +490,8 @@ const ComponentMesh = ({
                                                         ? "#475569"
                                                         : "#cbd5e1"
                         }
-                        metalness={isAnode ? 0.95 : isWeld ? 0.2 : isClamp ? 0.8 : isRiser || isConductor ? 0.75 : 0.7}
-                        roughness={isAnode ? 0.1 : isWeld ? 0.5 : isClamp ? 0.25 : isRiser || isConductor ? 0.45 : 0.3}
+                        metalness={isAnode ? 0.85 : isWeld ? 0.2 : isClamp ? 0.8 : isRiser || isConductor ? 0.75 : 0.7}
+                        roughness={isAnode ? 0.25 : isWeld ? 0.5 : isClamp ? 0.25 : isRiser || isConductor ? 0.45 : 0.3}
                         emissive={isSelected ? "#ea580c" : isWeld ? "#a21caf" : "#000000"}
                         emissiveIntensity={isSelected ? 0.6 : isWeld ? 0.4 : 0}
                     />
@@ -491,32 +524,32 @@ const ComponentMesh = ({
                     {isAnode && (
                         <group>
                             { }
-                            <mesh position={[0, safeMeshLength / 2 + 0.05, 0]} castShadow receiveShadow>
-                                <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
-                                <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+                            <mesh position={[0, safeMeshLength / 2 + 0.1, 0]} castShadow receiveShadow>
+                                <cylinderGeometry args={[0.025, 0.025, 0.2, 12]} />
+                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
                             </mesh>
                             <mesh
-                                position={[-ox / 2, safeMeshLength / 2 + 0.1, -oz / 2]}
-                                rotation={[Math.PI / 2, angle, 0]}
+                                position={[0, safeMeshLength / 2 + 0.18, -offsetDistance / 2]}
+                                rotation={[Math.PI / 2, 0, 0]}
                                 castShadow
                                 receiveShadow
                             >
-                                <cylinderGeometry args={[0.03, 0.03, offsetDistance, 8]} />
-                                <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+                                <cylinderGeometry args={[0.025, 0.025, offsetDistance, 12]} />
+                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
                             </mesh>
                             { }
-                            <mesh position={[0, -safeMeshLength / 2 - 0.05, 0]} castShadow receiveShadow>
-                                <cylinderGeometry args={[0.03, 0.03, 0.1, 8]} />
-                                <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+                            <mesh position={[0, -safeMeshLength / 2 - 0.1, 0]} castShadow receiveShadow>
+                                <cylinderGeometry args={[0.025, 0.025, 0.2, 12]} />
+                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
                             </mesh>
                             <mesh
-                                position={[-ox / 2, -safeMeshLength / 2 - 0.1, -oz / 2]}
-                                rotation={[Math.PI / 2, angle, 0]}
+                                position={[0, -safeMeshLength / 2 - 0.18, -offsetDistance / 2]}
+                                rotation={[Math.PI / 2, 0, 0]}
                                 castShadow
                                 receiveShadow
                             >
-                                <cylinderGeometry args={[0.03, 0.03, offsetDistance, 8]} />
-                                <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+                                <cylinderGeometry args={[0.025, 0.025, offsetDistance, 12]} />
+                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
                             </mesh>
                         </group>
                     )}
@@ -1842,10 +1875,18 @@ export function Structural3DViewer({
 
             items.forEach((item, idx) => {
                 const md = item.component.metadata || {};
+                const itemCode = (item.component.code || "").toUpperCase();
+                const itemQId = (item.component.q_id || "").toUpperCase();
+                const isAnode = itemCode === "AN" || itemCode.includes("ANOD");
+
                 let start = new THREE.Vector3();
                 let end = new THREE.Vector3();
 
-                if ((md.elv_1 || md.depth) && Math.abs(fNode.y - sNode.y) > 0.001) {
+                if (isAnode) {
+                    // For anodes on member spans, default to equal gap distribution (1 anode = middle t=0.5)
+                    const t = (idx + 1) / (count + 1);
+                    start.copy(sNode).lerp(fNode, t);
+                } else if ((md.elv_1 || md.depth) && Math.abs(fNode.y - sNode.y) > 0.001) {
                     const targetY = sanitizeElevation(md.elv_1 || -parseFloat(md.depth) / 10);
                     const t = (targetY - sNode.y) / (fNode.y - sNode.y);
                     const clampedT = Math.max(0, Math.min(1, t));
@@ -1855,8 +1896,6 @@ export function Structural3DViewer({
                     start.copy(sNode).lerp(fNode, t);
                 }
 
-                const itemCode = (item.component.code || "").toUpperCase();
-                const isAnode = itemCode === "AN" || itemCode.includes("ANOD");
                 if (md.dist && !isAnode) {
                     const distance = parseFloat(md.dist);
                     if (distance > 0 && distance < 3.0) {
@@ -1932,11 +1971,49 @@ export function Structural3DViewer({
                 return;
             }
 
-            const { start: pStart, end: pEnd, thickness: pThickness } = parentLayout;
+            const { start: pStart, end: pEnd, thickness: pThickness, component: parentComp } = parentLayout;
+            const parentCode = (parentComp?.code || "").toUpperCase();
+            const parentQId = (parentComp?.q_id || "").toUpperCase();
+            const isParentVD =
+                parentCode === "VD" ||
+                parentCode === "VDM" ||
+                parentCode.includes("VD") ||
+                parentCode.includes("V-DIAG") ||
+                parentQId.includes("VD") ||
+                parentQId.includes("VDM");
+
             const direction = pEnd.clone().sub(pStart).normalize();
 
-            const childrenWithPos = children.filter((c) => c.metadata?.depth || c.metadata?.elv_1);
-            const childrenWithoutPos = children.filter((c) => !c.metadata?.depth && !c.metadata?.elv_1);
+            const anodeChildren = children.filter((c) => {
+                const code = (c.code || "").toUpperCase();
+                return code === "AN" || code.includes("ANOD");
+            });
+
+            if (anodeChildren.length > 0) {
+                // Force equal spacing for all anodes attached to a member
+                anodeChildren.sort((a, b) => a.q_id.localeCompare(b.q_id));
+                const anodeCount = anodeChildren.length;
+                anodeChildren.forEach((c, idx) => {
+                    let start = new THREE.Vector3();
+                    let end = new THREE.Vector3();
+                    const t = (idx + 1) / (anodeCount + 1);
+                    start.copy(pStart).lerp(pEnd, t);
+                    if (direction.lengthSq() > 0.1) {
+                        end.copy(start).add(direction.clone().multiplyScalar(0.1));
+                    } else {
+                        end.copy(start);
+                    }
+                    intermediateLayouts.set(c.id, { component: c, start, end, thickness: pThickness });
+                });
+            }
+
+            const nonAnodeChildren = children.filter((c) => {
+                const code = (c.code || "").toUpperCase();
+                return code !== "AN" && !code.includes("ANOD");
+            });
+
+            const childrenWithPos = nonAnodeChildren.filter((c) => c.metadata?.depth || c.metadata?.elv_1);
+            const childrenWithoutPos = nonAnodeChildren.filter((c) => !c.metadata?.depth && !c.metadata?.elv_1);
 
             childrenWithoutPos.sort((a, b) => a.q_id.localeCompare(b.q_id));
 
