@@ -111,7 +111,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                             onClick={() => setCompView("LIST")} 
                             className={`px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${compView === 'LIST' ? 'bg-blue-600 text-white border-b border-blue-600' : 'text-slate-400 hover:text-white border-b border-transparent'}`}
                         >
-                            COMPONENT LIST
+                            EVENT MENU
                         </button>
                         <button 
                             onClick={() => setCompView("MODEL_3D")} 

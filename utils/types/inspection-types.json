@@ -2018,6 +2018,368 @@
             ]
         },
         {
+            "code": "NAVIG",
+            "name": "Pipeline Navigation Inspection",
+            "methods": [
+                "ROV"
+            ],
+            "fields": [
+                {
+                    "$ref": "northing"
+                },
+                {
+                    "$ref": "easting"
+                },
+                {
+                    "$ref": "cp_rdg",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "CP STAB",
+                            "ANODE",
+                            "CP",
+                            "CP Reading",
+                            "Anode Inspection",
+                            "Potential"
+                        ]
+                    }
+                },
+                {
+                    "$ref": "marine_growth_soft",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "MARINE GROWTH",
+                            "Marine Growth",
+                            "Hard",
+                            "Soft",
+                            "Marine Growth - Hard",
+                            "Marine Growth - Soft"
+                        ]
+                    }
+                },
+                {
+                    "$ref": "marine_growth_hard",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "MARINE GROWTH",
+                            "Marine Growth",
+                            "Hard",
+                            "Soft",
+                            "Marine Growth - Hard",
+                            "Marine Growth - Soft"
+                        ]
+                    }
+                },
+                {
+                    "$ref": "debris",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "DEBRIS",
+                            "Debris",
+                            "Metallic & Structural",
+                            "Nets, Lines & Ropes",
+                            "Seabed, Rubber & Other"
+                        ]
+                    }
+                },
+                {
+                    "$ref": "debris_material",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "DEBRIS",
+                            "Debris",
+                            "Metallic & Structural",
+                            "Nets, Lines & Ropes",
+                            "Seabed, Rubber & Other"
+                        ]
+                    }
+                },
+                {
+                    "name": "depth",
+                    "label": "Depth",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "hidden": true
+                },
+                {
+                    "name": "event_name",
+                    "label": "Event Name",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "event_type",
+                    "label": "Event Type",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "event_description",
+                    "label": "Event Description",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "event_position",
+                    "label": "Event Position",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "flow_direction",
+                    "label": "Flow Direction",
+                    "type": "select",
+                    "options": [
+                        "INCREASE KP",
+                        "REVERSE KP"
+                    ],
+                    "required": false
+                },
+                {
+                    "name": "insp_mode",
+                    "label": "Inspection Mode",
+                    "type": "select",
+                    "options": [
+                        "Pipeline",
+                        "Crossing Line",
+                        "Others"
+                    ],
+                    "required": true
+                },
+                {
+                    "name": "cp_fg_rdg",
+                    "label": "CP FG Reading",
+                    "type": "number",
+                    "unitCategory": "VOLTAGE",
+                    "required": false,
+                    "defaultMetric": "mV",
+                    "defaultImperial": "mV",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "CP STAB",
+                            "ANODE",
+                            "CP",
+                            "CP Reading",
+                            "Anode Inspection",
+                            "Potential"
+                        ]
+                    }
+                },
+                {
+                    "name": "rov_heading",
+                    "label": "ROV Heading",
+                    "type": "number",
+                    "unitCategory": "ANGLE",
+                    "required": false,
+                    "defaultMetric": "deg",
+                    "defaultImperial": "deg",
+                    "hidden": true
+                },
+                {
+                    "name": "length",
+                    "label": "Length",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "SEABED PROFILE",
+                            "Span",
+                            "Scour",
+                            "Intermittent Span",
+                            "Damage",
+                            "Coating Damage",
+                            "Physical Damage",
+                            "Dent",
+                            "Freespan"
+                        ]
+                    }
+                },
+                {
+                    "name": "height",
+                    "label": "Height",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "SEABED PROFILE",
+                            "Span",
+                            "Scour",
+                            "Intermittent Span",
+                            "Damage",
+                            "Coating Damage",
+                            "Physical Damage",
+                            "Dent",
+                            "Freespan"
+                        ]
+                    }
+                },
+                {
+                    "name": "raw_fp",
+                    "label": "Raw FP",
+                    "type": "text",
+                    "required": false,
+                    "hidden": true
+                },
+                {
+                    "name": "raw_northing",
+                    "label": "Raw Northing",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "hidden": true
+                },
+                {
+                    "name": "raw_easting",
+                    "label": "Raw Easting",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "hidden": true
+                },
+                {
+                    "name": "crossing_angle",
+                    "label": "Crossing Angle",
+                    "type": "number",
+                    "unitCategory": "ANGLE",
+                    "required": false,
+                    "defaultMetric": "deg",
+                    "defaultImperial": "deg",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "Crossing",
+                            "Crossing Line",
+                            "Pipeline Crossing",
+                            "Line Crossing"
+                        ]
+                    }
+                },
+                {
+                    "name": "crossing_gap",
+                    "label": "Gap",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "Crossing",
+                            "Crossing Line",
+                            "Pipeline Crossing",
+                            "Line Crossing"
+                        ]
+                    }
+                },
+                {
+                    "name": "num_supports",
+                    "label": "Number of Supports",
+                    "type": "number",
+                    "unitCategory": "NONE",
+                    "required": false,
+                    "defaultMetric": 0,
+                    "defaultImperial": 0,
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "Crossing",
+                            "Crossing Line",
+                            "Pipeline Crossing",
+                            "Line Crossing"
+                        ]
+                    }
+                },
+                {
+                    "name": "crossing_line",
+                    "label": "Crossing Line",
+                    "type": "text",
+                    "required": false,
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "Crossing",
+                            "Crossing Line",
+                            "Pipeline Crossing",
+                            "Line Crossing"
+                        ]
+                    }
+                },
+                {
+                    "name": "crossing_type",
+                    "label": "Crossing Type",
+                    "type": "select",
+                    "options": [
+                        "Conventional",
+                        "Hard",
+                        "Soft"
+                    ],
+                    "required": false,
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "Crossing",
+                            "Crossing Line",
+                            "Pipeline Crossing",
+                            "Line Crossing"
+                        ]
+                    }
+                },
+                {
+                    "name": "crossing_fp",
+                    "label": "Crossing FP",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "Crossing",
+                            "Crossing Line",
+                            "Pipeline Crossing",
+                            "Line Crossing"
+                        ]
+                    }
+                },
+                {
+                    "$ref": "cp_rdg_additional",
+                    "condition": {
+                        "field": "event_type",
+                        "values": [
+                            "CP STAB",
+                            "ANODE",
+                            "CP",
+                            "CP Reading",
+                            "Anode Inspection",
+                            "Potential"
+                        ]
+                    }
+                }
+            ]
+        },
+        {
             "code": "RGVI",
             "name": "ROV General Visual Inspection",
             "methods": [

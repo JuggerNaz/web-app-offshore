@@ -208,6 +208,20 @@ export function DiverLogPanel({
                 const options = ROV_MOVEMENT_BRANCHES[currentMovement || "Awaiting Deployment"] || [];
                 const isCompleted = options.length === 0;
 
+                if (currentMovement === "Rov Recovered" || currentMovement === "ROV_RECOVERED") {
+                  return (
+                    <Button
+                      onClick={() => {
+                        setIsDiveSetupForNew(true);
+                        setIsDiveSetupOpen(true);
+                      }}
+                      className="flex-[1.5] h-8 text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> New ROV Dive
+                    </Button>
+                  );
+                }
+
                 if (isCompleted) {
                   return (
                     <Button

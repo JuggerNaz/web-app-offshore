@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 
@@ -195,10 +195,13 @@ import { useROVConnection } from "@/components/rov-connection-provider";
 import { Layout, Model, TabNode, IJsonModel } from "flexlayout-react";
 import "flexlayout-react/style/dark.css";
 import { DiverLogPanel } from "./_components/panels/DiverLogPanel";
+import { DiverLogPanelPipeline } from "./_components/panels/DiverLogPanelPipeline";
 import { VideoLogPanel } from "./_components/panels/VideoLogPanel";
+import { TapeManagementCardPipeline } from "./components/TapeManagementCardPipeline";
 import { InspectionFormPanel } from "./_components/panels/InspectionFormPanel";
 import { EventsTablePanel } from "./_components/panels/EventsTablePanel";
 import { ComponentListPanel } from "./_components/panels/ComponentListPanel";
+import { PipelineEventMenuPanel } from "./_components/panels/PipelineEventMenuPanel";
 import { HistoryDataPanel } from "./_components/panels/HistoryDataPanel";
 
 
@@ -221,7 +224,10 @@ const supabase = createClient();
 function V10PreviewLayout() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const queryClient = useQueryClient();
+  
+  const isPipeline = pathname?.includes("/pipeline-workspace") || false;
 
   const { activeCompanyId } = useUserProfile();
   const jobPackId = searchParams.get("jobpack");
@@ -434,7 +440,7 @@ function V10PreviewLayout() {
                 type: "tabset",
                 weight: 35,
                 children: [
-                  { type: "tab", name: "Component List", component: "components" },
+                  { type: "tab", name: "Event Menu", component: "components" },
                 ],
               },
               {
@@ -935,6 +941,7 @@ function V10PreviewLayout() {
 
   const [diveStartTime, setDiveStartTime] = useState<string | null>(null);
   const [diveEndTime, setDiveEndTime] = useState<string | null>(null);
+  const [activeMovements, setActiveMovements] = useState<any[]>([]);
   const [timeInWater, setTimeInWater] = useState<string>("00:00:00");
 
   // Dynamic Form States
@@ -1373,15 +1380,38 @@ function V10PreviewLayout() {
     structureType: "platform" | "pipeline";
     waterDepth: number;
     vessel: string;
+    kp?: string;
+    structureName?: string;
   }>({
     jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
     platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
     sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
     jobType: jtParam || "",
-    structureType: "platform",
+    structureType: "platform" as "platform" | "pipeline",
     waterDepth: 0,
     vessel: "N/A",
   });
+
+  // Auto-initialize Pipeline component and NAVIG inspection spec when in pipeline workspace mode
+  useEffect(() => {
+    if ((isPipeline || headerData?.structureType === "pipeline") && !selectedComp) {
+      const defaultComp = (componentsSow && componentsSow.length > 0)
+        ? componentsSow[0]
+        : {
+            id: 999999,
+            q_id: (headerData && headerData.platformName !== "N/A") ? headerData.platformName : "PIPELINE-01",
+            name: (headerData && headerData.platformName !== "N/A") ? headerData.platformName : "Pipeline Main Line",
+            type: "PIPELINE",
+          };
+      setSelectedComp(defaultComp);
+      if (!activeSpec) {
+        const navigSpec = allInspectionTypes.find(
+          (t: any) => t.code === "NAVIG" || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
+        );
+        setActiveSpec(navigSpec ? navigSpec.code : "NAVIG");
+      }
+    }
+  }, [isPipeline, headerData, selectedComp, componentsSow, allInspectionTypes, activeSpec]);
 
   // AUTO-GENERATE ANOMALY REFERENCE NO WHEN TYPE CHANGES
   useEffect(() => {
@@ -2236,6 +2266,7 @@ function V10PreviewLayout() {
           vessel,
         });
         setGlobalUrlType(detectedStructureType);
+
       } catch (err) {
         console.error("fetchHeaderInfo error", err);
       }
@@ -3103,32 +3134,89 @@ function V10PreviewLayout() {
 
   // End of Linking Logic
 
-  // Dynamic Time in Water Clock
+  // Dynamic Time in Water Clock with Pause on TMS support
   useEffect(() => {
     let timerId: NodeJS.Timeout;
-    if (diveStartTime) {
-      timerId = setInterval(() => {
-        const start = parseDbDate(diveStartTime).getTime();
-        const end = diveEndTime ? parseDbDate(diveEndTime).getTime() : new Date().getTime();
-        const diff = end - start;
-        if (diff > 0) {
-          const hrs = Math.floor(diff / (1000 * 60 * 60));
-          const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-          const secs = Math.floor((diff % (1000 * 60)) / 1000);
+
+    const computeTime = () => {
+      if (!diveStartTime) {
+        setTimeInWater("00:00:00");
+        return;
+      }
+
+      // If we have movement records for ROV, compute total active in-water duration across segments
+      if (activeMovements && activeMovements.length > 0) {
+        let totalMs = 0;
+        let segmentStartMs: number | null = null;
+        let isCurrentlyPaused = false;
+
+        const sorted = [...activeMovements].sort((a, b) => {
+          const tA = new Date(a.movement_time || a.event_time || a.timestamp || 0).getTime();
+          const tB = new Date(b.movement_time || b.event_time || b.timestamp || 0).getTime();
+          return tA - tB;
+        });
+
+        for (const m of sorted) {
+          const type = (m.movement_type || m.activity || "").toLowerCase();
+          const t = new Date(m.movement_time || m.event_time || m.timestamp || 0).getTime();
+
+          const isLaunch = type.includes("launched") || type.includes("left surface") || type.includes("deployed");
+          const isPauseOrEnd = type.includes("tms") || type.includes("recovered") || type.includes("arrived surface") || type.includes("off hire");
+
+          if (isLaunch) {
+            segmentStartMs = t;
+            isCurrentlyPaused = false;
+          } else if (isPauseOrEnd) {
+            if (segmentStartMs !== null) {
+              totalMs += Math.max(0, t - segmentStartMs);
+              segmentStartMs = null;
+            }
+            isCurrentlyPaused = true;
+          }
+        }
+
+        // If currently in water and not paused/tms, add duration from latest segment launch up to now
+        if (segmentStartMs !== null && !isCurrentlyPaused) {
+          const nowMs = diveEndTime ? new Date(diveEndTime).getTime() : new Date().getTime();
+          totalMs += Math.max(0, nowMs - segmentStartMs);
+        }
+
+        if (totalMs > 0) {
+          const hrs = Math.floor(totalMs / (1000 * 60 * 60));
+          const mins = Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60));
+          const secs = Math.floor((totalMs % (1000 * 60)) / 1000);
           setTimeInWater(
             `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
           );
         } else {
           setTimeInWater("00:00:00");
         }
-      }, 1000);
-    } else {
-      setTimeInWater("00:00:00");
-    }
+        return;
+      }
+
+      // Fallback timer calculation
+      const start = parseDbDate(diveStartTime).getTime();
+      const end = diveEndTime ? parseDbDate(diveEndTime).getTime() : new Date().getTime();
+      const diff = end - start;
+      if (diff > 0) {
+        const hrs = Math.floor(diff / (1000 * 60 * 60));
+        const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const secs = Math.floor((diff % (1000 * 60)) / 1000);
+        setTimeInWater(
+          `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+        );
+      } else {
+        setTimeInWater("00:00:00");
+      }
+    };
+
+    computeTime();
+    timerId = setInterval(computeTime, 1000);
+
     return () => {
       if (timerId) clearInterval(timerId);
     };
-  }, [diveStartTime, diveEndTime]);
+  }, [diveStartTime, diveEndTime, activeMovements, currentMovement]);
 
   // Format timer
   const formatTime = (seconds: number) => {
@@ -3293,6 +3381,7 @@ function V10PreviewLayout() {
       }
 
       if (movs && movs.length > 0) {
+        setActiveMovements(movs);
         const last = movs[movs.length - 1];
         let mvtLabel = "Awaiting Deployment";
         
@@ -3302,13 +3391,26 @@ function V10PreviewLayout() {
             (a) => a.value === mvtLabel || a.label === mvtLabel
           );
           if (mappedItem) mvtLabel = mappedItem.label;
-          setDiveStartTime(last.timestamp || last.event_time || last.movement_time);
         } else {
           mvtLabel = last.movement_type || "Awaiting Deployment";
-          setDiveStartTime(last.movement_time || last.event_time);
         }
         
         setCurrentMovement(mvtLabel);
+
+        // Find initial launch event for start time
+        const launchEvent = movs.find((m) => {
+          const type = (m.activity || m.movement_type || "").toLowerCase();
+          return (
+            type.includes("left surface") ||
+            type.includes("deployed") ||
+            type.includes("launched")
+          );
+        });
+        const startTime = launchEvent
+          ? (launchEvent.movement_time || launchEvent.event_time || launchEvent.timestamp)
+          : (movs[0]?.movement_time || movs[0]?.event_time || movs[0]?.timestamp);
+
+        setDiveStartTime(startTime || null);
 
         const recoveryEvent = movs.find((m) => {
           const type = (m.activity || m.movement_type || "").toLowerCase();
@@ -3418,27 +3520,32 @@ function V10PreviewLayout() {
         setVidState("IDLE");
         setVidTimer(0);
 
-        // Carry-over tape number logic for new jobs
-        const { data: overallLatestTape } = await supabase
+        // Carry-over tape number logic for new jobs IN THE SAME CONTEXT
+        const base = headerData.sowReportNo || "SOW_REPORT";
+        const platform = headerData.platformName || "STRUCTURE";
+        const prefix = `${base} / ${platform} / V`;
+
+        const { data: latestContextTape } = await supabase
           .from("insp_video_tapes")
           .select("tape_no, chapter_no")
+          .ilike("tape_no", `${prefix}%`)
           .order("tape_id", { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        if (overallLatestTape && overallLatestTape.tape_no) {
-          setTapeNo(overallLatestTape.tape_no);
+        if (latestContextTape && latestContextTape.tape_no) {
+          setTapeNo(latestContextTape.tape_no);
           const { data: latestTapeForNo } = await supabase
             .from("insp_video_tapes")
             .select("chapter_no")
-            .eq("tape_no", overallLatestTape.tape_no)
+            .eq("tape_no", latestContextTape.tape_no)
             .order("chapter_no", { ascending: false })
             .limit(1)
             .maybeSingle();
           const nextChapter = latestTapeForNo ? (Number(latestTapeForNo.chapter_no) || 1) + 1 : 1;
           setActiveChapter(nextChapter);
         } else {
-          setTapeNo("VDO-03-2026");
+          setTapeNo("");
           setActiveChapter(1);
         }
       }
@@ -4385,8 +4492,9 @@ function V10PreviewLayout() {
             // name: Prefer diver_name/rov_system for display
             const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
 
-            console.log(`[fetchDeps] Mapped: No=${jNo}, Name=${dName}, ID=${idStr}`);
-            return { id: idStr, jobNo: jNo, name: dName, raw: d };
+            const dDate = d.created_at || d.date || d.dive_date || d.start_date || d.start_time;
+            console.log(`[fetchDeps] Mapped: No=${jNo}, Name=${dName}, ID=${idStr}, Date=${dDate}`);
+            return { id: idStr, jobNo: jNo, name: dName, created_at: dDate, raw: d };
           });
           setDeployments(mapped);
 
@@ -4981,14 +5089,17 @@ function V10PreviewLayout() {
 
     const { error } = await supabase.from(mvtTable).insert(payload);
     if (!error) {
+      setActiveMovements((prev) => [...prev, payload]);
       setCurrentMovement(actionLabel);
       const mvtTime = payload.movement_time;
       if (
-        actionLabel.toLowerCase().includes("left surface") ||
+        (actionLabel.toLowerCase().includes("left surface") ||
         actionLabel.toLowerCase().includes("deployed") ||
-        actionLabel.toLowerCase().includes("launched")
-      )
+        actionLabel.toLowerCase().includes("launched")) &&
+        !diveStartTime
+      ) {
         setDiveStartTime(mvtTime);
+      }
       if (
         actionLabel.toLowerCase().includes("arrived surface") ||
         actionLabel.toLowerCase().includes("recovered") ||
@@ -5604,12 +5715,12 @@ function V10PreviewLayout() {
         company_id: activeCompanyId,
         [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep.id,
         structure_id: parseInt(structureId || "0"),
-        component_id: selectedComp.id,
-        component_type:
-          selectedComp.raw?.code ||
-          selectedComp.raw?.metadata?.comp_type ||
-          selectedComp.raw?.metadata?.type ||
-          null,
+        component_id: (isPipeline || headerData.structureType === "pipeline")
+          ? ((selectedComp?.id && selectedComp.id !== 999999) ? selectedComp.id : parseInt(structureId || "0"))
+          : selectedComp.id,
+        component_type: (isPipeline || headerData.structureType === "pipeline")
+          ? "PP"
+          : (selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null),
         jobpack_id: jobPackId ? parseInt(jobPackId) : null,
         sow_report_no: headerData.sowReportNo || null,
         inspection_type_id: it?.id || null,
@@ -5668,14 +5779,14 @@ function V10PreviewLayout() {
             const val = parseFloat(String(p).replace(/[^\d.-]/g, ""));
             if (!isNaN(val)) return val;
           }
-          return selectedComp.lowestElev && selectedComp.lowestElev !== "-"
+          return selectedComp?.lowestElev && selectedComp?.lowestElev !== "-"
             ? parseFloat(selectedComp.lowestElev)
             : 0;
         })(),
-        fp_kp:
-          activeProps.fp_kp !== undefined && activeProps.fp_kp !== "--"
-            ? String(activeProps.fp_kp)
-            : null,
+        fp_kp: (() => {
+          const val = activeProps.fp_kp ?? activeProps.kp ?? (headerData as any)?.kp;
+          return (val !== undefined && val !== "--" && val !== null && val !== "") ? String(val) : null;
+        })(),
         inspection_data: {
           ...activeProps,
           _meta_timecode: formatTime(
@@ -6795,30 +6906,51 @@ function V10PreviewLayout() {
     switch (component) {
       case "opsLog":
         return (
-          <DiverLogPanel
-            inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
-            activeDep={activeDep}
-            timeInWater={timeInWater}
-            currentMovement={currentMovement}
-            diveStartTime={diveStartTime}
-            diveEndTime={diveEndTime}
-            setIsDiveSetupForNew={setIsDiveSetupForNew}
-            setIsDiveSetupOpen={setIsDiveSetupOpen}
-            setIsMovementLogOpen={setIsMovementLogOpen}
-            handleMovementPrev={handleMovementPrev}
-            handleMovementNext={handleMovementNext}
-            handleMovementLog={handleMovementLog}
-            handlePrevDep={handlePrevDep}
-            handleNextDep={handleNextDep}
-            diveActionsList={diveActionsList}
-            ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
-          />
+          isPipeline ? (
+            <DiverLogPanelPipeline
+              inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
+              activeDep={activeDep}
+              timeInWater={timeInWater}
+              currentMovement={currentMovement}
+              diveStartTime={diveStartTime}
+              diveEndTime={diveEndTime}
+              setIsDiveSetupForNew={setIsDiveSetupForNew}
+              setIsDiveSetupOpen={setIsDiveSetupOpen}
+              setIsMovementLogOpen={setIsMovementLogOpen}
+              handleMovementPrev={handleMovementPrev}
+              handleMovementNext={handleMovementNext}
+              handleMovementLog={handleMovementLog}
+              handlePrevDep={handlePrevDep}
+              handleNextDep={handleNextDep}
+              diveActionsList={diveActionsList}
+              ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+            />
+          ) : (
+            <DiverLogPanel
+              inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
+              activeDep={activeDep}
+              timeInWater={timeInWater}
+              currentMovement={currentMovement}
+              diveStartTime={diveStartTime}
+              diveEndTime={diveEndTime}
+              setIsDiveSetupForNew={setIsDiveSetupForNew}
+              setIsDiveSetupOpen={setIsDiveSetupOpen}
+              setIsMovementLogOpen={setIsMovementLogOpen}
+              handleMovementPrev={handleMovementPrev}
+              handleMovementNext={handleMovementNext}
+              handleMovementLog={handleMovementLog}
+              handlePrevDep={handlePrevDep}
+              handleNextDep={handleNextDep}
+              diveActionsList={diveActionsList}
+              ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+            />
+          )
         );
        case "videoLog":
         return (
-          <div className="flex flex-col h-full bg-[#0f172a] overflow-hidden">
-            <div className="p-2 shrink-0">
-               <TapeManagementCard
+          <div className="flex flex-col h-full w-full bg-white dark:bg-[#090d16] overflow-y-auto custom-scrollbar min-w-0">
+            {isPipeline ? (
+              <TapeManagementCardPipeline
                 vidState={vidState}
                 vidTimer={vidTimer}
                 tapeId={tapeId}
@@ -6834,7 +6966,24 @@ function V10PreviewLayout() {
                 formatTime={formatTime}
                 onOpenHistory={() => setVideoLogExpanded(true)}
               />
-            </div>
+            ) : (
+              <TapeManagementCard
+                vidState={vidState}
+                vidTimer={vidTimer}
+                tapeId={tapeId}
+                tapeNo={tapeNo}
+                activeChapter={activeChapter}
+                jobTapes={jobTapes}
+                handleLogEvent={handleLogEvent}
+                setTapeId={setTapeId}
+                setTapeNo={setTapeNo}
+                setActiveChapter={setActiveChapter}
+                setIsNewTapeOpen={setIsNewTapeOpen}
+                handleOpenEditTape={handleOpenEditTape}
+                formatTime={formatTime}
+                onOpenHistory={() => setVideoLogExpanded(true)}
+              />
+            )}
             <Dialog open={videoLogExpanded} onOpenChange={setVideoLogExpanded}>
               <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
                 <DialogHeader className="p-4 border-b border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shrink-0">
@@ -6975,6 +7124,45 @@ function V10PreviewLayout() {
           />
         );
       case "components":
+        if (isPipeline || headerData.structureType === "pipeline") {
+          return (
+            <PipelineEventMenuPanel
+              currentKp={headerData.kp || "0.000"}
+              inspMethod={inspMethod}
+              onSelectEvent={(evtData) => {
+                const navigSpec = allInspectionTypes.find(
+                  (t: any) => t.code === "NAVIG" || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
+                );
+                if (navigSpec) {
+                  setActiveSpec(navigSpec.code);
+                } else {
+                  setActiveSpec("NAVIG");
+                }
+                if (!selectedComp) {
+                  const defaultComp = (componentsSow && componentsSow.length > 0)
+                    ? componentsSow[0]
+                    : {
+                        id: 999999,
+                        q_id: headerData.structureName || "PIPELINE-01",
+                        name: headerData.structureName || "Pipeline Main Line",
+                        type: "PIPELINE",
+                      };
+                  setSelectedComp(defaultComp);
+                }
+                setFindingType("Complete");
+                setDynamicProps((prev: any) => ({
+                  ...prev,
+                  event_type: evtData.eventType,
+                  event_name: evtData.eventName,
+                  event_description: evtData.description,
+                  event_position: evtData.eventCategory,
+                  kp: headerData.kp || prev?.kp || "0.0000",
+                }));
+                toast.success(`Event loaded: ${evtData.eventName}`);
+              }}
+            />
+          );
+        }
         return (
           <ComponentListPanel
             compView={compView}
@@ -6995,7 +7183,7 @@ function V10PreviewLayout() {
             structureId={structureId ? Number(structureId) : 0}
             onRefreshComponents={() => { queryClient.invalidateQueries({ queryKey: ["sow-data"] }); }}
             allInspectionTypes={allInspectionTypes}
-            structureType={headerData.structureType === "pipeline" ? "pipeline" : "platform"}
+            structureType={(headerData.structureType as string) === "pipeline" ? "pipeline" : "platform"}
             unitSystem={unitSystem}
             handleEditRecord={handleEditRecord}
             handleTaskChange={handleTaskChange}
@@ -7636,6 +7824,9 @@ function V10PreviewLayout() {
             onRenderTab={(node: TabNode, renderValues: any) => {
               if (node.getComponent() === "opsLog") {
                 renderValues.content = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
+              }
+              if (node.getComponent() === "components") {
+                renderValues.content = (isPipeline || headerData.structureType === "pipeline") ? "Event Menu" : "Component List";
               }
             }}
           />
