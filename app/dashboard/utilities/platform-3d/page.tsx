@@ -14,7 +14,8 @@ import {
     ChevronRight,
     Waves,
     RefreshCw,
-    X
+    X,
+    AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ const Structural3DViewer = dynamic(
     }
 );
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
+import { WincairsFallbackDialog } from "@/components/dialogs/wincairs-fallback-dialog";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 
@@ -63,6 +65,11 @@ export default function Platform3DPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
     const [isSpecOpen, setIsSpecOpen] = useState(false);
+
+    // WINCAIRS Mode state & Fallback Dialog state
+    const [useWincairsMode, setUseWincairsMode] = useState(false);
+    const [fallbackComponents, setFallbackComponents] = useState<any[]>([]);
+    const [isFallbackDialogOpen, setIsFallbackDialogOpen] = useState(false);
 
     const [, setGlobalUrlId] = useAtom(urlId);
     const [, setGlobalUrlType] = useAtom(urlType);
@@ -148,6 +155,13 @@ export default function Platform3DPage() {
     );
     const faces = facesData?.data || [];
 
+    // 6. Fetch WINCAIRS 3D Parameters (u_obj3d_param)
+    const { data: wincairsData, isLoading: isWincairsLoading } = useSWR(
+        selectedPlatform ? `/api/platform/obj3d-param/${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const wincairsParams = useMemo(() => wincairsData?.data || [], [wincairsData]);
+
     const filteredPlatforms = useMemo(() => {
         return platforms.filter(p => 
             p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -186,7 +200,38 @@ export default function Platform3DPage() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        {/* WINCAIRS Mode Toggle Button */}
+                        <Button
+                            variant={useWincairsMode ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setUseWincairsMode(!useWincairsMode)}
+                            className={cn(
+                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all shadow-sm",
+                                useWincairsMode
+                                    ? "bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)]"
+                                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                            )}
+                            title="Toggle WINCAIRS 3D Vector Rendering Mode"
+                        >
+                            <Layers className="h-3.5 w-3.5" />
+                            <span>WINCAIRS Mode: {useWincairsMode ? "ON" : "OFF"}</span>
+                        </Button>
+
+                        {/* Fallback Warning Badge */}
+                        {useWincairsMode && fallbackComponents.length > 0 && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setIsFallbackDialogOpen(true)}
+                                className="h-9 px-3 gap-1.5 rounded-xl border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-xs font-bold transition-all shadow-xs animate-in fade-in"
+                                title="Click to view components using standard procedural fallback"
+                            >
+                                <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                <span>{fallbackComponents.length} Fallback(s)</span>
+                            </Button>
+                        )}
+
                         <Button 
                             variant="outline"
                             size="sm"
@@ -198,7 +243,7 @@ export default function Platform3DPage() {
                             <span>Sync</span>
                         </Button>
 
-                        <div className="flex flex-col items-end">
+                        <div className="flex flex-col items-end pl-2">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Status</span>
                             <span className="text-xs font-bold text-emerald-500 uppercase tracking-tight flex items-center gap-1.5">
                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
@@ -226,6 +271,9 @@ export default function Platform3DPage() {
                             onSelectComponent={handleSelectComponent}
                             onSync={mutateComponents}
                             isSyncing={isComponentsValidating}
+                            useWincairsMode={useWincairsMode}
+                            wincairsParams={wincairsParams}
+                            onFallbackComponentsChange={setFallbackComponents}
                         />
                     </div>
 
@@ -256,6 +304,15 @@ export default function Platform3DPage() {
                         </div>
                     )}
                 </div>
+
+                {/* WINCAIRS Fallback Inspector Dialog */}
+                <WincairsFallbackDialog
+                    open={isFallbackDialogOpen}
+                    onOpenChange={setIsFallbackDialogOpen}
+                    fallbackComponents={fallbackComponents}
+                    platformTitle={selectedPlatform.title}
+                    onSelectComponent={handleSelectComponent}
+                />
             </div>
         );
     }

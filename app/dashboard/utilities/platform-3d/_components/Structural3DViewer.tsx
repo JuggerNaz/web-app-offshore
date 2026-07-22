@@ -24,6 +24,7 @@ import { Play, Box, Radio, Compass, RefreshCw, Maximize2 } from "lucide-react";
 
 interface Component3D {
     id: number;
+    comp_id?: number;
     q_id: string;
     code: string | null;
     metadata: any;
@@ -38,6 +39,9 @@ interface Structural3DViewerProps {
     onSelectComponent: (component: Component3D) => void;
     onSync?: () => void;
     isSyncing?: boolean;
+    useWincairsMode?: boolean;
+    wincairsParams?: any[];
+    onFallbackComponentsChange?: (fallbackComps: Component3D[]) => void;
 }
 
 const ComponentMesh = ({
@@ -733,7 +737,22 @@ export function Structural3DViewer({
     onSelectComponent,
     onSync,
     isSyncing = false,
+    useWincairsMode = false,
+    wincairsParams = [],
+    onFallbackComponentsChange,
 }: Structural3DViewerProps) {
+    const wincairsParamsMap = useMemo(() => {
+        const map = new Map<number, any>();
+        if (wincairsParams && Array.isArray(wincairsParams)) {
+            wincairsParams.forEach((param: any) => {
+                if (param.comp_id) {
+                    map.set(Number(param.comp_id), param);
+                }
+            });
+        }
+        return map;
+    }, [wincairsParams]);
+
     const components = useMemo(() => {
         const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD"];
         return rawComponents.filter((c) => {
@@ -1561,10 +1580,55 @@ export function Structural3DViewer({
         const pendingSpanAccessories: { component: any; sNode: THREE.Vector3; fNode: THREE.Vector3 }[] =
             [];
         const pendingRiserSupports: { component: any; riserNum: string; targetElv: number }[] = [];
+        const wincairsAppliedSet = new Set<number>();
 
         components.forEach((c, i) => {
             const md = c.metadata || {};
             const code = (c.code || "").toUpperCase();
+
+            // Check WINCAIRS Mode 3D CAD parameter override
+            const wincairsParam = useWincairsMode ? wincairsParamsMap.get(c.comp_id || c.id) : null;
+            const hasWincairsParam = !!(
+                wincairsParam &&
+                isFinite(Number(wincairsParam.s_point3d_x)) &&
+                isFinite(Number(wincairsParam.s_point3d_y)) &&
+                isFinite(Number(wincairsParam.s_point3d_z)) &&
+                !(Number(wincairsParam.s_point3d_x) === 0 && Number(wincairsParam.s_point3d_y) === 0 && Number(wincairsParam.s_point3d_z) === 0 && Number(wincairsParam.e_point3d_x) === 0 && Number(wincairsParam.e_point3d_y) === 0 && Number(wincairsParam.e_point3d_z) === 0)
+            );
+
+            if (hasWincairsParam) {
+                const start = new THREE.Vector3(
+                    Number(wincairsParam.s_point3d_x),
+                    Number(wincairsParam.s_point3d_y),
+                    Number(wincairsParam.s_point3d_z)
+                );
+                let end = new THREE.Vector3();
+                const hasEndVec = isFinite(Number(wincairsParam.e_point3d_x)) &&
+                                  isFinite(Number(wincairsParam.e_point3d_y)) &&
+                                  isFinite(Number(wincairsParam.e_point3d_z)) &&
+                                  !(Number(wincairsParam.e_point3d_x) === 0 && Number(wincairsParam.e_point3d_y) === 0 && Number(wincairsParam.e_point3d_z) === 0);
+
+                if (hasEndVec) {
+                    end.set(
+                        Number(wincairsParam.e_point3d_x),
+                        Number(wincairsParam.e_point3d_y),
+                        Number(wincairsParam.e_point3d_z)
+                    );
+                } else {
+                    end.copy(start).add(new THREE.Vector3(0, 0.2, 0));
+                }
+
+                let thickness = 0.15;
+                if (code.includes("LG")) thickness = 0.5;
+                else if (code === "RS" || code.includes("RISER") || code.includes("RISR")) thickness = 0.3;
+                else if (code.includes("HM") || code.includes("HD")) thickness = 0.2;
+                else if (code.includes("VM") || code.includes("VD")) thickness = 0.16;
+                else if (code === "CO" || code === "CA" || code === "CS" || code.includes("COND") || code.includes("CAIS") || code === "CD") thickness = 0.30;
+
+                intermediateLayouts.set(c.id, { component: c, start, end, thickness });
+                wincairsAppliedSet.add(c.id);
+                return;
+            }
 
             // Skip child welds already resolved in PASS 1.7
             if (code === "WN" && md.associated_comp_id) {
@@ -2375,7 +2439,35 @@ export function Structural3DViewer({
             foundationMembers: filteredFoundationMembers,
             elvMarkers: filteredElvMarkers,
         };
-    }, [components, platformDetails, elevations, faces, selectedElevations, selectedFaces]);
+    }, [components, platformDetails, elevations, faces, selectedElevations, selectedFaces, useWincairsMode, wincairsParamsMap]);
+
+    const fallbackComponents = useMemo(() => {
+        if (!useWincairsMode) return [];
+        const wincairsRenderedIds = new Set<number>();
+        componentLayouts.forEach((l) => {
+            const param = wincairsParamsMap.get(l.component.comp_id || l.component.id);
+            if (param && isFinite(Number(param.s_point3d_x))) {
+                wincairsRenderedIds.add(l.component.id);
+            }
+        });
+        return components.filter((c) => !wincairsRenderedIds.has(c.id));
+    }, [components, componentLayouts, useWincairsMode, wincairsParamsMap]);
+
+    const prevFallbackIdsRef = useRef<string>("");
+
+    React.useEffect(() => {
+        if (!onFallbackComponentsChange) return;
+
+        const currentIdsStr = fallbackComponents
+            .map((c) => c.id)
+            .sort((a, b) => a - b)
+            .join(",");
+
+        if (prevFallbackIdsRef.current !== currentIdsStr) {
+            prevFallbackIdsRef.current = currentIdsStr;
+            onFallbackComponentsChange(fallbackComponents);
+        }
+    }, [fallbackComponents, onFallbackComponentsChange]);
 
     if (!isActivated) {
         return (
