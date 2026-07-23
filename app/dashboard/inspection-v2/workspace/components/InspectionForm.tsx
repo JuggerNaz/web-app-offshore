@@ -494,11 +494,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             if (!dynamicProps?.inspection_time) {
                 handleDynamicPropChange('inspection_time', formattedTime);
             }
-            if ((dynamicProps?.tape_count_no === undefined || dynamicProps?.tape_count_no === '') && tapeId) {
+            if ((dynamicProps?.tape_count_no === undefined || dynamicProps?.tape_count_no === '' || dynamicProps?.tape_count_no === '00:00:00') && vidTimer !== undefined) {
                 handleDynamicPropChange('tape_count_no', formatTime(vidTimer));
             }
         }
-    }, [isEditing, activeSpec, selectedComp, tapeId]);
+    }, [isEditing, activeSpec, selectedComp, vidTimer]);
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">
@@ -511,8 +511,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     )}
                     <span className="text-blue-100/40 shrink-0">/</span>
                     <span className="truncate max-w-[340px] sm:max-w-md opacity-90">{(() => {
-                        const specObj = allInspectionTypes.find(t => (t.code || '').trim() === (activeSpec || '').trim()) || allInspectionTypes.find(t => (t.name || '').trim() === (activeSpec || '').trim());
-                        return specObj ? specObj.name : activeSpec;
+                        const codeClean = (activeSpec || '').toUpperCase().trim();
+                        const jsonSpec = (inspectionSpecs?.inspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
+                        if (jsonSpec?.name) return jsonSpec.name;
+                        const specObj = (allInspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean) || (allInspectionTypes || []).find((t: any) => (t.name || '').toUpperCase().trim() === codeClean);
+                        return (specObj?.name && specObj.name.toUpperCase() !== specObj.code?.toUpperCase()) ? specObj.name : (jsonSpec?.name || activeSpec);
                     })()}</span>
                     {onChangeTaskClick && (
                         <button onClick={onChangeTaskClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">Change</button>
@@ -601,24 +604,33 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                              <Input type="text" value={dynamicProps?.easting !== undefined ? dynamicProps.easting : ''} onChange={(e) => handleDynamicPropChange?.('easting', e.target.value)} placeholder="Enter Easting" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
                                                          )}
                                                      </div>
-                                                     {depthField && (
-                                                         <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
-                                                             <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Depth</span>
-                                                             {renderInspectionField(depthField, 'primary')}
-                                                         </div>
-                                                     )}
-                                                     {cpFgField && (
-                                                         <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
-                                                             <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">CP FG</span>
-                                                             {renderInspectionField(cpFgField, 'primary')}
-                                                         </div>
-                                                     )}
-                                                     {headingField && (
-                                                         <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
-                                                             <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Heading</span>
-                                                             {renderInspectionField(headingField, 'primary')}
-                                                         </div>
-                                                     )}
+                                                     <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
+                                                          <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Depth</span>
+                                                          {depthField ? renderInspectionField(depthField, 'primary') : (
+                                                              <Input type="text" value={dynamicProps?.depth !== undefined ? dynamicProps.depth : (dynamicProps?.verification_depth !== undefined ? dynamicProps.verification_depth : '')} onChange={(e) => {
+                                                                  handleDynamicPropChange?.('depth', e.target.value);
+                                                                  handleDynamicPropChange?.('verification_depth', e.target.value);
+                                                              }} placeholder="Enter Depth" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
+                                                          )}
+                                                      </div>
+                                                      <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
+                                                          <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">CP FG</span>
+                                                          {cpFgField ? renderInspectionField(cpFgField, 'primary') : (
+                                                              <Input type="text" value={dynamicProps?.cp_fg_rdg !== undefined ? dynamicProps.cp_fg_rdg : (dynamicProps?.cp_fg !== undefined ? dynamicProps.cp_fg : '')} onChange={(e) => {
+                                                                  handleDynamicPropChange?.('cp_fg_rdg', e.target.value);
+                                                                  handleDynamicPropChange?.('cp_fg', e.target.value);
+                                                              }} placeholder="Enter CP FG" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
+                                                          )}
+                                                      </div>
+                                                      <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
+                                                          <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Heading</span>
+                                                          {headingField ? renderInspectionField(headingField, 'primary') : (
+                                                              <Input type="text" value={dynamicProps?.rov_heading !== undefined ? dynamicProps.rov_heading : (dynamicProps?.heading !== undefined ? dynamicProps.heading : '')} onChange={(e) => {
+                                                                  handleDynamicPropChange?.('rov_heading', e.target.value);
+                                                                  handleDynamicPropChange?.('heading', e.target.value);
+                                                              }} placeholder="Enter Heading" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
+                                                          )}
+                                                      </div>
                                                      {flowField && (
                                                          <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
                                                              <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Inspection Flow</span>
@@ -1061,6 +1073,20 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     let utwtkResults: any[] = [];
                                                     let utwtkTopFields: any[] = [];
                                                     
+                                                    // Extract Event Header fields (Event Name, Event Type, Event Position, Event Description)
+                                                    const eventFieldNames = ['event_name', 'event_type', 'event_position', 'event_description'];
+                                                    const eventFields = {
+                                                        eventName: validOtherFields.find((f: any) => f.name === 'event_name'),
+                                                        eventType: validOtherFields.find((f: any) => f.name === 'event_type'),
+                                                        eventPosition: validOtherFields.find((f: any) => f.name === 'event_position'),
+                                                        eventDescription: validOtherFields.find((f: any) => f.name === 'event_description'),
+                                                    };
+                                                    const hasEventFields = !!(eventFields.eventName || eventFields.eventType || eventFields.eventPosition || eventFields.eventDescription);
+
+                                                    if (hasEventFields) {
+                                                        validOtherFields = validOtherFields.filter((f: any) => !eventFieldNames.includes(f.name));
+                                                    }
+
                                                     if (isUTWTK) {
                                                         utwtkResults = validOtherFields.filter((f: any) => utwtkResultNames.includes(f.name));
                                                         utwtkTopFields = validOtherFields.filter((f: any) => utwtkTopNames.includes(f.name));
@@ -1076,6 +1102,47 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                                                     return (
                                                         <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+                                                            {hasEventFields && (
+                                                                <div className="col-span-full border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm space-y-2.5">
+                                                                    {/* Row 1: Event Name, Event Type, Event Position in one row */}
+                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                                        {eventFields.eventName && (
+                                                                            <div key="event_name" className="space-y-0.5">
+                                                                                <label className="text-[9px] font-black uppercase text-slate-500 block truncate" title={eventFields.eventName.label || "Event Name"}>
+                                                                                    {eventFields.eventName.label || "Event Name"}
+                                                                                </label>
+                                                                                {renderInspectionField(eventFields.eventName, 'primary')}
+                                                                            </div>
+                                                                        )}
+                                                                        {eventFields.eventType && (
+                                                                            <div key="event_type" className="space-y-0.5">
+                                                                                <label className="text-[9px] font-black uppercase text-slate-500 block truncate" title={eventFields.eventType.label || "Event Type"}>
+                                                                                    {eventFields.eventType.label || "Event Type"}
+                                                                                </label>
+                                                                                {renderInspectionField(eventFields.eventType, 'primary')}
+                                                                            </div>
+                                                                        )}
+                                                                        {eventFields.eventPosition && (
+                                                                            <div key="event_position" className="space-y-0.5">
+                                                                                <label className="text-[9px] font-black uppercase text-slate-500 block truncate" title={eventFields.eventPosition.label || "Event Position"}>
+                                                                                    {eventFields.eventPosition.label || "Event Position"}
+                                                                                </label>
+                                                                                {renderInspectionField(eventFields.eventPosition, 'primary')}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* Row 2: Event Description in Next Line */}
+                                                                    {eventFields.eventDescription && (
+                                                                        <div key="event_description" className="w-full space-y-0.5 pt-0.5">
+                                                                            <label className="text-[9px] font-black uppercase text-slate-500 block truncate" title={eventFields.eventDescription.label || "Event Description"}>
+                                                                                {eventFields.eventDescription.label || "Event Description"}
+                                                                            </label>
+                                                                            {renderInspectionField(eventFields.eventDescription, 'primary')}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                             {isUTWTK && utwtkTopFields.length > 0 && (
                                                                 <div className="col-span-full">
                                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-x-3 gap-y-2">

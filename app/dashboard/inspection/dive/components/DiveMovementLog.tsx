@@ -34,6 +34,7 @@ const BELL_DIVE_ACTIONS = [
 
 interface DiveMovementLogProps {
     diveJob: any;
+    onRefresh?: () => void;
 }
 
 interface Movement {
@@ -44,7 +45,7 @@ interface Movement {
     location?: string;
 }
 
-export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
+export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogProps) {
     const supabase = createClient();
 
     const diveActionsList = ((diveJob?.dive_type?.toUpperCase() || "AIR")).includes("BELL") || ((diveJob?.dive_type?.toUpperCase() || "AIR")).includes("SAT") ? BELL_DIVE_ACTIONS : AIR_DIVE_ACTIONS;
@@ -177,7 +178,8 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
 
             toast.success("Movement logged");
             setNewMovement({ activity: "", notes: "", timestamp: getLocalDatetimeString() });
-            loadMovements();
+            await loadMovements();
+            onRefresh?.();
         } catch (error: any) {
             console.error("Error adding movement:", error);
             toast.error(error.message || "Failed to log movement");
@@ -193,7 +195,8 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
             const { error } = await supabase.from("insp_dive_movements").delete().eq(pkField, id);
             if (error) throw error;
             toast.success("Movement deleted");
-            loadMovements();
+            await loadMovements();
+            onRefresh?.();
         } catch (error: any) {
             console.error("Error deleting movement:", error);
             toast.error(error.message || "Failed to delete movement");
@@ -227,7 +230,8 @@ export default function DiveMovementLog({ diveJob }: DiveMovementLogProps) {
             if (error) throw error;
             toast.success("Movement updated");
             setEditingId(null);
-            loadMovements();
+            await loadMovements();
+            onRefresh?.();
         } catch (error: any) {
             console.error("Error updating movement:", error);
             toast.error(error.message || "Failed to update movement");

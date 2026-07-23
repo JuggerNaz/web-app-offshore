@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
+import { PipelineSeabedEventMap } from "@/components/inspection/pipeline-seabed-event-map";
 import { ReportWizardDialog } from "./ReportWizardDialog";
 
 import DiveJobSetupDialog from "@/app/dashboard/inspection/dive/components/DiveJobSetupDialog";
@@ -139,6 +140,7 @@ interface WorkspaceDialogsProps {
         allComps: any[];
         selectorShowAll: boolean;
         isSeabedGuiOpen: boolean;
+        isPipelineMapOpen?: boolean;
         tapeId: number | null;
         vidTimer: number;
         dataAcqFields: any;
@@ -204,6 +206,7 @@ interface WorkspaceDialogsProps {
         setEditTapeStatus: (val: string) => void;
         setEditTapeRemarks: (val: string) => void;
         setIsNewTapeOpen: (open: boolean) => void;
+        setIsPipelineMapOpen?: (open: boolean) => void;
         setNewTapeNo: (val: string) => void;
         setNewTapeChapter: (val: string) => void;
         setNewTapeRemarks: (val: string) => void;
@@ -444,6 +447,7 @@ export function WorkspaceDialogs({
         allComps,
         selectorShowAll,
         isSeabedGuiOpen,
+        isPipelineMapOpen,
         tapeId,
         vidTimer,
         dataAcqFields,
@@ -821,15 +825,16 @@ export function WorkspaceDialogs({
                             <button onClick={() => {
                                 setIsMovementLogOpen(false);
                                 if (activeDep) {
-                                    setEditingEvent(null); // Just to trigger a re-render if needed
+                                    setEditingEvent(null);
                                 }
+                                syncDeploymentState?.();
                             }} className="rounded-full p-1.5 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"><X className="w-5 h-5 text-slate-500 dark:text-slate-400" /></button>
                         </div>
                         <div className="p-6">
                             {inspMethod === "DIVING" ? (
-                                <DiveMovementLog diveJob={(activeDep as any)?.raw} />
+                                <DiveMovementLog diveJob={(activeDep as any)?.raw} onRefresh={syncDeploymentState} />
                             ) : (
-                                <ROVMovementLog diveJob={(activeDep as any)?.raw} />
+                                <ROVMovementLog diveJob={(activeDep as any)?.raw} onRefresh={syncDeploymentState} />
                             )}
                         </div>
                     </div>
@@ -2252,6 +2257,41 @@ export function WorkspaceDialogs({
                         />
                     </div>
                 </div>
+            )}
+
+            {isPipelineMapOpen && (
+                <PipelineSeabedEventMap
+                    isOpen={!!isPipelineMapOpen}
+                    onClose={() => setters.setIsPipelineMapOpen?.(false)}
+                    structureName={headerData?.structureName || "Pipeline Main Line"}
+                    pipelineLengthKm={headerData?.lineLength ? parseFloat(headerData.lineLength) : (selectedComp?.length ? parseFloat(selectedComp.length) : 10.0)}
+                    events={(currentRecords || []).map((r: any) => {
+                        const data = r.inspection_data || {};
+                        const kpNum = parseFloat(r.kp || data.kp || data.fp_kp || "0");
+                        return {
+                            id: r.insp_id || r.id,
+                            event_name: data.event_name || r.event_name || r.inspection_type_code || "Event",
+                            event_type: data.event_type || r.event_type || "",
+                            event_position: data.event_position || r.event_position || "",
+                            event_description: data.event_description || r.event_description || data.remarks || "",
+                            kp: isNaN(kpNum) ? 0 : kpNum,
+                            end_kp: data.end_kp ? parseFloat(data.end_kp) : undefined,
+                            northing: data.northing || r.northing || "",
+                            easting: data.easting || r.easting || "",
+                            depth: data.depth || data.verification_depth || r.depth || "",
+                            cp_fg_rdg: data.cp_fg_rdg || data.cp_fg || r.cp_fg_rdg || "",
+                            rov_heading: data.rov_heading || data.heading || r.rov_heading || "",
+                            inspection_date: r.inspection_date || data.inspection_date || "",
+                            inspection_time: r.inspection_time || data.inspection_time || "",
+                            tape_count_no: r.tape_count_no || data.tape_count_no || "",
+                            finding_type: r.finding_type || data.finding_type || "Complete",
+                            findings: data.findings || r.findings || "",
+                            anomaly_code: data.anomaly_code || r.anomaly_code || "",
+                            span_height: data.span_height ? parseFloat(data.span_height) : (data.gap_under_pipe ? parseFloat(data.gap_under_pipe) : undefined),
+                            burial_depth: data.burial_depth ? parseFloat(data.burial_depth) : (data.depth_of_burial ? parseFloat(data.depth_of_burial) : undefined),
+                        };
+                    })}
+                />
             )}
 
             <ReportPreviewDialog

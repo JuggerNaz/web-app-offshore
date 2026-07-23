@@ -266,8 +266,35 @@ function V10PreviewLayout() {
     modeParam || initialMode || "DIVING"
   );
   const [isSeabedGuiOpen, setIsSeabedGuiOpen] = useState(false);
+  const [isPipelineMapOpen, setIsPipelineMapOpen] = useState(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [isReportWizardOpen, setIsReportWizardOpen] = useState(false);
+
+  // Pipeline Preset Settings (Direction & Location Scope)
+  const [inspectionDirection, setInspectionDirection] = useState<"Increase KP" | "Reverse KP">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("pipeline_insp_direction") as any) || "Increase KP";
+    }
+    return "Increase KP";
+  });
+  const [inspectionLocation, setInspectionLocation] = useState<"Pipeline" | "Crossing Line" | "Others">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("pipeline_insp_location") as any) || "Pipeline";
+    }
+    return "Pipeline";
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("pipeline_insp_direction", inspectionDirection);
+    }
+  }, [inspectionDirection]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("pipeline_insp_location", inspectionLocation);
+    }
+  }, [inspectionLocation]);
 
   const [deployments, setDeployments] = useState<any[]>([]);
   const [activeDep, setActiveDep] = useState<{
@@ -299,7 +326,11 @@ function V10PreviewLayout() {
   const [columnSettings, setColumnSettings] = useState(() => {
     const defaultCols = [
       { id: "inspection_date", label: "Date/Time", visible: true },
-      { id: "type", label: "Type", visible: true },
+      { id: "event_name", label: "Event Name", visible: true },
+      { id: "event_type", label: "Event Type", visible: true },
+      { id: "event_position", label: "Event Position", visible: true },
+      { id: "event_description", label: "Event Description", visible: true },
+      { id: "type", label: "Spec Type", visible: true },
       { id: "component", label: "Component", visible: true },
       { id: "elev", label: "Elev/KP", visible: true },
       { id: "anomaly_ref", label: "Anom. Ref", visible: true },
@@ -313,10 +344,17 @@ function V10PreviewLayout() {
         try {
           const parsed = JSON.parse(saved).map((p: any) => p.id === "cr_date" ? { ...p, id: "inspection_date" } : p);
           // Merge with defaults to ensure all keys exist
-          return defaultCols.map((dc) => {
+          const merged = defaultCols.map((dc) => {
             const s = parsed.find((p: any) => p.id === dc.id);
             return s ? { ...dc, ...s } : dc;
           });
+          // Ensure new default columns are appended if missing from parsed saved list
+          parsed.forEach((p: any) => {
+            if (!merged.some(m => m.id === p.id)) {
+              merged.push(p);
+            }
+          });
+          return merged;
         } catch (e) {
           console.error("Error parsing columns", e);
         }
@@ -342,11 +380,16 @@ function V10PreviewLayout() {
   };
 
   const activeTableColumns = useMemo(() => {
+    const isPipe = isPipeline || (typeof pathname === "string" && pathname.includes("pipeline"));
     return [
       { id: "status", label: "Status", fixed: true },
-      ...columnSettings.filter((c) => c.visible),
+      ...columnSettings.filter((c) => {
+        if (!c.visible) return false;
+        if (isPipe && (c.id === "type" || c.id === "component")) return false;
+        return true;
+      }),
     ];
-  }, [columnSettings]);
+  }, [columnSettings, isPipeline, pathname]);
 
   // --- DOCKABLE LAYOUT STATE ---
   const [layoutModel, setLayoutModel] = useState<Model | null>(null);
@@ -712,6 +755,7 @@ function V10PreviewLayout() {
   const [activeChapter, setActiveChapter] = useState(1);
   const [videoEvents, setVideoEvents] = useState<any[]>([]);
   const [jobTapes, setJobTapes] = useState<any[]>([]);
+  const isLoggingRef = useRef(false);
   const [isEditTapeOpen, setIsEditTapeOpen] = useState(false);
   const [editTapeNo, setEditTapeNo] = useState("");
   const [editTapeChapter, setEditTapeChapter] = useState("");
@@ -2493,7 +2537,27 @@ function V10PreviewLayout() {
   };
 
   const resetForm = () => {
-    setActiveSpec(null);
+    const isPipe = isPipeline || headerData.structureType === "pipeline";
+    if (isPipe) {
+      const navigSpec = allInspectionTypes.find(
+        (t: any) => t.code === "NAVIG" || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
+      );
+      setActiveSpec(navigSpec?.code || "NAVIG");
+      if (!selectedComp) {
+        const defaultComp = (componentsSow && componentsSow.length > 0)
+          ? componentsSow[0]
+          : {
+              id: 999999,
+              q_id: headerData.structureName || "PIPELINE-01",
+              name: headerData.structureName || "Pipeline Main Line",
+              type: "PIPELINE",
+            };
+        setSelectedComp(defaultComp);
+      }
+    } else {
+      setActiveSpec(null);
+    }
+
     setRecordNotes("");
     setDynamicProps({});
     setDebouncedProps({});
@@ -3429,6 +3493,7 @@ function V10PreviewLayout() {
           
         setDiveEndTime(endTime || null);
       } else {
+        setActiveMovements([]);
         setCurrentMovement("Awaiting Deployment");
         setDiveStartTime(null);
         setDiveEndTime(null);
@@ -3941,180 +4006,198 @@ function V10PreviewLayout() {
   }, [fetchHistory]);
 
   const handleLogEvent = async (action: string) => {
-    let currentTimer = vidTimer;
-    if (action === "Start Tape") {
-      currentTimer = 0;
-      setVidTimer(0);
-    } else if (action === "Stop Tape") {
-      // Keep currentTimer as the actual duration for the log record, but visually reset it
-      setVidTimer(0);
+    if (isLoggingRef.current) {
+      console.warn("[handleLogEvent] Operation already in progress, ignoring concurrent trigger");
+      return;
     }
 
-    const optimisticId = `log_${Date.now()}`;
-    const tcode = formatTime(currentTimer);
-    const now = new Date();
-    const eventTime = format(now, "yyyy-MM-dd'T'HH:mm:ss");
-    setVideoEvents([
-      {
-        id: optimisticId,
-        realId: 0,
-        time: tcode,
-        action,
-        logType: "video_log",
-        eventTime,
-        tape_id: tapeId,
-        tape_counter_start: currentTimer,
-      },
-      ...videoEvents,
-    ]);
-
-    // Map UI labels to valid DB constraint values
-    let dbAction = action;
-    if (action === "Start Tape") dbAction = "NEW_LOG_START";
-    if (action === "Stop Tape") dbAction = "END";
-    if (action === "Pause") dbAction = "PAUSE";
-    if (action === "Resume") dbAction = "RESUME";
-
-    let tId = tapeId;
-
-    // Auto-increment chapter logic ON Stop Tape is now at the end of the function.
-    // Fallback for first tape if none exists when starting
-    const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-    const jobVal = Number(activeDep?.id);
-
-    if (activeDep?.id && (!tId || action === "Start Tape")) {
-      // 1. Try to find if this tape_no and chapter_no is already registered for this job
-      const { data: existingTape } = await supabase
-        .from("insp_video_tapes")
-        .select("*")
-        .eq("tape_no", tapeNo || "")
-        .eq("chapter_no", activeChapter)
-        .eq(jobCol, jobVal)
-        .maybeSingle();
-
-      if (existingTape) {
-        tId = existingTape.tape_id;
-        setTapeId(existingTape.tape_id);
-        setJobTapes((prev) => {
-          if (!prev.some((t) => t.tape_id === existingTape.tape_id)) {
-            return [existingTape, ...prev];
-          }
-          return prev;
-        });
-      } else {
-        // 2. If it is not registered, create a new record in insp_video_tapes
-        const user = (await supabase.auth.getUser()).data.user;
-        let uniqueTapeNo = tapeNo;
-        if (!uniqueTapeNo) {
-          const base = headerData.sowReportNo || "SOW_REPORT";
-          const platform = headerData.platformName || "STRUCTURE";
-          const postfix = inspMethod === "DIVING" ? "D" : "R";
-          let maxSeq = 0;
-          jobTapes.forEach((t) => {
-            const match = t.tape_no.match(/V(\d{3})[DR]$/);
-            if (match) {
-              const seq = parseInt(match[1], 10);
-              if (seq > maxSeq) maxSeq = seq;
-            }
-          });
-          const nextSeq = String(maxSeq + 1).padStart(3, "0");
-          uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
-        }
-
-        const { data: newTape, error: insErr } = await supabase
-          .from("insp_video_tapes")
-          .insert({
-            tape_no: uniqueTapeNo,
-            tape_type: "DIGITAL - PRIMARY",
-            chapter_no: activeChapter,
-            status: "ACTIVE",
-            [jobCol]: jobVal,
-            cr_user: user?.id || "system",
-          })
-          .select()
-          .single();
-
-        if (insErr) {
-          console.error("[Start Tape] Error registering tape:", insErr.message);
-          toast.error(`Error registering tape: ${insErr.message}`);
-        } else if (newTape) {
-          setJobTapes((prev) => [newTape, ...prev]);
-          setTapeId(newTape.tape_id);
-          setTapeNo(newTape.tape_no);
-          setActiveChapter(newTape.chapter_no || 1);
-          tId = newTape.tape_id;
-        }
-      }
+    if (action === "Start Tape" && vidState === "RECORDING") {
+      console.warn("[handleLogEvent] Video tape is already recording");
+      return;
     }
 
-    // AUTO INCREMENT CHAPTER LOGIC HERE (Before inserting the new log)
-    if (action === "Start Tape" && activeDep?.id && tId) {
-      const { data: lastLog } = await supabase
-        .from("insp_video_logs")
-        .select("event_type")
-        .eq("tape_id", tId)
-        .order("event_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    isLoggingRef.current = true;
 
-      if (lastLog && lastLog.event_type === "END") {
-        const currentTape = jobTapes.find((t) => t.tape_id === tId);
-        const nextChapter = (Number(currentTape?.chapter_no) || 1) + 1;
-        const user = (await supabase.auth.getUser()).data.user;
-
-        const { data: newTape, error: insertErr } = await supabase
-          .from("insp_video_tapes")
-          .insert({
-            tape_no: currentTape?.tape_no || tapeNo || "TAPE",
-            chapter_no: nextChapter,
-            tape_type: currentTape?.tape_type || "DIGITAL - PRIMARY",
-            status: "ACTIVE",
-            [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: Number(activeDep.id),
-            cr_user: user?.id || "system",
-          })
-          .select()
-          .single();
-
-        if (insertErr) {
-          toast.error(`Auto-Chapter Error: ${insertErr.message}`);
-          console.error("[Chapter Increment]", insertErr);
-        } else if (newTape) {
-          setJobTapes((prev) => [newTape, ...prev]);
-          setTapeId(newTape.tape_id);
-          setActiveChapter(nextChapter);
-          tId = newTape.tape_id; // critical! we need the NEW log to be attached to this new tapeId
-        }
-      }
-    }
-
-    if (tId) {
-      const { data: newLog } = await supabase
-        .from("insp_video_logs")
-        .insert({
-          tape_id: tId,
-          event_type: dbAction,
-          event_time: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"), // Store EXACT region local time safely
-          timecode_start: tcode,
-          tape_counter_start: currentTimer,
-          remarks: "",
-        })
-        .select("video_log_id")
-        .single();
-
-      if (newLog) {
-        setVideoEvents((prev) =>
-          prev.map((ev) =>
-            ev.id === optimisticId
-              ? { ...ev, id: `log_${newLog.video_log_id}`, realId: newLog.video_log_id }
-              : ev
-          )
-        );
-      }
-    }
-
+    // Immediately update visual recording state synchronously to prevent UI double-clicks
     if (action === "Start Tape" || action === "Resume") setVidState("RECORDING");
     if (action === "Pause") setVidState("PAUSED");
     if (action === "Stop Tape") setVidState("IDLE");
+
+    try {
+      let currentTimer = vidTimer;
+      if (action === "Start Tape") {
+        currentTimer = 0;
+        setVidTimer(0);
+      } else if (action === "Stop Tape") {
+        // Keep currentTimer as the actual duration for the log record, but visually reset it
+        setVidTimer(0);
+      }
+
+      const optimisticId = `log_${Date.now()}`;
+      const tcode = formatTime(currentTimer);
+      const now = new Date();
+      const eventTime = format(now, "yyyy-MM-dd'T'HH:mm:ss");
+
+      // Map UI labels to valid DB constraint values
+      let dbAction = action;
+      if (action === "Start Tape") dbAction = "NEW_LOG_START";
+      if (action === "Stop Tape") dbAction = "END";
+      if (action === "Pause") dbAction = "PAUSE";
+      if (action === "Resume") dbAction = "RESUME";
+
+      let tId = tapeId;
+
+      const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+      const jobVal = Number(activeDep?.id);
+
+      if (activeDep?.id && (!tId || action === "Start Tape")) {
+        // 1. Try to find if this tape_no and chapter_no is already registered for this job
+        const { data: existingTape } = await supabase
+          .from("insp_video_tapes")
+          .select("*")
+          .eq("tape_no", tapeNo || "")
+          .eq("chapter_no", activeChapter)
+          .eq(jobCol, jobVal)
+          .maybeSingle();
+
+        if (existingTape) {
+          tId = existingTape.tape_id;
+          setTapeId(existingTape.tape_id);
+          setJobTapes((prev) => {
+            if (!prev.some((t) => t.tape_id === existingTape.tape_id)) {
+              return [existingTape, ...prev];
+            }
+            return prev;
+          });
+        } else {
+          // 2. If it is not registered, create a new record in insp_video_tapes
+          const user = (await supabase.auth.getUser()).data.user;
+          let uniqueTapeNo = tapeNo;
+          if (!uniqueTapeNo) {
+            const base = headerData.sowReportNo || "SOW_REPORT";
+            const platform = headerData.platformName || "STRUCTURE";
+            const postfix = inspMethod === "DIVING" ? "D" : "R";
+            let maxSeq = 0;
+            jobTapes.forEach((t) => {
+              const match = t.tape_no.match(/V(\d{3})[DR]$/);
+              if (match) {
+                const seq = parseInt(match[1], 10);
+                if (seq > maxSeq) maxSeq = seq;
+              }
+            });
+            const nextSeq = String(maxSeq + 1).padStart(3, "0");
+            uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
+          }
+
+          const { data: newTape, error: insErr } = await supabase
+            .from("insp_video_tapes")
+            .insert({
+              tape_no: uniqueTapeNo,
+              tape_type: "DIGITAL - PRIMARY",
+              chapter_no: activeChapter,
+              status: "ACTIVE",
+              [jobCol]: jobVal,
+              cr_user: user?.id || "system",
+            })
+            .select()
+            .single();
+
+          if (insErr) {
+            console.error("[Start Tape] Error registering tape:", insErr.message);
+            toast.error(`Error registering tape: ${insErr.message}`);
+          } else if (newTape) {
+            setJobTapes((prev) => [newTape, ...prev]);
+            setTapeId(newTape.tape_id);
+            setTapeNo(newTape.tape_no);
+            setActiveChapter(newTape.chapter_no || 1);
+            tId = newTape.tape_id;
+          }
+        }
+      }
+
+      // AUTO INCREMENT CHAPTER LOGIC HERE (Before inserting the new log)
+      if (action === "Start Tape" && activeDep?.id && tId) {
+        const { data: lastLog } = await supabase
+          .from("insp_video_logs")
+          .select("event_type")
+          .eq("tape_id", tId)
+          .order("event_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastLog && lastLog.event_type === "END") {
+          const currentTape = jobTapes.find((t) => t.tape_id === tId);
+          const nextChapter = (Number(currentTape?.chapter_no) || 1) + 1;
+          const user = (await supabase.auth.getUser()).data.user;
+
+          const { data: newTape, error: insertErr } = await supabase
+            .from("insp_video_tapes")
+            .insert({
+              tape_no: currentTape?.tape_no || tapeNo || "TAPE",
+              chapter_no: nextChapter,
+              tape_type: currentTape?.tape_type || "DIGITAL - PRIMARY",
+              status: "ACTIVE",
+              [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: Number(activeDep.id),
+              cr_user: user?.id || "system",
+            })
+            .select()
+            .single();
+
+          if (insertErr) {
+            toast.error(`Auto-Chapter Error: ${insertErr.message}`);
+            console.error("[Chapter Increment]", insertErr);
+          } else if (newTape) {
+            setJobTapes((prev) => [newTape, ...prev]);
+            setTapeId(newTape.tape_id);
+            setActiveChapter(nextChapter);
+            tId = newTape.tape_id; // critical! we need the NEW log to be attached to this new tapeId
+          }
+        }
+      }
+
+      setVideoEvents((prev) => [
+        {
+          id: optimisticId,
+          realId: 0,
+          time: tcode,
+          action,
+          logType: "video_log",
+          eventTime,
+          tape_id: tId,
+          tape_counter_start: currentTimer,
+        },
+        ...prev,
+      ]);
+
+      if (tId) {
+        const { data: newLog } = await supabase
+          .from("insp_video_logs")
+          .insert({
+            tape_id: tId,
+            event_type: dbAction,
+            event_time: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"), // Store EXACT region local time safely
+            timecode_start: tcode,
+            tape_counter_start: currentTimer,
+            remarks: "",
+          })
+          .select("video_log_id")
+          .single();
+
+        if (newLog) {
+          setVideoEvents((prev) =>
+            prev.map((ev) =>
+              ev.id === optimisticId
+                ? { ...ev, id: `log_${newLog.video_log_id}`, realId: newLog.video_log_id }
+                : ev
+            )
+          );
+        }
+      }
+    } catch (err: any) {
+      console.error("[handleLogEvent] Error:", err);
+    } finally {
+      isLoggingRef.current = false;
+    }
   };
 
   const handleDeleteEvent = async (id: string, logType: string, realId: number) => {
@@ -5557,7 +5640,14 @@ function V10PreviewLayout() {
         });
       }
 
-      const activeProps = { ...dynamicProps, ...currentDataAcq };
+      const activeProps: Record<string, any> = {
+        ...dynamicProps,
+        ...currentDataAcq,
+        flow_direction: dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection,
+        insp_mode: dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation,
+        inspection_direction: dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection,
+        inspection_location: dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation,
+      };
 
       // Apply synchronous auto-calculations to guarantee computed fields are saved 
       // even if the user clicks 'Save' before the React useEffect finishes its cycle.
@@ -5608,22 +5698,31 @@ function V10PreviewLayout() {
       const isMG = specStr.includes('MGROW') || specStr.includes('RMGI') || specStr.includes('MARINE GROWTH') || specName.includes('MARINE GROWTH') || keys.some(k => k.toLowerCase().includes('circumferential')) || keys.some(k => k.toLowerCase().replace(/[\s_]/g, '') === 'effectivethickness');
       
       if (isMG) {
-          const getVal = (baseName: string) => {
-              const target = baseName.toLowerCase().replace(/[\s_]/g, '');
-              const matchingKeys = Object.keys(activeProps).filter(k => k.toLowerCase().replace(/[\s_]/g, '') === target);
-              if (matchingKeys.length === 0) return 0;
-              const preferredKey = matchingKeys.find(k => k !== baseName) || matchingKeys[0];
-              return parseFloat(activeProps[preferredKey]) || 0;
-          };
-          const c1 = getVal('circumferential_measurement_5m_above');
-          const c2 = getVal('circumferential_measurement_0m');
-          const c3 = getVal('circumferential_measurement_5m_below');
-          const nominalDia = getVal('nominal_diameter');
-          const avgC = (c1 + c2 + c3) / 3;
-          const etValue = avgC > 0 ? ((avgC / 3.142) - nominalDia) / 2 : 0;
-          
-          const etKey = Object.keys(activeProps || {}).find(k => k.toLowerCase().replace(/[\s_]/g, '') === 'effectivethickness') || 'effective_thickness';
-          activeProps[etKey] = parseFloat(etValue.toFixed(2));
+        let circNum = 0;
+        const circVal = activeProps.circumference || activeProps.circumferential_reading || activeProps.circumference_reading;
+        if (circVal !== undefined && circVal !== null && circVal !== "") {
+            circNum = parseFloat(String(circVal));
+        }
+        
+        let odNum = 0;
+        const odVal = activeProps.outer_diameter || activeProps.member_outer_diameter || activeProps.pipe_outer_diameter || selectedComp?.nominalThk;
+        if (odVal !== undefined && odVal !== null && odVal !== "") {
+            odNum = parseFloat(String(odVal));
+        }
+
+        let calcThk = 0;
+        if (!isNaN(circNum) && circNum > 0) {
+            if (!isNaN(odNum) && odNum > 0) {
+                calcThk = Math.max(0, (circNum - (Math.PI * odNum)) / (2 * Math.PI));
+            } else {
+                calcThk = circNum / (2 * Math.PI);
+            }
+        }
+
+        if (calcThk > 0) {
+            activeProps.effective_thickness = parseFloat(calcThk.toFixed(1));
+            activeProps.effectiveThickness = parseFloat(calcThk.toFixed(1));
+        }
       }
 
       // Synchronous auto-calculation for MGI Profile threshold
@@ -5688,6 +5787,7 @@ function V10PreviewLayout() {
           "verification_depth", "verification_depth_unit",
           "inspection_date", "inspection_time", "tape_count_no",
           "incomplete_reason", "has_anomaly",
+          "flow_direction", "insp_mode", "inspection_direction", "inspection_location"
         ]);
 
         Object.keys(activeProps).forEach((key) => {
@@ -5723,7 +5823,11 @@ function V10PreviewLayout() {
           : (selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null),
         jobpack_id: jobPackId ? parseInt(jobPackId) : null,
         sow_report_no: headerData.sowReportNo || null,
-        inspection_type_id: it?.id || null,
+        flow_direction: activeProps.flow_direction || inspectionDirection,
+        insp_mode: activeProps.insp_mode || inspectionLocation,
+        inspection_type_id: (isPipeline || headerData.structureType === "pipeline" || (activeSpec || "").toUpperCase() === "NAVIG")
+          ? (it?.id && it.id !== 1 ? it.id : 30)
+          : (it?.id || null),
         inspection_type_code: it?.code || activeSpec,
         inspection_date:
           activeProps.inspection_date && activeProps.inspection_date !== "--"
@@ -6250,47 +6354,64 @@ function V10PreviewLayout() {
       }
     }
 
-    const comp =
-      componentsSow.find((c) => c.id === fullRecord.component_id) ||
-      componentsNonSow.find((c) => c.id === fullRecord.component_id);
-    if (comp) {
-      setSelectedComp(comp);
+    const isPipeMode = isPipeline || headerData?.structureType === "pipeline";
+    if (isPipeMode) {
+      const pipelineComp = (componentsSow && componentsSow.length > 0)
+        ? componentsSow[0]
+        : {
+            id: fullRecord.component_id || 999999,
+            q_id: (headerData && headerData.platformName && headerData.platformName !== "N/A") ? headerData.platformName : (headerData?.structureName || "Pipeline Main Line"),
+            name: (headerData && headerData.platformName && headerData.platformName !== "N/A") ? headerData.platformName : (headerData?.structureName || "Pipeline Main Line"),
+            type: "PIPELINE",
+          };
+      setSelectedComp(pipelineComp);
+      const navigSpec = allInspectionTypes.find(
+        (t: any) => t.code === "NAVIG" || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
+      );
+      setActiveSpec(navigSpec?.code || "NAVIG");
     } else {
-      // Use joined component data if available
-      const jc = fullRecord.structure_components;
-      const md = (typeof jc?.metadata === "string" ? JSON.parse(jc.metadata) : jc?.metadata) || {};
+      const comp =
+        componentsSow.find((c) => c.id === fullRecord.component_id) ||
+        componentsNonSow.find((c) => c.id === fullRecord.component_id);
+      if (comp) {
+        setSelectedComp(comp);
+      } else {
+        // Use joined component data if available
+        const jc = fullRecord.structure_components;
+        const md = (typeof jc?.metadata === "string" ? JSON.parse(jc.metadata) : jc?.metadata) || {};
 
-      setSelectedComp({
-        id: fullRecord.component_id,
-        name: jc?.q_id || fullRecord.component_name || `Component ${fullRecord.component_id}`,
-        type: jc?.code || fullRecord.component_type,
-        depth: md.water_depth || jc?.water_depth || "-",
-        startNode: md.f_node || md.start_node || "-",
-        endNode: md.s_node || md.end_node || "-",
-        startLeg: md.f_leg || md.start_leg || "-",
-        endLeg: md.s_leg || md.end_leg || "-",
-        startElev: md.elv_1 || md.start_elevation || "-",
-        endElev: md.elv_2 || md.end_elevation || "-",
-        nominalThk:
-          md.nominal_thickness ||
-          md.nominal_thk ||
-          md.wall_thk ||
-          md.additionalInfo?.wall_thk ||
-          "-",
-        wallThickness: md.wall_thk || md.additionalInfo?.wall_thk || "-",
-        raw: jc || {
-          type: fullRecord.component_type,
-          code: fullRecord.component_type,
-        },
-      });
+        setSelectedComp({
+          id: fullRecord.component_id,
+          name: jc?.q_id || fullRecord.component_name || `Component ${fullRecord.component_id}`,
+          type: jc?.code || fullRecord.component_type,
+          depth: md.water_depth || jc?.water_depth || "-",
+          startNode: md.f_node || md.start_node || "-",
+          endNode: md.s_node || md.end_node || "-",
+          startLeg: md.f_leg || md.start_leg || "-",
+          endLeg: md.s_leg || md.end_leg || "-",
+          startElev: md.elv_1 || md.start_elevation || "-",
+          endElev: md.elv_2 || md.end_elevation || "-",
+          nominalThk:
+            md.nominal_thickness ||
+            md.nominal_thk ||
+            md.wall_thk ||
+            md.additionalInfo?.wall_thk ||
+            "-",
+          wallThickness: md.wall_thk || md.additionalInfo?.wall_thk || "-",
+          raw: jc || {
+            type: fullRecord.component_type,
+            code: fullRecord.component_type,
+          },
+        });
+      }
+
+      // Map data from DB to UI state - USE CODE FIRST to avoid name ambiguity (e.g. GVI vs RGVI)
+      setActiveSpec(
+        fullRecord.inspection_type?.code ||
+          fullRecord.inspection_type_code ||
+          fullRecord.inspection_type?.name
+      );
     }
-
-    // Map data from DB to UI state - USE CODE FIRST to avoid name ambiguity (e.g. GVI vs RGVI)
-    setActiveSpec(
-      fullRecord.inspection_type?.code ||
-        fullRecord.inspection_type_code ||
-        fullRecord.inspection_type?.name
-    );
     setEditingRecordId(fullRecord.insp_id || fullRecord.id);
     setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
 
@@ -7129,17 +7250,31 @@ function V10PreviewLayout() {
             <PipelineEventMenuPanel
               currentKp={headerData.kp || "0.000"}
               inspMethod={inspMethod}
-              onSelectEvent={(evtData) => {
-                const navigSpec = allInspectionTypes.find(
-                  (t: any) => t.code === "NAVIG" || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
-                );
-                if (navigSpec) {
-                  setActiveSpec(navigSpec.code);
-                } else {
-                  setActiveSpec("NAVIG");
+              isRovDataConnected={dataAcqConnected}
+              onSelectEvent={async (evtData) => {
+                if (!manualOverride) {
+                  if (!activeDep?.id || activeDep?.id === "AWAITING") {
+                    toast.error("Cannot capture event: Active Dive No. / ROV Job is required in Live Mode. Please select or start a deployment first.");
+                    return;
+                  }
+                  if (!tapeId || !tapeNo || vidState !== "RECORDING") {
+                    toast.error("Cannot capture event: Active Video Tape and active Video Log recording are required in Live Mode. Please start the video log first.");
+                    return;
+                  }
                 }
-                if (!selectedComp) {
-                  const defaultComp = (componentsSow && componentsSow.length > 0)
+
+                const currentCounter = formatTime(vidTimer);
+
+                const navigSpec = allInspectionTypes.find(
+                  (t: any) => t.id === 30 || (t.code && (t.code === "NAVIG" || t.code === "RNAVIG")) || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
+                );
+                const specCode = navigSpec?.code || "NAVIG";
+                const specId = (navigSpec?.id && navigSpec.id !== 1) ? navigSpec.id : 30;
+                setActiveSpec(specCode);
+
+                let targetComp = selectedComp;
+                if (!targetComp) {
+                  targetComp = (componentsSow && componentsSow.length > 0)
                     ? componentsSow[0]
                     : {
                         id: 999999,
@@ -7147,18 +7282,122 @@ function V10PreviewLayout() {
                         name: headerData.structureName || "Pipeline Main Line",
                         type: "PIPELINE",
                       };
-                  setSelectedComp(defaultComp);
+                  setSelectedComp(targetComp);
                 }
-                setFindingType("Complete");
+
+                const currentFindingType = evtData.findingType || "Complete";
+                setFindingType(currentFindingType as any);
+
+                // Extract live ROV data string telemetry if connected
+                const rovAcq: Record<string, any> = {};
+                if (dataAcqConnected && Array.isArray(dataAcqFields)) {
+                  dataAcqFields.forEach((f) => {
+                    if (f.value && f.value !== "--") {
+                      const tf = (f.targetField || f.label || "").toLowerCase().trim();
+                      if (tf.includes("kp") || tf === "kp" || tf === "fp_kp") rovAcq.fp_kp = f.value;
+                      if (tf.includes("northing") || tf === "northing") rovAcq.northing = f.value;
+                      if (tf.includes("easting") || tf === "easting") rovAcq.easting = f.value;
+                      if (tf.includes("depth") || tf === "depth") rovAcq.depth = f.value;
+                      if (tf.includes("cp") || tf === "cp_fg_rdg" || tf === "cp_fg") rovAcq.cp_fg_rdg = f.value;
+                      if (tf.includes("heading") || tf === "rov_heading") rovAcq.rov_heading = f.value;
+                    }
+                  });
+                }
+
+                const now = new Date();
+                const formattedDate = format(now, "yyyy-MM-dd");
+                const formattedTime = format(now, "HH:mm:ss");
+
+                const validCompId = (isPipeline || headerData.structureType === "pipeline")
+                  ? ((targetComp?.id && targetComp.id !== 999999) ? targetComp.id : parseInt(structureId || "0"))
+                  : (targetComp?.id || parseInt(structureId || "0"));
+
+                const validCompType = (isPipeline || headerData.structureType === "pipeline")
+                  ? "PP"
+                  : (targetComp?.raw?.code || targetComp?.raw?.metadata?.comp_type || targetComp?.type || "PP");
+
+                const eventProps = {
+                  event_name: evtData.eventName,
+                  event_type: evtData.eventType,
+                  event_position: evtData.eventPosition || evtData.actionName || evtData.eventCategory,
+                  event_description: evtData.eventDescription || evtData.description,
+                  findings: evtData.findings || "",
+                  inspection_date: formattedDate,
+                  inspection_time: formattedTime,
+                  flow_direction: inspectionDirection,
+                  insp_mode: inspectionLocation,
+                  inspection_direction: inspectionDirection,
+                  inspection_location: inspectionLocation,
+                  kp: evtData.kp || rovAcq.fp_kp || headerData.kp || "0.0000",
+                  fp_kp: evtData.kp || rovAcq.fp_kp || headerData.kp || "0.0000",
+                  northing: evtData.northing || rovAcq.northing || "",
+                  easting: evtData.easting || rovAcq.easting || "",
+                  depth: evtData.depth || rovAcq.depth || "",
+                  verification_depth: evtData.depth || rovAcq.depth || "",
+                  cp_fg_rdg: evtData.cp_fg_rdg || evtData.cp_fg || rovAcq.cp_fg_rdg || "",
+                  cp_fg: evtData.cp_fg_rdg || evtData.cp_fg || rovAcq.cp_fg_rdg || "",
+                  rov_heading: evtData.rov_heading || evtData.heading || rovAcq.rov_heading || "",
+                  heading: evtData.rov_heading || evtData.heading || rovAcq.rov_heading || "",
+                  tape_count_no: currentCounter,
+                  counter: currentCounter,
+                  _meta_timecode: currentCounter,
+                };
+
                 setDynamicProps((prev: any) => ({
                   ...prev,
-                  event_type: evtData.eventType,
-                  event_name: evtData.eventName,
-                  event_description: evtData.description,
-                  event_position: evtData.eventCategory,
-                  kp: headerData.kp || prev?.kp || "0.0000",
+                  ...eventProps,
                 }));
-                toast.success(`Event loaded: ${evtData.eventName}`);
+
+                // DIRECT RECORD INSERTION INTO `insp_records` TABLE
+                try {
+                  const user = (await supabase.auth.getUser()).data.user;
+                  const isAnomaly = currentFindingType === "Anomaly";
+
+                  const recordPayload: Record<string, any> = {
+                    company_id: activeCompanyId,
+                    [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep?.id ? Number(activeDep.id) : null,
+                    structure_id: structureId ? parseInt(structureId) : null,
+                    component_id: validCompId,
+                    component_type: validCompType,
+                    jobpack_id: jobPackId ? parseInt(jobPackId) : null,
+                    sow_report_no: headerData.sowReportNo || null,
+                    flow_direction: inspectionDirection,
+                    insp_mode: inspectionLocation,
+                    inspection_type_id: specId,
+                    inspection_type_code: specCode,
+                    inspection_date: formattedDate,
+                    inspection_time: formattedTime,
+                    status: isAnomaly ? "Anomaly" : "COMPLETED",
+                    has_anomaly: isAnomaly,
+                    tape_id: tapeId || null,
+                    tape_count_no: vidTimer,
+                    elevation: eventProps.depth || null,
+                    fp_kp: parseFloat(eventProps.kp) || 0,
+                    cr_user: user?.id || "system",
+                    cr_date: now.toISOString(),
+                    inspection_data: eventProps,
+                  };
+
+                  const { data: newRecord, error: insErr } = await supabase
+                    .from("insp_records")
+                    .insert(recordPayload)
+                    .select("insp_id")
+                    .single();
+
+                  if (insErr) {
+                    console.error("[onSelectEvent] Error inserting insp_records row:", insErr);
+                    toast.error(`Event captured, but database insert failed: ${insErr.message}`);
+                  } else if (newRecord) {
+                    setEditingRecordId(newRecord.insp_id);
+                    syncDeploymentState();
+                    queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
+                    queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+                    toast.success(`Event captured & record #${newRecord.insp_id} created: ${evtData.eventName} > ${evtData.eventType}`);
+                  }
+                } catch (err: any) {
+                  console.error("[onSelectEvent] Unexpected error inserting insp_records:", err);
+                  toast.error(`Event captured locally: ${evtData.eventName}`);
+                }
               }}
             />
           );
@@ -7352,6 +7591,10 @@ function V10PreviewLayout() {
         headerData={headerData}
         inspMethod={inspMethod}
         setInspMethod={setInspMethod}
+        inspectionDirection={inspectionDirection}
+        setInspectionDirection={setInspectionDirection}
+        inspectionLocation={inspectionLocation}
+        setInspectionLocation={setInspectionLocation}
         router={router}
         searchParams={searchParams}
         allInspectionTypes={allInspectionTypes}
@@ -7678,22 +7921,26 @@ function V10PreviewLayout() {
             size="sm"
             className="ml-auto bg-blue-600 hover:bg-blue-700 text-white h-7 px-3 shadow-blue-500/20 shadow-lg text-[10px] font-black uppercase tracking-wider"
             onClick={async () => {
-              // Pre-fetch check for Inspection Type (optional, fallbacks exist)
-              const { data, error } = await supabase
-                .from("inspection_type")
-                .select("id")
-                .eq("code", "RSEAB")
-                .maybeSingle();
-              if (error || !data?.id) {
-                console.warn(
-                  "Seabed Inspection Type (RSEAB) is missing from the database. Falling back to active deployment inspection type."
-                );
-              }
+              if (isPipeline || headerData?.structureType === "pipeline") {
+                setIsPipelineMapOpen(true);
+              } else {
+                // Pre-fetch check for Inspection Type (optional, fallbacks exist)
+                const { data, error } = await supabase
+                  .from("inspection_type")
+                  .select("id")
+                  .eq("code", "RSEAB")
+                  .maybeSingle();
+                if (error || !data?.id) {
+                  console.warn(
+                    "Seabed Inspection Type (RSEAB) is missing from the database. Falling back to active deployment inspection type."
+                  );
+                }
 
-              setIsSeabedGuiOpen(true);
+                setIsSeabedGuiOpen(true);
+              }
             }}
           >
-            <MapPin className="w-3.5 h-3.5 mr-1.5" /> Seabed Map
+            <MapPin className="w-3.5 h-3.5 mr-1.5" /> {isPipeline || headerData?.structureType === "pipeline" ? "Pipeline Seabed Map" : "Seabed Map"}
           </Button>
         )}
       </div>
@@ -7905,6 +8152,7 @@ function V10PreviewLayout() {
           allComps,
           selectorShowAll,
           isSeabedGuiOpen,
+          isPipelineMapOpen,
           tapeId,
           vidTimer,
           dataAcqFields,
@@ -7963,6 +8211,7 @@ function V10PreviewLayout() {
           setEditTapeStatus,
           setEditTapeRemarks,
           setIsNewTapeOpen,
+          setIsPipelineMapOpen,
           setNewTapeNo,
           setNewTapeChapter,
           setNewTapeRemarks,

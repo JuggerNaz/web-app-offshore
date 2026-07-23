@@ -1,0 +1,198 @@
+{
+  "description": "Default auto-copy field values for Pipeline Event menu clicks",
+  "version": "1.1",
+  "defaults": {
+    "span_start": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "SPAN",
+      "eventPosition": "START",
+      "eventDescription": "Pipeline free span start detected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Free span initiation observed"
+    },
+    "span_end": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "SPAN",
+      "eventPosition": "END",
+      "eventDescription": "Pipeline free span end detected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Free span termination observed"
+    },
+    "span_touchdown": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "SPAN",
+      "eventPosition": "TOUCHDOWN",
+      "eventDescription": "Seabed touchdown point recorded at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Pipeline resting on seabed"
+    },
+    "span_max_height": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "SPAN",
+      "eventPosition": "MAX HEIGHT",
+      "eventDescription": "Maximum span gap height recorded at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Maximum clearance point"
+    },
+    "anode_bracelet_0_25": {
+      "eventName": "ANODE",
+      "eventType": "BRACELET ANODE",
+      "eventPosition": "0 - 25% DEPLETION",
+      "eventDescription": "Bracelet anode inspected at KP {kp} showing 0-25% depletion",
+      "findingType": "Complete",
+      "findings": "Anode in good condition with minimal consumption"
+    },
+    "anode_bracelet_25_50": {
+      "eventName": "ANODE",
+      "eventType": "BRACELET ANODE",
+      "eventPosition": "25 - 50% DEPLETION",
+      "eventDescription": "Bracelet anode inspected at KP {kp} showing 25-50% depletion",
+      "findingType": "Complete",
+      "findings": "Moderate anode consumption"
+    },
+    "anode_bracelet_50_75": {
+      "eventName": "ANODE",
+      "eventType": "BRACELET ANODE",
+      "eventPosition": "50 - 75% DEPLETION",
+      "eventDescription": "Bracelet anode inspected at KP {kp} showing 50-75% depletion",
+      "findingType": "Observation",
+      "findings": "High anode depletion noted"
+    },
+    "anode_bracelet_75_100": {
+      "eventName": "ANODE",
+      "eventType": "BRACELET ANODE",
+      "eventPosition": "75 - 100% DEPLETION",
+      "eventDescription": "Bracelet anode inspected at KP {kp} showing 75-100% depletion",
+      "findingType": "Observation",
+      "findings": "Anode severely depleted"
+    },
+    "cp_stab_anode": {
+      "eventName": "CP STAB",
+      "eventType": "CP READING",
+      "eventPosition": "STAB ANODE",
+      "eventDescription": "CP stab reading taken on anode at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Cathodic protection reading recorded"
+    },
+    "cp_stab_pipe": {
+      "eventName": "CP STAB",
+      "eventType": "CP READING",
+      "eventPosition": "STAB PIPE",
+      "eventDescription": "CP stab reading taken directly on pipeline metal at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Pipeline CP potential measured"
+    },
+    "fj_start": {
+      "eventName": "FIELD JOINT",
+      "eventType": "FIELD JOINT",
+      "eventPosition": "START",
+      "eventDescription": "Field joint coating start recorded at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Field joint initiation"
+    },
+    "fj_end": {
+      "eventName": "FIELD JOINT",
+      "eventType": "FIELD JOINT",
+      "eventPosition": "END",
+      "eventDescription": "Field joint coating end recorded at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Field joint termination"
+    },
+    "debris_pipe": {
+      "eventName": "DEBRIS",
+      "eventType": "DEBRIS ON PIPE",
+      "eventPosition": "LOCATION",
+      "eventDescription": "Debris located directly on top of pipeline at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Debris item resting on pipe body"
+    },
+    "debris_seabed": {
+      "eventName": "DEBRIS",
+      "eventType": "DEBRIS ON SEABED",
+      "eventPosition": "LOCATION",
+      "eventDescription": "Debris located on adjacent seabed at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Debris item within 5m of pipeline route"
+    },
+    "line_skip_start": {
+      "eventName": "LINE FEATURE",
+      "eventType": "LINE SKIP",
+      "eventPosition": "START",
+      "eventDescription": "Line inspection skip section start at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Inspection pause initiated"
+    },
+    "line_skip_end": {
+      "eventName": "LINE FEATURE",
+      "eventType": "LINE SKIP",
+      "eventPosition": "END",
+      "eventDescription": "Line inspection skip section end at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Inspection resumed"
+    },
+    "burial_start": {
+      "eventName": "STABILISATION",
+      "eventType": "BURIAL",
+      "eventPosition": "START",
+      "eventDescription": "Pipeline burial start detected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Pipeline entering buried trench section"
+    },
+    "burial_end": {
+      "eventName": "STABILISATION",
+      "eventType": "BURIAL",
+      "eventPosition": "END",
+      "eventDescription": "Pipeline burial end detected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Pipeline emerging from buried section"
+    },
+    "inter_span_start": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "INTER SPAN",
+      "eventPosition": "START",
+      "eventDescription": "Intermediate span section start at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Inter-span section start"
+    },
+    "inter_span_end": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "INTER SPAN",
+      "eventPosition": "END",
+      "eventDescription": "Intermediate span section end at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Inter-span section end"
+    },
+    "trench_start": {
+      "eventName": "STABILISATION",
+      "eventType": "TRENCH",
+      "eventPosition": "START",
+      "eventDescription": "Open seabed trench start detected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Trench entry point"
+    },
+    "trench_end": {
+      "eventName": "STABILISATION",
+      "eventType": "TRENCH",
+      "eventPosition": "END",
+      "eventDescription": "Open seabed trench end detected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Trench exit point"
+    },
+    "undulated_start": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "UNDULATED SEABED",
+      "eventPosition": "START",
+      "eventDescription": "Undulated seabed terrain start at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Irregular seabed profile start"
+    },
+    "undulated_end": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "UNDULATED SEABED",
+      "eventPosition": "END",
+      "eventDescription": "Undulated seabed terrain end at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Irregular seabed profile end"
+    }
+  }
+}

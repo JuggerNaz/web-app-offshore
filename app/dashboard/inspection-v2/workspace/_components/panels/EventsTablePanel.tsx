@@ -287,6 +287,32 @@ export function EventsTablePanel({
                               </div>
                             </td>
                           );
+                        case "event_name":
+                          return (
+                            <td key={col.id} className="px-3 py-3 align-top font-bold text-slate-800 dark:text-slate-100">
+                              <span className="text-xs">{r.inspection_data?.event_name || r.inspection_data?.actionName || "-"}</span>
+                            </td>
+                          );
+                        case "event_type":
+                          return (
+                            <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
+                              <span className="text-xs font-semibold">{r.inspection_data?.event_type || r.inspection_type?.name || r.inspection_type_code || "-"}</span>
+                            </td>
+                          );
+                        case "event_position":
+                          return (
+                            <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
+                              <span className="text-xs">{r.inspection_data?.event_position || r.inspection_data?.eventCategory || "-"}</span>
+                            </td>
+                          );
+                        case "event_description":
+                          return (
+                            <td key={col.id} className="px-3 py-3 align-top text-slate-600 dark:text-slate-300">
+                              <span className="text-xs line-clamp-2 max-w-[280px]" title={r.inspection_data?.event_description || r.description || r.inspection_data?.findings}>
+                                {r.inspection_data?.event_description || r.description || r.inspection_data?.findings || "-"}
+                              </span>
+                            </td>
+                          );
                         case "type":
                           return (
                             <td key={col.id} className="px-3 py-3 font-bold text-slate-800 dark:text-slate-100 align-top">

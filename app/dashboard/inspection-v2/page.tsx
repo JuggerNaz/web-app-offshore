@@ -1159,7 +1159,7 @@ export default function InspectionLanding() {
                         </div>
                     </Card>
 
-                    <Card className="p-3 bg-cyan-50/30 dark:bg-cyan-950/10 border-cyan-105/50 dark:border-cyan-900/50 flex flex-col justify-between">
+                    <Card className="p-3 bg-cyan-50/30 dark:bg-cyan-950/10 border-cyan-100/50 dark:border-cyan-900/50 flex flex-col justify-between">
                         <div>
                             <p className="text-[10px] font-bold text-cyan-900 dark:text-cyan-100 uppercase tracking-wider mb-1">
                                 {selectedJobPack ? "SOW Reports in Job Pack" : "SOW Reports"}
@@ -1170,7 +1170,7 @@ export default function InspectionLanding() {
                         </div>
                     </Card>
 
-                    <Card className="p-3 bg-purple-50/30 dark:bg-purple-950/10 border-purple-105/50 dark:border-purple-900/50 flex flex-col justify-between">
+                    <Card className="p-3 bg-purple-50/30 dark:bg-purple-950/10 border-purple-100/50 dark:border-purple-900/50 flex flex-col justify-between">
                         <div>
                             <p className="text-[10px] font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider mb-1">
                                 Job Type

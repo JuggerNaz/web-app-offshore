@@ -126,6 +126,10 @@ export const TapeManagementCardPipeline: React.FC<TapeManagementCardProps> = ({
                         <span className="font-bold font-mono text-blue-600 dark:text-cyan-400">: {tapeNo || "—"}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+                        <span>Chapter No.</span>
+                        <span className="font-bold font-mono text-purple-600 dark:text-purple-400">: Chapter {activeChapter || 1}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
                         <span>Tape Counter</span>
                         <span className={`font-bold font-mono text-base ${vidState === "RECORDING" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                             : {formatTime(vidTimer)}
@@ -144,8 +148,8 @@ export const TapeManagementCardPipeline: React.FC<TapeManagementCardProps> = ({
                         }
                     }}>
                         <SelectTrigger className="h-8 text-[10px] font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:ring-blue-500/20 w-full min-w-0 text-slate-800 dark:text-slate-200">
-                            <SelectValue placeholder={tapeNo || "Select Tape"}>
-                                {jobTapes.find(t => String(t.tape_id) === String(tapeId))?.tape_no || tapeNo || "Select Tape"}
+                            <SelectValue placeholder={tapeNo ? `${tapeNo} (Ch: ${activeChapter || 1})` : "Select Tape"}>
+                                {jobTapes.find(t => String(t.tape_id) === String(tapeId)) ? `${jobTapes.find(t => String(t.tape_id) === String(tapeId))?.tape_no} (Ch: ${activeChapter || 1})` : (tapeNo ? `${tapeNo} (Ch: ${activeChapter || 1})` : "Select Tape")}
                             </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 shadow-xl">

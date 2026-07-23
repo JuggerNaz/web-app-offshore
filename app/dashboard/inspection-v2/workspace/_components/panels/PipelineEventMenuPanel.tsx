@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import { useROVConnection } from "@/components/rov-connection-provider";
+import { createClient } from "@/utils/supabase/client";
+import pipelineEventDefaultsConfig from "@/utils/types/pipeline-event-defaults.json";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +29,17 @@ import {
   Sparkles,
   Settings,
   RotateCcw,
+  LayoutGrid,
+  Maximize2,
+  Minimize2,
+  Square,
+  Play,
+  Pause,
+  ArrowUp,
+  ArrowDown,
+  Keyboard,
+  Command,
+  X,
 } from "lucide-react";
 
 export interface PipelineEventItem {
@@ -35,6 +49,21 @@ export interface PipelineEventItem {
   description?: string;
   subEvents?: PipelineEventItem[];
 }
+
+export interface EventAutoCopyConfig {
+  eventName?: string;        // Main Menu Category (e.g., "SEABED PROFILE")
+  eventType?: string;        // Submenu Category (e.g., "SPAN")
+  eventPosition?: string;    // Action / Position (e.g., "START", "END")
+  eventDescription?: string; // Optional custom description template
+  findingType?: string;      // Optional finding type (e.g. "Complete", "Observation", "Anomaly")
+  findings?: string;         // Optional findings summary text
+}
+
+// Centralized Default Auto-Copy Mappings (Loaded directly from pipeline-event-defaults.json)
+export const EVENT_AUTO_COPY_DEFAULTS: Record<string, EventAutoCopyConfig> = (pipelineEventDefaultsConfig?.defaults as Record<string, EventAutoCopyConfig>) || {
+  span_start: { eventName: "SEABED PROFILE", eventType: "SPAN", eventPosition: "START" },
+  span_end: { eventName: "SEABED PROFILE", eventType: "SPAN", eventPosition: "END" },
+};
 
 export interface PipelineCategory {
   id: string;
@@ -684,44 +713,144 @@ export const PIPELINE_EVENT_CATEGORIES: PipelineCategory[] = [
   },
 ];
 
-// Default Initial Most Frequent Shortcuts
+// Paired Start/End Toggle Events (Only ONE shown at a time based on active status)
+export const TOGGLE_PAIRS: Array<{ startId: string; endId: string; groupKey: string }> = [
+  { startId: "span_start", endId: "span_end", groupKey: "span" },
+  { startId: "line_skip_start", endId: "line_skip_end", groupKey: "skip" },
+  { startId: "burial_start", endId: "burial_end", groupKey: "burial" },
+  { startId: "inter_span_start", endId: "inter_span_end", groupKey: "inter_span" },
+  { startId: "trench_start", endId: "trench_end", groupKey: "trench" },
+  { startId: "undulated_start", endId: "undulated_end", groupKey: "undulated" },
+];
+
+// Default Initial Most Frequent Shortcuts (Only Start events or standalone events)
 const INITIAL_SHORTCUT_IDS = [
   "span_start",
-  "span_end",
   "anode_bracelet_0_25",
   "cp_stab_anode",
   "fj_start",
   "debris_pipe",
+  "line_skip_start",
 ];
 
 interface PipelineEventMenuPanelProps {
   onSelectEvent: (eventData: {
     eventName: string;
     eventType: string;
+    eventPosition?: string;
+    actionName?: string;
     eventCategory: string;
     description: string;
+    eventDescription?: string;
+    findingType?: string;
+    findings?: string;
+    kp?: string | number;
+    kpSource?: "ROV_DATA_STRING" | "CALCULATED";
+    northing?: string;
+    easting?: string;
+    depth?: string;
+    cp_fg?: string;
+    cp_fg_rdg?: string;
+    heading?: string;
+    rov_heading?: string;
   }) => void;
   currentKp?: number | string;
   inspMethod?: "DIVING" | "ROV";
+  rovKp?: number | string; // Live KP from ROV telemetry data string feed
+  rovDataString?: string; // Optional raw ROV string payload (NMEA/serial)
+  isRovDataConnected?: boolean;
+  isVideoPlaying?: boolean; // Prop indicating external video logger playback status
 }
 
 export function PipelineEventMenuPanel({
   onSelectEvent,
   currentKp = "0.000",
   inspMethod = "ROV",
+  rovKp,
+  rovDataString,
+  isRovDataConnected,
+  isVideoPlaying: isVideoPlayingProp = true,
 }: PipelineEventMenuPanelProps) {
+  const { isConnected: hookIsConnected, fields: rovConnectionFields } = useROVConnection();
+  const effectiveConnected = isRovDataConnected || hookIsConnected;
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [selectedSubCatId, setSelectedSubCatId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [settingsSearchTerm, setSettingsSearchTerm] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isViewAllOpen, setIsViewAllOpen] = useState(false);
+  const [isInlineExpanded, setIsInlineExpanded] = useState(false);
 
-  // Dynamic Pinned Shortcuts & Event Usage Counter State
+  // Live KP & Video Playback State for active event progress
+  const [liveKp, setLiveKp] = useState<number>(() => {
+    const parsed = parseFloat(String(currentKp));
+    return !isNaN(parsed) && parsed > 0 ? parsed : 0.0;
+  });
+
+  const effectiveIsVideoPlaying = isVideoPlayingProp;
+
+  // Helper to resolve effective KP: Uses live ROV data string if connected/available, else falls back to calculated KP
+  const resolveEffectiveKp = (): { kp: string; numKp: number; source: "ROV_DATA_STRING" | "CALCULATED" } => {
+    // 1. Check direct prop rovKp
+    if (rovKp !== undefined && rovKp !== null && String(rovKp).trim() !== "") {
+      const parsedRov = parseFloat(String(rovKp));
+      if (!isNaN(parsedRov) && parsedRov >= 0) {
+        return { kp: parsedRov.toFixed(3), numKp: parsedRov, source: "ROV_DATA_STRING" };
+      }
+    }
+
+    // 2. Check window telemetry object if broadcast from serial/websocket feed
+    if (typeof window !== "undefined" && (window as any).rovTelemetryKp !== undefined) {
+      const winKp = parseFloat(String((window as any).rovTelemetryKp));
+      if (!isNaN(winKp) && winKp >= 0) {
+        return { kp: winKp.toFixed(3), numKp: winKp, source: "ROV_DATA_STRING" };
+      }
+    }
+
+    // 3. Fallback to calculated incremented liveKp
+    return { kp: liveKp.toFixed(3), numKp: liveKp, source: "CALCULATED" };
+  };
+
+  // Sync liveKp when currentKp prop updates from parent
+  useEffect(() => {
+    const parsed = parseFloat(String(currentKp));
+    if (!isNaN(parsed) && parsed > 0 && liveKp === 0) {
+      setLiveKp(parsed);
+    }
+  }, [currentKp]);
+
+  // Toggle active state for paired events (Span Start <-> Span End, etc.)
+  const [activeToggles, setActiveToggles] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("pipeline_event_active_toggles");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+    return {};
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("pipeline_event_active_toggles", JSON.stringify(activeToggles));
+    }
+  }, [activeToggles]);
+
+  // Dynamic Pinned Shortcuts & Event Usage Counter State (Excludes End events)
   const [pinnedShortcutIds, setPinnedShortcutIds] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("pipeline_event_pinned_shortcuts");
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            // Filter out any legacy End event IDs (e.g., span_end, line_skip_end, etc.)
+            return parsed.filter((id: string) => !TOGGLE_PAIRS.some((p) => p.endId === id));
+          }
         } catch (e) {
           // ignore
         }
@@ -744,18 +873,113 @@ export function PipelineEventMenuPanel({
     return {};
   });
 
-  // Save pinned shortcuts and usage counts to localStorage
-  useEffect(() => {
+  // Custom Hotkeys state (e.g. { span_start: "Alt+1", line_skip_start: "Alt+2" })
+  const [customHotkeys, setCustomHotkeys] = useState<Record<string, string>>(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("pipeline_event_pinned_shortcuts", JSON.stringify(pinnedShortcutIds));
+      const saved = localStorage.getItem("pipeline_event_custom_hotkeys");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          // ignore
+        }
+      }
     }
-  }, [pinnedShortcutIds]);
+    return {
+      span_start: "Alt+1",
+      anode_bracelet_0_25: "Alt+2",
+      cp_stab_anode: "Alt+3",
+      fj_start: "Alt+4",
+      debris_pipe: "Alt+5",
+      line_skip_start: "Alt+6",
+    };
+  });
 
+  // Cross-Device Sync: Fetch remote user profile preferences on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchUserPreferences() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user && isMounted) {
+          const remotePrefs = user.user_metadata?.event_menu_preferences;
+          if (remotePrefs) {
+            if (Array.isArray(remotePrefs.pinnedShortcutIds) && remotePrefs.pinnedShortcutIds.length > 0) {
+              const sanitized = remotePrefs.pinnedShortcutIds.filter(
+                (id: string) => !TOGGLE_PAIRS.some((p) => p.endId === id)
+              );
+              setPinnedShortcutIds(sanitized);
+            }
+            if (remotePrefs.customHotkeys && typeof remotePrefs.customHotkeys === "object") {
+              setCustomHotkeys(remotePrefs.customHotkeys);
+            }
+            if (remotePrefs.usageCounts && typeof remotePrefs.usageCounts === "object") {
+              setUsageCounts(remotePrefs.usageCounts);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load user profile preferences:", err);
+      }
+    }
+
+    fetchUserPreferences();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Save to LocalStorage + Sync to Supabase User Profile Metadata across devices
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const sanitized = pinnedShortcutIds.filter((id) => !TOGGLE_PAIRS.some((p) => p.endId === id));
+      localStorage.setItem("pipeline_event_pinned_shortcuts", JSON.stringify(sanitized));
       localStorage.setItem("pipeline_event_usage_counts", JSON.stringify(usageCounts));
+      localStorage.setItem("pipeline_event_custom_hotkeys", JSON.stringify(customHotkeys));
+
+      // Debounced sync to User Account Metadata in background
+      const syncTimer = setTimeout(async () => {
+        try {
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            await supabase.auth.updateUser({
+              data: {
+                event_menu_preferences: {
+                  pinnedShortcutIds: sanitized,
+                  customHotkeys,
+                  usageCounts,
+                },
+              },
+            });
+          }
+        } catch (e) {
+          // silently handle background sync error
+        }
+      }, 1200);
+
+      return () => clearTimeout(syncTimer);
     }
-  }, [usageCounts]);
+  }, [pinnedShortcutIds, customHotkeys, usageCounts]);
+
+  // Function to move a pinned shortcut left/right (up/down in list)
+  const movePinnedShortcut = (index: number, direction: -1 | 1) => {
+    setPinnedShortcutIds((prev) => {
+      const rawList = prev.length > 0 ? prev : INITIAL_SHORTCUT_IDS;
+      const currentList = rawList.filter((id) => !TOGGLE_PAIRS.some((p) => p.endId === id));
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= currentList.length) return prev;
+      const updated = [...currentList];
+      const temp = updated[index];
+      updated[index] = updated[targetIndex];
+      updated[targetIndex] = temp;
+      return updated;
+    });
+  };
 
   // Flattened List of all Sub-Events across all categories
   const allFlattenedEvents = useMemo(() => {
@@ -790,24 +1014,88 @@ export function PipelineEventMenuPanel({
     return list;
   }, []);
 
-  // Compute Active 6 Shortcuts to display in bottom bar
+  // Compute Active Shortcuts to display in bottom bar / view all panel (Strictly user-pinned items)
   const activeShortcuts = useMemo(() => {
-    // 1. First gather user-pinned items in exact order
-    const pinnedList = pinnedShortcutIds
+    const activeIds = pinnedShortcutIds.length > 0 ? pinnedShortcutIds : INITIAL_SHORTCUT_IDS;
+
+    const pinnedList = activeIds
       .map((id) => allFlattenedEvents.find((e) => e.id === id))
       .filter(Boolean) as typeof allFlattenedEvents;
 
-    // 2. If fewer than 6, auto-fill from highest usage frequency
-    if (pinnedList.length < 6) {
-      const sortedByUsage = [...allFlattenedEvents]
-        .filter((e) => !pinnedShortcutIds.includes(e.id))
-        .sort((a, b) => (usageCounts[b.id] || 0) - (usageCounts[a.id] || 0));
+    // Filter toggle pairs so ONLY ONE of each toggle pair (start vs end) is shown based on activeToggles state!
+    const filtered = pinnedList.filter((item) => {
+      const pair = TOGGLE_PAIRS.find((p) => p.startId === item.id || p.endId === item.id);
+      if (!pair) return true; // not a toggle pair, keep it
 
-      return [...pinnedList, ...sortedByUsage].slice(0, 6);
-    }
+      const isActive = !!activeToggles[pair.groupKey];
+      if (isActive) {
+        // Active state: show endId, hide startId
+        return item.id === pair.endId;
+      } else {
+        // Inactive state: show startId, hide endId
+        return item.id === pair.startId;
+      }
+    });
 
-    return pinnedList.slice(0, 6);
-  }, [pinnedShortcutIds, allFlattenedEvents, usageCounts]);
+    return filtered;
+  }, [pinnedShortcutIds, allFlattenedEvents, activeToggles]);
+
+  // Compute currently active in-progress events list for top monitoring alert banner
+  const activeEventsList = useMemo(() => {
+    const list: Array<{
+      groupKey: string;
+      label: string;
+      startKp: string;
+      startTime: string;
+      startId: string;
+      endId: string;
+      catName: string;
+      subCatName: string;
+      endEventName: string;
+    }> = [];
+
+    TOGGLE_PAIRS.forEach((pair) => {
+      if (activeToggles[pair.groupKey]) {
+        const startEvt = allFlattenedEvents.find((e) => e.id === pair.startId);
+        const endEvt = allFlattenedEvents.find((e) => e.id === pair.endId);
+        const labelFormatted = pair.groupKey.toUpperCase().replace("_", " ");
+        list.push({
+          groupKey: pair.groupKey,
+          label: labelFormatted,
+          startKp: String(currentKp),
+          startTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          startId: pair.startId,
+          endId: pair.endId,
+          catName: endEvt?.cat || startEvt?.cat || "Pipeline",
+          subCatName: endEvt?.sub || startEvt?.sub || "Event",
+          endEventName: endEvt?.event || `${labelFormatted} End`,
+        });
+      }
+    });
+
+    return list;
+  }, [activeToggles, allFlattenedEvents, currentKp]);
+
+  // Auto-increment live KP value while active events exist AND video is playing
+  useEffect(() => {
+    if (activeEventsList.length === 0 || !effectiveIsVideoPlaying) return;
+
+    const interval = setInterval(() => {
+      setLiveKp((prev) => parseFloat((prev + 0.001).toFixed(3)));
+    }, 1000); // Increments by 0.001 KP per second during playback
+
+    return () => clearInterval(interval);
+  }, [activeEventsList.length, effectiveIsVideoPlaying]);
+
+  const handleStopActiveEvent = (activeEvt: (typeof activeEventsList)[0]) => {
+    const { kp: finalKpStr, source: kpSource } = resolveEffectiveKp();
+    handleTriggerEvent(
+      activeEvt.catName,
+      activeEvt.subCatName,
+      activeEvt.endEventName,
+      activeEvt.endId
+    );
+  };
 
   const activeCat = useMemo(() => {
     return PIPELINE_EVENT_CATEGORIES.find((c) => c.id === selectedCatId) || null;
@@ -844,29 +1132,155 @@ export function PipelineEventMenuPanel({
     return results;
   }, [searchTerm]);
 
+  // Helper to check if an event button is disabled based on active toggle states
+  const getEventDisabledStatus = (eventId?: string): { isDisabled: boolean; reason?: string } => {
+    if (!eventId) return { isDisabled: false };
+
+    const pair = TOGGLE_PAIRS.find((p) => p.startId === eventId || p.endId === eventId);
+    if (!pair) return { isDisabled: false };
+
+    const isActive = !!activeToggles[pair.groupKey];
+
+    // If start button is clicked and currently in progress, disable start button!
+    if (eventId === pair.startId && isActive) {
+      return {
+        isDisabled: true,
+        reason: `${pair.groupKey.toUpperCase().replace("_", " ")} is currently IN PROGRESS. Use STOP & END or End button to complete it.`,
+      };
+    }
+
+    // If start button has NOT been triggered yet, disable end button!
+    if (eventId === pair.endId && !isActive) {
+      return {
+        isDisabled: true,
+        reason: `${pair.groupKey.toUpperCase().replace("_", " ")} has not been started yet. Click Start first.`,
+      };
+    }
+
+    return { isDisabled: false };
+  };
+
+  // Authoritative Hotkey Resolver (guarantees every pinned button gets a clean, non-null hotkey badge!)
+  const getEffectiveHotkey = (id: string, overrideIndex?: number): string => {
+    // 1. Direct custom hotkey assignment
+    if (customHotkeys[id]) return customHotkeys[id];
+
+    // 2. Check paired start event ID
+    const pair = TOGGLE_PAIRS.find((p) => p.endId === id || p.startId === id);
+    const lookupId = pair ? pair.startId : id;
+    if (customHotkeys[lookupId]) return customHotkeys[lookupId];
+
+    // 3. Fallback to sequential position index (Alt+1, Alt+2, Alt+3...)
+    const rawList = pinnedShortcutIds.length > 0 ? pinnedShortcutIds : INITIAL_SHORTCUT_IDS;
+    const cleanList = rawList.filter((item) => !TOGGLE_PAIRS.some((p) => p.endId === item));
+    const pos = typeof overrideIndex === "number" ? overrideIndex : cleanList.indexOf(lookupId);
+
+    if (pos >= 0) {
+      return `Alt+${pos + 1}`;
+    }
+
+    return "";
+  };
+
   const handleTriggerEvent = (catName: string, subCatName: string, eventName: string, eventId?: string) => {
-    // Increment usage frequency for smart auto-placement
-    if (eventId) {
-      setUsageCounts((prev) => ({
-        ...prev,
-        [eventId]: (prev[eventId] || 0) + 1,
-      }));
-    } else {
-      // Find event ID if not explicitly passed
-      const target = allFlattenedEvents.find((e) => e.event === eventName);
-      if (target) {
-        setUsageCounts((prev) => ({
+    const targetId = eventId || allFlattenedEvents.find((e) => e.event === eventName)?.id;
+
+    if (targetId) {
+      const disabledStatus = getEventDisabledStatus(targetId);
+      if (disabledStatus.isDisabled) {
+        return; // Guard against clicking active in-progress event or unstarted end event!
+      }
+
+      // Toggle state logic for paired Start/End events
+      const pair = TOGGLE_PAIRS.find((p) => p.startId === targetId || p.endId === targetId);
+      if (pair) {
+        setActiveToggles((prev) => ({
           ...prev,
-          [target.id]: (prev[target.id] || 0) + 1,
+          [pair.groupKey]: targetId === pair.startId,
         }));
       }
+
+      setUsageCounts((prev) => ({
+        ...prev,
+        [targetId]: (prev[targetId] || 0) + 1,
+      }));
+    }
+
+    const { kp: finalKpStr, source: kpSource } = resolveEffectiveKp();
+
+    const customDefault = targetId ? EVENT_AUTO_COPY_DEFAULTS[targetId] : undefined;
+
+    // Mapping per user request:
+    // Event Name field -> Main Menu Category (e.g. SEABED PROFILE)
+    // Event Type field -> Submenu Category (e.g. SPAN)
+    // Event Position field -> Action / Event Name (e.g. START, END, TOUCHDOWN, MAX HEIGHT)
+    const mappedEventName = customDefault?.eventName || catName;
+    const mappedEventType = customDefault?.eventType || subCatName;
+    const mappedEventPosition = customDefault?.eventPosition || (
+      eventName.toLowerCase().includes("start")
+        ? "START"
+        : eventName.toLowerCase().includes("end")
+        ? "END"
+        : eventName
+    );
+
+    // Resolve Description template (replaces {kp}, {eventName}, {kpSource}, {inspMethod})
+    let mappedDescription = `${eventName} recorded at KP ${finalKpStr} [${kpSource === "ROV_DATA_STRING" ? "Live ROV Data String" : "Calculated KP Sync"}] during ${inspMethod} survey`;
+    if (customDefault?.eventDescription) {
+      mappedDescription = customDefault.eventDescription
+        .replace(/\{kp\}/g, finalKpStr)
+        .replace(/\{eventName\}/g, eventName)
+        .replace(/\{kpSource\}/g, kpSource === "ROV_DATA_STRING" ? "Live ROV Data String" : "Calculated KP Sync")
+        .replace(/\{inspMethod\}/g, inspMethod);
+    }
+
+    // Fetch telemetry details from connected ROV string/provider or window objects
+    let telemetryNorthing = "";
+    let telemetryEasting = "";
+    let telemetryDepth = "";
+    let telemetryCpFg = "";
+    let telemetryHeading = "";
+
+    if (effectiveConnected && Array.isArray(rovConnectionFields)) {
+      rovConnectionFields.forEach((f) => {
+        if (f.value && f.value !== "--") {
+          const tf = (f.targetField || f.label || "").toLowerCase().trim();
+          if (tf.includes("northing") || tf === "northing") telemetryNorthing = f.value;
+          if (tf.includes("easting") || tf === "easting") telemetryEasting = f.value;
+          if (tf.includes("depth") || tf === "depth") telemetryDepth = f.value;
+          if (tf.includes("cp") || tf === "cp_fg_rdg" || tf === "cp_fg") telemetryCpFg = f.value;
+          if (tf.includes("heading") || tf === "rov_heading") telemetryHeading = f.value;
+        }
+      });
+    }
+
+    if (typeof window !== "undefined") {
+      if (!telemetryNorthing && (window as any).rovTelemetryNorthing) telemetryNorthing = String((window as any).rovTelemetryNorthing);
+      if (!telemetryEasting && (window as any).rovTelemetryEasting) telemetryEasting = String((window as any).rovTelemetryEasting);
+      if (!telemetryDepth && (window as any).rovTelemetryDepth) telemetryDepth = String((window as any).rovTelemetryDepth);
+      if (!telemetryCpFg && (window as any).rovTelemetryCpFg) telemetryCpFg = String((window as any).rovTelemetryCpFg);
+      if (!telemetryHeading && (window as any).rovTelemetryHeading) telemetryHeading = String((window as any).rovTelemetryHeading);
     }
 
     onSelectEvent({
-      eventName: eventName,
-      eventType: catName,
+      eventName: mappedEventName,
+      eventType: mappedEventType,
+      eventPosition: mappedEventPosition,
+      actionName: eventName,
       eventCategory: subCatName,
-      description: `${eventName} recorded during ${inspMethod} survey`,
+      description: mappedDescription,
+      eventDescription: mappedDescription,
+      findingType: customDefault?.findingType,
+      findings: customDefault?.findings,
+      kp: finalKpStr,
+      kpSource: kpSource,
+      northing: telemetryNorthing,
+      easting: telemetryEasting,
+      depth: telemetryDepth,
+      cp_fg: telemetryCpFg,
+      cp_fg_rdg: telemetryCpFg,
+      heading: telemetryHeading,
+      rov_heading: telemetryHeading,
     });
 
     // Automatically bring back the main menu after logging the event
@@ -875,12 +1289,72 @@ export function PipelineEventMenuPanel({
     setSearchTerm("");
   };
 
+  // Global Keyboard Listener for Custom Hotkeys (Alt, Ctrl, Shift + Key)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is currently typing in an input/textarea
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) {
+        return; // Modifier key alone
+      }
+
+      const parts: string[] = [];
+      if (e.ctrlKey) parts.push("Ctrl");
+      if (e.altKey) parts.push("Alt");
+      if (e.shiftKey) parts.push("Shift");
+
+      const keyUpper = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+      parts.push(keyUpper);
+
+      const pressedCombo = parts.join("+");
+
+      // Match against activeShortcuts assigned hotkeys
+      const match = activeShortcuts.find((sc, index) => {
+        const assigned = getEffectiveHotkey(sc.id, index);
+        return assigned && assigned.toUpperCase() === pressedCombo.toUpperCase();
+      });
+
+      if (match) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleTriggerEvent(match.cat, match.sub, match.event, match.id);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeShortcuts, customHotkeys]);
+
   const togglePinShortcut = (id: string) => {
+    // End events cannot be pinned separately; only Start events can be selected
+    if (TOGGLE_PAIRS.some((p) => p.endId === id)) return;
+
     setPinnedShortcutIds((prev) => {
-      if (prev.includes(id)) {
+      const isAlreadyPinned = prev.includes(id);
+      if (isAlreadyPinned) {
         return prev.filter((item) => item !== id);
       } else {
-        return [...prev, id];
+        const nextList = [...prev, id];
+        const cleanList = nextList.filter((item) => !TOGGLE_PAIRS.some((p) => p.endId === item));
+        const newIndex = cleanList.indexOf(id);
+
+        setCustomHotkeys((hkPrev) => {
+          if (!hkPrev[id]) {
+            return { ...hkPrev, [id]: `Alt+${newIndex + 1}` };
+          }
+          return hkPrev;
+        });
+
+        return nextList;
       }
     });
   };
@@ -914,9 +1388,46 @@ export function PipelineEventMenuPanel({
           )}
         </div>
         <Badge variant="outline" className="text-[9px] font-semibold bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700/60 px-2 py-0.5 shadow-sm">
-          KP {currentKp}
+          KP {liveKp.toFixed(3)}
         </Badge>
       </div>
+
+      {/* Active Events Quick Stop Pill Buttons (All side-by-side in 1 Row) */}
+      {activeEventsList.length > 0 && (
+        <div className="bg-amber-50/90 dark:bg-amber-950/40 border-b border-amber-400/50 px-2.5 py-1.5 shrink-0 flex items-center gap-1.5 flex-wrap shadow-2xs">
+          <div className="flex items-center gap-1.5 shrink-0 mr-1">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </span>
+            <span className="text-[9.5px] font-black uppercase text-amber-900 dark:text-amber-200 tracking-wider">
+              ACTIVE:
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+            {activeEventsList.map((activeEvt) => {
+              const { kp: resolvedKpStr } = resolveEffectiveKp();
+              return (
+                <button
+                  key={activeEvt.groupKey}
+                  onClick={() => handleStopActiveEvent(activeEvt)}
+                  className="h-6.5 px-2.5 rounded-md bg-gradient-to-r from-red-600 via-amber-600 to-red-600 hover:from-red-700 hover:to-amber-700 active:scale-95 text-white font-black text-[9.5px] tracking-wider uppercase shadow-xs border border-red-400/60 flex items-center gap-1.5 transition-all shrink-0"
+                  title={`Stop ${activeEvt.label} and log end at KP ${resolvedKpStr}`}
+                >
+                  <span className="flex items-center gap-1 text-amber-100">
+                    <Zap className="w-3 h-3 text-amber-300 fill-amber-300" />
+                    {activeEvt.label}: {resolvedKpStr}
+                  </span>
+                  <span className="bg-black/35 px-1.5 py-0.5 rounded text-[8.5px] font-black flex items-center gap-1 border border-white/20 text-white">
+                    <Square className="w-2 h-2 fill-white text-white" /> STOP &amp; END
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Quick Search */}
       <div className="p-2 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800/80 shrink-0">
@@ -952,50 +1463,64 @@ export function PipelineEventMenuPanel({
                 No pipeline event matching &quot;{searchTerm}&quot;
               </div>
             ) : (
-              searchResults.map(({ category, subCat, event }) => (
-                <button
-                  key={`${category.id}-${event.id}`}
-                  onClick={() => handleTriggerEvent(category.name, subCat.name, event.name, event.id)}
-                  className="w-full text-left p-2.5 rounded-lg bg-white dark:bg-slate-900/90 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 transition group flex justify-between items-center shadow-md"
-                >
-                  <div className="min-w-0 pr-2">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className={`text-[8.5px] font-semibold uppercase px-1.5 py-0.5 rounded shadow-sm ${category.badgeBg}`}>
-                        {category.badgeText}
-                      </span>
-                      <span className="text-[9.5px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                        {subCat.name}
-                      </span>
+              searchResults.map(({ category, subCat, event }) => {
+                const disabledStatus = getEventDisabledStatus(event.id);
+                return (
+                  <button
+                    key={`${category.id}-${event.id}`}
+                    disabled={disabledStatus.isDisabled}
+                    onClick={() => handleTriggerEvent(category.name, subCat.name, event.name, event.id)}
+                    className={`w-full text-left p-2.5 rounded-lg border transition group flex justify-between items-center shadow-md ${
+                      disabledStatus.isDisabled
+                        ? "opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800"
+                        : "bg-white dark:bg-slate-900/90 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/80 hover:scale-[1.01]"
+                    }`}
+                    title={disabledStatus.reason || `Log ${event.name}`}
+                  >
+                    <div className="min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className={`text-[8.5px] font-semibold uppercase px-1.5 py-0.5 rounded shadow-sm ${category.badgeBg}`}>
+                          {category.badgeText}
+                        </span>
+                        <span className="text-[9.5px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                          {subCat.name}
+                        </span>
+                        {disabledStatus.isDisabled && (
+                          <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-amber-500 text-white shadow-2xs">
+                            IN PROGRESS / DISABLED
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition truncate">
+                        {event.name}
+                      </div>
                     </div>
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition truncate">
-                      {event.name}
-                    </div>
-                  </div>
-                  <Zap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 opacity-90 group-hover:scale-110 transition" />
-                </button>
-              ))
+                    <Zap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 opacity-90 group-hover:scale-110 transition" />
+                  </button>
+                );
+              })
             )}
           </div>
         ) : !selectedCatId ? (
           /* LEVEL 1: AUTO RESIZING MAIN MENU (5 ICONS IN A ROW) */
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 flex-1 min-h-0 auto-rows-fr">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 flex-1 min-h-0 auto-rows-fr">
             {PIPELINE_EVENT_CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => setSelectedCatId(cat.id)}
-                className={`w-full flex-1 min-h-[78px] sm:min-h-[88px] h-full p-2 rounded-xl border-2 shadow-xl font-medium uppercase tracking-wider ${cat.borderClass} ${cat.colorClass} transition-all duration-200 hover:scale-[1.03] hover:shadow-2xl active:scale-[0.97] flex flex-col items-center justify-between group overflow-hidden relative`}
+                className={`w-full flex-1 min-h-[62px] sm:min-h-[70px] h-full p-1.5 rounded-xl border-2 shadow-md font-medium uppercase tracking-wider ${cat.borderClass} ${cat.colorClass} transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex flex-col items-center justify-between group overflow-hidden relative`}
                 title={cat.name}
               >
                 {/* Big Centered Icon */}
                 <div className="flex-1 w-full flex flex-col items-center justify-center p-0.5">
-                  <div className="p-2 sm:p-2.5 rounded-xl bg-black/20 dark:bg-black/30 ring-1 ring-white/20 flex items-center justify-center shadow-inner text-white group-hover:bg-black/35 group-hover:ring-white/40 group-hover:scale-105 transition-all duration-200">
+                  <div className="p-1.5 sm:p-2 rounded-lg bg-black/20 dark:bg-black/30 ring-1 ring-white/20 flex items-center justify-center shadow-inner text-white group-hover:bg-black/35 group-hover:scale-105 transition-all duration-200">
                     {cat.icon}
                   </div>
                 </div>
 
                 {/* Elegant Normal-Font Name Box */}
-                <div className="w-full text-center px-1 py-1 bg-[#0f172a]/80 dark:bg-black/80 rounded-md backdrop-blur-md shrink-0 mt-1 flex items-center justify-center min-h-[26px] shadow-sm border border-white/15">
-                  <span className="font-semibold tracking-wider uppercase leading-[1.1] text-center text-white block max-w-full break-words text-[8.5px] sm:text-[9.5px]">
+                <div className="w-full text-center px-1 py-0.5 bg-[#0f172a]/80 dark:bg-black/80 rounded-md backdrop-blur-md shrink-0 mt-0.5 flex items-center justify-center min-h-[22px] shadow-sm border border-white/15">
+                  <span className="font-semibold tracking-wider uppercase leading-none text-center text-white block max-w-full break-words text-[8px] sm:text-[9px]">
                     {cat.name}
                   </span>
                 </div>
@@ -1090,70 +1615,154 @@ export function PipelineEventMenuPanel({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 auto-rows-fr">
-              {activeSubCat?.subEvents?.map((evt) => (
-                <button
-                  key={evt.id}
-                  onClick={() =>
-                    activeCat && activeSubCat && handleTriggerEvent(activeCat.name, activeSubCat.name, evt.name, evt.id)
-                  }
-                  className="w-full text-left p-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-blue-50/60 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-400 transition-all group flex flex-col items-center justify-between shadow-sm hover:scale-[1.02] active:scale-[0.98] min-h-[96px] sm:min-h-[105px]"
-                >
-                  <div className="flex-1 w-full flex items-center justify-center p-1">
-                    <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950 border border-blue-200/80 dark:border-blue-800 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition shrink-0 shadow-xs">
-                      <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" strokeWidth={1.5} />
+              {activeSubCat?.subEvents?.map((evt) => {
+                const disabledStatus = getEventDisabledStatus(evt.id);
+                const isStartDisabled = TOGGLE_PAIRS.some((p) => p.startId === evt.id && activeToggles[p.groupKey]);
+                const isEndDisabled = TOGGLE_PAIRS.some((p) => p.endId === evt.id && !activeToggles[p.groupKey]);
+
+                return (
+                  <button
+                    key={evt.id}
+                    disabled={disabledStatus.isDisabled}
+                    onClick={() =>
+                      activeCat && activeSubCat && handleTriggerEvent(activeCat.name, activeSubCat.name, evt.name, evt.id)
+                    }
+                    className={`w-full text-left p-2 rounded-xl transition-all group flex flex-col items-center justify-between shadow-sm min-h-[96px] sm:min-h-[105px] relative overflow-hidden ${
+                      disabledStatus.isDisabled
+                        ? "opacity-40 cursor-not-allowed select-none bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800"
+                        : "bg-white dark:bg-slate-900 hover:bg-blue-50/60 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-400 hover:scale-[1.02] active:scale-[0.98]"
+                    }`}
+                    title={disabledStatus.reason || `Quick log ${evt.name}`}
+                  >
+                    {isStartDisabled && (
+                      <span className="absolute top-1 right-1 text-[7.5px] font-black uppercase px-1 py-0.2 rounded bg-amber-500 text-white shadow-xs animate-pulse">
+                        IN PROGRESS
+                      </span>
+                    )}
+                    {isEndDisabled && (
+                      <span className="absolute top-1 right-1 text-[7.5px] font-bold uppercase px-1 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                        START REQ
+                      </span>
+                    )}
+
+                    <div className="flex-1 w-full flex items-center justify-center p-1">
+                      <div className={`p-2 rounded-xl border text-blue-600 dark:text-blue-400 shrink-0 shadow-xs ${
+                        disabledStatus.isDisabled
+                          ? "bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 opacity-60"
+                          : "bg-blue-50 dark:bg-blue-950 border-blue-200/80 dark:border-blue-800 group-hover:scale-105"
+                      }`}>
+                        <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" strokeWidth={1.5} />
+                      </div>
                     </div>
-                  </div>
-                  <div className="w-full text-center px-1 py-1 bg-slate-100/90 dark:bg-slate-950/90 rounded-lg shrink-0 mt-1 border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center min-h-[36px]">
-                    <span className="text-[10px] sm:text-[11px] font-semibold text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-300 leading-snug text-center block max-w-full break-words">
-                      {evt.name}
-                    </span>
-                  </div>
-                </button>
-              ))}
+                    <div className="w-full text-center px-1 py-1 bg-slate-100/90 dark:bg-slate-950/90 rounded-lg shrink-0 mt-1 border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center min-h-[36px]">
+                      <span className="text-[10px] sm:text-[11px] font-semibold text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-300 leading-snug text-center block max-w-full break-words">
+                        {evt.name}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
       </div>
 
-      {/* Persistent Bottom Section: Most Frequent Events Icon Menu Bar + Settings */}
-      <div className="bg-slate-100/90 dark:bg-slate-900/95 border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 shrink-0">
-        <div className="flex items-center justify-between gap-1.5 mb-1 px-1">
+      {/* Persistent Bottom Section: Most Frequent Events Icon Menu Bar + View All + Settings */}
+      <div className="bg-slate-100/90 dark:bg-slate-900/95 border-t border-slate-200 dark:border-slate-800 px-2.5 py-2 shrink-0 transition-all duration-300">
+        <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5 px-1">
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
               Most Frequent Events (1-Click Quick Log)
             </span>
+            <Badge variant="secondary" className="text-[9px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60 px-1.5 py-0.2">
+              {activeShortcuts.length} Items
+            </Badge>
           </div>
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="flex items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition bg-white dark:bg-slate-950 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800 shadow-xs"
-            title="Configure Most Frequent Events Bar"
-          >
-            <Settings className="w-3 h-3 text-slate-500" /> Settings
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setIsInlineExpanded((prev) => !prev)}
+              className="flex items-center gap-1 text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition bg-white dark:bg-slate-950 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-800 shadow-xs"
+              title={isInlineExpanded ? "Collapse to compact view" : "Expand all shortcuts in multi-row view"}
+            >
+              {isInlineExpanded ? (
+                <>
+                  <Minimize2 className="w-3 h-3 text-blue-600 dark:text-blue-400" /> Compact
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3 h-3 text-blue-600 dark:text-blue-400" /> Expand
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => setIsViewAllOpen(true)}
+              className="flex items-center gap-1 text-[10px] font-semibold text-white bg-blue-600 hover:bg-blue-700 transition px-2.5 py-1 rounded-md shadow-xs border border-blue-500"
+              title="View all quick log buttons in one dedicated panel"
+            >
+              <LayoutGrid className="w-3 h-3" /> View All ({activeShortcuts.length})
+            </button>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center gap-1 text-[10px] font-medium text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition bg-white dark:bg-slate-950 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-800 shadow-xs"
+              title="Configure Most Frequent Events Bar"
+            >
+              <Settings className="w-3 h-3 text-slate-500" /> Settings
+            </button>
+          </div>
         </div>
 
-        {/* Icon Tile Button Layout for Shortcuts with Full Event Names */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-          {activeShortcuts.map((sc) => (
-            <button
-              key={sc.id}
-              onClick={() => handleTriggerEvent(sc.cat, sc.sub, sc.event, sc.id)}
-              className="w-full p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 hover:bg-blue-50/60 dark:hover:bg-slate-850 hover:border-blue-500 dark:hover:border-blue-400 transition-all flex flex-col items-center justify-between group shadow-xs hover:scale-[1.02] active:scale-[0.98] min-h-[70px] sm:min-h-[76px]"
-              title={`Quick log ${sc.event}`}
-            >
-              <div className="flex-1 flex items-center justify-center p-0.5">
-                <div className="p-1 rounded-md bg-slate-100 dark:bg-slate-900 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition shrink-0">
-                  {sc.icon}
+        {/* Icon Tile Button Layout for Shortcuts with Full Event Names and Generous Space */}
+        <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 ${isInlineExpanded ? "max-h-[220px] overflow-y-auto custom-scrollbar p-1" : ""}`}>
+          {activeShortcuts.map((sc, index) => {
+            const isEndActive = TOGGLE_PAIRS.some((p) => p.endId === sc.id && activeToggles[p.groupKey]);
+            const hkBadge = getEffectiveHotkey(sc.id, index);
+            return (
+              <button
+                key={sc.id}
+                onClick={() => handleTriggerEvent(sc.cat, sc.sub, sc.event, sc.id)}
+                className={`w-full p-2 rounded-xl transition-all flex flex-col items-center justify-between group shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] min-h-[82px] sm:min-h-[88px] relative overflow-hidden ${
+                  isEndActive
+                    ? "border-2 border-amber-500 bg-amber-50/90 dark:bg-amber-950/60 ring-2 ring-amber-400/50 shadow-md"
+                    : "border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-950 hover:bg-blue-50/80 dark:hover:bg-blue-950/40 hover:border-blue-500 dark:hover:border-blue-400"
+                }`}
+                title={isEndActive ? `Active event in progress. Click to log ${sc.event}` : `Quick log ${sc.event}`}
+              >
+                {isEndActive ? (
+                  <span className="absolute top-1 right-1 text-[7.5px] font-black uppercase px-1 py-0.2 rounded bg-amber-500 text-white shadow-xs animate-pulse">
+                    IN PROGRESS
+                  </span>
+                ) : hkBadge ? (
+                  <span
+                    className="absolute top-1 left-1 text-[7.5px] font-mono font-black uppercase px-1 py-0.2 rounded bg-slate-800 text-amber-300 dark:bg-slate-200 dark:text-slate-900 border border-amber-400/40 shadow-xs"
+                    title={`Press ${hkBadge} on your keyboard to quick-log`}
+                  >
+                    {hkBadge}
+                  </span>
+                ) : null}
+                <div className="flex-1 flex items-center justify-center p-0.5">
+                  <div className={`p-1.5 rounded-lg transition-all shrink-0 shadow-xs ${
+                    isEndActive
+                      ? "bg-amber-500 text-white"
+                      : "bg-slate-100 dark:bg-slate-900 text-blue-600 dark:text-blue-400 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white"
+                  }`}>
+                    {sc.icon}
+                  </div>
                 </div>
-              </div>
-              <div className="w-full text-center px-1 py-1 bg-slate-100/80 dark:bg-slate-900 rounded shrink-0 mt-0.5 border border-slate-200/60 dark:border-slate-800 min-h-[26px] flex items-center justify-center">
-                <span className="text-[8.5px] sm:text-[9.5px] font-medium text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-300 leading-[1.15] text-center block max-w-full break-words line-clamp-2">
-                  {sc.label}
-                </span>
-              </div>
-            </button>
-          ))}
+                <div className={`w-full text-center px-1.5 py-1 rounded-md shrink-0 mt-1 min-h-[32px] flex items-center justify-center border ${
+                  isEndActive
+                    ? "bg-amber-100/90 dark:bg-amber-900/90 border-amber-300 dark:border-amber-700"
+                    : "bg-slate-100/90 dark:bg-slate-900/90 border-slate-200/60 dark:border-slate-800"
+                }`}>
+                  <span className={`text-[9.5px] sm:text-[10.5px] font-semibold leading-snug text-center block max-w-full break-words line-clamp-2 ${
+                    isEndActive ? "text-amber-950 dark:text-amber-100" : "text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-300"
+                  }`}>
+                    {sc.label}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1163,7 +1772,89 @@ export function PipelineEventMenuPanel({
         <span className="text-blue-600 dark:text-blue-400 font-semibold">1-Click Auto Capture</span>
       </div>
 
-      {/* Interactive Settings Dialog for Shortcuts Configuration */}
+      {/* View All Quick-Log Shortcuts Dialog Command Center */}
+      <Dialog open={isViewAllOpen} onOpenChange={setIsViewAllOpen}>
+        <DialogContent className="max-w-2xl bg-white dark:bg-slate-950 border-2 border-slate-200 dark:border-slate-800 shadow-2xl p-0 overflow-hidden font-sans">
+          <DialogHeader className="p-4 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 flex flex-row items-center justify-between">
+            <div>
+              <DialogTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                <Sparkles className="w-4 h-4 text-amber-500" /> All Quick-Log Shortcuts ({activeShortcuts.length})
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Instant 1-click survey logging for all your pinned and frequent pipeline events in one place.
+              </DialogDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsViewAllOpen(false);
+                setIsSettingsOpen(true);
+              }}
+              className="text-xs font-semibold flex items-center gap-1.5 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700"
+            >
+              <Settings className="w-3.5 h-3.5 text-blue-600" /> Manage Pins
+            </Button>
+          </DialogHeader>
+
+          <div className="p-4 max-h-[460px] overflow-y-auto custom-scrollbar">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+              {activeShortcuts.map((sc) => {
+                const isEndActive = TOGGLE_PAIRS.some((p) => p.endId === sc.id && activeToggles[p.groupKey]);
+                return (
+                  <button
+                    key={`all-${sc.id}`}
+                    onClick={() => {
+                      handleTriggerEvent(sc.cat, sc.sub, sc.event, sc.id);
+                      setIsViewAllOpen(false);
+                    }}
+                    className={`w-full text-left p-2.5 rounded-xl transition-all flex flex-col justify-between group shadow-sm hover:scale-[1.02] active:scale-[0.98] min-h-[92px] relative overflow-hidden ${
+                      isEndActive
+                        ? "border-2 border-amber-500 bg-amber-50/90 dark:bg-amber-950/60 ring-2 ring-amber-400/50"
+                        : "bg-white dark:bg-slate-900 hover:bg-blue-50/70 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-400"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-1">
+                      <div className={`p-1.5 rounded-lg transition shadow-xs ${
+                        isEndActive ? "bg-amber-500 text-white" : "bg-slate-100 dark:bg-slate-950 text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white"
+                      }`}>
+                        {sc.icon}
+                      </div>
+                      <Badge variant="outline" className={`text-[8.5px] font-bold uppercase tracking-wider px-1.5 py-0.2 ${
+                        isEndActive ? "bg-amber-500 text-white border-amber-600" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700"
+                      }`}>
+                        {isEndActive ? "IN PROGRESS" : sc.cat}
+                      </Badge>
+                    </div>
+                    <div className="w-full">
+                      <div className="text-[9px] text-slate-400 dark:text-slate-500 font-medium truncate">
+                        {sc.sub}
+                      </div>
+                      <div className={`text-[11px] font-bold leading-snug break-words line-clamp-2 ${
+                        isEndActive ? "text-amber-950 dark:text-amber-100" : "text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-300"
+                      }`}>
+                        {sc.label}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-3 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs text-slate-500">
+            <span>Click any card to instantly log at KP {currentKp}</span>
+            <Button
+              onClick={() => setIsViewAllOpen(false)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 h-8"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Interactive Settings Dialog for Shortcuts Configuration with Search */}
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent className="max-w-md bg-white dark:bg-slate-950 border-2 border-slate-200 dark:border-slate-800 shadow-2xl p-0 overflow-hidden font-sans">
           <DialogHeader className="p-4 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
@@ -1181,48 +1872,214 @@ export function PipelineEventMenuPanel({
               </Button>
             </div>
             <DialogDescription className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              Select events to pin to your persistent bottom 1-click bar. Unpinned slots will auto-fill based on your survey frequency.
+              Select events to pin to your persistent 1-click quick-log bar. Only your ticked items will appear.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-4 max-h-[350px] overflow-y-auto custom-scrollbar space-y-3">
-            {PIPELINE_EVENT_CATEGORIES.map((cat) => (
-              <div key={cat.id} className="space-y-1.5 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800 pb-1">
-                  <div className="p-1 rounded bg-slate-200 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
-                    {cat.icon}
-                  </div>
-                  <span>{cat.name}</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
-                  {cat.subCategories.flatMap((sc) =>
-                    sc.subEvents?.map((evt) => {
-                      const isChecked = pinnedShortcutIds.includes(evt.id);
-                      return (
-                        <label
-                          key={evt.id}
-                          className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300 hover:text-blue-600 cursor-pointer p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          <Checkbox
-                            checked={isChecked}
-                            onCheckedChange={() => togglePinShortcut(evt.id)}
-                          />
-                          <span className="truncate">{evt.name}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            ))}
+          {/* Quick Search & Count Header */}
+          <div className="p-3 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400 dark:text-slate-500" />
+              <Input
+                value={settingsSearchTerm}
+                onChange={(e) => setSettingsSearchTerm(e.target.value)}
+                placeholder="Search events (e.g. Anode, CP, Span, Skip...)"
+                className="h-8 pl-8 text-[11px] bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-md focus:ring-1 focus:ring-blue-500 font-normal"
+              />
+              {settingsSearchTerm && (
+                <button
+                  onClick={() => setSettingsSearchTerm("")}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <Badge variant="outline" className="text-[10px] font-bold bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shrink-0 px-2 py-1 shadow-2xs">
+              {pinnedShortcutIds.length || INITIAL_SHORTCUT_IDS.length} Pinned
+            </Badge>
           </div>
 
-          <div className="p-3 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+          {/* Reorder & Custom Hotkey Assignment Section */}
+          <div className="p-3 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-500/10 dark:from-amber-950/40 dark:to-amber-950/40 border-b border-amber-400/40 space-y-2">
+            <div className="flex items-center justify-between text-[10.5px] font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+              <span className="flex items-center gap-1.5">
+                <Keyboard className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                Button Display Order &amp; Custom Hotkeys
+              </span>
+              <span className="text-[9px] font-normal text-amber-700 dark:text-amber-300">
+                Alt, Ctrl, Shift + Key
+              </span>
+            </div>
+
+            <div className="space-y-1.5 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
+              {(() => {
+                const rawList = pinnedShortcutIds.length > 0 ? pinnedShortcutIds : INITIAL_SHORTCUT_IDS;
+                const reorderList = rawList.filter((id) => !TOGGLE_PAIRS.some((p) => p.endId === id));
+
+                return reorderList.map((id, index) => {
+                  const item = allFlattenedEvents.find((e) => e.id === id);
+                  if (!item) return null;
+
+                  const currentHotkey = getEffectiveHotkey(id, index);
+                  const totalPinned = reorderList.length;
+
+                  return (
+                    <div
+                      key={`reorder-${id}`}
+                      className="flex items-center justify-between p-1.5 rounded-md bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 text-[11px] shadow-2xs gap-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-[9.5px] font-bold text-slate-400 w-4 shrink-0">
+                          #{index + 1}
+                        </span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                          {item.label}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Reorder Up / Down Controls */}
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => movePinnedShortcut(index, -1)}
+                            disabled={index === 0}
+                            className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-30 text-slate-700 dark:text-slate-200 transition"
+                            title="Move Left / Higher Priority"
+                          >
+                            <ArrowUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => movePinnedShortcut(index, 1)}
+                            disabled={index === totalPinned - 1}
+                            className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-30 text-slate-700 dark:text-slate-200 transition"
+                            title="Move Right / Lower Priority"
+                          >
+                            <ArrowDown className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Editable Custom Hotkey Input */}
+                        <input
+                          type="text"
+                          value={currentHotkey}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomHotkeys((prev) => ({ ...prev, [id]: val }));
+                          }}
+                          placeholder="Hotkey"
+                          className="w-20 h-6 px-1 text-[10px] font-mono font-extrabold text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 rounded text-center focus:ring-1 focus:ring-amber-500 uppercase"
+                          title="Type custom hotkey combo e.g. Alt+1, Ctrl+S, Shift+A, F1"
+                        />
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
+          <div className="p-4 max-h-[350px] overflow-y-auto custom-scrollbar space-y-3">
+            {(() => {
+              const q = settingsSearchTerm.toLowerCase().trim();
+              let hasAnyMatches = false;
+
+              const categoryViews = PIPELINE_EVENT_CATEGORIES.map((cat) => {
+                const matchingEvents = cat.subCategories.flatMap((sc) =>
+                  (sc.subEvents || []).filter(
+                    (evt) =>
+                      !q ||
+                      evt.name.toLowerCase().includes(q) ||
+                      sc.name.toLowerCase().includes(q) ||
+                      cat.name.toLowerCase().includes(q)
+                  )
+                );
+
+                if (matchingEvents.length === 0) return null;
+                hasAnyMatches = true;
+
+                return (
+                  <div key={cat.id} className="space-y-1.5 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-1">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                        <div className="p-1 rounded bg-slate-200 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
+                          {cat.icon}
+                        </div>
+                        <span>{cat.name}</span>
+                      </div>
+                      <span className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400">
+                        {matchingEvents.length} {matchingEvents.length === 1 ? "event" : "events"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                      {matchingEvents.map((evt) => {
+                        const isEndEvent = TOGGLE_PAIRS.some((p) => p.endId === evt.id);
+                        const isChecked = pinnedShortcutIds.includes(evt.id);
+
+                        if (isEndEvent) {
+                          return (
+                            <div
+                              key={evt.id}
+                              className="flex items-center justify-between gap-2 text-[10.5px] p-1.5 rounded opacity-50 bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none"
+                              title="End events are automatically paired with their Start event. Pin the Start event instead."
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Checkbox disabled checked={false} />
+                                <span className="truncate line-through">{evt.name}</span>
+                              </div>
+                              <span className="text-[8.5px] font-semibold text-amber-600 dark:text-amber-400 italic shrink-0">
+                                Auto-Linked
+                              </span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <label
+                            key={evt.id}
+                            className={`flex items-center gap-2 text-[11px] cursor-pointer p-1.5 rounded transition ${
+                              isChecked
+                                ? "bg-blue-50/80 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 font-semibold border border-blue-200 dark:border-blue-800"
+                                : "text-slate-700 dark:text-slate-300 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            }`}
+                          >
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={() => togglePinShortcut(evt.id)}
+                            />
+                            <span className="truncate">{evt.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              });
+
+              if (!hasAnyMatches) {
+                return (
+                  <div className="p-6 text-center text-slate-500 dark:text-slate-400 text-xs">
+                    No pipeline events found matching &quot;{settingsSearchTerm}&quot;
+                  </div>
+                );
+              }
+
+              return categoryViews;
+            })()}
+          </div>
+
+          <div className="p-3 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center">
+            <span className="text-[10.5px] text-slate-500 font-medium">
+              {pinnedShortcutIds.length} event{pinnedShortcutIds.length === 1 ? "" : "s"} selected
+            </span>
             <Button
-              onClick={() => setIsSettingsOpen(false)}
+              onClick={() => {
+                setIsSettingsOpen(false);
+                setSettingsSearchTerm("");
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 h-8"
             >
-              Done & Save
+              Done &amp; Save
             </Button>
           </div>
         </DialogContent>
