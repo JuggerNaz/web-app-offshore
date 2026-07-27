@@ -166,8 +166,10 @@ export const REPORT_TEMPLATES = {
         { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report", icon: FileBarChart, description: "Portrait ROV Water Depth Inspection report — QID, elevation, dive number, water depth, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater Diving", icon: FileBarChart, description: "Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water Diving", icon: FileBarChart, description: "Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcasn-report", name: "Caisson Inspection Diving", icon: FileBarChart, description: "Portrait combined Caisson inspection report (Above & Underwater) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater Diving", icon: FileBarChart, description: "Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water Diving", icon: FileBarChart, description: "Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcond-report", name: "Conductor Inspection Diving", icon: FileBarChart, description: "Portrait combined Conductor inspection report (Above & Underwater) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -217,8 +219,10 @@ const TOC_SECTIONS = [
       { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" },
       { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater Diving", mode: "Diving" },
       { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water Diving", mode: "Diving" },
+      { id: "diving-dcasn-report", name: "Caisson Inspection Diving", mode: "Diving" },
       { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater Diving", mode: "Diving" },
-      { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water Diving", mode: "Diving" }
+      { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water Diving", mode: "Diving" },
+      { id: "diving-dcond-report", name: "Conductor Inspection Diving", mode: "Diving" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
       { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
@@ -1583,8 +1587,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRWDIReport } = await import("@/utils/report-generators/rov-rwdi-report");
             const { generateDivingDCASNUWReport } = await import("@/utils/report-generators/diving-dcasn-uw-report");
             const { generateDivingDCASNTSReport } = await import("@/utils/report-generators/diving-dcasn-ts-report");
+            const { generateDivingDCASNReport } = await import("@/utils/report-generators/diving-dcasn-report");
             const { generateDivingDCONDUWReport } = await import("@/utils/report-generators/diving-dcond-uw-report");
             const { generateDivingDCONDTSReport } = await import("@/utils/report-generators/diving-dcond-ts-report");
+            const { generateDivingDCONDReport } = await import("@/utils/report-generators/diving-dcond-report");
 
 
             // Fetch real company settings from API
@@ -4600,6 +4606,102 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             return await generateDivingDCONDTSReport(
+                records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Caisson Inspection Diving (Combined Above Water & Underwater)
+        if (currentTemplateId === "diving-dcasn-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingDCASNReport(
+                records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Conductor Inspection Diving (Combined Above Water & Underwater)
+        if (currentTemplateId === "diving-dcond-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingDCONDReport(
                 records || [],
                 headerData,
                 companySettings,

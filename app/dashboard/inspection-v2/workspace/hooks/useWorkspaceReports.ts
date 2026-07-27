@@ -45,8 +45,10 @@ import { generateROVRWDIReport as generateROVRWDIReportTemplate } from "@/utils/
 import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
 import { generateDivingDCASNUWReport as generateDivingDCASNUWReportTemplate } from "@/utils/report-generators/diving-dcasn-uw-report";
 import { generateDivingDCASNTSReport as generateDivingDCASNTSReportTemplate } from "@/utils/report-generators/diving-dcasn-ts-report";
+import { generateDivingDCASNReport as generateDivingDCASNReportTemplate } from "@/utils/report-generators/diving-dcasn-report";
 import { generateDivingDCONDUWReport as generateDivingDCONDUWReportTemplate } from "@/utils/report-generators/diving-dcond-uw-report";
 import { generateDivingDCONDTSReport as generateDivingDCONDTSReportTemplate } from "@/utils/report-generators/diving-dcond-ts-report";
+import { generateDivingDCONDReport as generateDivingDCONDReportTemplate } from "@/utils/report-generators/diving-dcond-report";
 
 import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
 
@@ -2330,14 +2332,141 @@ export function useWorkspaceReports(
         generatePhotographyLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
-        generateDivingDCASNUWReport,
-        generateDivingDCASNUWReportBlob,
-        generateDivingDCASNTSReport,
-        generateDivingDCASNTSReportBlob,
-        generateDivingDCONDUWReport,
-        generateDivingDCONDUWReportBlob,
-        generateDivingDCONDTSReport,
-        generateDivingDCONDTSReportBlob,
+        generateDivingDCASNUWReport: async () => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            await generateDivingDCASNUWReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any);
+        },
+        generateDivingDCASNUWReportBlob: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            return await generateDivingDCASNUWReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any) as Blob;
+        },
+        generateDivingDCASNTSReport: async () => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            await generateDivingDCASNTSReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any);
+        },
+        generateDivingDCASNTSReportBlob: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            return await generateDivingDCASNTSReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any) as Blob;
+        },
+        generateDivingDCASNReport: async () => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            await generateDivingDCASNReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any);
+        },
+        generateDivingDCASNReportBlob: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            return await generateDivingDCASNReportTemplate(
+                currentRecords,
+                { ...headerData, contractorLogoUrl },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any
+            ) as Blob;
+        },
+        generateDivingDCONDUWReport: async () => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            await generateDivingDCONDUWReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any);
+        },
+        generateDivingDCONDUWReportBlob: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            return await generateDivingDCONDUWReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any) as Blob;
+        },
+        generateDivingDCONDTSReport: async () => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            await generateDivingDCONDTSReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any);
+        },
+        generateDivingDCONDTSReportBlob: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            return await generateDivingDCONDTSReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any) as Blob;
+        },
+        generateDivingDCONDReport: async () => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            await generateDivingDCONDReportTemplate(
+                currentRecords,
+                { ...headerData, contractorLogoUrl },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { ...reportConfig, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any
+            );
+        },
+        generateDivingDCONDReportBlob: async (printFriendly?: boolean) => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            return await generateDivingDCONDReportTemplate(
+                currentRecords,
+                { ...headerData, contractorLogoUrl },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any
+            ) as Blob;
+        },
         generateDivingACFMCReport,
         generateDivingACFMCReportBlob,
         generateDivingPLCOReport,

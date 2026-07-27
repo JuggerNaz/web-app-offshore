@@ -489,7 +489,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             Object.entries(anodeDepletionBuckets).filter(([, v]) => v > 0)
         );
 
-        // ─── 6. SELECTED ANODE INSPECTION (SANI/RSANI) ────────────────────────
+        // ─── 6. SELECTED ANODE INSPECTION (SANI/RSANI) & MAINTENANCE (ANMAIN) ─
         const saniRecords = rawRecords.filter((r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === "SANI" || code === "RSANI";
@@ -497,6 +497,38 @@ export const GET = withTenant(async (request, { companyId }) => {
         const saniTotal = saniRecords.length;
         const saniRov = saniRecords.filter((r: any) => !!r.rov_job_id).length;
         const saniDive = saniRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
+
+        // Anode Maintenance (ANMAIN) Analysis
+        const anmainRecords = rawRecords.filter((r: any) => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === "ANMAIN" || code === "ANODE_MAINT";
+        });
+        const anmainTotal = anmainRecords.length;
+        let anmainReplaced = 0;
+        let anmainInstalled = 0;
+        let anmainMaintenanceCount = 0;
+
+        anmainRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const repVal = d.replaced;
+            const repInstalled = d.replaced_installed;
+            
+            const isReplaced = 
+                repVal === true || 
+                repVal === "true" ||
+                repVal === "1" ||
+                repVal === 1 ||
+                String(repVal || "").toLowerCase() === "yes font-bold" ||
+                String(repVal || "").toLowerCase() === "yes" ||
+                String(repVal || "").toLowerCase() === "replaced" ||
+                String(repInstalled || "").toLowerCase().includes("replace");
+
+            if (isReplaced) {
+                anmainReplaced++;
+            } else {
+                anmainMaintenanceCount++;
+            }
+        });
 
         // ─── 7. CP READINGS ───────────────────────────────────────────────────
         // Scan ALL inspection records for cp readings — every inspection type that
@@ -1355,6 +1387,12 @@ export const GET = withTenant(async (request, { companyId }) => {
                     depletionBuckets: cleanDepletionBuckets,
                     // anode_condition breakdown
                     conditionCounts: anodeConditionCounts,
+                },
+                anodeMaintenance: {
+                    total: anmainTotal,
+                    replaced: anmainReplaced,
+                    installed: anmainInstalled,
+                    maintenanceCount: anmainMaintenanceCount,
                 },
                 sani: { total: saniTotal, rov: saniRov, dive: saniDive },
                 cp: {

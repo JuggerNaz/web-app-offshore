@@ -87,6 +87,12 @@ interface SummaryData {
     depletionBuckets: Record<string, number>;
     conditionCounts: Record<string, number>;
   };
+  anodeMaintenance?: {
+    total: number;
+    replaced: number;
+    installed: number;
+    maintenanceCount: number;
+  };
   sani: { total: number; rov: number; dive: number };
   cp: {
     primaryCount: number;
@@ -1926,6 +1932,43 @@ export function InspectionSummaryPanel({
                     </div>
                   </div>
                 )}
+                {/* Anode Maintenance Details (ANMAIN) — 2 Options: Replaced & Maintenance Counts */}
+                {data?.anodeMaintenance && data.anodeMaintenance.total > 0 && (
+                  <div className="border-t border-slate-700/40 pt-3">
+                    <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span>Anode Maintenance</span>
+                        <span className="text-[8px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                          ANMAIN
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-black text-slate-300">
+                        Total: {data.anodeMaintenance.total}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                        <div className="text-xl font-black text-emerald-400">
+                          {data.anodeMaintenance.replaced}
+                        </div>
+                        <div className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider mt-0.5">
+                          Replaced Count
+                        </div>
+                      </div>
+
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center">
+                        <div className="text-xl font-black text-amber-400">
+                          {data.anodeMaintenance.maintenanceCount}
+                        </div>
+                        <div className="text-[9px] font-bold text-amber-500 uppercase tracking-wider mt-0.5">
+                          Maintenance Count
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Selected Anode Inspection (SANI / RSANI) — shown inside anode card when data exists */}
                 {sani && sani.total > 0 && (
                   <div className="border-t border-slate-700/40 pt-3">

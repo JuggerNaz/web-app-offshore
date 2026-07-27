@@ -1789,6 +1789,10 @@ function V10PreviewLayout() {
     generateDivingDCONDUWReportBlob,
     generateDivingDCONDTSReport,
     generateDivingDCONDTSReportBlob,
+    generateDivingDCASNReport,
+    generateDivingDCASNReportBlob,
+    generateDivingDCONDReport,
+    generateDivingDCONDReportBlob,
 
     generateInspectionReportByType,
     generateFullInspectionReport,
@@ -8480,10 +8484,14 @@ function V10PreviewLayout() {
           generateDivingDCASNUWReportBlob,
           generateDivingDCASNTSReport,
           generateDivingDCASNTSReportBlob,
+          generateDivingDCASNReport,
+          generateDivingDCASNReportBlob,
           generateDivingDCONDUWReport,
           generateDivingDCONDUWReportBlob,
           generateDivingDCONDTSReport,
           generateDivingDCONDTSReportBlob,
+          generateDivingDCONDReport,
+          generateDivingDCONDReportBlob,
         }}
         refs={{
           fileInputRef,

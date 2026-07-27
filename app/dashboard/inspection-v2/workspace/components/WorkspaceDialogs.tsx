@@ -361,10 +361,14 @@ interface WorkspaceDialogsProps {
         generateDivingDCASNUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCASNTSReport: () => void;
         generateDivingDCASNTSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCASNReport: () => void;
+        generateDivingDCASNReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCONDUWReport: () => void;
         generateDivingDCONDUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCONDTSReport: () => void;
         generateDivingDCONDTSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCONDReport: () => void;
+        generateDivingDCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -651,10 +655,14 @@ export function WorkspaceDialogs({
         generateDivingDCASNUWReportBlob,
         generateDivingDCASNTSReport,
         generateDivingDCASNTSReportBlob,
+        generateDivingDCASNReport,
+        generateDivingDCASNReportBlob,
         generateDivingDCONDUWReport,
         generateDivingDCONDUWReportBlob,
         generateDivingDCONDTSReport,
-        generateDivingDCONDTSReportBlob
+        generateDivingDCONDTSReportBlob,
+        generateDivingDCONDReport,
+        generateDivingDCONDReportBlob
     } = handlers;
 
 
@@ -3059,8 +3067,10 @@ export function WorkspaceDialogs({
                     generateCUReport: () => setters.setCuPreviewOpen(true),
                     generateDivingDCASNUWReport: () => setters.setDivingDcasnUwPreviewOpen(true),
                     generateDivingDCASNTSReport: () => setters.setDivingDcasnTsPreviewOpen(true),
+                    generateDivingDCASNReport: () => handlers.generateDivingDCASNReport(),
                     generateDivingDCONDUWReport: () => setters.setDivingDcondUwPreviewOpen(true),
                     generateDivingDCONDTSReport: () => setters.setDivingDcondTsPreviewOpen(true),
+                    generateDivingDCONDReport: () => handlers.generateDivingDCONDReport(),
                     generateSeabedReport: (templateId: string) => generateSeabedReport(templateId),
                     generateSeabedDetailReport: () => setters.setSeabedDetailPreviewOpen(true),
                     generateSeabedGasDetailReport: () => setters.setSeabedGasDetailPreviewOpen(true),
