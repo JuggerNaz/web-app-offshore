@@ -13,7 +13,7 @@ import {
     Download, Copy, Save, Info, MoreHorizontal, Activity, BarChart3, PieChart,
     ChevronRightSquare, KanbanSquare, Sliders, Waves, PlaneTakeoff, Zap,
     Anchor, Target, Eye, Navigation, Box, ClipboardCheck, BarChart, RefreshCw, ArrowUpDown,
-    ChevronUp
+    ChevronUp, Edit2
 } from "lucide-react";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SOW, SOWItem, ReportNumber, InspectionStatus } from "@/types/sow";
@@ -110,6 +110,8 @@ export function SOWDialog({
     const [copyDialogOpen, setCopyDialogOpen] = useState(false);
     const [pendingReportToAdd, setPendingReportToAdd] = useState<ReportNumber | null>(null);
     const [selectedInspectionFilter, setSelectedInspectionFilter] = useState<number | 'all'>('all');
+    // Track report number renames so we can cascade to DB on save
+    const [pendingRenames, setPendingRenames] = useState<Array<{ oldNo: string; newNo: string }>>([]);
 
     const activeReport = activeReportNumber || 'null';
 
@@ -127,6 +129,7 @@ export function SOWDialog({
         setReportNumbers([]);
         setActiveReportNumber(null);
         setSelectedItems(new Set<string>());
+        setPendingRenames([]);
         
         try {
             const res = await fetch(`/api/sow?jobpack_id=${jobpackId}&structure_id=${structure.id}`);
@@ -605,6 +608,81 @@ export function SOWDialog({
         setReportNumbers(prev => prev.map(r => r.number === activeReportNumber ? { ...r, job_type: jobType } : r));
     };
 
+    // Edit/Rename SOW Report Number state
+    const [editingReportNo, setEditingReportNo] = useState<string | null>(null);
+    const [renameInput, setRenameInput] = useState("");
+
+    const handleStartEditReportNumber = (oldNo: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setEditingReportNo(oldNo);
+        setRenameInput(oldNo);
+    };
+
+    const handleConfirmRenameReportNumber = () => {
+        if (!editingReportNo) return;
+        const trimmed = renameInput.trim().toUpperCase();
+        if (!trimmed) {
+            toast.error("Report number cannot be empty.");
+            return;
+        }
+
+        if (trimmed === editingReportNo) {
+            setEditingReportNo(null);
+            return;
+        }
+
+        // Check duplicate
+        if (reportNumbers.some(r => r.number === trimmed)) {
+            toast.error(`Report Number "${trimmed}" already exists.`);
+            return;
+        }
+
+        const oldNo = editingReportNo;
+        // Update reportNumbers array
+        setReportNumbers(prev => prev.map(r => r.number === oldNo ? { ...r, number: trimmed } : r));
+
+        // Update selected items keys
+        setSelectedItems(prev => {
+            const next = new Set<string>();
+            const prefixOld = `${oldNo}:`;
+            const prefixNew = `${trimmed}:`;
+            Array.from(prev).forEach(key => {
+                if (key.startsWith(prefixOld)) {
+                    next.add(key.replace(prefixOld, prefixNew));
+                } else {
+                    next.add(key);
+                }
+            });
+            return next;
+        });
+
+        // Update sowItems array
+        setSOWItems(prev => prev.map(item => {
+            if (item.report_number === oldNo) {
+                return { ...item, report_number: trimmed };
+            }
+            return item;
+        }));
+
+        if (activeReportNumber === oldNo) {
+            setActiveReportNumber(trimmed);
+        }
+
+        // Track rename so we cascade to DB tables on save
+        setPendingRenames(prev => {
+            // If we already renamed X → oldNo, collapse to X → trimmed
+            const collapsed = prev.map(r => r.newNo === oldNo ? { ...r, newNo: trimmed } : r);
+            // If collapse didn't match anything, add a new entry
+            if (!collapsed.some(r => r.newNo === trimmed)) {
+                collapsed.push({ oldNo, newNo: trimmed });
+            }
+            return collapsed;
+        });
+
+        toast.success(`Report Number changed from "${oldNo}" to "${trimmed}". Click "Finalize Scope Matrix" to update all inspection records, dive jobs & ROV jobs.`);
+        setEditingReportNo(null);
+    };
+
     const toggleSelection = (compId: number, typeId: number, s: number, e: number) => {
         const key = `${activeReport}:${compId}:${typeId}:${s}:${e}`;
         setSelectedItems(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
@@ -726,6 +804,33 @@ export function SOWDialog({
     const handleSave = async () => {
         setSaving(true);
         try {
+            // 0. Cascade any pending report-number renames to all DB tables
+            if (pendingRenames.length > 0) {
+                for (const rename of pendingRenames) {
+                    const renameRes = await fetch("/api/sow/rename-report", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            jobpack_id: jobpackId,
+                            structure_id: structure.id,
+                            sow_id: sow?.id || null,
+                            old_report_no: rename.oldNo,
+                            new_report_no: rename.newNo,
+                        }),
+                    });
+                    const renameData = await renameRes.json();
+                    if (!renameData.success) {
+                        console.error("[SOW] Rename failed:", renameData.error);
+                        toast.error(`Failed to rename report "${rename.oldNo}" → "${rename.newNo}": ${renameData.error}`);
+                        // Continue with other renames — don't block the whole save
+                    } else {
+                        console.log(`[SOW] Renamed "${rename.oldNo}" → "${rename.newNo}"`, renameData.counts);
+                    }
+                }
+                // Clear pending renames after processing
+                setPendingRenames([]);
+            }
+
             // 1. Save SOW Header
             const hReq = await fetch("/api/sow", {
                 method: "POST", 
@@ -929,9 +1034,20 @@ export function SOWDialog({
                                     className={cn("flex flex-col items-start px-3 py-1.5 rounded-xl border transition-all cursor-pointer shadow-sm relative group space-y-0.5 min-w-[100px]",
                                         activeReportNumber === r.number ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-blue-200"
                                     )}>
-                                    <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center justify-between w-full gap-1">
                                         <span className="text-[11px] font-black">{r.number}</span>
-                                        {!readOnly && <X className={cn("h-3 w-3 transition-opacity", activeReportNumber === r.number ? "opacity-30 hover:opacity-100" : "opacity-0 group-hover:opacity-50 hover:!opacity-100")} onClick={e => { e.stopPropagation(); handleRemoveReportNumber(i); }} />}
+                                        {!readOnly && (
+                                            <div className="flex items-center gap-0.5">
+                                                <button
+                                                    onClick={(e) => handleStartEditReportNumber(r.number, e)}
+                                                    className={cn("p-0.5 rounded transition-opacity", activeReportNumber === r.number ? "text-blue-100 hover:text-white hover:bg-blue-700" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 opacity-0 group-hover:opacity-100")}
+                                                    title="Edit / Rename Report Number"
+                                                >
+                                                    <Edit2 className="h-2.5 w-2.5" />
+                                                </button>
+                                                <X className={cn("h-3 w-3 transition-opacity", activeReportNumber === r.number ? "opacity-30 hover:opacity-100" : "opacity-0 group-hover:opacity-50 hover:!opacity-100")} onClick={e => { e.stopPropagation(); handleRemoveReportNumber(i); }} />
+                                            </div>
+                                        )}
                                     </div>
                                     <span className={cn("text-[8px] font-bold uppercase tracking-widest", activeReportNumber === r.number ? "text-blue-200" : "text-slate-400")}>{r.job_type || 'Unassigned'}</span>
                                 </div>
@@ -1873,6 +1989,50 @@ export function SOWDialog({
                         Done
                     </Button>
                 </div>
+            </DialogContent>
+        </Dialog>
+
+        {/* Modal Dialog to Rename/Modify SOW Report No */}
+        <Dialog open={!!editingReportNo} onOpenChange={(open) => !open && setEditingReportNo(null)}>
+            <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl">
+                <DialogHeader>
+                    <DialogTitle className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                        <Edit2 className="w-4 h-4 text-blue-500" /> Rename SOW Report Number
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-slate-500 dark:text-slate-400">
+                        Modify the SOW Report Number from <strong className="text-slate-800 dark:text-slate-200">{editingReportNo}</strong>.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">New Report Number</label>
+                        <Input
+                            value={renameInput}
+                            onChange={(e) => setRenameInput(e.target.value.toUpperCase())}
+                            placeholder="Enter Report Number (e.g. 2026-01)"
+                            className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-slate-100 focus:border-blue-500"
+                        />
+                    </div>
+                </div>
+
+                <DialogFooter className="gap-2 sm:gap-0">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingReportNo(null)}
+                        className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 text-xs font-bold uppercase"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        size="sm"
+                        onClick={handleConfirmRenameReportNumber}
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase px-4 shadow-md"
+                    >
+                        Rename & Update Scope
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
         </>

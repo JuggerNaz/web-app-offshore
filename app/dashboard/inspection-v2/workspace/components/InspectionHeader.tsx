@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { 
     Activity, 
     ArrowLeft, 
@@ -17,7 +18,8 @@ import {
     Layers,
     ArrowRightLeft,
     LayoutGrid,
-    RotateCcw
+    RotateCcw,
+    Edit2
 } from "lucide-react";
 import Link from 'next/link';
 import {
@@ -29,7 +31,17 @@ import {
     DropdownMenuSubTrigger,
     DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
+import { createClient } from "@/utils/supabase/client";
 
 interface InspectionHeaderProps {
     headerData: any;
@@ -85,6 +97,7 @@ interface InspectionHeaderProps {
     onResetLayout?: () => void;
     closedPanels?: Array<{ id: string; name: string }>;
     onRestorePanel?: (id: string) => void;
+    onUpdateSowReportNo?: (newReportNo: string) => void;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -140,9 +153,93 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     onSummaryOpen,
     onResetLayout,
     closedPanels,
-    onRestorePanel
+    onRestorePanel,
+    onUpdateSowReportNo
 }) => {
     const isPipeline = headerData?.structureType === "pipeline" || headerData?.isPipeline;
+
+    // SOW Report No Edit State
+    const [isEditSowOpen, setIsEditSowOpen] = useState(false);
+    const [editedReportNo, setEditedReportNo] = useState(headerData.sowReportNo || "");
+    const [isSavingSow, setIsSavingSow] = useState(false);
+
+    useEffect(() => {
+        setEditedReportNo(headerData.sowReportNo || "");
+    }, [headerData.sowReportNo]);
+
+    const handleSaveSowReportNo = async () => {
+        const trimmed = editedReportNo.trim();
+        if (!trimmed) {
+            toast.error("SOW Report No cannot be empty.");
+            return;
+        }
+
+        if (trimmed === headerData.sowReportNo) {
+            setIsEditSowOpen(false);
+            return;
+        }
+
+        setIsSavingSow(true);
+        try {
+            const supabase = createClient();
+            const oldReportNo = headerData.sowReportNo;
+
+            // 1. Update u_sow table if structure and jobpack are bound
+            if (jobPackId && structureId) {
+                const { data: sowEntries } = await supabase
+                    .from("u_sow")
+                    .select("id, report_numbers")
+                    .eq("jobpack_id", Number(jobPackId))
+                    .eq("structure_id", Number(structureId));
+
+                if (sowEntries && sowEntries.length > 0) {
+                    for (const entry of sowEntries) {
+                        const updatedReports = (entry.report_numbers || []).map((r: any) => {
+                            if (r.number === oldReportNo) {
+                                return { ...r, number: trimmed };
+                            }
+                            return r;
+                        });
+                        await supabase
+                            .from("u_sow")
+                            .update({ report_numbers: updatedReports })
+                            .eq("id", entry.id);
+                    }
+                }
+
+                // Update u_sow_items for this jobpack/structure
+                await supabase
+                    .from("u_sow_items")
+                    .update({ report_number: trimmed })
+                    .eq("report_number", oldReportNo);
+            }
+
+            // 2. Update existing inspection records matching old report no
+            if (oldReportNo && oldReportNo !== "N/A" && oldReportNo !== "Unknown Report") {
+                await supabase
+                    .from("insp_records")
+                    .update({ sow_report_no: trimmed })
+                    .eq("sow_report_no", oldReportNo);
+            }
+
+            // 3. Update URL parameter so the workspace reloads cleanly with the new SOW Report No
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("sowReportNo", trimmed);
+            router.replace(`?${params.toString()}`);
+
+            if (onUpdateSowReportNo) {
+                onUpdateSowReportNo(trimmed);
+            }
+
+            toast.success(`SOW Report No updated to "${trimmed}"`);
+            setIsEditSowOpen(false);
+        } catch (err: any) {
+            console.error("Failed to update SOW Report No:", err);
+            toast.error("Failed to update SOW Report No");
+        } finally {
+            setIsSavingSow(false);
+        }
+    };
 
     return (
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800">
@@ -244,9 +341,19 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Structure Title:</span>
                         <span className="font-mono font-bold text-slate-200">{headerData.platformName}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700">
+                    <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700 group">
                         <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">SOW Report:</span>
                         <span className="font-mono font-black text-cyan-400">{headerData.sowReportNo}</span>
+                        <button
+                            onClick={() => {
+                                setEditedReportNo(headerData.sowReportNo || "");
+                                setIsEditSowOpen(true);
+                            }}
+                            className="p-1 text-slate-400 hover:text-cyan-300 hover:bg-slate-700/60 rounded transition-colors"
+                            title="Edit / Modify SOW Report No"
+                        >
+                            <Edit2 className="w-3 h-3" />
+                        </button>
                         {headerData.jobType && (
                             <>
                                 <span className="text-slate-600 dark:text-slate-500 font-bold px-1">/</span>
@@ -262,6 +369,52 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Modal Dialog to Edit SOW Report No */}
+            <Dialog open={isEditSowOpen} onOpenChange={setIsEditSowOpen}>
+                <DialogContent className="sm:max-w-md bg-slate-900 border-slate-800 text-slate-100 shadow-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-base font-black uppercase tracking-widest text-cyan-400 flex items-center gap-2">
+                            <Edit2 className="w-4 h-4 text-cyan-400" /> Modify SOW Report No
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-slate-400">
+                            Update the active SOW Report Number. This will update linked records and the active session header.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Current SOW Report No</label>
+                            <Input
+                                value={editedReportNo}
+                                onChange={(e) => setEditedReportNo(e.target.value)}
+                                placeholder="Enter Report Number (e.g. REP-2026-01)"
+                                className="bg-slate-950 border-slate-700 text-slate-100 font-mono font-bold focus:border-cyan-500 focus:ring-cyan-500/20"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsEditSowOpen(false)}
+                            disabled={isSavingSow}
+                            className="text-slate-400 hover:text-white hover:bg-slate-800 text-xs font-bold uppercase"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            size="sm"
+                            onClick={handleSaveSowReportNo}
+                            disabled={isSavingSow}
+                            className="bg-cyan-600 text-white hover:bg-cyan-500 text-xs font-bold uppercase px-4 shadow-md"
+                        >
+                            {isSavingSow ? "Saving..." : "Save Changes"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <div className="flex gap-2">
                 <Button
