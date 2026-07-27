@@ -180,8 +180,15 @@ export function SOWDialog({
                 setSelectedItems(newSelectedItems);
                 setComponentSplitByElevation(splitEnabled);
                 const finalBreakpoints: Record<number, number[]> = {};
-                Object.keys(breakpoints).forEach(k => finalBreakpoints[Number(k)] = Array.from(breakpoints[Number(k)]).sort((a,b) => a-b));
+                const initialInputs: Record<number, string> = {};
+                Object.keys(breakpoints).forEach(k => {
+                    const compId = Number(k);
+                    const sortedBps = Array.from(breakpoints[compId]).sort((a,b) => a-b);
+                    finalBreakpoints[compId] = sortedBps;
+                    initialInputs[compId] = sortedBps.join(", ");
+                });
                 setComponentBreakpoints(finalBreakpoints);
+                setNewElevationInput(initialInputs);
             }
         } catch (e) { console.error(e); } finally { setLoading(false); }
     };
@@ -364,6 +371,48 @@ export function SOWDialog({
             });
     }, [inspectionTypes, allInspectionTypes, extraInspectionIds]);
 
+    const getComponentRanges = (comp: any) => {
+        const isSplit = componentSplitByElevation[comp.id];
+        const bps = componentBreakpoints[comp.id] || [];
+        
+        const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
+        const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
+        const bounds = [];
+        if (elv1 !== null) bounds.push(elv1);
+        if (elv2 !== null) bounds.push(elv2);
+        
+        if (!isSplit || (bps.length === 0 && bounds.length < 2)) {
+            const minElv = bounds.length > 0 ? Math.min(...bounds) : 0;
+            const maxElv = bounds.length > 0 ? Math.max(...bounds) : 0;
+            return [{ start: 0, end: 0, label: `${minElv.toFixed(1)}m – ${maxElv.toFixed(1)}m`, isSplit: false }];
+        }
+        
+        const allPointsSet = new Set<number>();
+        bounds.forEach(b => allPointsSet.add(b));
+        bps.forEach(p => allPointsSet.add(p));
+        
+        const sortedPoints = Array.from(allPointsSet).sort((a, b) => a - b);
+        
+        if (sortedPoints.length < 2) {
+            const minElv = bounds.length > 0 ? Math.min(...bounds) : 0;
+            const maxElv = bounds.length > 0 ? Math.max(...bounds) : 0;
+            return [{ start: 0, end: 0, label: `${minElv.toFixed(1)}m – ${maxElv.toFixed(1)}m`, isSplit: false }];
+        }
+        
+        const ranges = [];
+        for (let i = 0; i < sortedPoints.length - 1; i++) {
+            const start = sortedPoints[i];
+            const end = sortedPoints[i + 1];
+            ranges.push({
+                start,
+                end,
+                label: `${start.toFixed(1)}m – ${end.toFixed(1)}m`,
+                isSplit: true
+            });
+        }
+        return ranges;
+    };
+
     const getItemStatus = (compId: number, typeId: number, s: number, e: number): InspectionStatus => {
         const itm = sowItems.find(i => i.component_id === compId && i.inspection_type_id === typeId && (i.report_number || 'null') === activeReport);
         if (!itm) return "pending";
@@ -395,13 +444,25 @@ export function SOWDialog({
                 : validInspections.filter(it => String(it.id) === String(selectedInspectionFilter));
 
             if (scopeStatusFilter === 'selected') {
-                matchesStatus = inspectionsToCheck.some(it => isSelected(c.id, it.id, 0, 0));
+                matchesStatus = inspectionsToCheck.some(it => {
+                    const ranges = getComponentRanges(c);
+                    return ranges.some(r => isSelected(c.id, it.id, r.start, r.end));
+                });
             } else if (scopeStatusFilter === 'pending') {
-                matchesStatus = inspectionsToCheck.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'pending');
+                matchesStatus = inspectionsToCheck.some(it => {
+                    const ranges = getComponentRanges(c);
+                    return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) && getItemStatus(c.id, it.id, r.start, r.end) === 'pending');
+                });
             } else if (scopeStatusFilter === 'completed') {
-                matchesStatus = inspectionsToCheck.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'completed');
+                matchesStatus = inspectionsToCheck.some(it => {
+                    const ranges = getComponentRanges(c);
+                    return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) && getItemStatus(c.id, it.id, r.start, r.end) === 'completed');
+                });
             } else if (scopeStatusFilter === 'incomplete') {
-                matchesStatus = inspectionsToCheck.some(it => isSelected(c.id, it.id, 0, 0) && getItemStatus(c.id, it.id, 0, 0) === 'incomplete');
+                matchesStatus = inspectionsToCheck.some(it => {
+                    const ranges = getComponentRanges(c);
+                    return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) && getItemStatus(c.id, it.id, r.start, r.end) === 'incomplete');
+                });
             } else if (scopeStatusFilter === 'all') {
                 // If 'all' is selected, we don't filter rows by status or inspection selection
                 matchesStatus = true;
@@ -553,11 +614,102 @@ export function SOWDialog({
         setSelectedItems(prev => {
             const next = new Set(prev);
             activeComponents.forEach(comp => {
-                const key = `${activeReport}:${comp.id}:${typeId}:0:0`;
-                if (checked) next.add(key); else next.delete(key);
+                const ranges = getComponentRanges(comp);
+                ranges.forEach(r => {
+                    const key = `${activeReport}:${comp.id}:${typeId}:${r.start}:${r.end}`;
+                    if (checked) next.add(key); else next.delete(key);
+                });
             });
             return next;
         });
+    };
+
+    const deleteRange = (comp: any, range: any) => {
+        const bps = componentBreakpoints[comp.id] || [];
+        const updated = bps.filter(p => p !== range.start && p !== range.end);
+        
+        if (updated.length < 1) {
+            setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: false }));
+            setComponentBreakpoints(prev => {
+                const copy = { ...prev };
+                delete copy[comp.id];
+                return copy;
+            });
+            setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
+            
+            setSelectedItems(prev => {
+                const next = new Set(prev);
+                validInspections.forEach(it => {
+                    const prefix = `${activeReport}:${comp.id}:${it.id}:`;
+                    let anySubSelected = false;
+                    Array.from(prev).forEach(key => {
+                        if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
+                            anySubSelected = true;
+                            next.delete(key);
+                        }
+                    });
+                    if (anySubSelected) {
+                        next.add(`${prefix}0:0`);
+                    }
+                });
+                return next;
+            });
+        } else {
+            setComponentBreakpoints(prev => ({ ...prev, [comp.id]: updated }));
+            setNewElevationInput(prev => ({ ...prev, [comp.id]: updated.join(", ") }));
+            
+            const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
+            const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
+            const bounds: number[] = [];
+            if (elv1 !== null) bounds.push(elv1);
+            if (elv2 !== null) bounds.push(elv2);
+            
+            const allPointsSet = new Set<number>();
+            bounds.forEach(b => allPointsSet.add(b));
+            updated.forEach(p => allPointsSet.add(p));
+            
+            const sortedPoints = Array.from(allPointsSet).sort((a, b) => a - b);
+            const newRanges: { start: number; end: number }[] = [];
+            for (let i = 0; i < sortedPoints.length - 1; i++) {
+                newRanges.push({ start: sortedPoints[i], end: sortedPoints[i + 1] });
+            }
+            
+            setSelectedItems(prev => {
+                const next = new Set(prev);
+                validInspections.forEach(it => {
+                    const prefix = `${activeReport}:${comp.id}:${it.id}:`;
+                    const selectedRanges: { start: number; end: number }[] = [];
+                    
+                    Array.from(prev).forEach(key => {
+                        if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
+                            const parts = key.split(":");
+                            selectedRanges.push({ start: parseFloat(parts[3]), end: parseFloat(parts[4]) });
+                            next.delete(key);
+                        }
+                    });
+                    
+                    const minB = bounds.length >= 2 ? Math.min(...bounds) : -Infinity;
+                    const maxB = bounds.length >= 2 ? Math.max(...bounds) : Infinity;
+                    
+                    newRanges.forEach(r => {
+                        const rMin = Math.min(r.start, r.end);
+                        const rMax = Math.max(r.start, r.end);
+                        
+                        const wasRangeSelected = selectedRanges.some(sr => {
+                            const srMin = Math.min(sr.start, sr.end);
+                            const srMax = Math.max(sr.start, sr.end);
+                            return rMin < srMax && rMax > srMin;
+                        });
+                        
+                        if (wasRangeSelected && rMin < maxB && rMax > minB) {
+                            next.add(`${prefix}${r.start}:${r.end}`);
+                        }
+                    });
+                });
+                return next;
+            });
+        }
+        toast.success(`Removed range ${range.label}`);
     };
 
     const handleExit = () => {
@@ -624,6 +776,34 @@ export function SOWDialog({
 
                 const isSplit = ranges.length > 1 || (ranges[0].start !== 0 || ranges[0].end !== 0);
                 
+                const existingItem = sowItems.find(item => 
+                    item.component_id === Number(compId) && 
+                    item.inspection_type_id === Number(typeId) &&
+                    (item.report_number || 'null') === rpt
+                );
+
+                let resolvedRanges: any[] = [];
+                let overallStatus = "pending";
+
+                if (isSplit) {
+                    resolvedRanges = ranges.map(r => {
+                        const existingRange = existingItem?.elevation_data?.find((d: any) => d.start === r.start && d.end === r.end);
+                        return {
+                            ...r,
+                            status: existingRange?.status || "pending",
+                            elevation: `${r.start}m - ${r.end}m`
+                        };
+                    });
+
+                    const allDone = resolvedRanges.every((e: any) => e.status === 'completed');
+                    const allPending = resolvedRanges.every((e: any) => e.status === 'pending');
+                    if (allDone) overallStatus = 'completed';
+                    else if (allPending) overallStatus = 'pending';
+                    else overallStatus = 'incomplete';
+                } else {
+                    overallStatus = existingItem?.status || "pending";
+                }
+                
                 return {
                     component_id: Number(compId),
                     inspection_type_id: Number(typeId),
@@ -633,8 +813,8 @@ export function SOWDialog({
                     inspection_code: it.code,
                     inspection_name: it.name,
                     elevation_required: isSplit,
-                    elevation_data: isSplit ? ranges.map(r => ({ ...r, status: "pending", elevation: `${r.start}m - ${r.end}m` })) : [],
-                    status: "pending" // Default for new items, bulk API will preserve existing ones
+                    elevation_data: resolvedRanges,
+                    status: overallStatus
                 };
             }).filter(Boolean);
 
@@ -665,6 +845,18 @@ export function SOWDialog({
             setSaving(false); 
         }
     };
+
+    const rows = useMemo(() => {
+        return activeComponents.flatMap(comp => {
+            const ranges = getComponentRanges(comp);
+            return ranges.map((range, idx) => ({
+                comp,
+                range,
+                idx,
+                total: ranges.length
+            }));
+        });
+    }, [activeComponents, componentSplitByElevation, componentBreakpoints]);
 
     // ── RENDER ──
     return (
@@ -984,7 +1176,10 @@ export function SOWDialog({
                                             .filter(it => selectedInspectionFilter === 'all' || String(it.id) === String(selectedInspectionFilter))
                                             .map(it => {
                                                 const styles = getModeStyles(it.mode as any);
-                                                const allSelectedInType = activeComponents.every(c => isSelected(c.id, it.id, 0, 0));
+                                                const allSelectedInType = activeComponents.every(c => {
+                                                    const ranges = getComponentRanges(c);
+                                                    return ranges.every(r => isSelected(c.id, it.id, r.start, r.end));
+                                                });
                                                  return (
                                                     <th key={it.id} className={cn("p-0 border-b border-slate-50 dark:border-slate-800 min-w-[85px] h-64 relative group transition-all duration-300 overflow-hidden", styles.light, "dark:bg-slate-900/40")}>
                                                         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/[0.02] dark:to-white/[0.02]" />
@@ -1023,38 +1218,302 @@ export function SOWDialog({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
-                                    {activeComponents.map(comp => (
-                                        <tr key={comp.id} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                                            <td className="p-5 border-r border-slate-50 dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-950 z-10 w-[260px] group-hover:bg-slate-50 dark:group-hover:bg-slate-900 transition-colors">
+                                    {rows.map(({ comp, range, idx, total }) => (
+                                        <tr key={`${comp.id}:${range.start}:${range.end}`} className={cn("group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors", idx > 0 && "bg-slate-50/20 dark:bg-slate-900/10")}>
+                                            <td className="p-5 border-r border-slate-50 dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-950 z-10 w-[280px] group-hover:bg-slate-50 dark:group-hover:bg-slate-900 transition-colors">
                                                 <div className="flex flex-col gap-2">
-                                                    <div className="font-black text-slate-800 dark:text-slate-100 text-[14px] leading-tight flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-blue-500" /> {comp.qid}</div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Badge variant="outline" className="text-[8px] font-black h-4 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 px-1.5 rounded-full uppercase">{comp.type}</Badge>
-                                                        <span className="text-[10px] font-black text-slate-300 font-mono tracking-tighter">
-                                                            {Number(comp.elv_1 || 0).toFixed(1)}m – {Number(comp.elv_2 || 0).toFixed(1)}m
+                                                    <div className={cn("font-black leading-tight flex items-center gap-2", idx === 0 ? "text-slate-800 dark:text-slate-100 text-[14px]" : "text-slate-400 dark:text-slate-500 text-[12px] pl-4")}>
+                                                        {idx === 0 ? (
+                                                            <>
+                                                                <div className="h-2 w-2 rounded-full bg-blue-500" /> 
+                                                                {comp.qid}
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span className="text-slate-300 dark:text-slate-600 font-mono">↳</span>
+                                                                <span>{comp.qid}</span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    <div className={cn("flex items-center gap-2", idx > 0 && "pl-4")}>
+                                                        {idx === 0 && (
+                                                            <>
+                                                                <Badge variant="outline" className="text-[8px] font-black h-4 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 px-1.5 rounded-full uppercase">{comp.type}</Badge>
+                                                                {total > 1 && (
+                                                                    <span className="text-[9px] text-slate-400 font-bold">
+                                                                        (Base: {Number(comp.elv_1 || 0).toFixed(1)}m – {Number(comp.elv_2 || 0).toFixed(1)}m)
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                        <span className={cn("font-black font-mono tracking-tighter flex items-center gap-1.5", idx === 0 ? "text-[10px] text-slate-600 dark:text-slate-400" : "text-[10px] text-blue-500 dark:text-blue-400")}>
+                                                            {range.label}
+                                                            {total > 1 && !readOnly && (
+                                                                <Trash2 
+                                                                    className="h-3.5 w-3.5 text-slate-300 hover:text-rose-500 cursor-pointer transition-colors" 
+                                                                    onClick={() => deleteRange(comp, range)}
+                                                                />
+                                                            )}
                                                         </span>
                                                     </div>
+                                                    {idx === 0 && !readOnly && (
+                                                        <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-1.5">
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Elevation Breaks</span>
+                                                            <div className="flex items-center gap-1">
+                                                                <Input 
+                                                                    placeholder="e.g. -9, -6, -3" 
+                                                                    value={newElevationInput[comp.id] || ""} 
+                                                                    onChange={e => setNewElevationInput(prev => ({ ...prev, [comp.id]: e.target.value }))}
+                                                                    className="h-7 text-[10px] px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border-none font-bold text-slate-800 dark:text-slate-200"
+                                                                />
+                                                                <Button 
+                                                                    onClick={() => {
+                                                                        const input = newElevationInput[comp.id] || "";
+                                                                        const typedPts = input.split(",")
+                                                                            .map(s => parseFloat(s.trim()))
+                                                                            .filter(n => !isNaN(n));
+                                                                        
+                                                                        if (typedPts.length < 1) {
+                                                                            toast.error("Please enter at least 1 elevation point (e.g. -5)");
+                                                                            return;
+                                                                        }
+                                                                        
+                                                                        const existing = componentBreakpoints[comp.id] || [];
+                                                                        const allPointsSet = new Set<number>([...existing, ...typedPts]);
+                                                                        const pts = Array.from(allPointsSet).sort((a, b) => a - b);
+                                                                        
+                                                                        setComponentBreakpoints(prev => ({ ...prev, [comp.id]: pts }));
+                                                                        setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
+                                                                        setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: true }));
+                                                                        
+                                                                        // Auto-tick ranges overlapping with physical bounds
+                                                                        const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
+                                                                        const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
+                                                                        const bounds: number[] = [];
+                                                                        if (elv1 !== null) bounds.push(elv1);
+                                                                        if (elv2 !== null) bounds.push(elv2);
+                                                                        
+                                                                        const rangePointsSet = new Set<number>();
+                                                                        bounds.forEach(b => rangePointsSet.add(b));
+                                                                        pts.forEach(p => rangePointsSet.add(p));
+                                                                        
+                                                                        const sortedPoints = Array.from(rangePointsSet).sort((a, b) => a - b);
+                                                                        const newRanges: { start: number; end: number }[] = [];
+                                                                        for (let i = 0; i < sortedPoints.length - 1; i++) {
+                                                                            newRanges.push({ start: sortedPoints[i], end: sortedPoints[i + 1] });
+                                                                        }
+                                                                        
+                                                                        setSelectedItems(prev => {
+                                                                            const next = new Set(prev);
+                                                                            validInspections.forEach(it => {
+                                                                                const baseKey = `${activeReport}:${comp.id}:${it.id}:0:0`;
+                                                                                const wasBaseSelected = prev.has(baseKey);
+                                                                                
+                                                                                if (wasBaseSelected) {
+                                                                                    next.delete(baseKey);
+                                                                                }
+                                                                                
+                                                                                const minB = bounds.length >= 2 ? Math.min(...bounds) : -Infinity;
+                                                                                const maxB = bounds.length >= 2 ? Math.max(...bounds) : Infinity;
+                                                                                
+                                                                                newRanges.forEach(r => {
+                                                                                    const rMin = Math.min(r.start, r.end);
+                                                                                    const rMax = Math.max(r.start, r.end);
+                                                                                    
+                                                                                    // Tick if overlap exists and the task is active/selected
+                                                                                    if (wasBaseSelected && rMin < maxB && rMax > minB) {
+                                                                                        next.add(`${activeReport}:${comp.id}:${it.id}:${r.start}:${r.end}`);
+                                                                                    }
+                                                                                });
+                                                                            });
+                                                                            return next;
+                                                                        });
+                                                                        
+                                                                        toast.success(`Elevation breaks applied to ${comp.qid}`);
+                                                                    }}
+                                                                    size="sm" 
+                                                                    className="h-7 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-[9px] font-bold text-white border-none"
+                                                                >
+                                                                    Apply
+                                                                </Button>
+                                                                {componentSplitByElevation[comp.id] && (
+                                                                    <Button 
+                                                                        onClick={() => {
+                                                                            setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: false }));
+                                                                            setComponentBreakpoints(prev => {
+                                                                                const copy = { ...prev };
+                                                                                delete copy[comp.id];
+                                                                                return copy;
+                                                                            });
+                                                                            setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
+                                                                            
+                                                                            setSelectedItems(prev => {
+                                                                                const next = new Set(prev);
+                                                                                validInspections.forEach(it => {
+                                                                                    const prefix = `${activeReport}:${comp.id}:${it.id}:`;
+                                                                                    let anySubSelected = false;
+                                                                                    Array.from(prev).forEach(key => {
+                                                                                        if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
+                                                                                            anySubSelected = true;
+                                                                                            next.delete(key);
+                                                                                        }
+                                                                                    });
+                                                                                    if (anySubSelected) {
+                                                                                        next.add(`${prefix}0:0`);
+                                                                                    }
+                                                                                });
+                                                                                return next;
+                                                                            });
+                                                                            
+                                                                            toast.success(`Elevation breaks cleared for ${comp.qid}`);
+                                                                        }}
+                                                                        variant="ghost"
+                                                                        size="sm" 
+                                                                        className="h-7 px-2 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-[9px] font-bold"
+                                                                    >
+                                                                        Clear
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                            {componentSplitByElevation[comp.id] && componentBreakpoints[comp.id] && (
+                                                                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                                                    {componentBreakpoints[comp.id].map(pt => (
+                                                                        <Badge 
+                                                                            key={pt} 
+                                                                            variant="secondary" 
+                                                                            className="text-[9px] font-black bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 pl-2 pr-1.5 py-0.5 rounded-md flex items-center gap-1 border border-slate-200 dark:border-slate-700"
+                                                                        >
+                                                                            {pt.toFixed(1)}m
+                                                                            <X 
+                                                                                className="h-3 w-3 cursor-pointer hover:text-rose-500 transition-colors" 
+                                                                                onClick={() => {
+                                                                                    const existing = componentBreakpoints[comp.id] || [];
+                                                                                    const updated = existing.filter(p => p !== pt);
+                                                                                    
+                                                                                    if (updated.length < 1) {
+                                                                                        setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: false }));
+                                                                                        setComponentBreakpoints(prev => {
+                                                                                            const copy = { ...prev };
+                                                                                            delete copy[comp.id];
+                                                                                            return copy;
+                                                                                        });
+                                                                                        setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
+                                                                                        
+                                                                                        setSelectedItems(prev => {
+                                                                                            const next = new Set(prev);
+                                                                                            validInspections.forEach(it => {
+                                                                                                const prefix = `${activeReport}:${comp.id}:${it.id}:`;
+                                                                                                let anySubSelected = false;
+                                                                                                Array.from(prev).forEach(key => {
+                                                                                                    if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
+                                                                                                        anySubSelected = true;
+                                                                                                        next.delete(key);
+                                                                                                    }
+                                                                                                });
+                                                                                                if (anySubSelected) {
+                                                                                                    next.add(`${prefix}0:0`);
+                                                                                                }
+                                                                                            });
+                                                                                            return next;
+                                                                                        });
+                                                                                    } else {
+                                                                                        setComponentBreakpoints(prev => ({ ...prev, [comp.id]: updated }));
+                                                                                        setNewElevationInput(prev => ({ ...prev, [comp.id]: updated.join(", ") }));
+                                                                                        
+                                                                                        const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
+                                                                                        const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
+                                                                                        const bounds: number[] = [];
+                                                                                        if (elv1 !== null) bounds.push(elv1);
+                                                                                        if (elv2 !== null) bounds.push(elv2);
+                                                                                        
+                                                                                        const allPointsSet = new Set<number>();
+                                                                                        bounds.forEach(b => allPointsSet.add(b));
+                                                                                        updated.forEach(p => allPointsSet.add(p));
+                                                                                        
+                                                                                        const sortedPoints = Array.from(allPointsSet).sort((a, b) => a - b);
+                                                                                        const newRanges: { start: number; end: number }[] = [];
+                                                                                        for (let i = 0; i < sortedPoints.length - 1; i++) {
+                                                                                            newRanges.push({ start: sortedPoints[i], end: sortedPoints[i + 1] });
+                                                                                        }
+                                                                                        
+                                                                                        setSelectedItems(prev => {
+                                                                                            const next = new Set(prev);
+                                                                                            validInspections.forEach(it => {
+                                                                                                const prefix = `${activeReport}:${comp.id}:${it.id}:`;
+                                                                                                const selectedRanges: { start: number; end: number }[] = [];
+                                                                                                
+                                                                                                Array.from(prev).forEach(key => {
+                                                                                                    if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
+                                                                                                        const parts = key.split(":");
+                                                                                                        selectedRanges.push({ start: parseFloat(parts[3]), end: parseFloat(parts[4]) });
+                                                                                                        next.delete(key);
+                                                                                                    }
+                                                                                                });
+                                                                                                
+                                                                                                const minB = bounds.length >= 2 ? Math.min(...bounds) : -Infinity;
+                                                                                                const maxB = bounds.length >= 2 ? Math.max(...bounds) : Infinity;
+                                                                                                
+                                                                                                newRanges.forEach(r => {
+                                                                                                    const rMin = Math.min(r.start, r.end);
+                                                                                                    const rMax = Math.max(r.start, r.end);
+                                                                                                    
+                                                                                                    const wasRangeSelected = selectedRanges.some(sr => {
+                                                                                                        const srMin = Math.min(sr.start, sr.end);
+                                                                                                        const srMax = Math.max(sr.start, sr.end);
+                                                                                                        return rMin < srMax && rMax > srMin;
+                                                                                                    });
+                                                                                                    
+                                                                                                    if (wasRangeSelected && rMin < maxB && rMax > minB) {
+                                                                                                        next.add(`${prefix}${r.start}:${r.end}`);
+                                                                                                    }
+                                                                                                });
+                                                                                            });
+                                                                                            return next;
+                                                                                        });
+                                                                                    }
+                                                                                    toast.success(`Removed breakpoint ${pt.toFixed(1)}m`);
+                                                                                }}
+                                                                            />
+                                                                        </Badge>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </td>
                                             {validInspections
                                                 .filter(it => selectedInspectionFilter === 'all' || String(it.id) === String(selectedInspectionFilter))
                                                 .map(it => {
                                                     const styles = getModeStyles(it.mode as any);
-                                                    const s = getItemStatus(comp.id, it.id, 0, 0);
-                                                    const sel = isSelected(comp.id, it.id, 0, 0);
+                                                    const s = getItemStatus(comp.id, it.id, range.start, range.end);
+                                                    const sel = isSelected(comp.id, it.id, range.start, range.end);
                                                     return (
                                                         <td key={it.id} className="p-3 border-r border-slate-50 dark:border-slate-800 text-center bg-white dark:bg-slate-950 group-hover:bg-slate-50 dark:group-hover:bg-slate-900/40 transition-colors">
-                                                            <div className="flex flex-col items-center justify-center gap-2.5">
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    checked={sel} 
-                                                                    disabled={!activeReportNumber || readOnly || s==='completed' || s==='incomplete'}
-                                                                    onChange={() => !readOnly && activeReportNumber && toggleSelection(comp.id, it.id, 0, 0)}
-                                                                    className={cn("h-8 w-8 rounded-[10px] border-2 transition-all shadow-sm",
-                                                                        sel ? `${styles.bg} border-transparent shadow-lg scale-105` : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600",
-                                                                        (!activeReportNumber || readOnly || s==='completed' || s==='incomplete') ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                                                            <div className="flex flex-col items-center justify-center gap-1.5">
+                                                                <div 
+                                                                    onClick={() => {
+                                                                        if (!readOnly && activeReportNumber && s !== 'completed' && s !== 'incomplete') {
+                                                                            toggleSelection(comp.id, it.id, range.start, range.end);
+                                                                        }
+                                                                    }}
+                                                                    className={cn(
+                                                                        "h-6 w-6 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm relative select-none",
+                                                                        sel 
+                                                                            ? s === 'completed' ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-100 dark:shadow-none scale-105"
+                                                                              : s === 'incomplete' ? "bg-rose-500 border-rose-500 text-white shadow-md shadow-rose-100 dark:shadow-none scale-105"
+                                                                              : `${styles.bg} border-transparent text-white shadow-md shadow-blue-100 dark:shadow-none scale-105`
+                                                                            : "bg-slate-50/50 dark:bg-slate-900/30 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600",
+                                                                        (!activeReportNumber || readOnly || s === 'completed' || s === 'incomplete') ? "cursor-not-allowed opacity-60" : "cursor-pointer active:scale-95"
+                                                                    )}
+                                                                >
+                                                                    {sel && <Check className="h-3.5 w-3.5 stroke-[3px]" />}
+                                                                </div>
+                                                                {sel && (
+                                                                    <div className={cn("h-1 w-6 rounded-full transition-all", 
+                                                                        s === 'completed' ? "bg-emerald-500" : s === 'incomplete' ? "bg-rose-500" : styles.bg
                                                                     )} />
-                                                                {sel && <div className={cn("h-2 w-full rounded-full transition-all", s === 'completed' ? "bg-emerald-500" : s === 'incomplete' ? "bg-rose-500" : styles.bg)} />}
+                                                                )}
                                                             </div>
                                                         </td>
                                                     );

@@ -1,0 +1,4724 @@
+{
+  "STRUCTURE_PLATFORM": [
+    {
+      "pgCol": "plat_id",
+      "oracleCol": "PLAT_ID"
+    },
+    {
+      "pgCol": "title",
+      "oracleCol": "TITLE"
+    },
+    {
+      "pgCol": "pfield",
+      "oracleCol": "PFIELD"
+    },
+    {
+      "pgCol": "pdesc",
+      "oracleCol": "PDESC"
+    },
+    {
+      "pgCol": "ptype",
+      "oracleCol": "PTYPE"
+    },
+    {
+      "pgCol": "inst_date",
+      "oracleCol": "INST_DATE"
+    },
+    {
+      "pgCol": "desg_life",
+      "oracleCol": "DESG_LIFE"
+    },
+    {
+      "pgCol": "st_north",
+      "oracleCol": "ST_NORTH"
+    },
+    {
+      "pgCol": "st_east",
+      "oracleCol": "ST_EAST"
+    },
+    {
+      "pgCol": "depth",
+      "oracleCol": "DEPTH"
+    },
+    {
+      "pgCol": "an_qty",
+      "oracleCol": "AN_QTY"
+    },
+    {
+      "pgCol": "an_type",
+      "oracleCol": "AN_TYPE"
+    },
+    {
+      "pgCol": "inst_ctr",
+      "oracleCol": "INST_CTR"
+    },
+    {
+      "pgCol": "wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "process",
+      "oracleCol": "PROCESS"
+    },
+    {
+      "pgCol": "plegs",
+      "oracleCol": "PLEGS"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "def_unit",
+      "oracleCol": "DEF_UNIT"
+    },
+    {
+      "pgCol": "workunit",
+      "oracleCol": "WORKUNIT"
+    },
+    {
+      "pgCol": "dleg",
+      "oracleCol": "DLEG"
+    },
+    {
+      "pgCol": "conduct",
+      "oracleCol": "CONDUCT"
+    },
+    {
+      "pgCol": "cslot",
+      "oracleCol": "CSLOT"
+    },
+    {
+      "pgCol": "pileint",
+      "oracleCol": "PILEINT"
+    },
+    {
+      "pgCol": "pileskt",
+      "oracleCol": "PILESKT"
+    },
+    {
+      "pgCol": "riser",
+      "oracleCol": "RISER"
+    },
+    {
+      "pgCol": "fender",
+      "oracleCol": "FENDER"
+    },
+    {
+      "pgCol": "sump",
+      "oracleCol": "SUMP"
+    },
+    {
+      "pgCol": "caisson",
+      "oracleCol": "CAISSON"
+    },
+    {
+      "pgCol": "crane",
+      "oracleCol": "CRANE"
+    },
+    {
+      "pgCol": "helipad",
+      "oracleCol": "HELIPAD"
+    },
+    {
+      "pgCol": "manned",
+      "oracleCol": "MANNED"
+    },
+    {
+      "pgCol": "leg_t1",
+      "oracleCol": "LEG_T1"
+    },
+    {
+      "pgCol": "leg_t2",
+      "oracleCol": "LEG_T2"
+    },
+    {
+      "pgCol": "leg_t3",
+      "oracleCol": "LEG_T3"
+    },
+    {
+      "pgCol": "leg_t4",
+      "oracleCol": "LEG_T4"
+    },
+    {
+      "pgCol": "leg_t5",
+      "oracleCol": "LEG_T5"
+    },
+    {
+      "pgCol": "leg_t6",
+      "oracleCol": "LEG_T6"
+    },
+    {
+      "pgCol": "leg_t7",
+      "oracleCol": "LEG_T7"
+    },
+    {
+      "pgCol": "leg_t8",
+      "oracleCol": "LEG_T8"
+    },
+    {
+      "pgCol": "leg_t9",
+      "oracleCol": "LEG_T9"
+    },
+    {
+      "pgCol": "leg_t10",
+      "oracleCol": "LEG_T10"
+    },
+    {
+      "pgCol": "leg_t11",
+      "oracleCol": "LEG_T11"
+    },
+    {
+      "pgCol": "leg_t12",
+      "oracleCol": "LEG_T12"
+    },
+    {
+      "pgCol": "leg_t13",
+      "oracleCol": "LEG_T13"
+    },
+    {
+      "pgCol": "leg_t14",
+      "oracleCol": "LEG_T14"
+    },
+    {
+      "pgCol": "leg_t15",
+      "oracleCol": "LEG_T15"
+    },
+    {
+      "pgCol": "leg_t16",
+      "oracleCol": "LEG_T16"
+    },
+    {
+      "pgCol": "leg_t17",
+      "oracleCol": "LEG_T17"
+    },
+    {
+      "pgCol": "leg_t18",
+      "oracleCol": "LEG_T18"
+    },
+    {
+      "pgCol": "leg_t19",
+      "oracleCol": "LEG_T19"
+    },
+    {
+      "pgCol": "leg_t20",
+      "oracleCol": "LEG_T20"
+    },
+    {
+      "pgCol": "sent",
+      "oracleCol": "SENT"
+    },
+    {
+      "pgCol": "material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "cp_system",
+      "oracleCol": "CP_SYSTEM"
+    },
+    {
+      "pgCol": "corr_ctg",
+      "oracleCol": "CORR_CTG"
+    },
+    {
+      "pgCol": "north_angle",
+      "oracleCol": "NORTH_ANGLE"
+    },
+    {
+      "pgCol": "north_side",
+      "oracleCol": "NORTH_SIDE"
+    },
+    {
+      "pgCol": "nleg_t1",
+      "oracleCol": "NLEG_T1"
+    },
+    {
+      "pgCol": "nleg_t2",
+      "oracleCol": "NLEG_T2"
+    }
+  ],
+  "STRUCTURE_PIPELINE": [
+    {
+      "pgCol": "pipe_id",
+      "oracleCol": "PIPE_ID"
+    },
+    {
+      "pgCol": "title",
+      "oracleCol": "TITLE"
+    },
+    {
+      "pgCol": "pfield",
+      "oracleCol": "PFIELD"
+    },
+    {
+      "pgCol": "pdesc",
+      "oracleCol": "PDESC"
+    },
+    {
+      "pgCol": "ptype",
+      "oracleCol": "PTYPE"
+    },
+    {
+      "pgCol": "inst_date",
+      "oracleCol": "INST_DATE"
+    },
+    {
+      "pgCol": "desg_life",
+      "oracleCol": "DESG_LIFE"
+    },
+    {
+      "pgCol": "st_north",
+      "oracleCol": "ST_NORTH"
+    },
+    {
+      "pgCol": "st_east",
+      "oracleCol": "ST_EAST"
+    },
+    {
+      "pgCol": "depth",
+      "oracleCol": "DEPTH"
+    },
+    {
+      "pgCol": "an_qty",
+      "oracleCol": "AN_QTY"
+    },
+    {
+      "pgCol": "an_type",
+      "oracleCol": "AN_TYPE"
+    },
+    {
+      "pgCol": "inst_ctr",
+      "oracleCol": "INST_CTR"
+    },
+    {
+      "pgCol": "wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "process",
+      "oracleCol": "PROCESS"
+    },
+    {
+      "pgCol": "plegs",
+      "oracleCol": "PLEGS"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "line_diam",
+      "oracleCol": "LINE_DIAM"
+    },
+    {
+      "pgCol": "plength",
+      "oracleCol": "PLENGTH"
+    },
+    {
+      "pgCol": "burial",
+      "oracleCol": "BURIAL"
+    },
+    {
+      "pgCol": "conc_ctg",
+      "oracleCol": "CONC_CTG"
+    },
+    {
+      "pgCol": "oper_press",
+      "oracleCol": "OPER_PRESS"
+    }
+  ],
+  "STR_ELV": [
+    {
+      "pgCol": "plat_id",
+      "oracleCol": "PLAT_ID"
+    },
+    {
+      "pgCol": "elv",
+      "oracleCol": "ELV"
+    },
+    {
+      "pgCol": "orient",
+      "oracleCol": "ORIENT"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "workunit",
+      "oracleCol": "WORKUNIT"
+    }
+  ],
+  "STR_LEVEL": [
+    {
+      "pgCol": "plat_id",
+      "oracleCol": "PLAT_ID"
+    },
+    {
+      "pgCol": "level_name",
+      "oracleCol": "LEVEL_NAME"
+    },
+    {
+      "pgCol": "elv_from",
+      "oracleCol": "ELV_FROM"
+    },
+    {
+      "pgCol": "elv_to",
+      "oracleCol": "ELV_TO"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "workunit",
+      "oracleCol": "WORKUNIT"
+    }
+  ],
+  "STR_FACES": [
+    {
+      "pgCol": "plat_id",
+      "oracleCol": "PLAT_ID"
+    },
+    {
+      "pgCol": "face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "face_desc",
+      "oracleCol": "FACE_DESC"
+    },
+    {
+      "pgCol": "face_from",
+      "oracleCol": "FACE_FROM"
+    },
+    {
+      "pgCol": "face_to",
+      "oracleCol": "FACE_TO"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "workunit",
+      "oracleCol": "WORKUNIT"
+    }
+  ],
+  "JOBPACK_SOW": [
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "title",
+      "oracleCol": "JOBNAME"
+    },
+    {
+      "pgCol": "start_date",
+      "oracleCol": "ISTART"
+    },
+    {
+      "pgCol": "contractor",
+      "oracleCol": "CONTRAC"
+    },
+    {
+      "pgCol": "job_type",
+      "oracleCol": "JOB_TYPE"
+    },
+    {
+      "pgCol": "vessel_name",
+      "oracleCol": "V_NAME"
+    },
+    {
+      "pgCol": "vessel_date_of_start",
+      "oracleCol": "START_DATE"
+    },
+    {
+      "pgCol": "sow_report_no",
+      "oracleCol": "REP_PREFIX"
+    }
+  ],
+  "LOGS_ROV": [
+    {
+      "pgCol": "job.deployment_no",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "job.rov_operator",
+      "oracleCol": "DIVER"
+    },
+    {
+      "pgCol": "job.rov_supervisor",
+      "oracleCol": "SUPERVISOR"
+    },
+    {
+      "pgCol": "job.report_coordinator",
+      "oracleCol": "REP_CO"
+    },
+    {
+      "pgCol": "job.deployment_date",
+      "oracleCol": "LOG_DATE"
+    },
+    {
+      "pgCol": "movement.remarks",
+      "oracleCol": "LOG_DETAIL"
+    }
+  ],
+  "LOGS_DIVE": [
+    {
+      "pgCol": "job.dive_no",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "job.diver_name",
+      "oracleCol": "DIVER"
+    },
+    {
+      "pgCol": "job.dive_supervisor",
+      "oracleCol": "SUPERVISOR"
+    },
+    {
+      "pgCol": "job.report_coordinator",
+      "oracleCol": "REP_CO"
+    },
+    {
+      "pgCol": "job.dive_date",
+      "oracleCol": "LOG_DATE"
+    },
+    {
+      "pgCol": "movement.remarks",
+      "oracleCol": "LOG_DETAIL"
+    }
+  ],
+  "STRUCTURE": [
+    {
+      "pgCol": "plat_id",
+      "oracleCol": "PLAT_ID"
+    },
+    {
+      "pgCol": "title",
+      "oracleCol": "TITLE"
+    },
+    {
+      "pgCol": "pfield",
+      "oracleCol": "PFIELD"
+    },
+    {
+      "pgCol": "pdesc",
+      "oracleCol": "PDESC"
+    },
+    {
+      "pgCol": "ptype",
+      "oracleCol": "PTYPE"
+    },
+    {
+      "pgCol": "inst_date",
+      "oracleCol": "INST_DATE"
+    },
+    {
+      "pgCol": "desg_life",
+      "oracleCol": "DESG_LIFE"
+    },
+    {
+      "pgCol": "st_north",
+      "oracleCol": "ST_NORTH"
+    },
+    {
+      "pgCol": "st_east",
+      "oracleCol": "ST_EAST"
+    },
+    {
+      "pgCol": "depth",
+      "oracleCol": "DEPTH"
+    },
+    {
+      "pgCol": "an_qty",
+      "oracleCol": "AN_QTY"
+    },
+    {
+      "pgCol": "an_type",
+      "oracleCol": "AN_TYPE"
+    },
+    {
+      "pgCol": "inst_ctr",
+      "oracleCol": "INST_CTR"
+    },
+    {
+      "pgCol": "wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "process",
+      "oracleCol": "PROCESS"
+    },
+    {
+      "pgCol": "plegs",
+      "oracleCol": "PLEGS"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "def_unit",
+      "oracleCol": "DEF_UNIT"
+    },
+    {
+      "pgCol": "workunit",
+      "oracleCol": "WORKUNIT"
+    },
+    {
+      "pgCol": "dleg",
+      "oracleCol": "DLEG"
+    },
+    {
+      "pgCol": "conduct",
+      "oracleCol": "CONDUCT"
+    },
+    {
+      "pgCol": "cslot",
+      "oracleCol": "CSLOT"
+    },
+    {
+      "pgCol": "pileint",
+      "oracleCol": "PILEINT"
+    },
+    {
+      "pgCol": "pileskt",
+      "oracleCol": "PILESKT"
+    },
+    {
+      "pgCol": "riser",
+      "oracleCol": "RISER"
+    },
+    {
+      "pgCol": "fender",
+      "oracleCol": "FENDER"
+    },
+    {
+      "pgCol": "sump",
+      "oracleCol": "SUMP"
+    },
+    {
+      "pgCol": "caisson",
+      "oracleCol": "CAISSON"
+    },
+    {
+      "pgCol": "crane",
+      "oracleCol": "CRANE"
+    },
+    {
+      "pgCol": "helipad",
+      "oracleCol": "HELIPAD"
+    },
+    {
+      "pgCol": "manned",
+      "oracleCol": "MANNED"
+    },
+    {
+      "pgCol": "leg_t1",
+      "oracleCol": "LEG_T1"
+    },
+    {
+      "pgCol": "leg_t2",
+      "oracleCol": "LEG_T2"
+    },
+    {
+      "pgCol": "leg_t3",
+      "oracleCol": "LEG_T3"
+    },
+    {
+      "pgCol": "leg_t4",
+      "oracleCol": "LEG_T4"
+    },
+    {
+      "pgCol": "leg_t5",
+      "oracleCol": "LEG_T5"
+    },
+    {
+      "pgCol": "leg_t6",
+      "oracleCol": "LEG_T6"
+    },
+    {
+      "pgCol": "leg_t7",
+      "oracleCol": "LEG_T7"
+    },
+    {
+      "pgCol": "leg_t8",
+      "oracleCol": "LEG_T8"
+    },
+    {
+      "pgCol": "leg_t9",
+      "oracleCol": "LEG_T9"
+    },
+    {
+      "pgCol": "leg_t10",
+      "oracleCol": "LEG_T10"
+    },
+    {
+      "pgCol": "leg_t11",
+      "oracleCol": "LEG_T11"
+    },
+    {
+      "pgCol": "leg_t12",
+      "oracleCol": "LEG_T12"
+    },
+    {
+      "pgCol": "leg_t13",
+      "oracleCol": "LEG_T13"
+    },
+    {
+      "pgCol": "leg_t14",
+      "oracleCol": "LEG_T14"
+    },
+    {
+      "pgCol": "leg_t15",
+      "oracleCol": "LEG_T15"
+    },
+    {
+      "pgCol": "leg_t16",
+      "oracleCol": "LEG_T16"
+    },
+    {
+      "pgCol": "leg_t17",
+      "oracleCol": "LEG_T17"
+    },
+    {
+      "pgCol": "leg_t18",
+      "oracleCol": "LEG_T18"
+    },
+    {
+      "pgCol": "leg_t19",
+      "oracleCol": "LEG_T19"
+    },
+    {
+      "pgCol": "leg_t20",
+      "oracleCol": "LEG_T20"
+    },
+    {
+      "pgCol": "sent",
+      "oracleCol": "SENT"
+    },
+    {
+      "pgCol": "material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "cp_system",
+      "oracleCol": "CP_SYSTEM"
+    },
+    {
+      "pgCol": "corr_ctg",
+      "oracleCol": "CORR_CTG"
+    },
+    {
+      "pgCol": "north_angle",
+      "oracleCol": "NORTH_ANGLE"
+    },
+    {
+      "pgCol": "north_side",
+      "oracleCol": "NORTH_SIDE"
+    },
+    {
+      "pgCol": "nleg_t1",
+      "oracleCol": "NLEG_T1"
+    },
+    {
+      "pgCol": "nleg_t2",
+      "oracleCol": "NLEG_T2"
+    }
+  ],
+  "ATTACHMENT": [
+    {
+      "pgCol": "name",
+      "oracleCol": "TITLE"
+    },
+    {
+      "pgCol": "path",
+      "oracleCol": "A_PATH"
+    },
+    {
+      "pgCol": "meta.file_size",
+      "oracleCol": "FILE_SIZE"
+    },
+    {
+      "pgCol": "meta.uploaded_by",
+      "oracleCol": "UPLOADED_BY"
+    },
+    {
+      "pgCol": "meta.created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "meta.description",
+      "oracleCol": "DETAILS"
+    },
+    {
+      "pgCol": "meta.original_file_name",
+      "oracleCol": "A_FILENAME"
+    },
+    {
+      "pgCol": "meta.file_type",
+      "oracleCol": "A_FILETYPE"
+    },
+    {
+      "pgCol": "meta.file_path",
+      "oracleCol": "A_PATH"
+    }
+  ],
+  "AN": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.fitting",
+      "oracleCol": "FITTING"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.inst_date",
+      "oracleCol": "INST_DATE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.life",
+      "oracleCol": "LIFE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.thetype",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.position",
+      "oracleCol": "POSITION"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    }
+  ],
+  "BB": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.no_undattach",
+      "oracleCol": "NO_UNDATTACH"
+    },
+    {
+      "pgCol": "metadata.no_topattach",
+      "oracleCol": "NO_TOPATTACH"
+    },
+    {
+      "pgCol": "metadata.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.thetype",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "metadata.weight",
+      "oracleCol": "WEIGHT"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    }
+  ],
+  "CL": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.clam_typ",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.weight",
+      "oracleCol": "WEIGHT"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.clam_mat",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.no_bolts",
+      "oracleCol": "NO_BOLTS"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.liner_reqd",
+      "oracleCol": "LINER_REQD"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.bolt_diam",
+      "oracleCol": "BOLT_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stub_length",
+      "oracleCol": "STUB_LENGTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flange_gap",
+      "oracleCol": "FLANGE_GAP"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    }
+  ],
+  "RS": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.wall_thk",
+      "oracleCol": "wall_thk"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.risr_typ",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.desg_press",
+      "oracleCol": "DESG_PRESS"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.risr_mat",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.no_clamps",
+      "oracleCol": "NO_CLAMPS"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.op_press",
+      "oracleCol": "OP_PRESS"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.pipe_rtg",
+      "oracleCol": "FLANGE_RATING"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.corr_ctg",
+      "oracleCol": "COATING"
+    }
+  ],
+  "LG": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.int_stiff",
+      "oracleCol": "INT_STIFF"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.ext_stiff",
+      "oracleCol": "EXT_STIFF"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "HM": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.thetype",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.desig",
+      "oracleCol": "DESIGNATION"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.beam_desig",
+      "oracleCol": "BEAM_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.v_chan_desig",
+      "oracleCol": "VERTICAL_CH_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.ang_desig",
+      "oracleCol": "ANGLE_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nominal_diam",
+      "oracleCol": "NOMINAL_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.chan_desig",
+      "oracleCol": "CHANNEL_DESG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.h_chan_desig",
+      "oracleCol": "HORIZ_CHAN_DESG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_thk",
+      "oracleCol": "FLANGE_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_avg_thk",
+      "oracleCol": "FLANGE_AVG_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.out_diam",
+      "oracleCol": "OUT_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_wid",
+      "oracleCol": "FLANGE_WIDTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.web_thk",
+      "oracleCol": "WEB_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stem_thk",
+      "oracleCol": "STEM_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.depth",
+      "oracleCol": "WEB_DEPTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stiffening",
+      "oracleCol": "STIFFENING"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nom_size",
+      "oracleCol": "NOMINAL_SIZE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.corr_ctg",
+      "oracleCol": "COATING"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "HD": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.thetype",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.desig",
+      "oracleCol": "DESIGNATION"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.beam_desig",
+      "oracleCol": "BEAM_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.v_chan_desig",
+      "oracleCol": "VERTICAL_CH_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.ang_desig",
+      "oracleCol": "ANGLE_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nominal_diam",
+      "oracleCol": "NOMINAL_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nom_size",
+      "oracleCol": "NOMINAL_SIZE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.chan_desig",
+      "oracleCol": "CHANNEL_DESG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.h_chan_desig",
+      "oracleCol": "HORIZ_CHAN_DESG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_thk",
+      "oracleCol": "FLANGE_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_avg_thk",
+      "oracleCol": "FLANGE_AVG_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.out_diam",
+      "oracleCol": "OUT_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_wid",
+      "oracleCol": "FLANGE_WIDTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.web_thk",
+      "oracleCol": "WEB_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stem_thk",
+      "oracleCol": "STEM_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.depth",
+      "oracleCol": "WEB_DEPTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stiffening",
+      "oracleCol": "STIFFENING"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.corr_ctg",
+      "oracleCol": "COATING"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "VM": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.thetype",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.desig",
+      "oracleCol": "DESIGNATION"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.beam_desig",
+      "oracleCol": "BEAM_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.v_chan_desig",
+      "oracleCol": "VERTICAL_CH_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.ang_desig",
+      "oracleCol": "ANGLE_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nominal_diam",
+      "oracleCol": "NOMINAL_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nom_size",
+      "oracleCol": "NOMINAL_SIZE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.chan_desig",
+      "oracleCol": "CHANNEL_DESG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.h_chan_desig",
+      "oracleCol": "HORIZ_CHAN_DESG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_thk",
+      "oracleCol": "FLANGE_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_avg_thk",
+      "oracleCol": "FLANGE_AVG_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.out_diam",
+      "oracleCol": "OUT_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_wid",
+      "oracleCol": "FLANGE_WIDTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.web_thk",
+      "oracleCol": "WEB_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stem_thk",
+      "oracleCol": "STEM_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.depth",
+      "oracleCol": "WEB_DEPTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stiffening",
+      "oracleCol": "STIFFENING"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.corr_ctg",
+      "oracleCol": "COATING"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "VD": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.thetype",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.desig",
+      "oracleCol": "DESIGNATION"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.beam_desig",
+      "oracleCol": "BEAM_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.v_chan_desig",
+      "oracleCol": "VERTICAL_CH_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.ang_desig",
+      "oracleCol": "ANGLE_DESIG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nominal_diam",
+      "oracleCol": "NOMINAL_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nom_size",
+      "oracleCol": "NOMINAL_SIZE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.chan_desig",
+      "oracleCol": "CHANNEL_DESG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.h_chan_desig",
+      "oracleCol": "HORIZ_CHAN_DESG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_thk",
+      "oracleCol": "FLANGE_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_avg_thk",
+      "oracleCol": "FLANGE_AVG_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.out_diam",
+      "oracleCol": "OUT_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.flan_wid",
+      "oracleCol": "FLANGE_WIDTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.web_thk",
+      "oracleCol": "WEB_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stem_thk",
+      "oracleCol": "STEM_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.depth",
+      "oracleCol": "WEB_DEPTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.stiffening",
+      "oracleCol": "STIFFENING"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.corr_ctg",
+      "oracleCol": "COATING"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "SD": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.dist_from_legs",
+      "oracleCol": "DIST_LEG"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "WN": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.nc_wall_thk",
+      "oracleCol": "NC_WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.memb_wall_thk",
+      "oracleCol": "MEMB_WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.node_diam",
+      "oracleCol": "NODE_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.memb_diam",
+      "oracleCol": "MEMB_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.weld_cfg",
+      "oracleCol": "WELD_CONFG"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.weld_typ",
+      "oracleCol": "WELD_TYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.weld_des",
+      "oracleCol": "DESG_CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.weld_mat",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "CD": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.out_diam",
+      "oracleCol": "OUT_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.in_diam",
+      "oracleCol": "IN_DIAM"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.production",
+      "oracleCol": "PRODUCTION"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.coat_typ",
+      "oracleCol": "COATING"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "CF": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.cgud_typ",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.no_slots",
+      "oracleCol": "NO_SLOTS"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.fitg_typ",
+      "oracleCol": "ATTACH_METHOD"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "CG": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.thetype",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.conductor",
+      "oracleCol": "CONDUCTOR"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.attach_type",
+      "oracleCol": "ATTACH_TYPE"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "CS": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.csum_typ",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.attachments",
+      "oracleCol": "ATTACHMENTS"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.termination_p",
+      "oracleCol": "TERMINATION_P"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.injection_line",
+      "oracleCol": "INJECTION_LINE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.suction_device",
+      "oracleCol": "SUCTION_DEVICE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.coating",
+      "oracleCol": "COATING"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "FA": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.face_pos",
+      "oracleCol": "POSITION"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "PL": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.pile_typ",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.pile_mat",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.wall_thk",
+      "oracleCol": "WALL_THK"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.depth",
+      "oracleCol": "DEPTH"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "PG": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.pgud_typ",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.pgud_fas",
+      "oracleCol": "ATTACH_METHOD"
+    },
+    {
+      "pgCol": "metadata.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.pgud_mat\"termination_p\": \"\",",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.pile_present",
+      "oracleCol": "PILE"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "RG": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.risg_typ",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.no_subsea",
+      "oracleCol": "NO_SUBSEA"
+    },
+    {
+      "pgCol": "metadata.no_topside",
+      "oracleCol": "NO_TOPSIDE"
+    },
+    {
+      "pgCol": "metadata.no_risers\"termination_p\": \"\",",
+      "oracleCol": "NO_RISERS"
+    },
+    {
+      "pgCol": "metadata.depth",
+      "oracleCol": "RISER_WT"
+    },
+    {
+      "pgCol": "metadata.width",
+      "oracleCol": "WIDTH"
+    },
+    {
+      "pgCol": "metadata.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "WP": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.supp_wt",
+      "oracleCol": "SUPP_WT"
+    },
+    {
+      "pgCol": "metadata.memb_wt",
+      "oracleCol": "MEMB_WT"
+    },
+    {
+      "pgCol": "metadata.supp_diam",
+      "oracleCol": "SUPP_DIAM"
+    },
+    {
+      "pgCol": "metadata.memb_diam\"termination_p\": \"\",",
+      "oracleCol": "MEMB_DIAM"
+    },
+    {
+      "pgCol": "metadata.weld_cfg",
+      "oracleCol": "WELD_CONFG"
+    },
+    {
+      "pgCol": "metadata.weld_typ",
+      "oracleCol": "WELD_TYPE"
+    },
+    {
+      "pgCol": "metadata.wsup_typ",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.weld_des",
+      "oracleCol": "DESG_CODE"
+    },
+    {
+      "pgCol": "metadata.weld_mat",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "FD": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.fender_type",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.no_subsea",
+      "oracleCol": "NO_SUBSEA"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.no_topside",
+      "oracleCol": "NO_TOPSIDE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.no_landings",
+      "oracleCol": "NO_LANDINGS"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.weight",
+      "oracleCol": "WEIGHT"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "IT": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.dimen1",
+      "oracleCol": "DIMEN1"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.dimen2",
+      "oracleCol": "DIMEN2"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.dimen3",
+      "oracleCol": "DIMEN3"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.angle",
+      "oracleCol": "ANGLE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.coment",
+      "oracleCol": "COMENT"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "BO": [
+    {
+      "pgCol": "structure_id",
+      "oracleCol": "STR_ID"
+    },
+    {
+      "pgCol": "id_no",
+      "oracleCol": "ID_NO"
+    },
+    {
+      "pgCol": "q_id",
+      "oracleCol": "Q_ID"
+    },
+    {
+      "pgCol": "comp_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "metadata.s_node",
+      "oracleCol": "S_NODE"
+    },
+    {
+      "pgCol": "metadata.f_node",
+      "oracleCol": "F_NODE"
+    },
+    {
+      "pgCol": "metadata.s_leg",
+      "oracleCol": "S_LEG"
+    },
+    {
+      "pgCol": "metadata.f_leg",
+      "oracleCol": "F_LEG"
+    },
+    {
+      "pgCol": "metadata.elv_1",
+      "oracleCol": "ELV_1"
+    },
+    {
+      "pgCol": "metadata.elv_2",
+      "oracleCol": "ELV_2"
+    },
+    {
+      "pgCol": "metadata.dist",
+      "oracleCol": "DIST"
+    },
+    {
+      "pgCol": "metadata.clk_pos",
+      "oracleCol": "CLK_POS"
+    },
+    {
+      "pgCol": "metadata.description",
+      "oracleCol": "DESCRIPTION"
+    },
+    {
+      "pgCol": "metadata.cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "created_at",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "code",
+      "oracleCol": "CODE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.load_test",
+      "oracleCol": "LOAD_TEST"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.material",
+      "oracleCol": "MATERIAL"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.diameter",
+      "oracleCol": "DIAMETER"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.thetype",
+      "oracleCol": "THETYPE"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.height",
+      "oracleCol": "HEIGHT"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.width",
+      "oracleCol": "WIDTH"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.thickness",
+      "oracleCol": "THICKNESS"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.max_load",
+      "oracleCol": "MAX_LOAD"
+    },
+    {
+      "pgCol": "metadata.additionalInfo.certif_req",
+      "oracleCol": "CERTIF_REQ"
+    },
+    {
+      "pgCol": "metadata.face",
+      "oracleCol": "FACE"
+    },
+    {
+      "pgCol": "metadata.level",
+      "oracleCol": "LEVEL"
+    },
+    {
+      "pgCol": "metadata.top_und",
+      "oracleCol": "TOP_UND"
+    },
+    {
+      "pgCol": "metadata.id_chk",
+      "oracleCol": "ID_CHK"
+    },
+    {
+      "pgCol": "metadata.comp_group",
+      "oracleCol": "COMP_GROUP"
+    },
+    {
+      "pgCol": "is_deleted",
+      "oracleCol": "DEL"
+    },
+    {
+      "pgCol": "metadata.del",
+      "oracleCol": "DEL"
+    }
+  ],
+  "INSP_ROV_RFMD": [
+    {
+      "pgCol": "inspection_data.oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "rov_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    }
+  ],
+  "INSP_DIVING_CPCLB": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "calib_equipment_type",
+      "oracleCol": "equip"
+    },
+    {
+      "pgCol": "serial_number",
+      "oracleCol": "eq_id"
+    },
+    {
+      "pgCol": "calib_block",
+      "oracleCol": "clb_block"
+    },
+    {
+      "pgCol": "pre_dive",
+      "oracleCol": "pre_dive_cp_rdg"
+    },
+    {
+      "pgCol": "in_water1",
+      "oracleCol": "in_water1"
+    },
+    {
+      "pgCol": "in_water2",
+      "oracleCol": "in_water2"
+    },
+    {
+      "pgCol": "in_water3",
+      "oracleCol": "in_water3"
+    },
+    {
+      "pgCol": "post_dive_cp_rdg",
+      "oracleCol": "post_dive"
+    }
+  ],
+  "INSP_DIVING_UTCLB": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "calib_equipment_type",
+      "oracleCol": "equip"
+    },
+    {
+      "pgCol": "serial_number",
+      "oracleCol": "eq_id"
+    },
+    {
+      "pgCol": "probe",
+      "oracleCol": "probe"
+    },
+    {
+      "pgCol": "probe_size",
+      "oracleCol": "probe_size"
+    },
+    {
+      "pgCol": "probe_frequency",
+      "oracleCol": "probe_fq"
+    },
+    {
+      "pgCol": "calib_block",
+      "oracleCol": "clb_type"
+    },
+    {
+      "pgCol": "label01",
+      "oracleCol": "lbl_1"
+    },
+    {
+      "pgCol": "label02",
+      "oracleCol": "lbl_2"
+    },
+    {
+      "pgCol": "label03",
+      "oracleCol": "lbl_3"
+    },
+    {
+      "pgCol": "label04",
+      "oracleCol": "lbl_4"
+    },
+    {
+      "pgCol": "label05",
+      "oracleCol": "lbl_5"
+    },
+    {
+      "pgCol": "label06",
+      "oracleCol": "lbl_6"
+    },
+    {
+      "pgCol": "reading01",
+      "oracleCol": "rdg_1"
+    },
+    {
+      "pgCol": "reading02",
+      "oracleCol": "rdg_2"
+    },
+    {
+      "pgCol": "reading03",
+      "oracleCol": "rdg_3"
+    },
+    {
+      "pgCol": "reading04",
+      "oracleCol": "rdg_4"
+    },
+    {
+      "pgCol": "reading05",
+      "oracleCol": "rdg_5"
+    },
+    {
+      "pgCol": "reading06",
+      "oracleCol": "rdg_6"
+    }
+  ],
+  "INSP_DIVING_CPSURV": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "cp_rdg",
+      "oracleCol": "cp_out"
+    },
+    {
+      "pgCol": "surface_condition",
+      "oracleCol": "surf_cond"
+    },
+    {
+      "pgCol": "cleaning_method",
+      "oracleCol": "clean_met"
+    }
+  ],
+  "INSP_DIVING_MGROW": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "circumferential_measurement_5m_above",
+      "oracleCol": "circum_pfive"
+    },
+    {
+      "pgCol": "circumferential_measurement_0m",
+      "oracleCol": "circum_zero"
+    },
+    {
+      "pgCol": "circumferential_measurement_5m_below",
+      "oracleCol": "circum_nfive"
+    },
+    {
+      "pgCol": "effective_thickness",
+      "oracleCol": "eff_thk"
+    },
+    {
+      "pgCol": "mgi_hard_growth",
+      "oracleCol": "hard_growth"
+    },
+    {
+      "pgCol": "mgi_soft_growth",
+      "oracleCol": "soft_growth"
+    },
+    {
+      "pgCol": "coating_damage",
+      "oracleCol": "coating_damage"
+    },
+    {
+      "pgCol": "nominal_diameter",
+      "oracleCol": "nom_dia"
+    },
+    {
+      "pgCol": "marine_growth_hard",
+      "oracleCol": "growth_circum"
+    },
+    {
+      "pgCol": "mgi_profile",
+      "oracleCol": "mg_profile"
+    },
+    {
+      "pgCol": "hard_circum",
+      "oracleCol": "hard_circum"
+    },
+    {
+      "pgCol": "soft_circum",
+      "oracleCol": "soft_circum"
+    }
+  ],
+  "INSP_DIVING_SZONE": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "cp_rdg",
+      "oracleCol": "cp_rdg"
+    },
+    {
+      "pgCol": "ut_3_o_clock",
+      "oracleCol": "c03"
+    },
+    {
+      "pgCol": "ut_6_o_clock",
+      "oracleCol": "c06"
+    },
+    {
+      "pgCol": "ut_9_o_clock",
+      "oracleCol": "c09"
+    },
+    {
+      "pgCol": "ut_12_o_clock",
+      "oracleCol": "c12"
+    },
+    {
+      "pgCol": "nominal_thickness",
+      "oracleCol": "nom_thk"
+    },
+    {
+      "pgCol": "coating_coverage_percent",
+      "oracleCol": "coat_coverage"
+    }
+  ],
+  "INSP_DIVING_PL_AN": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "anode_type",
+      "oracleCol": "type"
+    },
+    {
+      "pgCol": "anode_length",
+      "oracleCol": "length"
+    },
+    {
+      "pgCol": "anode_depletion_percent",
+      "oracleCol": "depletion"
+    },
+    {
+      "pgCol": "member_cp",
+      "oracleCol": "memb_cp"
+    },
+    {
+      "pgCol": "anode_cp",
+      "oracleCol": "anode_output"
+    },
+    {
+      "pgCol": "topstub_cp",
+      "oracleCol": "topstub_cp"
+    },
+    {
+      "pgCol": "bottomstub_cp",
+      "oracleCol": "botstub_cp"
+    },
+    {
+      "pgCol": "max_pitting_depth",
+      "oracleCol": "max_pit"
+    },
+    {
+      "pgCol": "avg_pitting_depth",
+      "oracleCol": "avg_pit"
+    },
+    {
+      "pgCol": "max_pitting_diameter",
+      "oracleCol": "max_dia_pit"
+    },
+    {
+      "pgCol": "avg_pitting_diameter",
+      "oracleCol": "avg_dia_pit"
+    },
+    {
+      "pgCol": "circumference_c1",
+      "oracleCol": "circ_c1"
+    },
+    {
+      "pgCol": "circumference_c2",
+      "oracleCol": "circ_c2"
+    },
+    {
+      "pgCol": "circumference_c3",
+      "oracleCol": "circ_c3"
+    },
+    {
+      "pgCol": "anode_secured_to_structure",
+      "oracleCol": "connected"
+    }
+  ],
+  "INSP_ROV_RSEAB": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "rov_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    }
+  ],
+  "INSP_DIVING_UTWTK": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "ut_3_o_clock",
+      "oracleCol": "c03"
+    },
+    {
+      "pgCol": "ut_6_o_clock",
+      "oracleCol": "c06"
+    },
+    {
+      "pgCol": "ut_9_o_clock",
+      "oracleCol": "c09"
+    },
+    {
+      "pgCol": "ut_12_o_clock",
+      "oracleCol": "c12"
+    },
+    {
+      "pgCol": "nominal_thickness",
+      "oracleCol": "comp_wall_thk"
+    },
+    {
+      "pgCol": "avg_reading",
+      "oracleCol": "avg_thk"
+    },
+    {
+      "pgCol": "min_reading",
+      "oracleCol": "min_thk"
+    },
+    {
+      "pgCol": "max_reading",
+      "oracleCol": "max_thk"
+    },
+    {
+      "pgCol": "wall_thickness_loss",
+      "oracleCol": "wall_thk_loss"
+    },
+    {
+      "pgCol": "size_of_area_tested",
+      "oracleCol": "area_test"
+    },
+    {
+      "pgCol": "reference_point_position",
+      "oracleCol": "ref_pos"
+    }
+  ],
+  "INSP_DIVING_BSINS": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "no_bolts_pres_memb",
+      "oracleCol": "no_bolts_pres_memb"
+    },
+    {
+      "pgCol": "no_bolts_loose_memb",
+      "oracleCol": "no_bolts_lose_memb"
+    },
+    {
+      "pgCol": "no_bolts_miss_memb",
+      "oracleCol": "no_bolts_mis_memb"
+    },
+    {
+      "pgCol": "max_gap_top_member",
+      "oracleCol": "gap_top_memb"
+    },
+    {
+      "pgCol": "max_gap_bottom_member",
+      "oracleCol": "gap_bot_memb"
+    },
+    {
+      "pgCol": "max_flange_misalign_member",
+      "oracleCol": "flng_memb"
+    },
+    {
+      "pgCol": "member_clamp_cp",
+      "oracleCol": "memb_clmp_cp"
+    },
+    {
+      "pgCol": "member_cp",
+      "oracleCol": "memb_cp"
+    },
+    {
+      "pgCol": "no_bolts_pres_brace",
+      "oracleCol": "no_bolts_pres_comp"
+    },
+    {
+      "pgCol": "no_bolts_loose_brace",
+      "oracleCol": "no_bolts_lose_comp"
+    },
+    {
+      "pgCol": "no_bolts_miss_brace",
+      "oracleCol": "no_bolts_mis_comp"
+    },
+    {
+      "pgCol": "max_gap_top_brace",
+      "oracleCol": "gap_top_comp"
+    },
+    {
+      "pgCol": "max_gap_bottom_brace",
+      "oracleCol": "gap_bot_comp"
+    },
+    {
+      "pgCol": "max_flange_misalign_brace",
+      "oracleCol": "flng_comp"
+    },
+    {
+      "pgCol": "appurtenance_clamp_type",
+      "oracleCol": "rsr_clmp_type"
+    },
+    {
+      "pgCol": "appurtenance_cp",
+      "oracleCol": "riser_cp"
+    },
+    {
+      "pgCol": "appurtenance_clamp_cp",
+      "oracleCol": "riser_clmp_cp"
+    },
+    {
+      "pgCol": "stub_cp",
+      "oracleCol": "stub_cp"
+    },
+    {
+      "pgCol": "clamp_coating_satisfactory",
+      "oracleCol": "clmp_coating"
+    },
+    {
+      "pgCol": "all_bolts_double_nutted",
+      "oracleCol": "bolts_nutted"
+    },
+    {
+      "pgCol": "liner_present_member_end",
+      "oracleCol": "liner_memb"
+    },
+    {
+      "pgCol": "earthing_wire_or_bolt_present",
+      "oracleCol": "earthwire_bolt"
+    },
+    {
+      "pgCol": "liner_present_component_end",
+      "oracleCol": "liner_comp"
+    },
+    {
+      "pgCol": "washers_present_all_bolts",
+      "oracleCol": "washer_pres"
+    }
+  ],
+  "INSP_DIVING_CLEAN": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "cleaning_method",
+      "oracleCol": "CLEAN_MET"
+    },
+    {
+      "pgCol": "surface_condition",
+      "oracleCol": "SURF_COND"
+    },
+    {
+      "pgCol": "cleaning_pressure",
+      "oracleCol": "CLEAN_PRESS"
+    },
+    {
+      "pgCol": "surface_condition_evaluation",
+      "oracleCol": "SURFACE"
+    }
+  ],
+  "INSP_ROV_RMGI": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "rov_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    }
+  ],
+  "INSP_ROV_RCOND": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "rov_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    }
+  ],
+  "INSP_ROV_RGVI": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "rov_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    }
+  ],
+  "INSP_ROV_RRISI": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "rov_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    }
+  ],
+  "INSP_DIVING_GVINS": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "marine_growth_hard",
+      "oracleCol": "marine_grow"
+    },
+    {
+      "pgCol": "component_condition",
+      "oracleCol": "comp_cond"
+    },
+    {
+      "pgCol": "coating_condition",
+      "oracleCol": "coat_cond"
+    }
+  ],
+  "INSP_DIVING_RISER": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "span_height",
+      "oracleCol": "bottm_ht"
+    },
+    {
+      "pgCol": "riserbend_elevation",
+      "oracleCol": "elev_bottm"
+    },
+    {
+      "pgCol": "wall_thickness",
+      "oracleCol": "wall_thk"
+    },
+    {
+      "pgCol": "marine_growth_hard",
+      "oracleCol": "mg"
+    },
+    {
+      "pgCol": "marine_growth_soft",
+      "oracleCol": "MG"
+    },
+    {
+      "pgCol": "cp_rdg",
+      "oracleCol": "cp_rdg"
+    }
+  ],
+  "INSP_DIVING_VIDEO": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    }
+  ]
+}

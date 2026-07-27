@@ -135,7 +135,20 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
             return records.filter(r => hasCode(r, ['RUTWT', 'UTWT', 'UTWTK', 'DUTWT']));
         case 'RSEAB':
         case 'SEABED':
-            return records.filter(r => hasCode(r, ['RSEAB', 'SEABED']));
+            return records.filter(r => {
+                if (!hasCode(r, ['RSEAB', 'SEABED'])) return false;
+                const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+                const desc = (r.description || '').toLowerCase();
+                if (idLower.includes('gas')) {
+                    return cat === 'gas seepage' || desc.startsWith('gas seepage');
+                } else if (idLower.includes('crater')) {
+                    return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+                } else if (idLower.includes('debris') || idLower.includes('detail')) {
+                    return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
+                }
+                // default general report
+                return true;
+            });
         case 'RWDI':
             return records.filter(r => hasCode(r, ['RWDI']));
         case 'RMGI':
@@ -299,8 +312,11 @@ interface ReportWizardDialogProps {
         generateRSCORReport: () => void;
         generateRSCORV2Report: () => void;
         generateRRISIReport: () => void;
+        generateRRISIDetailReport: () => void;
         generateJTISIReport: () => void;
+        generateJTISIDetailReport: () => void;
         generateITISIReport: () => void;
+        generateITISIDetailReport: () => void;
         generateRCASNReport: () => void;
         generateRCASNSketchReport: () => void;
         generateRCONDReport: () => void;
@@ -310,6 +326,9 @@ interface ReportWizardDialogProps {
         generateSGReport: () => void;
         generateCUReport: () => void;
         generateSeabedReport: (templateId: string) => void;
+        generateSeabedDetailReport: () => void;
+        generateSeabedGasDetailReport: () => void;
+        generateSeabedCraterDetailReport: () => void;
         generateFullInspectionReport: () => void;
         generateInspectionReportByType: (id: any) => void;
     };
@@ -451,16 +470,25 @@ export function ReportWizardDialog({
             { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: true },
             { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey', description: 'Flooded Member Detection using ultrasonic or gamma methods.', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
             { id: 'utwt_rov', code: 'RUTWT', name: 'UTWT Survey', description: 'Ultrasonic Wall Thickness measurements of members.', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT']) },
-            { id: 'seabed_rov', code: 'RSEAB', name: 'ROV Seabed Survey', description: 'Debris, gas seepage, and crater survey of the seabed.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov', code: 'RSEAB', name: 'Seabed Survey Inspection Sketch Report (ROV)', description: 'General unfiltered Seabed GUI maps showing all debris, craters, and gas seepages.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('rov-seabed-report'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_debris_sketch', code: 'RSEAB', name: 'Seabed Survey Debris Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with debris items marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_gas_sketch', code: 'RSEAB', name: 'Seabed Survey Gas Seepage Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with gas seepages marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-gas'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_crater_sketch', code: 'RSEAB', name: 'Seabed Survey Crater Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with craters marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-crater'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_detail', code: 'RSEAB', name: 'Seabed Survey Debris Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Debris inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_gas_detail', code: 'RSEAB', name: 'Seabed Survey Gas Seepage Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Gas Seepage inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedGasDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_crater_detail', code: 'RSEAB', name: 'Seabed Survey Crater Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Crater inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedCraterDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
             { id: 'rwdi', code: 'RWDI', name: 'ROV Water Depth Inspection Report', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
             { id: 'mgi_rov', code: 'RMGI', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI']) },
             { id: 'szci_rov', code: 'RSZCI', name: 'ROV Splash Zone (SZCI)', description: 'ROV Splash Zone inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
             { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
             { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch v2', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
-            { id: 'rrisi_rov', code: 'RRISI', name: 'ROV Riser Report (RRISI)', description: 'ROV Riser Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
-            { id: 'jtisi_rov', code: 'JTISI', name: 'ROV J-Tube Report (JTISI)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI']) },
-            { id: 'itisi_rov', code: 'ITISI', name: 'ROV I-Tube Report (ITISI)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI']) },
+            { id: 'rrisi_rov', code: 'RRISI', name: 'Riser Survey Inspection Sketch Report (ROV)', description: 'ROV Riser inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
+            { id: 'rrisi_detail_rov', code: 'RRISI', name: 'Riser Inspection Report (ROV)', description: 'Detailed portrait Riser inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIDetailReport, available: hasRecords(['RRISI']) },
+            { id: 'jtisi_rov', code: 'JTISI', name: 'J-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI', 'RRISI']) },
+            { id: 'jtisi_detail_rov', code: 'JTISI', name: 'J-Tube Inspection Report (ROV)', description: 'Detailed portrait J-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIDetailReport, available: hasRecords(['JTISI', 'RRISI']) },
+            { id: 'itisi_rov', code: 'ITISI', name: 'I-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI', 'RRISI']) },
+            { id: 'itisi_detail_rov', code: 'ITISI', name: 'I-Tube Inspection Report (ROV)', description: 'Detailed portrait I-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIDetailReport, available: hasRecords(['ITISI', 'RRISI']) },
             { id: 'rcasn_rov', code: 'RCASN', name: 'ROV Caisson Report (RCASN)', description: 'ROV Caisson Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNReport, available: hasRecords(['RCASN']) },
             { id: 'rcasn_sketch_rov', code: 'RCASN-S', name: 'ROV Caisson Sketch Report', description: 'ROV Caisson Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNSketchReport, available: hasRecords(['RCASN']) },
             { id: 'rcond_rov', code: 'RCOND', name: 'ROV Conductor Report (RCOND)', description: 'ROV Conductor Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDReport, available: hasRecords(['RCOND', 'RCON']) },
@@ -491,7 +519,7 @@ export function ReportWizardDialog({
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
             }) },
-            { id: 'diving-dcasn-ts-report', code: 'DCASN-TS', name: 'Caisson Inspection Topside Diving', description: 'Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNTSReport, available: currentRecords.some(r => {
+            { id: 'diving-dcasn-ts-report', code: 'DCASN-TS', name: 'Caisson Inspection Above Water Diving', description: 'Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNTSReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
@@ -501,7 +529,7 @@ export function ReportWizardDialog({
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
             }) },
-            { id: 'diving-dcond-ts-report', code: 'DCOND-TS', name: 'Conductor Inspection Topside Diving', description: 'Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDTSReport, available: currentRecords.some(r => {
+            { id: 'diving-dcond-ts-report', code: 'DCOND-TS', name: 'Conductor Inspection Above Water Diving', description: 'Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDTSReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
@@ -972,8 +1000,27 @@ export function ReportWizardDialog({
                                          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Fine-tune your report output</p>
                                      </div>
 
-                                     {/* Signatory Section */}
+                                     {/* General Info / Report Prefix Section */}
                                      <div className="space-y-4">
+                                         <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-850">
+                                             <span className="text-xs font-black uppercase text-slate-400 tracking-wider">General Info</span>
+                                         </div>
+                                         <div className="grid grid-cols-3 gap-3 items-center">
+                                             <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Report Prefix / No.</Label>
+                                             <Input 
+                                                 value={config.reportNoPrefix || headerData?.sowReportNo || ""}
+                                                 onChange={(e) => setConfig({
+                                                     ...config,
+                                                     reportNoPrefix: e.target.value
+                                                 })}
+                                                 placeholder="e.g. SOW-2026-01" 
+                                                 className="col-span-2 h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                             />
+                                         </div>
+                                     </div>
+
+                                     {/* Signatory Section */}
+                                     <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
                                          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-850">
                                              <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Signatory Settings</span>
                                              <div className="flex items-center gap-2">

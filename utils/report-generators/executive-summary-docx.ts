@@ -1,5 +1,5 @@
 import { applyWatermarkAndSignaturesGlobal } from "./shared-logo";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, Footer, PageNumber } from "docx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, Footer, PageNumber, TableOfContents } from "docx";
 import { saveAs } from "file-saver";
 
 interface Section {
@@ -60,18 +60,11 @@ export const generateExecutiveSummaryDocx = async (data: ReportData) => {
                     spacing: { after: 400 },
                 }),
 
-                // Table of Contents (Manual list for now)
-                new Paragraph({ 
-                    text: "TABLE OF CONTENTS", 
-                    heading: HeadingLevel.HEADING_2,
-                    spacing: { before: 200, after: 200 }
+                // Dynamic Table of Contents
+                new TableOfContents("Table of Contents", {
+                    hyperlink: true,
+                    headingStyleRange: "1-3",
                 }),
-                ...data.sections.map((s, idx) => 
-                    new Paragraph({
-                        text: `${idx + 1}. ${s.title}`,
-                        indent: { left: 720 },
-                    })
-                ),
                 new Paragraph({ 
                     text: "", 
                     pageBreakBefore: true 

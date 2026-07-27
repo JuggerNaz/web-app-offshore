@@ -42,8 +42,14 @@ export const generateSeabedSurveyReport = async (
                 distance: parseFloat(r.inspection_data?.distance_from_leg) || 0,
                 northing: r.inspection_data?.northing || '',
                 easting: r.inspection_data?.easting || '',
-                type: r.inspection_data?.category || r.inspection_data?.type || (r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris'),
-                description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
+                type: (() => {
+                    const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+                    const desc = (r.description || '').toLowerCase();
+                    if (cat === 'gas seepage' || desc.startsWith('gas seepage') || desc.includes('gas seepage')) return 'Gas Seepage';
+                    if (cat === 'crater' || desc.startsWith('crater') || desc.includes('crater') || desc.startsWith('seabed crater') || desc.includes('seabed crater')) return 'Crater';
+                    return 'Debris';
+                })(),
+                description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/i, '') || '',
                 size: r.inspection_data?.size_dimensions || r.inspection_data?.dimension_1 || '',
                 material: r.inspection_data?.material || r.inspection_data?.debris_material || 'Unknown',
                 isMetallic: (r.inspection_data?.material || r.inspection_data?.debris_material) === 'Metallic'
@@ -366,21 +372,32 @@ export const generateSeabedSurveyReport = async (
 
         // ── Details Table ────────────────────────────────────────────────────
         const tableY = plotY + plotSize + 5;
-        const tableBody = items.map(item => [
-            String(item.label),
-            item.qid,
-            item.face,
-            `${item.distance}m`,
-            String(item.northing),
-            String(item.easting),
-            item.description || '-',
-            item.material,
-            item.size || '-'
-        ]);
+        const isCraterOrGas = itemTypeFilter.toLowerCase() === 'crater' || itemTypeFilter.toLowerCase() === 'gas seepage';
+        
+        const tableBody = items.map(item => {
+            const row = [
+                String(item.label),
+                item.qid,
+                item.face,
+                `${item.distance}m`,
+                String(item.northing),
+                String(item.easting),
+                item.description || '-'
+            ];
+            if (!isCraterOrGas) {
+                row.push(item.material);
+            }
+            row.push(item.size || '-');
+            return row;
+        });
+
+        const tableHeaders = isCraterOrGas 
+            ? ["ID", "QID", "Face", "Dist.", "Northing", "Easting", "Description", "Dims"]
+            : ["ID", "QID", "Face", "Dist.", "Northing", "Easting", "Description", "Material", "Dims"];
 
         autoTable(doc, {
             startY: tableY,
-            head: [["ID", "QID", "Face", "Dist.", "Northing", "Easting", "Description", "Material", "Dims"]],
+            head: [tableHeaders],
             body: tableBody,
             theme: "grid",
             headStyles: {

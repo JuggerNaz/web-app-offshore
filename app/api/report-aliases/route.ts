@@ -22,8 +22,9 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient();
         const body = await request.json();
         const { template_id, alias } = body;
+        const trimmedAlias = String(alias || "").trim();
 
-        if (!template_id || !alias) {
+        if (!template_id || !trimmedAlias) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
             .from("report_aliases")
             .upsert({ 
                 template_id, 
-                alias,
+                alias: trimmedAlias,
                 updated_at: new Date().toISOString()
             }, { 
                 onConflict: 'template_id' 

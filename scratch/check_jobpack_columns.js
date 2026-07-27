@@ -16,14 +16,23 @@ const supabase = createClient(
   envConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-async function run() {
-  console.log("Fetching one row from jobpack...");
-  const { data, error } = await supabase.from('jobpack').select('*').limit(1);
+async function main() {
+  const { data, error } = await supabase
+    .from("jobpack")
+    .select("*")
+    .limit(5);
+
   if (error) {
-    console.error("Error fetching jobpack:", error.message);
-  } else {
-    console.log("Jobpack row sample:", data);
+    console.error(error);
+    return;
   }
+
+  console.log("Jobpack columns/data:");
+  data.forEach((r, i) => {
+    console.log(`\nJobpack [${i}] name: ${r.name}`);
+    console.log("Metadata keys:", Object.keys(r.metadata || {}));
+    console.log("Metadata sample:", JSON.stringify(r.metadata, null, 2));
+  });
 }
 
-run();
+main();

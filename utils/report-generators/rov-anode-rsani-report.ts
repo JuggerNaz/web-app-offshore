@@ -10,6 +10,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -101,7 +102,7 @@ export const generateROVAnodeRSANIReport = async (
             da.text(`ROV Selected Anode Report (SANI)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
 
             da.setFontSize(8); da.setFont("helvetica", "normal");
-            da.text(`SOW Report No: ${headerData.sowReportNo || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+            da.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -236,7 +237,7 @@ export const generateROVAnodeRSANIReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Selected Anode Report (SANI)  |  SOW: ${headerData.sowReportNo || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Selected Anode Report (SANI)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
@@ -280,7 +281,7 @@ export const generateROVAnodeRSANIReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_Anode_RSANI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        doc.save(`ROV_Anode_RSANI_Report_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
 
     } catch (e) {

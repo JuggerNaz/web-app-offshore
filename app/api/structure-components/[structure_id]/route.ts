@@ -46,11 +46,31 @@ export const GET = withAuth(
       query = query.eq("code", code);
     }
 
-    const { data, error } = await query;
+    let allData: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
 
-    if (error) {
-      return handleSupabaseError(error, "Failed to fetch structure components");
+    while (hasMore) {
+      const { data: pageData, error } = await query.range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (error) {
+        return handleSupabaseError(error, "Failed to fetch structure components");
+      }
+
+      if (!pageData || pageData.length === 0) {
+        hasMore = false;
+      } else {
+        allData = allData.concat(pageData);
+        if (pageData.length < pageSize) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      }
     }
+
+    const data = allData;
 
     if (!data || data.length === 0) {
       return apiSuccess([]);

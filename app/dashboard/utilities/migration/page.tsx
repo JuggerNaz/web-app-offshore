@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import MigrationReportPreview, { getTableMappingNames } from "@/components/migration/migration-report-preview";
 import { createClient } from "@/utils/supabase/client";
+import specUiConfig from "@/utils/spec-ui-config.json";
 
 
 export default function MigrationDashboard() {
@@ -235,6 +236,33 @@ export default function MigrationDashboard() {
       { oracleCol: "CONC_CTG", pgCol: "conc_ctg" },
       { oracleCol: "OPER_PRESS", pgCol: "oper_press" }
     ],
+    "STR_ELV": [
+      { oracleCol: "PLAT_ID", pgCol: "plat_id" },
+      { oracleCol: "ELV", pgCol: "elv" },
+      { oracleCol: "ORIENT", pgCol: "orient" },
+      { oracleCol: "CR_DATE", pgCol: "cr_date" },
+      { oracleCol: "CR_USER", pgCol: "cr_user" },
+      { oracleCol: "WORKUNIT", pgCol: "workunit" }
+    ],
+    "STR_LEVEL": [
+      { oracleCol: "PLAT_ID", pgCol: "plat_id" },
+      { oracleCol: "LEVEL_NAME", pgCol: "level_name" },
+      { oracleCol: "ELV_FROM", pgCol: "elv_from" },
+      { oracleCol: "ELV_TO", pgCol: "elv_to" },
+      { oracleCol: "CR_DATE", pgCol: "cr_date" },
+      { oracleCol: "CR_USER", pgCol: "cr_user" },
+      { oracleCol: "WORKUNIT", pgCol: "workunit" }
+    ],
+    "STR_FACES": [
+      { oracleCol: "PLAT_ID", pgCol: "plat_id" },
+      { oracleCol: "FACE", pgCol: "face" },
+      { oracleCol: "FACE_DESC", pgCol: "face_desc" },
+      { oracleCol: "FACE_FROM", pgCol: "face_from" },
+      { oracleCol: "FACE_TO", pgCol: "face_to" },
+      { oracleCol: "CR_DATE", pgCol: "cr_date" },
+      { oracleCol: "CR_USER", pgCol: "cr_user" },
+      { oracleCol: "WORKUNIT", pgCol: "workunit" }
+    ],
     "JOBPACK_SOW": [
       { oracleCol: "INSPNO", pgCol: "jobpack_id" },
       { oracleCol: "JOBNAME", pgCol: "title" },
@@ -278,24 +306,37 @@ export default function MigrationDashboard() {
         }
       }
 
-      // 2. Load field mappings
+      // 2. Load field mappings from database API / local backup file
       const savedMappings = localStorage.getItem("migration_mappings");
+      let localParsed: any = {};
       if (savedMappings) {
-        const parsed = JSON.parse(savedMappings);
-        if (parsed && typeof parsed === "object") {
-          // Backward compatibility: Migration of legacy mappings
-          if (parsed.STRUCTURE && !parsed.STRUCTURE_PLATFORM) {
-            parsed.STRUCTURE_PLATFORM = parsed.STRUCTURE;
-          }
-          if (parsed.STRUCTURE && !parsed.STRUCTURE_PIPELINE) {
-            parsed.STRUCTURE_PIPELINE = parsed.STRUCTURE;
-          }
-          setMappings(prev => ({
-            ...prev,
-            ...parsed
-          }));
-        }
+        try {
+          localParsed = JSON.parse(savedMappings) || {};
+        } catch (e) {}
       }
+
+      fetch("/api/migration/mappings")
+        .then(res => res.json())
+        .then(resData => {
+          if (resData.success && resData.data) {
+            setMappings(prev => ({
+              ...prev,
+              ...localParsed,
+              ...resData.data
+            }));
+            console.log(`[Migration] Mappings loaded successfully from ${resData.source}`);
+          } else {
+            if (Object.keys(localParsed).length > 0) {
+              setMappings(prev => ({ ...prev, ...localParsed }));
+            }
+          }
+        })
+        .catch(err => {
+          console.error("Failed to load mappings from API, falling back to localStorage:", err);
+          if (Object.keys(localParsed).length > 0) {
+            setMappings(prev => ({ ...prev, ...localParsed }));
+          }
+        });
     } catch (err) {
       console.error("Failed to load saved state from localStorage:", err);
     }
@@ -381,14 +422,35 @@ export default function MigrationDashboard() {
   };
 
   // Paste mappings from state/clipboard
-  const handlePasteMappings = () => {
+  const handlePasteMappings = async () => {
     try {
-      const saved = localStorage.getItem("migration_copied_mappings");
+      let clipboardText = "";
+      if (navigator.clipboard) {
+        try {
+          clipboardText = await navigator.clipboard.readText();
+        } catch (clipErr) {
+          console.warn("Failed to read from clipboard API, falling back to localStorage:", clipErr);
+        }
+      }
+
+      const saved = clipboardText.trim() || localStorage.getItem("migration_copied_mappings");
       if (!saved) {
         toast.error("No copied mappings found. Please copy mappings first!");
         return;
       }
+
       const parsed = JSON.parse(saved);
+
+      // Support pasting the entire mappings object at once
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        setMappings(prev => ({
+          ...prev,
+          ...parsed
+        }));
+        toast.success(`Successfully pasted the ENTIRE mapping configuration! Click "Save Mappings" to persist.`);
+        return;
+      }
+
       if (!Array.isArray(parsed)) {
         toast.error("Invalid copied mappings format.");
         return;
@@ -404,12 +466,120 @@ export default function MigrationDashboard() {
     }
   };
 
-  const handleSaveMappings = () => {
+  const handleSaveMappings = async () => {
     try {
       localStorage.setItem("migration_mappings", JSON.stringify(mappings));
-      toast.success("Data mapping configuration saved successfully!");
+      
+      const res = await fetch("/api/migration/mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mappings })
+      });
+      const resData = await res.json();
+      
+      if (res.ok && resData.success) {
+        if (resData.dbSaved) {
+          toast.success("Mappings successfully saved to database!");
+        } else {
+          toast.info(resData.message || "Saved to local files backup. Database sync was skipped.");
+        }
+      } else {
+        toast.warning("Saved locally in browser, but server sync failed: " + (resData.error || "Unknown error"));
+      }
     } catch (err: any) {
       toast.error("Failed to save mappings: " + err.message);
+    }
+  };
+
+  const handleAutoMapFields = async () => {
+    const entity = selectedMappingEntity;
+    let specTableName = "";
+    let fields: string[] = [];
+
+    const compConfig = specUiConfig.components.find(
+      (c: any) => c.code.toLowerCase() === entity.toLowerCase()
+    );
+
+    if (compConfig) {
+      specTableName = `${entity}_COMP`.toUpperCase();
+      if (entity.toLowerCase() === "an") {
+        specTableName = mappingStructureType === "PLATFORM" ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+      }
+      fields = compConfig.fields.map((f: any) => f.name);
+    } else if (entity.startsWith("INSP_ROV_") || entity.startsWith("INSP_DIV_")) {
+      const typeCode = entity.startsWith("INSP_ROV_") 
+        ? entity.replace("INSP_ROV_", "") 
+        : entity.replace("INSP_DIV_", "");
+      specTableName = typeCode.toUpperCase();
+    } else {
+      toast.error("Auto Mapping is only supported for Component specifications and Inspection tables.");
+      return;
+    }
+
+    const toastId = toast.loading("Fetching Oracle columns and auto-mapping...");
+    try {
+      const oracleCols = await fetchOracleColumns(specTableName);
+      if (!oracleCols || oracleCols.length === 0) {
+        toast.error(`Could not retrieve columns from Oracle table "${specTableName}". Make sure you connected to Oracle.`, { id: toastId });
+        return;
+      }
+
+      const newRules: { oracleCol: string; pgCol: string }[] = [];
+
+      // Add default common fields if they exist in Oracle
+      const commonFields = [
+        { oracle: "COMP_ID", pg: "comp_id" },
+        { oracle: "STR_ID", pg: "structure_id" },
+        { oracle: "ID_NO", pg: "id_no" },
+        { oracle: "Q_ID", pg: "q_id" },
+        { oracle: "INSP_ID", pg: "insp_id" },
+        { oracle: "INSPNO", pg: "jobpack_id" }
+      ];
+
+      commonFields.forEach(f => {
+        const found = oracleCols.find((c: string) => c.toUpperCase() === f.oracle);
+        if (found) {
+          newRules.push({ oracleCol: found, pgCol: f.pg });
+        }
+      });
+
+      // Map specification fields to details.<field_name>
+      if (compConfig) {
+        fields.forEach(field => {
+          const upField = field.toUpperCase();
+          let match = oracleCols.find((c: string) => c.toUpperCase() === upField);
+          
+          if (!match) {
+            match = oracleCols.find((c: string) => {
+              const uc = c.toUpperCase();
+              return uc.includes(upField) || upField.includes(uc);
+            });
+          }
+
+          if (match) {
+            newRules.push({ oracleCol: match, pgCol: `details.${field}` });
+          } else {
+            newRules.push({ oracleCol: "", pgCol: `details.${field}` });
+          }
+        });
+      } else {
+        oracleCols.forEach((col: string) => {
+          const uc = col.toUpperCase();
+          if (["COMP_ID", "STR_ID", "ID_NO", "Q_ID", "INSP_ID", "INSPNO", "CR_USER", "CR_DATE", "WORKUNIT"].includes(uc)) {
+            return;
+          }
+          newRules.push({ oracleCol: col, pgCol: `details.${col.toLowerCase()}` });
+        });
+      }
+
+      setMappings(prev => ({
+        ...prev,
+        [activeMappingKey]: newRules
+      }));
+
+      toast.success(`Successfully auto-mapped ${newRules.filter(r => r.oracleCol).length} columns for ${entity}! Click "Save Mappings" to persist.`, { id: toastId });
+    } catch (err: any) {
+      toast.error("Auto Map failed: " + err.message, { id: toastId });
     }
   };
 
@@ -1424,7 +1594,7 @@ export default function MigrationDashboard() {
                             const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
                             const jobInspectionKeys = [
                               "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
-                              "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT"
+                              "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT", "EXSUM"
                             ];
 
                             const reportEntries = Object.entries(migrationReport);
@@ -2429,7 +2599,7 @@ export default function MigrationDashboard() {
                           );
                         })}
                         {inspectionSummary && (inspectionSummary.divingInspections || []).map((div: any) => {
-                          const key = `INSP_DIV_${div.code}`;
+                          const key = `INSP_DIVING_${div.code}`;
                           return (
                             <button
                               key={key}
@@ -2597,9 +2767,21 @@ export default function MigrationDashboard() {
                         <div className="text-xs font-black uppercase text-slate-700 dark:text-slate-300">
                           {selectedMappingEntity} Field Rules
                         </div>
-                        <Button size="sm" onClick={handleAddMapping} className="h-7 text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-white hover:bg-slate-700 dark:bg-slate-200 dark:text-slate-900">
-                          <Plus className="w-3 h-3 mr-1" /> Add Rule
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          {["STRUCTURE", "ATTACHMENT", "COMMENT", "JOBPACK_SOW", "LOGS_ROV", "LOGS_DIVE", "STR_ELV", "STR_LEVEL", "STR_FACES"].indexOf(selectedMappingEntity) === -1 && (
+                            <Button 
+                              size="sm" 
+                              onClick={handleAutoMapFields} 
+                              variant="outline" 
+                              className="h-7 text-[10px] font-bold uppercase tracking-wider text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:text-indigo-400 dark:border-indigo-900/50 dark:hover:bg-indigo-950/30"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 mr-1" /> Auto Map
+                            </Button>
+                          )}
+                          <Button size="sm" onClick={handleAddMapping} className="h-7 text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-white hover:bg-slate-700 dark:bg-slate-200 dark:text-slate-900">
+                            <Plus className="w-3 h-3 mr-1" /> Add Rule
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="space-y-2">

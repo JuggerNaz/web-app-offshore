@@ -95,8 +95,8 @@ export const ROV_MOVEMENT_BRANCHES: Record<string, string[]> = {
     'Rov Leaving the Worksite': ['Rov Recovered', 'Rov Back to TMS'],
     'ROV_LEAVING_WORKSITE': ['Rov Recovered', 'Rov Back to TMS'],
     'Rov Back to TMS': ['Rov Launched', 'Rov Recovered'],
-    'Rov Recovered': ['Rov Launched', 'Rov Off Hire'],
-    'ROV_RECOVERED': ['Rov Launched', 'Rov Off Hire'],
+    'Rov Recovered': ['Rov Off Hire'],
+    'ROV_RECOVERED': ['Rov Off Hire'],
     'Rov Off Hire': []
 };
 

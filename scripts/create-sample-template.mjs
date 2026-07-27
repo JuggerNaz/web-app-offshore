@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, Footer, PageNumber } from "docx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, Footer, PageNumber, TableOfContents } from "docx";
 import fs from "fs";
 import path from "path";
 
@@ -24,6 +24,13 @@ const doc = new Document({
             }),
         },
         children: [
+            // Table of Contents
+            new TableOfContents("Table of Contents", {
+                hyperlink: true,
+                headingStyleRange: "1-3",
+            }),
+            new Paragraph({ text: "", pageBreakBefore: true }),
+
             // Logo Placeholder (In a real template, you'd put a small image here with the tag)
             new Paragraph({
                 text: "{%CLIENT_LOGO}",

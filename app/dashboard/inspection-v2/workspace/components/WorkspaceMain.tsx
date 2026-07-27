@@ -208,7 +208,11 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
   const [columnSettings, setColumnSettings] = React.useState(() => {
     const defaultCols = [
       { id: 'cr_date', label: 'Date', visible: true },
-      { id: 'type', label: 'Type', visible: true },
+      { id: 'event_name', label: 'Event Name', visible: true },
+      { id: 'event_type', label: 'Event Type', visible: true },
+      { id: 'event_position', label: 'Event Position', visible: true },
+      { id: 'event_description', label: 'Event Description', visible: true },
+      { id: 'type', label: 'Spec Type', visible: true },
       { id: 'component', label: 'Component', visible: true },
       { id: 'elev', label: 'Elev/KP', visible: true },
       { id: 'anomaly_ref', label: 'Anom. Ref', visible: true },
@@ -221,10 +225,16 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          return defaultCols.map(dc => {
+          const merged = defaultCols.map(dc => {
             const s = parsed.find((p: any) => p.id === dc.id);
             return s ? { ...dc, ...s } : dc;
           });
+          parsed.forEach((p: any) => {
+            if (!merged.some(m => m.id === p.id)) {
+              merged.push(p);
+            }
+          });
+          return merged;
         } catch (e) { console.error("Error parsing columns", e); }
       }
     }
@@ -247,13 +257,18 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
     setColumnSettings(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c));
   };
 
+  const isPipeline = headerData?.structureType === 'pipeline' || headerData?.isPipeline;
   const activeTableColumns = React.useMemo(() => {
     return [
       { id: 'actions', label: 'Actions', fixed: true },
       { id: 'status', label: 'Status', fixed: true },
-      ...columnSettings.filter(c => c.visible)
+      ...columnSettings.filter(c => {
+        if (!c.visible) return false;
+        if (isPipeline && (c.id === 'type' || c.id === 'component')) return false;
+        return true;
+      })
     ];
-  }, [columnSettings]);
+  }, [columnSettings, isPipeline]);
 
   const displayRecords = React.useMemo(() => {
     if (!recordSearchQuery) return sortedRecords;
@@ -951,6 +966,32 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                               <td key={col.id} className="px-3 py-3 text-slate-600 dark:text-slate-400 align-top">
                                 <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
                                 <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
+                              </td>
+                            );
+                          case 'event_name':
+                            return (
+                              <td key={col.id} className="px-3 py-3 align-top font-bold text-slate-800 dark:text-slate-100">
+                                <span className="text-xs">{r.inspection_data?.event_name || r.inspection_data?.actionName || "-"}</span>
+                              </td>
+                            );
+                          case 'event_type':
+                            return (
+                              <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
+                                <span className="text-xs font-semibold">{r.inspection_data?.event_type || r.inspection_type?.name || r.inspection_type_code || "-"}</span>
+                              </td>
+                            );
+                          case 'event_position':
+                            return (
+                              <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
+                                <span className="text-xs">{r.inspection_data?.event_position || r.inspection_data?.eventCategory || "-"}</span>
+                              </td>
+                            );
+                          case 'event_description':
+                            return (
+                              <td key={col.id} className="px-3 py-3 align-top text-slate-600 dark:text-slate-300">
+                                <span className="text-xs line-clamp-2 max-w-[280px]" title={r.inspection_data?.event_description || r.description || r.inspection_data?.findings}>
+                                  {r.inspection_data?.event_description || r.description || r.inspection_data?.findings || "-"}
+                                </span>
                               </td>
                             );
                           case 'type':

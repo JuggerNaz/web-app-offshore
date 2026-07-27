@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
 
-import { DiveInspectionContent } from "../dive/page";
-import { ROVInspectionContent } from "../rov/page";
+import { DiveInspectionContent } from "../dive/page-content";
+import { ROVInspectionContent } from "../rov/page-content";
 
 function WorkspaceContent() {
     const router = useRouter();

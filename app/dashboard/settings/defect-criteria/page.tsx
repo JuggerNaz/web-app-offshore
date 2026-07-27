@@ -48,6 +48,7 @@ export default function DefectCriteriaPage() {
         autoFlag: true,
         alertMessage: '',
         evaluationPriority: 0,
+        findings: '',
     });
 
     const [procedureForm, setProcedureForm] = useState({
@@ -382,6 +383,7 @@ export default function DefectCriteriaPage() {
             autoFlag: rule.autoFlag,
             alertMessage: rule.alertMessage,
             evaluationPriority: rule.evaluationPriority,
+            findings: rule.findings || '',
         });
         setValueType(rule.thresholdText ? 'text' : 'number');
         loadDefectTypes(rule.defectCodeId);
@@ -400,6 +402,7 @@ export default function DefectCriteriaPage() {
             autoFlag: true,
             alertMessage: '',
             evaluationPriority: 0,
+            findings: '',
         });
         setValueType('number');
         setDefectTypes([]);
@@ -502,7 +505,7 @@ export default function DefectCriteriaPage() {
                                             <SelectValue placeholder="Select a procedure" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {procedures.map((procedure) => (
+                                            {procedures.filter(p => p.id).map((procedure) => (
                                                 <SelectItem key={procedure.id} value={procedure.id}>
                                                     <div className="flex items-center gap-2">
                                                         <span>{procedure.procedureNumber} - {procedure.procedureName}</span>
@@ -861,8 +864,8 @@ export default function DefectCriteriaPage() {
                                                 <SelectItem value="All Structure Groups" className="font-semibold text-primary">
                                                     All Structure Groups
                                                 </SelectItem>
-                                                {structureGroups.map((group) => (
-                                                    <SelectItem key={group.lib_id} value={group.lib_desc}>
+                                                {structureGroups.filter(group => group.lib_desc).map((group) => (
+                                                    <SelectItem key={group.lib_id || group.lib_desc} value={group.lib_desc}>
                                                         {group.lib_desc}
                                                     </SelectItem>
                                                 ))}
@@ -876,7 +879,7 @@ export default function DefectCriteriaPage() {
                                                 <SelectValue placeholder="Select priority" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {priorities.map((priority) => (
+                                                {priorities.filter(priority => priority.lib_id).map((priority) => (
                                                     <SelectItem key={priority.lib_id} value={priority.lib_id}>
                                                         {priority.lib_desc}
                                                     </SelectItem>
@@ -923,7 +926,7 @@ export default function DefectCriteriaPage() {
                                                 <SelectValue placeholder="Select defect code" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {defectCodes.map((code) => (
+                                                {defectCodes.filter(code => code.lib_id).map((code) => (
                                                     <SelectItem key={code.lib_id} value={code.lib_id}>
                                                         {code.lib_desc}
                                                     </SelectItem>
@@ -942,7 +945,7 @@ export default function DefectCriteriaPage() {
                                                 <SelectValue placeholder="Select defect type" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {defectTypes.map((type) => (
+                                                {defectTypes.filter(type => type.lib_id).map((type) => (
                                                     <SelectItem key={type.lib_id} value={type.lib_id}>
                                                         {type.lib_desc}
                                                     </SelectItem>
@@ -1096,6 +1099,15 @@ export default function DefectCriteriaPage() {
                                     placeholder="e.g., Critical thickness loss detected"
                                     value={ruleForm.alertMessage}
                                     onChange={(e) => setRuleForm({ ...ruleForm, alertMessage: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="findings">Findings (Auto-populated on match)</Label>
+                                <Input
+                                    id="findings"
+                                    placeholder="e.g., Exposed pile detected on structure group Primary"
+                                    value={ruleForm.findings || ''}
+                                    onChange={(e) => setRuleForm({ ...ruleForm, findings: e.target.value })}
                                 />
                             </div>
                         </div>

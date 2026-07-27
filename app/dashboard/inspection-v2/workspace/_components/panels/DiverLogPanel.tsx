@@ -12,8 +12,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, Edit, Settings, ArrowLeft, ArrowRight, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
-import DiveMovementLog from "@/app/dashboard/inspection/dive/components/DiveMovementLog";
-import ROVMovementLog from "@/app/dashboard/inspection/rov/components/ROVMovementLog";
 
 interface DiverLogPanelProps {
   inspMethod: "DIVING" | "ROV";
@@ -210,6 +208,20 @@ export function DiverLogPanel({
                 const options = ROV_MOVEMENT_BRANCHES[currentMovement || "Awaiting Deployment"] || [];
                 const isCompleted = options.length === 0;
 
+                if (currentMovement === "Rov Recovered" || currentMovement === "ROV_RECOVERED") {
+                  return (
+                    <Button
+                      onClick={() => {
+                        setIsDiveSetupForNew(true);
+                        setIsDiveSetupOpen(true);
+                      }}
+                      className="flex-[1.5] h-8 text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> New ROV Dive
+                    </Button>
+                  );
+                }
+
                 if (isCompleted) {
                   return (
                     <Button
@@ -222,12 +234,19 @@ export function DiverLogPanel({
                 }
 
                 if (options.length === 1) {
+                  const labelText = `Next: ${options[0]}`;
+                  const isLong = labelText.length > 18;
                   return (
                     <Button
                       onClick={() => handleMovementLog && handleMovementLog(options[0])}
-                      className="flex-[1.5] h-8 text-[11px] font-black uppercase tracking-wider bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm truncate"
+                      className={`flex-[1.5] h-8 font-black uppercase bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm flex items-center justify-center min-w-0 ${
+                        isLong 
+                          ? "text-[9px] tracking-tighter px-1.5 leading-tight whitespace-normal text-center" 
+                          : "text-[11px] tracking-wider whitespace-nowrap"
+                      }`}
                     >
-                      Next: {options[0]} <ArrowRight className="w-3.5 h-3.5 ml-1 shrink-0" />
+                      <span className="line-clamp-2">{labelText}</span>
+                      <ArrowRight className="w-3.5 h-3.5 ml-1 shrink-0" />
                     </Button>
                   );
                 }
@@ -255,14 +274,6 @@ export function DiverLogPanel({
               })()
             )}
           </div>
-
-        <div className="flex flex-col gap-1.5 mt-2 overflow-y-auto max-h-[300px] custom-scrollbar pr-1">
-          {inspMethod === "DIVING" ? (
-            <DiveMovementLog diveJob={activeDep} />
-          ) : (
-            <ROVMovementLog diveJob={activeDep} />
-          )}
-        </div>
       </div>
     </Card>
   );

@@ -19,12 +19,18 @@ This document serves as the definitive reference for designing DOCX templates fo
 | `{{SOW_REPORT_NO}}` | Selected SOW | Alias for REPORT_NO |
 | `{{REPORT_TYPE}}` | UI Toggle | "PRELIMINARY" or "FINAL" |
 | `{{DATE}}` | System | Current date (DD/MM/YYYY) |
+| `{{SHORT_DATE}}` | JobPack metadata → istart | Short date with month and year from jobpack start date (e.g. Jun 2026) |
+| `{{TODAY_SHORT}}` | System | Current date formatted as dd-Mon-yyyy (e.g. 27-Jun-2026) |
 | `{{CLIENT_NAME}}` | Company Settings → company_name | Name of the client |
+| `{{CLIENT_SHORT}}` | Contractors library matching Client Name | The short name for the client (Client ID) |
 | `{{DEPARTMENT}}` | Company Settings → department_name | Department name |
 | `{{PROJECT_NAME}}` | Company Settings → project_name | Project name |
 | `{{VESSEL_NAME}}` | JobPack metadata → vessel | Inspection vessel name |
+| `{{VESSELS_INVOLVED}}` | JobPack metadata → vessel_history | The Vessel names involved in the inspection |
+| `{{INSPECTION_YEAR}}` | JobPack start_date / istart | The year of the inspection based on the inspection date year |
 | `{{PROJECT_NO}}` | JobPack metadata → inspno | Job pack project number |
 | `{{CONTRACTOR}}` | JobPack metadata → contrac | Contractor name |
+| `{{CONTRACTOR_SHORT}}` | JobPack metadata → contrac | Contractor short name / Library ID |
 | `{{START_DATE}}` | JobPack metadata → istart | Job start date (DD/MM/YYYY) |
 | `{{END_DATE}}` | JobPack metadata → iend | Job end date (DD/MM/YYYY) |
 | `{{PREPARED_BY}}` | Insight data | Name of the person who prepared the report |
@@ -42,6 +48,9 @@ These are automatically derived; you can use either form in your template:
 | `{{T_CLIENT}}` | `{{CLIENT_NAME}}` |
 | `{{T_PROJECT}}` | `{{PROJECT_NO}}` |
 | `{{T_VESSEL}}` | `{{VESSEL_NAME}}` |
+| `{{T_INSPECTION_YEAR}}` | `{{INSPECTION_YEAR}}` |
+| `{{T_VESSELS_INVOLVED}}` | `{{VESSELS_INVOLVED}}` |
+| `{{T_CLIENT_SHORT}}` | `{{CLIENT_SHORT}}` |
 
 ---
 
@@ -84,6 +93,17 @@ Wrap content in these tags to hide sections when data is missing.
 {{#HAS_CP}} ... content ... {{/HAS_CP}}
 {{#HAS_GVI}} ... content ... {{/HAS_GVI}}
 {{#HAS_FMD}} ... content ... {{/HAS_FMD}}
+{{#HAS_VISUALS}} ... content ... {{/HAS_VISUALS}}
+{{#HAS_SOW_SUMMARY}} ... content ... {{/HAS_SOW_SUMMARY}}
+```
+
+### Handling Empty / Not Inspected States (Inverted Conditionals)
+To display a message (e.g. *"The component is not present on this platform or was not inspected"*) when data is missing, use the caret `^` (inverted conditional syntax):
+
+```
+{{^HAS_FMD}}
+Flooded Member Detection (FMD) inspection was not conducted, or this component is not present on this platform.
+{{/HAS_FMD}}
 ```
 
 ---
@@ -96,11 +116,11 @@ Wrap content in these tags to hide sections when data is missing.
 
 ### Anomalies
 - **Loop**: `{{#ANOMALIES}} ... {{/ANOMALIES}}`
-- **Fields**: `{{ref}}`, `{{description}}`, `{{priority}}`, `{{status}}`, `{{rectification}}`
+- **Fields**: `{{no}}` / `{{id}}` (Index), `{{qid}}` (Component ID), `{{elevation}}` (Elev), `{{anomaly}}` / `{{defectCode}}` (Defect code), `{{ref}}` (Ref No), `{{priority}}` (Priority), `{{description}}` (Findings), `{{status}}` (Status), `{{rectification}}` (Rectification / Follow-up notes)
 
 ### Findings
 - **Loop**: `{{#FINDINGS}} ... {{/FINDINGS}}`
-- **Fields**: `{{ref}}`, `{{description}}`, `{{priority}}`, `{{status}}`
+- **Fields**: `{{no}}` / `{{id}}` (Index), `{{qid}}` (Component ID), `{{elevation}}` (Elev), `{{anomaly}}` / `{{defectCode}}` (Defect code), `{{ref}}` (Ref No), `{{priority}}` (Priority), `{{description}}` (Findings), `{{status}}` (Status)
 
 ### CP Records
 - **Loop**: `{{#CP_RECORDS}} ... {{/CP_RECORDS}}`
@@ -113,6 +133,14 @@ Wrap content in these tags to hide sections when data is missing.
 ### MGI Records
 - **Loop**: `{{#MGI_RECORDS}} ... {{/MGI_RECORDS}}`
 - **Fields**: `{{component}}`, `{{thickness}}`, `{{date}}`
+
+### SOW Status Summary (IDAMS Scope of Work Status)
+- **Loop**: `{{#SOW_SUMMARY}} ... {{/SOW_SUMMARY}}`
+- **Fields**: `{{no}}` (Index), `{{inspectionName}}` (Inspection Name), `{{taskType}}` (Task Type), `{{totalQid}}` (Total No. QID), `{{incompleteQid}}` (No. QID Incomplete), `{{incompletePct}}` (% SOW Incomplete)
+
+### Structure Visuals (Engineering Library Photos)
+- **Loop**: `{{#STRUCTURE_VISUALS}} ... {{/STRUCTURE_VISUALS}}`
+- **Fields**: `{{title}}` (Photo title), `{{description}}` (Photo description), `{%photo}` (The photo image)
 
 ### System Alias Records
 - **Loop**: `{{#ALIAS_RECORDS}} ... {{/ALIAS_RECORDS}}`

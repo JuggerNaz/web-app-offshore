@@ -11,6 +11,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -136,7 +137,7 @@ export const generateROVPhotographyReport = async (
             d.setFontSize(13); d.setFont("helvetica", "bold");
             d.text("ROV Photography Report", margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`SOW Report No: ${headerData.sowReportNo || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
 
             // Context Row
             const rowY = margin + HEADER_H + 2;
@@ -267,7 +268,7 @@ export const generateROVPhotographyReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_Photography_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        doc.save(`ROV_Photography_Report_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
 
     } catch (e) {
         console.error("Photography Report Error", e);
