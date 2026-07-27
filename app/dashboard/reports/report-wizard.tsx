@@ -36,7 +36,7 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { jsPDF } from "jspdf";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { generateWorkScopeReport } from "@/utils/report-generators/work-scope-report";
@@ -1612,7 +1612,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             console.error("Error fetching company settings for report:", error);
         }
 
-        const reportConfig = { ...config, returnBlob };
+        const reportConfig = { 
+            ...config, 
+            returnBlob,
+            ...(currentTemplateId === "final-inspection-datasheet" ? { showPageNumbers: false } : {})
+        };
 
         // Final Inspection Datasheet Interceptor
         if (currentTemplateId === "final-inspection-datasheet") {
@@ -1686,6 +1690,26 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 console.error(`Error appending section ${s.name} cover and pages:`, coverErr);
                             }
                         }
+                    }
+
+                    // Stamp global continuous page numbers on all merged pages
+                    const totalPagesCount = mergedPdf.getPageCount();
+                    const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
+
+                    for (let idx = 0; idx < totalPagesCount; idx++) {
+                        const p = mergedPdf.getPage(idx);
+                        const { width } = p.getSize();
+                        const pageStr = `Page ${idx + 1} of ${totalPagesCount}`;
+                        const fontSize = 8;
+                        const textWidth = font.widthOfTextAtSize(pageStr, fontSize);
+
+                        p.drawText(pageStr, {
+                            x: width - 12 - textWidth,
+                            y: 6,
+                            size: fontSize,
+                            font,
+                            color: rgb(0.12, 0.16, 0.23), // slate-800
+                        });
                     }
 
                     setGenerationProgress(100);

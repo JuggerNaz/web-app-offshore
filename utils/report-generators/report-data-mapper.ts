@@ -249,7 +249,7 @@ export const mapInspectionDataForDocx = async (
                     structure,
                     sowReportNo || "",
                     companySettings || {},
-                    { returnBlob: true, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport, showPageNumbers: true } as any
+                    { returnBlob: true, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'defect-anomaly-report' || templateId === 'findings-report') {
                 const { generateDefectAnomalyReport } = await import("./defect-anomaly-report");
@@ -259,20 +259,20 @@ export const mapInspectionDataForDocx = async (
                     structure,
                     sowReportNo || "",
                     companySettings || {},
-                    { returnBlob: true, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport, showPageNumbers: true } as any
+                    { returnBlob: true, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'defect-criteria-report') {
                 const { generateDefectCriteriaReport } = await import("./defect-criteria-report");
                 pdfBlob = await generateDefectCriteriaReport(
                     companySettings || {},
-                    { returnBlob: true, showPageNumbers: true } as any
+                    { returnBlob: true, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'jobpack-summary-report') {
                 const { generateJobPackSummaryReport } = await import("./jobpack-summary-report");
                 pdfBlob = await generateJobPackSummaryReport(
                     jobPack,
                     companySettings || {},
-                    { returnBlob: true, showPageNumbers: true } as any
+                    { returnBlob: true, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'work-scope-status-report') {
                 const { generateWorkScopeStatusReport } = await import("./work-scope-status-report");
@@ -281,7 +281,7 @@ export const mapInspectionDataForDocx = async (
                     structure,
                     (sowReportNo || "") as any,
                     companySettings || {},
-                    { returnBlob: true, showPageNumbers: true } as any
+                    { returnBlob: true, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'work-scope-incomplete-report') {
                 const { generateWorkScopeIncompleteReport } = await import("./work-scope-incomplete-report");
@@ -290,7 +290,7 @@ export const mapInspectionDataForDocx = async (
                     structure,
                     (sowReportNo || "") as any,
                     companySettings || {},
-                    { returnBlob: true, showPageNumbers: true } as any
+                    { returnBlob: true, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'work-scope-report') {
                 const { generateWorkScopeReport } = await import("./work-scope-report");
@@ -299,7 +299,7 @@ export const mapInspectionDataForDocx = async (
                     structure,
                     (sowReportNo || "") as any,
                     companySettings || {},
-                    { returnBlob: true, showPageNumbers: true } as any
+                    { returnBlob: true, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'diver-log-report') {
                 const { generateDiverLogReport } = await import("./diver-log-report");
@@ -308,7 +308,7 @@ export const mapInspectionDataForDocx = async (
                     structure,
                     sowReportNo || "",
                     companySettings || {},
-                    { returnBlob: true, showPageNumbers: true } as any
+                    { returnBlob: true, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'video-log-report') {
                 const { generateVideoLogReport } = await import("./video-log-report");
@@ -317,161 +317,161 @@ export const mapInspectionDataForDocx = async (
                     structure,
                     sowReportNo || "",
                     companySettings || {},
-                    { returnBlob: true, showPageNumbers: true } as any
+                    { returnBlob: true, showPageNumbers: false } as any
                 ) as any;
             } else if (templateId === 'rov-rgvi-report') {
                 const { generateROVRGVIReport } = await import("./rov-rgvi-report");
-                pdfBlob = await generateROVRGVIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RGVI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRGVIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RGVI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rwdi-report') {
                 const { generateROVRWDIReport } = await import("./rov-rwdi-report");
-                pdfBlob = await generateROVRWDIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RWDI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRWDIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RWDI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-ricmi-report') {
                 const { generateROVRICMIReport } = await import("./rov-ricmi-report");
-                pdfBlob = await generateROVRICMIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RICMI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRICMIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RICMI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-cp-report') {
                 const { generateROVCPReport } = await import("./rov-cp-report");
-                pdfBlob = await generateROVCPReport(records.filter(r => ["CP", "RSANI"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVCPReport(records.filter(r => ["CP", "RSANI"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-fmd-report' || templateId === 'fmd-report') {
                 const { generateROVFMDReport } = await import("./rov-fmd-report");
-                pdfBlob = await generateROVFMDReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RFMD" || (r.inspection_type?.code || "").toUpperCase() === "FMD"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVFMDReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RFMD" || (r.inspection_type?.code || "").toUpperCase() === "FMD"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rcond-report') {
                 const { generateROVCondReport } = await import("./rov-rcond-report");
-                pdfBlob = await generateROVCondReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVCondReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rcasn-report') {
                 const { generateROVCasnReport } = await import("./rov-rcasn-report");
-                pdfBlob = await generateROVCasnReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCASN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVCasnReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCASN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-bl-report') {
                 const { generateROVBoatlandingReport } = await import("./rov-boatlanding-report");
-                pdfBlob = await generateROVBoatlandingReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RBLTG"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVBoatlandingReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RBLTG"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rg-report') {
                 const { generateROVRiserGuardReport } = await import("./rov-riser-guard-report");
-                pdfBlob = await generateROVRiserGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RGUARD"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRiserGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RGUARD"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-sg-report') {
                 const { generateROVCaissonGuardReport } = await import("./rov-caisson-guard-report");
-                pdfBlob = await generateROVCaissonGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCG"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVCaissonGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCG"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-cu-report') {
                 const { generateROVConductorGuardReport } = await import("./rov-conductor-guard-report");
-                pdfBlob = await generateROVConductorGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCDG"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVConductorGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCDG"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rcond-sketch-report') {
                 const { generateROVCondSketchReport } = await import("./rov-rcond-sketch-report");
-                pdfBlob = await generateROVCondSketchReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVCondSketchReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rcasn-sketch-report') {
                 const { generateROVCasnSketchReport } = await import("./rov-rcasn-sketch-report");
-                pdfBlob = await generateROVCasnSketchReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCASN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVCasnSketchReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCASN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rrisi-report') {
                 const { generateROVRRISIReport } = await import("./rov-rrisi-report");
-                pdfBlob = await generateROVRRISIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRRISIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rrisi-detail-report') {
                 const { generateROVRRISIDetailReport } = await import("./rov-rrisi-detail-report");
-                pdfBlob = await generateROVRRISIDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRRISIDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-jtisi-detail-report') {
                 const { generateROVRRISIJTubeDetailReport } = await import("./rov-jtisi-detail-report");
-                pdfBlob = await generateROVRRISIJTubeDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRRISIJTubeDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-itisi-detail-report') {
                 const { generateROVRRISIITubeDetailReport } = await import("./rov-itisi-detail-report");
-                pdfBlob = await generateROVRRISIITubeDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRRISIITubeDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'szci-report') {
                 const { generateROVSZCIReport } = await import("./rov-szci-report");
-                pdfBlob = await generateROVSZCIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSZCI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVSZCIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSZCI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-anode-report') {
                 const { generateROVAnodeReport } = await import("./rov-anode-report");
-                pdfBlob = await generateROVAnodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVAnodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-anode-rsani-report') {
                 const { generateROVAnodeRSANIReport } = await import("./rov-anode-rsani-report");
-                pdfBlob = await generateROVAnodeRSANIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSANI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVAnodeRSANIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSANI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'mgi-report') {
                 const { generateROVMGIGraphReport } = await import("./rov-mgi-report");
-                pdfBlob = await generateROVMGIGraphReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), {}, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVMGIGraphReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), {}, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rmgi-report') {
                 const { generateROVRMGIReport } = await import("./rov-rmgi-report");
-                pdfBlob = await generateROVRMGIReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRMGIReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-scour-report') {
                 const { generateROVRSCORReport } = await import("./rov-rscor-report");
-                pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-selected-node-report') {
                 const { generateROVSelectedNodeReport } = await import("./rov-selected-node-report");
-                pdfBlob = await generateROVSelectedNodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSWNI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVSelectedNodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSWNI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'utwt-report') {
                 const { generateROVUTWTReport } = await import("./rov-utwt-report");
-                pdfBlob = await generateROVUTWTReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RUTWT"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVUTWTReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RUTWT"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-photo-report') {
                 const { generateROVPhotographyReport } = await import("./rov-photography-report");
-                pdfBlob = await generateROVPhotographyReport(records, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVPhotographyReport(records, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-photo-log-report') {
                 const { generateROVPhotographyLogReport } = await import("./rov-photography-log-report");
-                pdfBlob = await generateROVPhotographyLogReport(records, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVPhotographyLogReport(records, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-seabed-report' || templateId === 'seabed-survey-debris' || templateId === 'seabed-survey-gas' || templateId === 'seabed-survey-crater') {
                 const { generateSeabedSurveyReport } = await import("./seabed-survey-report");
                 const filterMap: Record<string, string> = { "rov-seabed-report": "", "seabed-survey-debris": "Debris", "seabed-survey-gas": "Gas Seepage", "seabed-survey-crater": "Crater" };
-                pdfBlob = await generateSeabedSurveyReport(jobPack, structure, sowReportNo || "", companySettings || {}, { returnBlob: true, showSignatures: false } as any, filterMap[templateId]);
+                pdfBlob = await generateSeabedSurveyReport(jobPack, structure, sowReportNo || "", companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any, filterMap[templateId]);
             } else if (templateId === 'rov-rseab-detail-report') {
                 const { generateROVRSEABDetailReport } = await import("./rov-rseab-detail-report");
-                pdfBlob = await generateROVRSEABDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRSEABDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rseab-gas-detail-report') {
                 const { generateROVRSEABGasDetailReport } = await import("./rov-rseab-gas-detail-report");
-                pdfBlob = await generateROVRSEABGasDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRSEABGasDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rseab-crater-detail-report') {
                 const { generateROVRSEABCraterDetailReport } = await import("./rov-rseab-crater-detail-report");
-                pdfBlob = await generateROVRSEABCraterDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateROVRSEABCraterDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-gvins-report') {
                 const { generateDivingGVINSReport } = await import("./diving-gvins-report");
-                pdfBlob = await generateDivingGVINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "GVINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingGVINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "GVINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-bsins-report') {
                 const { generateDivingBSINSReport } = await import("./diving-bsins-report");
-                pdfBlob = await generateDivingBSINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "BSINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingBSINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "BSINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-cvins-report') {
                 const { generateDivingCVINSReport } = await import("./diving-cvins-report");
-                pdfBlob = await generateDivingCVINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CVINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingCVINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CVINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-clean-report') {
                 const { generateDivingCLEANReport } = await import("./diving-clean-report");
-                pdfBlob = await generateDivingCLEANReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CLEAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingCLEANReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CLEAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-mpins-report') {
                 const { generateDivingMPINSReport } = await import("./diving-mpins-report");
-                pdfBlob = await generateDivingMPINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "MPINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingMPINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "MPINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-utwtk-report') {
                 const { generateDivingUTWTKReport } = await import("./diving-utwtk-report");
-                pdfBlob = await generateDivingUTWTKReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "UTWTK"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingUTWTKReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "UTWTK"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-acfmc-report') {
                 const { generateDivingACFMCReport } = await import("./diving-acfmc-report");
-                pdfBlob = await generateDivingACFMCReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "ACFMC"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingACFMCReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "ACFMC"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-plco-report') {
                 const { generateDivingPLCOReport } = await import("./diving-plco-report");
-                pdfBlob = await generateDivingPLCOReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "PL_CO"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingPLCOReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "PL_CO"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-anmain-report') {
                 const { generateDivingANMAINReport } = await import("./diving-anmain-report");
-                pdfBlob = await generateDivingANMAINReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "ANMAIN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingANMAINReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "ANMAIN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-cpclb-report') {
                 const { generateDivingCPCLBReport } = await import("./diving-cpclb-report");
-                pdfBlob = await generateDivingCPCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CPCLB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingCPCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CPCLB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-dcasn-uw-report') {
                 const { generateDivingDCASNUWReport } = await import("./diving-dcasn-uw-report");
-                pdfBlob = await generateDivingDCASNUWReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCASN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingDCASNUWReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCASN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-dcasn-ts-report') {
                 const { generateDivingDCASNTSReport } = await import("./diving-dcasn-ts-report");
-                pdfBlob = await generateDivingDCASNTSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCASN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingDCASNTSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCASN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-dcond-uw-report') {
                 const { generateDivingDCONDUWReport } = await import("./diving-dcond-uw-report");
-                pdfBlob = await generateDivingDCONDUWReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingDCONDUWReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-dcond-ts-report') {
                 const { generateDivingDCONDTSReport } = await import("./diving-dcond-ts-report");
-                pdfBlob = await generateDivingDCONDTSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any);
+                pdfBlob = await generateDivingDCONDTSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-szone-report') {
                 const { generateDivingSZONEReport } = await import("./diving-szone-report");
-                pdfBlob = (await generateDivingSZONEReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DSZCI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any, null)) || null;
+                pdfBlob = (await generateDivingSZONEReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DSZCI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any, null)) || null;
             } else if (templateId === 'diving-anode-report') {
                 const { generateDivingAnodeReport } = await import("./diving-anode-report");
-                pdfBlob = (await generateDivingAnodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any)) || null;
+                pdfBlob = (await generateDivingAnodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;
             } else if (templateId === 'diving-mgi-report') {
                 const { generateDivingMGIReport } = await import("./diving-mgi-report");
-                pdfBlob = (await generateDivingMGIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DMGI"), {}, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any)) || null;
+                pdfBlob = (await generateDivingMGIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DMGI"), {}, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;
             } else if (templateId === 'diving-utclb-report') {
                 const { generateDivingUTCLBReport } = await import("./diving-utclb-report");
-                pdfBlob = (await generateDivingUTCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "UTCLB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false } as any)) || null;
+                pdfBlob = (await generateDivingUTCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "UTCLB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;
             } else if (templateId === 'inspection-report') {
                 const { generateInspectionReport } = await import("./inspection-report");
                 const firstId = records[0]?.insp_id;
                 if (firstId) {
-                    pdfBlob = (await generateInspectionReport(firstId, companySettings || {}, { returnBlob: true, showSignatures: false } as any)) || null;
+                    pdfBlob = (await generateInspectionReport(firstId, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;
                 }
             } else if (templateId === 'structure-summary') {
                 const { generateStructureReport } = await import("../pdf-generator");
