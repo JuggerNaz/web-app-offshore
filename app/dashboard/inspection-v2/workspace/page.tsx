@@ -2465,9 +2465,28 @@ function V10PreviewLayout() {
         height: 600,
       });
 
-      // Copy stylesheets (both link tags and inline styles) to the new window
+      // Copy stylesheets (both link tags, inline style tags, and adoptedStyleSheets rules) to the new window
       Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
-        pip.document.head.appendChild(stylesheet.cloneNode(true));
+        try {
+          pip.document.head.appendChild(stylesheet.cloneNode(true));
+        } catch (e) {
+          console.warn("Could not clone stylesheet element", e);
+        }
+      });
+
+      // Copy constructs/document.styleSheets directly for CSS rules generated dynamically (e.g. Next.js / Tailwind CSS-in-JS)
+      Array.from(document.styleSheets).forEach((sheet) => {
+        try {
+          if (sheet.cssRules) {
+            const newStyle = pip.document.createElement("style");
+            Array.from(sheet.cssRules).forEach((rule) => {
+              newStyle.appendChild(pip.document.createTextNode(rule.cssText));
+            });
+            pip.document.head.appendChild(newStyle);
+          }
+        } catch (e) {
+          // Cross-origin stylesheet access might throw, which is safely ignored
+        }
       });
 
       // Sync dark mode configuration and base classes
@@ -2480,17 +2499,22 @@ function V10PreviewLayout() {
       const bg = isDark ? "#0b0f19" : "#ffffff";
       const text = isDark ? "#f8fafc" : "#0f172a";
 
-      // Add basic HTML structure overlay with matching theme color
+      // Add basic HTML structure overlay with matching theme color and box-sizing reset
       pip.document.head.insertAdjacentHTML(
         "beforeend",
         `<style>
-          body { 
-            margin: 0; 
-            padding: 0; 
-            overflow: hidden; 
+          html, body { 
+            height: 100% !important;
+            width: 100% !important;
+            margin: 0 !important; 
+            padding: 0 !important; 
+            overflow: hidden !important; 
             background: ${bg} !important; 
             color: ${text} !important; 
-            font-family: system-ui, -apple-system, sans-serif; 
+            font-family: system-ui, -apple-system, sans-serif !important; 
+          }
+          * {
+            box-sizing: border-box;
           }
         </style>`
       );
@@ -3234,12 +3258,37 @@ function V10PreviewLayout() {
         height: 480,
       });
 
-      // Copy stylesheets (both link tags and inline styles) to the new window
+      // Copy stylesheets (both link tags, inline style tags, and adoptedStyleSheets rules) to the new window
       Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
-        pw.document.head.appendChild(stylesheet.cloneNode(true));
+        try {
+          pw.document.head.appendChild(stylesheet.cloneNode(true));
+        } catch (e) {
+          console.warn("Could not clone stylesheet element", e);
+        }
       });
 
-      // Handle background
+      // Copy constructs/document.styleSheets directly for CSS rules generated dynamically
+      Array.from(document.styleSheets).forEach((sheet) => {
+        try {
+          if (sheet.cssRules) {
+            const newStyle = pw.document.createElement("style");
+            Array.from(sheet.cssRules).forEach((rule) => {
+              newStyle.appendChild(pw.document.createTextNode(rule.cssText));
+            });
+            pw.document.head.appendChild(newStyle);
+          }
+        } catch (e) {
+          // Cross-origin stylesheet access safely ignored
+        }
+      });
+
+      // Sync dark mode configuration and base classes
+      const isDark = document.documentElement.classList.contains("dark");
+      if (isDark) {
+        pw.document.documentElement.classList.add("dark");
+      }
+      pw.document.body.className = document.body.className;
+
       // Handle background and height for full-screen stretching
       pw.document.documentElement.style.height = "100%";
       pw.document.body.style.height = "100%";
