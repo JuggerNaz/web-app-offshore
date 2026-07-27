@@ -1,5 +1,5 @@
-import * as THREE from 'three';
 "use client";
+import * as THREE from 'three';
 
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import { Fender } from "./Fender";
