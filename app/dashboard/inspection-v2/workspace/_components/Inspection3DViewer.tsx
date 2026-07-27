@@ -46,6 +46,7 @@ const ComponentModel = ({
   // Determine shape based on component code
   const code = component.raw?.code?.toUpperCase() || "";
   const isNode = code.includes("NODE") || component.name.includes("NODE");
+  const isRiserSupport = /RIS-?(\d+)-SUPP-?(\d+)M/i.test(component.name || "");
 
   return (
     <group position={position}>
@@ -57,7 +58,15 @@ const ComponentModel = ({
           <cylinderGeometry args={[0.2, 0.2, 2, 32]} />
         )}
         <meshStandardMaterial
-          color={isSelected ? "#2563eb" : hovered ? "#3b82f6" : "#64748b"}
+          color={
+            isSelected
+              ? "#2563eb"
+              : hovered
+                ? "#3b82f6"
+                : isRiserSupport
+                  ? "#FFB347"
+                  : "#64748b"
+          }
           metalness={0.6}
           roughness={0.4}
           emissive={isSelected ? "#3b82f6" : "#000000"}
@@ -155,7 +164,13 @@ export function Inspection3DViewer({
 
   return (
     <div className="w-full h-full bg-blue-50 relative rounded-lg overflow-hidden border border-blue-100 shadow-inner">
-      <Canvas shadows gl={{ antialias: true }}>
+      <Canvas
+        shadows
+        gl={{ antialias: true }}
+        onCreated={({ gl }) => {
+          (window as any).renderer = gl;
+        }}
+      >
         <color attach="background" args={["#f0f9ff"]} />
 
         <PerspectiveCamera makeDefault position={[20, 20, 20]} fov={45} />
