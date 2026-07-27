@@ -10,6 +10,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -81,7 +82,7 @@ export const generateROVRSCORReport = async (
             d.text(`Scour Survey Sketch Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
 
             d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`SOW Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+            d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {

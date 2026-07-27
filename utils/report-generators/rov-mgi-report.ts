@@ -10,6 +10,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -132,7 +133,7 @@ export const generateROVMGIGraphReport = async (
                 d.text(String(value), x + 25, ty + 4);
             };
             drawBox('Project:', headerData.jobpackName, margin, colW, tableY);
-            drawBox('SOW Report:', headerData.sowReportNo, margin + colW, colW, tableY);
+            drawBox('SOW Report:', (config?.reportNoPrefix || headerData?.sowReportNo), margin + colW, colW, tableY);
             drawBox('Date:', format(new Date(), 'dd/MM/yyyy'), margin + (colW * 2), colW, tableY);
             drawBox('Structure:', headerData.platformName, margin, colW, tableY + rowH);
             drawBox('Component:', qid, margin + colW, colW, tableY + rowH);
@@ -397,7 +398,7 @@ export const generateROVMGIGraphReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_MGI_Summary_${headerData.sowReportNo}.pdf`);
+        doc.save(`ROV_MGI_Summary_${(config?.reportNoPrefix || headerData?.sowReportNo)}.pdf`);
         return;
     } catch (e) {
         console.error("MGI Report Error", e);

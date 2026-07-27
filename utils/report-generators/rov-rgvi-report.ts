@@ -10,6 +10,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -109,7 +110,7 @@ export const generateROVRGVIReport = async (
             d.setFontSize(12);  d.setFont("helvetica", "bold");
             d.text("ROV General Visual Inspection Report (RGVI)",                       margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`SOW Report No: ${headerData.sowReportNo || "N/A"}`,                 margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,                 margin + contentWidth / 2, margin + 22, { align: "center" });
         };
 
         // ── Context boxes ───────────────────────────────────────────────────────
@@ -286,7 +287,7 @@ export const generateROVRGVIReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV GVI Report (RGVI)  |  SOW: ${headerData.sowReportNo || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV GVI Report (RGVI)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
@@ -333,7 +334,7 @@ export const generateROVRGVIReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_GVI_Report_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`ROV_GVI_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ROV RGVI Report] Error:", err);
         throw err;

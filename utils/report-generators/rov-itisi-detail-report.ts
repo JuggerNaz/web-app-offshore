@@ -11,6 +11,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -144,7 +145,7 @@ export const generateROVRRISIITubeDetailReport = async (
             d.setFontSize(13); d.setFont("helvetica", "bold");
             d.text("I-Tube Inspection Report (ROV)", margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`SOW Report No: ${headerData.sowReportNo || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -205,7 +206,7 @@ export const generateROVRRISIITubeDetailReport = async (
             d.setFont("helvetica", "normal");
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: "right" });
             d.text(`Structure: ${headerData.platformName || "N/A"}`, margin + 35, footerY);
-            d.text(`SOW Report No: ${headerData.sowReportNo || "N/A"}`, margin + 85, footerY);
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + 85, footerY);
         };
 
         // ── Render each I-Tube group ──
@@ -354,7 +355,7 @@ export const generateROVRRISIITubeDetailReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`ROV_ITube_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        doc.save(`ROV_ITube_Inspection_Report_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
     } catch (e) {
         console.error("ROV I-Tube Detail Report Error", e);
         throw e;

@@ -1367,7 +1367,7 @@ export function WorkspaceDialogs({
                     const generatedConfig = {
                         jobPackId: Number(jobPackId),
                         structureId: Number(structureId),
-                        sowReportNo: headerData.sowReportNo,
+                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                         preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
                         reviewedBy: reportConfig.reviewedBy,
                         approvedBy: reportConfig.approvedBy,
@@ -1414,7 +1414,7 @@ export function WorkspaceDialogs({
                     const generatedConfig = {
                         jobPackId: Number(jobPackId),
                         structureId: Number(structureId),
-                        sowReportNo: headerData.sowReportNo,
+                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                         preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
                         reviewedBy: reportConfig.reviewedBy,
                         approvedBy: reportConfig.approvedBy,
@@ -1464,7 +1464,7 @@ export function WorkspaceDialogs({
                     const generatedConfig = {
                         jobPackId: Number(jobPackId),
                         structureId: Number(structureId),
-                        sowReportNo: headerData.sowReportNo,
+                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                         preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
                         reviewedBy: reportConfig.reviewedBy,
                         approvedBy: reportConfig.approvedBy,
@@ -1600,7 +1600,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1663,7 +1663,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1726,7 +1726,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1789,7 +1789,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1851,7 +1851,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1912,7 +1912,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -2832,7 +2832,7 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingDcasnTsPreviewOpen} 
                 onOpenChange={setDivingDcasnTsPreviewOpen} 
-                title="Caisson Inspection Topside Diving Report Preview" 
+                title="Caisson Inspection Above Water Diving Report Preview" 
                 fileName={`Diving_Caisson_TS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingDCASNTSReportBlob} 
             />
@@ -2856,7 +2856,7 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingDcondTsPreviewOpen} 
                 onOpenChange={setDivingDcondTsPreviewOpen} 
-                title="Conductor Inspection Topside Diving Report Preview" 
+                title="Conductor Inspection Above Water Diving Report Preview" 
                 fileName={`Diving_Conductor_TS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingDCONDTSReportBlob} 
             />

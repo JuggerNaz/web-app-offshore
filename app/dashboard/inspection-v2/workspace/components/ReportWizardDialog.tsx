@@ -519,7 +519,7 @@ export function ReportWizardDialog({
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
             }) },
-            { id: 'diving-dcasn-ts-report', code: 'DCASN-TS', name: 'Caisson Inspection Topside Diving', description: 'Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNTSReport, available: currentRecords.some(r => {
+            { id: 'diving-dcasn-ts-report', code: 'DCASN-TS', name: 'Caisson Inspection Above Water Diving', description: 'Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNTSReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
@@ -529,7 +529,7 @@ export function ReportWizardDialog({
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
             }) },
-            { id: 'diving-dcond-ts-report', code: 'DCOND-TS', name: 'Conductor Inspection Topside Diving', description: 'Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDTSReport, available: currentRecords.some(r => {
+            { id: 'diving-dcond-ts-report', code: 'DCOND-TS', name: 'Conductor Inspection Above Water Diving', description: 'Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDTSReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
@@ -1000,8 +1000,27 @@ export function ReportWizardDialog({
                                          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Fine-tune your report output</p>
                                      </div>
 
-                                     {/* Signatory Section */}
+                                     {/* General Info / Report Prefix Section */}
                                      <div className="space-y-4">
+                                         <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-850">
+                                             <span className="text-xs font-black uppercase text-slate-400 tracking-wider">General Info</span>
+                                         </div>
+                                         <div className="grid grid-cols-3 gap-3 items-center">
+                                             <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Report Prefix / No.</Label>
+                                             <Input 
+                                                 value={config.reportNoPrefix || headerData?.sowReportNo || ""}
+                                                 onChange={(e) => setConfig({
+                                                     ...config,
+                                                     reportNoPrefix: e.target.value
+                                                 })}
+                                                 placeholder="e.g. SOW-2026-01" 
+                                                 className="col-span-2 h-10 bg-white dark:bg-slate-950 text-xs font-bold"
+                                             />
+                                         </div>
+                                     </div>
+
+                                     {/* Signatory Section */}
+                                     <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
                                          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-850">
                                              <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Signatory Settings</span>
                                              <div className="flex items-center gap-2">

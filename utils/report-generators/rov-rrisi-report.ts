@@ -11,6 +11,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -143,7 +144,7 @@ export const generateROVRRISIReport = async (
             d.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
             d.setFontSize(7); d.setTextColor(150, 150, 150);
             d.setFont("helvetica", "normal");
-            d.text(`Report ID: ${headerData.sowReportNo || 'N/A'}`, margin, footerY);
+            d.text(`Report ID: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin, footerY);
             d.text(`Printed: ${format(new Date(), 'dd MMM yyyy HH:mm')}`, margin + contentWidth/2, footerY, { align: 'center' });
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
         };
@@ -164,7 +165,7 @@ export const generateROVRRISIReport = async (
             drawBox('Vessel:', headerData.vessel || 'N/A', margin + half, half, y);
             drawBox('Job Pack:', headerData.jobpackName || 'N/A', margin, half, y + rH);
             drawBox('Insp. Date Range:', dr, margin + half, half, y + rH);
-            drawBox('SOW Report No:', headerData.sowReportNo || 'N/A', margin, contentWidth, y + (rH * 2));
+            drawBox('Report No:', (config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A', margin, contentWidth, y + (rH * 2));
             return y + (rH * 3) + 4;
         };
 
@@ -402,6 +403,6 @@ export const generateROVRRISIReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`${typeConfig.file}_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        doc.save(`${typeConfig.file}_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
     } catch (e) { console.error("ROV Tube Report Error", e); throw e; }
 };

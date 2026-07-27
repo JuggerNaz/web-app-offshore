@@ -10,6 +10,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -108,7 +109,7 @@ export const generateDivingMGIReport = async (
             drawCell('Job Pack:', headerData.jobpackName, margin + colW, colW, y);
             drawCell('Date:', format(new Date(), 'dd/MM/yyyy'), margin + (colW * 2), colW, y);
             drawCell('Vessel:', headerData.vessel || 'N/A', margin, colW, y + rowH);
-            drawCell('SOW No:', headerData.sowReportNo, margin + colW, colW, y + rowH);
+            drawCell('SOW No:', (config?.reportNoPrefix || headerData?.sowReportNo), margin + colW, colW, y + rowH);
             drawCell('Page:', `${doc.getNumberOfPages()}`, margin + (colW * 2), colW, y + rowH);
             
             return y + (rowH * 2) + 5;
@@ -480,7 +481,7 @@ export const generateDivingMGIReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`Diving_MGI_Graph_Report_${headerData.sowReportNo || "N/A"}.pdf`);
+        doc.save(`Diving_MGI_Graph_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}.pdf`);
         return;
     } catch (e) {
         console.error("Diving MGI Report Error", e);
