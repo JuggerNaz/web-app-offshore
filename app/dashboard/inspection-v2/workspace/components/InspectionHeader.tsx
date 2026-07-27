@@ -12,7 +12,12 @@ import {
     ChevronDown,
     Check,
     Grid3X3,
-    BarChart3
+    BarChart3,
+    Compass,
+    Layers,
+    ArrowRightLeft,
+    LayoutGrid,
+    RotateCcw
 } from "lucide-react";
 import Link from 'next/link';
 import {
@@ -30,6 +35,10 @@ interface InspectionHeaderProps {
     headerData: any;
     inspMethod: "DIVING" | "ROV";
     setInspMethod: (m: "DIVING" | "ROV") => void;
+    inspectionDirection?: "Increase KP" | "Reverse KP";
+    setInspectionDirection?: (dir: "Increase KP" | "Reverse KP") => void;
+    inspectionLocation?: "Pipeline" | "Crossing Line" | "Others";
+    setInspectionLocation?: (loc: "Pipeline" | "Crossing Line" | "Others") => void;
     router: any;
     searchParams: any;
     allInspectionTypes: any[];
@@ -74,12 +83,18 @@ interface InspectionHeaderProps {
     structureId?: string | null;
     onSummaryOpen?: () => void;
     onResetLayout?: () => void;
+    closedPanels?: Array<{ id: string; name: string }>;
+    onRestorePanel?: (id: string) => void;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     headerData,
     inspMethod,
     setInspMethod,
+    inspectionDirection = "Increase KP",
+    setInspectionDirection,
+    inspectionLocation = "Pipeline",
+    setInspectionLocation,
     router,
     searchParams,
     allInspectionTypes,
@@ -123,11 +138,15 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     jobPackId,
     structureId,
     onSummaryOpen,
-    onResetLayout
+    onResetLayout,
+    closedPanels,
+    onRestorePanel
 }) => {
+    const isPipeline = headerData?.structureType === "pipeline" || headerData?.isPipeline;
+
     return (
-        <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0">
-            <div className="flex items-center gap-4">
+        <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800">
+            <div className="flex items-center gap-3 flex-wrap">
                 <Link href="/dashboard/inspection-v2">
                     <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8">
                         <ArrowLeft className="w-4 h-4 mr-2" /> Back
@@ -140,7 +159,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                 </h1>
                 <div className="h-5 w-px bg-slate-700"></div>
 
-                <div className="flex bg-slate-800 rounded p-1 mr-4">
+                <div className="flex bg-slate-800 rounded p-1">
                     <button
                         onClick={() => {
                             setInspMethod("DIVING");
@@ -148,7 +167,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             params.set("mode", "DIVING");
                             router.replace(`?${params.toString()}`);
                         }}
-                        className={`px-4 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        className={`px-3 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
                     >
                         DIVING
                     </button>
@@ -159,11 +178,62 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             params.set("mode", "ROV");
                             router.replace(`?${params.toString()}`);
                         }}
-                        className={`px-4 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        className={`px-3 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
                     >
                         ROV
                     </button>
                 </div>
+
+                {/* Pipeline Inspection Preset Dropdowns */}
+                {isPipeline && (
+                    <div className="flex items-center gap-2 bg-slate-950/60 p-1 rounded-md border border-slate-800">
+                        {/* Inspection Direction Selector */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                                    <ArrowRightLeft className="w-3 h-3 text-emerald-400" />
+                                    <span>DIR: <strong className="text-emerald-300 ml-0.5">{inspectionDirection}</strong></span>
+                                    <ChevronDown className="w-3 h-3 text-slate-400" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="bg-slate-900 border-slate-700 text-slate-200 text-xs min-w-[150px]">
+                                <DropdownMenuItem onClick={() => setInspectionDirection?.("Increase KP")} className="cursor-pointer font-bold flex items-center justify-between">
+                                    <span>Increase KP</span>
+                                    {inspectionDirection === "Increase KP" && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setInspectionDirection?.("Reverse KP")} className="cursor-pointer font-bold flex items-center justify-between">
+                                    <span>Reverse KP</span>
+                                    {inspectionDirection === "Reverse KP" && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Inspection Location / Target Selector */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                                    <Layers className="w-3 h-3 text-cyan-400" />
+                                    <span>LOC: <strong className="text-cyan-300 ml-0.5">{inspectionLocation}</strong></span>
+                                    <ChevronDown className="w-3 h-3 text-slate-400" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="bg-slate-900 border-slate-700 text-slate-200 text-xs min-w-[150px]">
+                                <DropdownMenuItem onClick={() => setInspectionLocation?.("Pipeline")} className="cursor-pointer font-bold flex items-center justify-between">
+                                    <span>Pipeline</span>
+                                    {inspectionLocation === "Pipeline" && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setInspectionLocation?.("Crossing Line")} className="cursor-pointer font-bold flex items-center justify-between">
+                                    <span>Crossing Line</span>
+                                    {inspectionLocation === "Crossing Line" && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setInspectionLocation?.("Others")} className="cursor-pointer font-bold flex items-center justify-between">
+                                    <span>Others</span>
+                                    {inspectionLocation === "Others" && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                )}
 
                 <div className="hidden md:flex items-center text-xs ml-3 space-x-3">
                     <div className="flex items-center gap-1.5">
@@ -214,15 +284,57 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
  
                 {jobPackId && structureId ? (
                     <div className="flex bg-slate-800 rounded p-0.5 border border-slate-700">
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="text-slate-400 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-tighter"
-                            onClick={onResetLayout}
-                            title="Reset panels to default positions"
-                        >
-                            Reset UI
-                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="text-slate-300 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 hover:bg-slate-700/50"
+                                    title="Dock station window settings and layout control"
+                                >
+                                    <LayoutGrid className="w-3.5 h-3.5 text-blue-400" />
+                                    <span>Dock Settings</span>
+                                    <ChevronDown className="w-3 h-3 text-slate-400" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-64 bg-slate-900 border-slate-700 text-slate-200 shadow-xl">
+                                <div className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                                    <span>Dock Station Controls</span>
+                                </div>
+                                
+                                {closedPanels && closedPanels.length > 0 && (
+                                    <>
+                                        <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-cyan-400">
+                                            Reopen Closed Windows ({closedPanels.length})
+                                        </div>
+                                        {closedPanels.map((panel) => (
+                                            <DropdownMenuItem
+                                                key={panel.id}
+                                                onClick={() => onRestorePanel?.(panel.id)}
+                                                className="text-xs font-medium hover:bg-slate-800 focus:bg-slate-800 cursor-pointer text-slate-200 flex items-center justify-between py-1.5 px-3"
+                                            >
+                                                <span className="flex items-center gap-2">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                                    {panel.name}
+                                                </span>
+                                                <span className="text-[9px] font-bold uppercase text-blue-400 bg-blue-950/60 border border-blue-800 px-1.5 py-0.5 rounded">
+                                                    Open
+                                                </span>
+                                            </DropdownMenuItem>
+                                        ))}
+                                        <div className="my-1 border-t border-slate-800" />
+                                    </>
+                                )}
+
+                                <DropdownMenuItem 
+                                    onClick={onResetLayout}
+                                    className="text-xs font-semibold hover:bg-slate-800 focus:bg-slate-800 cursor-pointer text-slate-200 py-2 px-3"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5 mr-2 text-amber-400" />
+                                    <span>Reset All Windows (Default UI)</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                         <div className="w-px h-4 bg-slate-700 my-auto mx-0.5" />
                         <Button 
                             variant="ghost" 

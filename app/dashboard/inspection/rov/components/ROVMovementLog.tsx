@@ -24,6 +24,7 @@ const ROV_ACTIONS = [
 
 interface ROVMovementLogProps {
     diveJob: any;
+    onRefresh?: () => void;
 }
 
 interface Movement {
@@ -33,7 +34,7 @@ interface Movement {
     remarks: string;
 }
 
-export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
+export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogProps) {
     const supabase = createClient();
 
     const getLocalDatetimeString = (date = new Date()) => {
@@ -121,7 +122,8 @@ export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
 
             toast.success("Movement logged");
             setNewMovement({ movement_type: "", remarks: "", movement_time: getLocalDatetimeString() });
-            loadMovements();
+            await loadMovements();
+            onRefresh?.();
         } catch (error: any) {
             console.error("Error adding movement:", error);
             toast.error(error.message || "Failed to log movement. Did you run the SQL to drop the 'chk_rov_movement_type' constraint?");
@@ -136,7 +138,8 @@ export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
             const { error } = await supabase.from("insp_rov_movements").delete().eq("movement_id", id);
             if (error) throw error;
             toast.success("Movement deleted");
-            loadMovements();
+            await loadMovements();
+            onRefresh?.();
         } catch (error: any) {
             console.error("Error deleting movement:", error);
             toast.error(error.message || "Failed to delete movement");
@@ -154,7 +157,8 @@ export default function ROVMovementLog({ diveJob }: ROVMovementLogProps) {
             if (error) throw error;
             toast.success("Movement updated");
             setEditingId(null);
-            loadMovements();
+            await loadMovements();
+            onRefresh?.();
         } catch (error: any) {
             console.error("Error updating movement:", error);
             toast.error(error.message || "Failed to update movement");

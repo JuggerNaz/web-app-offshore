@@ -31,6 +31,7 @@ export async function PATCH(
             autoFlag,
             alertMessage,
             evaluationPriority,
+            findings,
         } = body;
 
         // Map camelCase to snake_case for DB
@@ -51,6 +52,7 @@ export async function PATCH(
             auto_flag: autoFlag,
             alert_message: alertMessage,
             evaluation_priority: evaluationPriority,
+            findings: findings,
         };
 
         // Remove undefined keys so we don't overwrite with null unless intended

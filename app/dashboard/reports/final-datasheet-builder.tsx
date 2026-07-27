@@ -57,9 +57,12 @@ const TOC_SECTIONS = [
       { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
-      { id: "rrisi-report", name: "ROV Riser Survey Report", mode: "ROV" },
-      { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", mode: "ROV" },
-      { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", mode: "ROV" }
+      { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
       { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },
@@ -76,10 +79,13 @@ const TOC_SECTIONS = [
       { id: "rov-scour-report", name: "ROV Scour Survey Report", mode: "ROV" }
   ]},
   { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
-      { id: "seabed-survey-debris", name: "Seabed Survey For Debris", mode: "General" },
-      { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", mode: "General" },
-      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
-      { id: "rov-seabed-report", name: "ROV Seabed Survey Report", mode: "ROV" }
+      { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", mode: "General" },
+      { id: "rov-seabed-report", name: "Seabed Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-detail-report", name: "Seabed Survey Debris Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-gas-detail-report", name: "Seabed Survey Gas Seepage Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [
       { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }

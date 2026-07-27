@@ -115,18 +115,24 @@ export const REPORT_TEMPLATES = {
         { id: "findings-report", name: "Findings Report", icon: FileCheck, description: "Detailed findings report with images", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diver-log-report", name: "Diver Log Report", icon: FileText, description: "Chronological diver log grouped by dive number with inspection findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "video-log-report", name: "Video Log Report", icon: FileText, description: "Video log entries grouped by tape number with timecodes and dive references", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "seabed-survey-debris", name: "Seabed Survey For Debris", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "seabed-survey-crater", name: "Seabed Survey For Crater", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-seabed-report", name: "ROV Seabed Survey Report", icon: FileCheck, description: "Unfiltered Seabed GUI maps showing all debris, craters and gas seepages", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", icon: FileCheck, description: "Filtered Seabed GUI maps with gas seepages marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", icon: FileCheck, description: "Filtered Seabed GUI maps with craters marked", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-seabed-report", name: "Seabed Survey Inspection Sketch Report (ROV)", icon: FileCheck, description: "Unfiltered Seabed GUI maps showing all debris, craters and gas seepages", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rseab-detail-report", name: "Seabed Survey Debris Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Debris inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rseab-gas-detail-report", name: "Seabed Survey Gas Seepage Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Gas Seepage inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Crater inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", icon: FileBarChart, description: "Marine Growth Graph Report (ROV) RMGI with Graph", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", icon: FileBarChart, description: "Marine Growth Inspection Report (ROV) RMGI Standard Table", requires: ["jobpack", "structure", "sow_report"] },
         { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
         { id: "szci-report", name: "ROV Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
         { id: "utwt-report", name: "ROV UT Thickness Report", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rrisi-report", name: "ROV Riser Survey Report", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (CVI) summary (SANI) with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
@@ -159,9 +165,9 @@ export const REPORT_TEMPLATES = {
         { id: "diving-anmain-report", name: "Diving Anode Maintenance Report (ANMAIN)", icon: FileBarChart, description: "Landscape Anode Maintenance Inspection Report (ANMAIN) with QID, Elevation, Dive No., Anode Type, Installed Date, Replaced/Installed, Position, Life, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report", icon: FileBarChart, description: "Portrait ROV Water Depth Inspection report — QID, elevation, dive number, water depth, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater Diving", icon: FileBarChart, description: "Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-dcasn-ts-report", name: "Caisson Inspection Topside Diving", icon: FileBarChart, description: "Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water Diving", icon: FileBarChart, description: "Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater Diving", icon: FileBarChart, description: "Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-dcond-ts-report", name: "Conductor Inspection Topside Diving", icon: FileBarChart, description: "Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water Diving", icon: FileBarChart, description: "Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -210,14 +216,17 @@ const TOC_SECTIONS = [
       { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", mode: "ROV" },
       { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" },
       { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater Diving", mode: "Diving" },
-      { id: "diving-dcasn-ts-report", name: "Caisson Inspection Topside Diving", mode: "Diving" },
+      { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water Diving", mode: "Diving" },
       { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater Diving", mode: "Diving" },
-      { id: "diving-dcond-ts-report", name: "Conductor Inspection Topside Diving", mode: "Diving" }
+      { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water Diving", mode: "Diving" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
-      { id: "rrisi-report", name: "ROV Riser Survey Report", mode: "ROV" },
-      { id: "rov-jtisi-report", name: "ROV J-Tube Inspection Report", mode: "ROV" },
-      { id: "rov-itisi-report", name: "ROV I-Tube Inspection Report", mode: "ROV" }
+      { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
       { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },
@@ -237,10 +246,13 @@ const TOC_SECTIONS = [
       { id: "rov-scour-report", name: "ROV Scour Survey Report", mode: "ROV" }
   ]},
   { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
-      { id: "seabed-survey-debris", name: "Seabed Survey For Debris", mode: "General" },
-      { id: "seabed-survey-gas", name: "Seabed Survey For Gas Seepage", mode: "General" },
-      { id: "seabed-survey-crater", name: "Seabed Survey For Crater", mode: "General" },
-      { id: "rov-seabed-report", name: "ROV Seabed Survey Report", mode: "ROV" }
+      { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", mode: "General" },
+      { id: "rov-seabed-report", name: "Seabed Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-detail-report", name: "Seabed Survey Debris Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-gas-detail-report", name: "Seabed Survey Gas Seepage Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [
       { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }
@@ -402,18 +414,23 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const validSows = inspectionFilters
                     .filter(f => f.structure_id.toString() === selections.structureId && f.sow_report_no)
                     .map(f => f.sow_report_no);
-                setAvailableSowReports(Array.from(new Set(validSows)));
+                const uniqueSows = Array.from(new Set(validSows));
+                setAvailableSowReports(uniqueSows);
                 setIsLoadingSowReports(false);
+                if (uniqueSows.length > 0 && !selections.sowReportNo) {
+                    setSelections(prev => ({ ...prev, sowReportNo: uniqueSows[0] }));
+                }
             } else {
                 setIsLoadingSowReports(true);
                 fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`)
                     .then(res => res.json())
                     .then(data => {
                         if (data.data) {
-                            // Assuming data.data.report_numbers is array of { number: string } or similar
-                            // Fallback to empty array if not present
                             const numbers = data.data.report_numbers?.map((r: any) => r.number || r) || [];
                             setAvailableSowReports(numbers);
+                            if (numbers.length > 0 && !selections.sowReportNo) {
+                                setSelections(prev => ({ ...prev, sowReportNo: numbers[0] }));
+                            }
                         } else {
                             setAvailableSowReports([]);
                         }
@@ -426,6 +443,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
     }, [selections.jobPackId, selections.structureId, selections.templateId, isInspectionTemplate, inspectionFilters]);
+
+    // Update Report Prefix in General Info when SOW Report No changes (or when switching templates)
+    useEffect(() => {
+        if (selections.sowReportNo && getCurrentTemplate()?.requires.includes("sow_report")) {
+            setConfig(prev => ({ ...prev, reportNoPrefix: selections.sowReportNo }));
+        }
+    }, [selections.sowReportNo, selections.templateId]);
 
     const getCurrentTemplate = () => {
         if (!selections.category || !selections.templateId) return null;
@@ -1533,6 +1557,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVSZCIReport } = await import("@/utils/report-generators/rov-szci-report");
             const { generateROVUTWTReport } = await import("@/utils/report-generators/rov-utwt-report");
             const { generateROVRRISIReport } = await import("@/utils/report-generators/rov-rrisi-report");
+            const { generateROVRRISIDetailReport } = await import("@/utils/report-generators/rov-rrisi-detail-report");
+            const { generateROVRRISIJTubeDetailReport } = await import("@/utils/report-generators/rov-jtisi-detail-report");
+            const { generateROVRRISIITubeDetailReport } = await import("@/utils/report-generators/rov-itisi-detail-report");
+            const { generateROVRSEABDetailReport } = await import("@/utils/report-generators/rov-rseab-detail-report");
+            const { generateROVRSEABGasDetailReport } = await import("@/utils/report-generators/rov-rseab-gas-detail-report");
+            const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
             const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
             const { generateROVCPReport }    = await import("@/utils/report-generators/rov-cp-report");
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
@@ -1553,6 +1583,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRWDIReport } = await import("@/utils/report-generators/rov-rwdi-report");
             const { generateDivingDCASNUWReport } = await import("@/utils/report-generators/diving-dcasn-uw-report");
             const { generateDivingDCASNTSReport } = await import("@/utils/report-generators/diving-dcasn-ts-report");
+            const { generateDivingDCONDUWReport } = await import("@/utils/report-generators/diving-dcond-uw-report");
+            const { generateDivingDCONDTSReport } = await import("@/utils/report-generators/diving-dcond-ts-report");
 
 
             // Fetch real company settings from API
@@ -1738,6 +1770,195 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
             
             return await generateSeabedSurveyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig, filterMap[currentTemplateId]);
+        }
+
+        // Detailed Seabed Survey Report
+        if (currentTemplateId === "rov-rseab-detail-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+
+            const filteredRecords = (records || []).filter(r => {
+                const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                return typeCode === 'RSEAB';
+            });
+
+            if (filteredRecords.length === 0) {
+                alert("No Seabed Survey Debris records found in this SOW.");
+                return null;
+            }
+
+            // Fetch Contractor Logo if available
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateROVRSEABDetailReport(
+                filteredRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Detailed Seabed Survey Gas Seepage Report
+        if (currentTemplateId === "rov-rseab-gas-detail-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+
+            const filteredRecords = (records || []).filter(r => {
+                const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                return typeCode === 'RSEAB';
+            });
+
+            if (filteredRecords.length === 0) {
+                alert("No Seabed Survey Gas Seepage records found in this SOW.");
+                return null;
+            }
+
+            // Fetch Contractor Logo if available
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateROVRSEABGasDetailReport(
+                filteredRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Detailed Seabed Survey Crater Report
+        if (currentTemplateId === "rov-rseab-crater-detail-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    structure_components:component_id(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id(job_no:deployment_no),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+
+            const filteredRecords = (records || []).filter(r => {
+                const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                return typeCode === 'RSEAB';
+            });
+
+            if (filteredRecords.length === 0) {
+                alert("No Seabed Survey Crater records found in this SOW.");
+                return null;
+            }
+
+            // Fetch Contractor Logo if available
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateROVRSEABCraterDetailReport(
+                filteredRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
         }
 
         // Job Pack Summary Report
@@ -2176,7 +2397,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
 
         // ROV RRISI/JTISI/ITISI Survey Report (Unified)
-        if (["rrisi-report", "rov-jtisi-report", "rov-itisi-report"].includes(currentTemplateId)) {
+        if (["rrisi-report", "rrisi-detail-report", "rov-jtisi-report", "rov-jtisi-detail-report", "rov-itisi-report", "rov-itisi-detail-report"].includes(currentTemplateId)) {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -2201,13 +2422,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (error) throw error;
             // Determine Report Type based on Template ID
             let reportType: 'R' | 'J' | 'I' = 'R';
-            if (currentTemplateId === "rov-jtisi-report") reportType = 'J';
-            else if (currentTemplateId === "rov-itisi-report") reportType = 'I';
+            if (currentTemplateId === "rov-jtisi-report" || currentTemplateId === "rov-jtisi-detail-report") reportType = 'J';
+            else if (currentTemplateId === "rov-itisi-report" || currentTemplateId === "rov-itisi-detail-report") reportType = 'I';
 
             const filteredTubeRecords = (records || []).filter(r => {
                 const qid = (r.structure_components?.q_id || "").toUpperCase();
                 const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
+                
+                if (currentTemplateId === "rov-jtisi-detail-report") {
+                    return typeCode === 'RRISI' && qid.startsWith('J') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+                }
+                if (currentTemplateId === "rov-itisi-detail-report") {
+                    return typeCode === 'RRISI' && qid.startsWith('I') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+                }
                 
                 if (reportType === 'R') {
                     // Riser: Must be RRISI AND start with R AND NOT RISG
@@ -2246,6 +2474,30 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             try {
+                if (currentTemplateId === "rrisi-detail-report") {
+                    return await generateROVRRISIDetailReport(
+                        tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                    );
+                }
+                if (currentTemplateId === "rov-jtisi-detail-report") {
+                    return await generateROVRRISIJTubeDetailReport(
+                        tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                    );
+                }
+                if (currentTemplateId === "rov-itisi-detail-report") {
+                    return await generateROVRRISIITubeDetailReport(
+                        tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+                    );
+                }
                 return await generateROVRRISIReport(
                     tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
@@ -4161,6 +4413,198 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 console.error("RCOND Generator Error:", error);
                 throw error;
             }
+        }
+
+        // Caisson Inspection Underwater Diving
+        if (currentTemplateId === "diving-dcasn-uw-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingDCASNUWReport(
+                records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Caisson Inspection Above Water Diving
+        if (currentTemplateId === "diving-dcasn-ts-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingDCASNTSReport(
+                records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Conductor Inspection Underwater Diving
+        if (currentTemplateId === "diving-dcond-uw-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingDCONDUWReport(
+                records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Conductor Inspection Above Water Diving
+        if (currentTemplateId === "diving-dcond-ts-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingDCONDTSReport(
+                records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
         }
 
         // ROV Boatlanding Survey Report (New)

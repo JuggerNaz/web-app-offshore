@@ -8,6 +8,7 @@ import Comments from "@/components/comment/comments";
 import Attachments from "@/components/attachment/attachments";
 import Components from "@/components/component/components";
 import StructureImage from "@/components/structure-image/structure-image";
+import InspectionsTab from "@/components/platform/inspections-tab";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { useAtom } from "jotai";
@@ -247,6 +248,12 @@ export default function DetailPage() {
               label="Components"
               disabled={isNew}
             />
+            <TabTrigger
+              value="inspections"
+              icon={<Activity className="h-4 w-4" />}
+              label="Inspections"
+              disabled={isNew}
+            />
           </TabsList>
         </div>
 
@@ -280,6 +287,9 @@ export default function DetailPage() {
             </TabsContent>
             <TabsContent value="components" className="focus-visible:outline-none m-0">
               <Components />
+            </TabsContent>
+            <TabsContent value="inspections" className="focus-visible:outline-none m-0">
+              <InspectionsTab />
             </TabsContent>
           </div>
         </div>

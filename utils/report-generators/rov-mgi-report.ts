@@ -10,6 +10,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -132,7 +133,7 @@ export const generateROVMGIGraphReport = async (
                 d.text(String(value), x + 25, ty + 4);
             };
             drawBox('Project:', headerData.jobpackName, margin, colW, tableY);
-            drawBox('SOW Report:', headerData.sowReportNo, margin + colW, colW, tableY);
+            drawBox('SOW Report:', (config?.reportNoPrefix || headerData?.sowReportNo), margin + colW, colW, tableY);
             drawBox('Date:', format(new Date(), 'dd/MM/yyyy'), margin + (colW * 2), colW, tableY);
             drawBox('Structure:', headerData.platformName, margin, colW, tableY + rowH);
             drawBox('Component:', qid, margin + colW, colW, tableY + rowH);
@@ -291,12 +292,14 @@ export const generateROVMGIGraphReport = async (
                 didParseCell: (data) => {
                     if (data.section === 'body') {
                         const row = tableData[data.row.index];
-                        if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (row.isRectified) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
+                        if (row) {
+                            if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
+                                data.cell.styles.textColor = colors.anomaly;
+                                data.cell.styles.fontStyle = 'bold';
+                            } else if (row.isRectified) {
+                                data.cell.styles.textColor = colors.rectified;
+                                data.cell.styles.fontStyle = 'bold';
+                            }
                         }
                     }
                 },
@@ -310,23 +313,25 @@ export const generateROVMGIGraphReport = async (
                     if (data.section === 'body' && data.column.index === 1) {
                         const { x, y, width, height } = data.cell;
                         const row = tableData[data.row.index];
-                        const xRatio = width / GRAPH_MAX_MM;
-                        doc.setLineWidth(0.05); doc.setDrawColor(245);
-                        for (let g = 0; g <= GRAPH_MAX_MM; g += 10) { if (g % 100 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height); }
-                        doc.setDrawColor(230); doc.setLineWidth(0.1);
-                        for (let g = 0; g <= GRAPH_MAX_MM; g += 100) {
-                            const gx = x + (g * xRatio); doc.line(gx, y, gx, y + height);
-                            if (data.row.index === 0) { 
-                                doc.setFontSize(6); 
-                                if (isPF) {
-                                    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-                                } else {
-                                    doc.setTextColor(255);
+                        if (row) {
+                            const xRatio = width / GRAPH_MAX_MM;
+                            doc.setLineWidth(0.05); doc.setDrawColor(245);
+                            for (let g = 0; g <= GRAPH_MAX_MM; g += 10) { if (g % 100 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height); }
+                            doc.setDrawColor(230); doc.setLineWidth(0.1);
+                            for (let g = 0; g <= GRAPH_MAX_MM; g += 100) {
+                                const gx = x + (g * xRatio); doc.line(gx, y, gx, y + height);
+                                if (data.row.index === 0) { 
+                                    doc.setFontSize(6); 
+                                    if (isPF) {
+                                        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+                                    } else {
+                                        doc.setTextColor(255);
+                                    }
+                                    doc.text(`${g}`, gx, y - 3, { align: 'center' }); 
                                 }
-                                doc.text(`${g}`, gx, y - 3, { align: 'center' }); 
                             }
+                            plotPoints.push({ x, y: y + (height / 2), h: height, limitX: x + (row.limit * xRatio), actualX: x + (row.maxInRow * xRatio) });
                         }
-                        plotPoints.push({ x, y: y + (height / 2), h: height, limitX: x + (row.limit * xRatio), actualX: x + (row.maxInRow * xRatio) });
                     }
                 },
                 didDrawPage: (data) => {
@@ -393,7 +398,7 @@ export const generateROVMGIGraphReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_MGI_Summary_${headerData.sowReportNo}.pdf`);
+        doc.save(`ROV_MGI_Summary_${(config?.reportNoPrefix || headerData?.sowReportNo)}.pdf`);
         return;
     } catch (e) {
         console.error("MGI Report Error", e);

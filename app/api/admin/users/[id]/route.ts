@@ -1,5 +1,6 @@
+// Touch to trigger Next.js route compilation
 import { NextRequest } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { withRole } from "@/utils/role-auth";
 import { apiSuccess, apiError, apiNoContent } from "@/utils/api-response";
 
@@ -14,7 +15,7 @@ export const PATCH = withRole(
     try {
       const { id } = await params;
       const json = await request.json();
-      const { role, is_active, systemRole, modules, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone } = json;
+      const { role, is_active, systemRole, modules, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone, device_restriction_type } = json;
 
       const supabase = createClient() as any;
 
@@ -45,17 +46,30 @@ export const PATCH = withRole(
       if (allowed_end_time !== undefined) profileUpdate.allowed_end_time = allowed_end_time;
       if (allowed_days !== undefined) profileUpdate.allowed_days = allowed_days;
       if (timezone !== undefined) profileUpdate.timezone = timezone;
+      if (device_restriction_type !== undefined) profileUpdate.device_restriction_type = device_restriction_type;
 
       if (Object.keys(profileUpdate).length > 0) {
         const targetUserId = targetMembership.user_id;
-        const { error: profileError } = await supabase
+        let clientToUse = supabase;
+        let isUsingAdminClient = false;
+        try {
+          clientToUse = createAdminClient() as any;
+          isUsingAdminClient = true;
+        } catch (e) {
+          console.warn("[PATCH /api/admin/users/[id]] SUPABASE_SERVICE_ROLE_KEY not configured. Falling back to session-based client.");
+        }
+
+        const { error: profileError } = await clientToUse
           .from("profiles")
           .update(profileUpdate)
           .eq("id", targetUserId);
 
         if (profileError) {
           console.error("[PATCH /api/admin/users/[id]] Profile update error:", profileError);
-          return apiError("Failed to update user profile schedule", 500);
+          const errorMsg = !isUsingAdminClient 
+            ? "Failed to update user profile: RLS policy blocked the update. Please configure SUPABASE_SERVICE_ROLE_KEY in .env.local to enable admin overrides."
+            : "Failed to update user profile schedule: " + profileError.message;
+          return apiError(errorMsg, 500);
         }
       }
 

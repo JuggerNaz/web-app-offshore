@@ -80,6 +80,21 @@ export const GET = withTenant(async (request, { companyId }) => {
             return NextResponse.json({ data: sows });
         }
 
+        if (structureId) {
+            const { data: sows, error } = await (supabase as any)
+                .from("u_sow")
+                .select("*")
+                .eq("structure_id", structureId)
+                .eq("company_id", companyId)
+                .order("created_at", { ascending: false });
+
+            if (error) {
+                return NextResponse.json({ error: error.message }, { status: 400 });
+            }
+
+            return NextResponse.json({ data: sows });
+        }
+
         return NextResponse.json(
             { error: "Missing required parameters" },
             { status: 400 }

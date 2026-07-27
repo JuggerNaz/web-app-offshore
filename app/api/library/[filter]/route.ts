@@ -44,9 +44,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   // Custom sort for POSITION to match 1-12 O' CLOCK order
   if (decodedFilter === "POSITION" && visibleData) {
-    // Map items to have a space after O' (e.g. "O' CLOCK")
+    // Map items to have a space after O' (e.g. "O' CLOCK") and strip "POSITION " prefix
     visibleData = visibleData.map((item: any) => {
-      const formatStr = (s: any) => typeof s === 'string' ? s.replace("O'CLOCK", "O' CLOCK") : s;
+      const formatStr = (s: any) => {
+        if (typeof s !== 'string') return s;
+        let res = s.replace("O'CLOCK", "O' CLOCK").trim();
+        res = res.replace(/^POSITION\s+/i, '').trim();
+        return res;
+      };
       return {
         ...item,
         lib_id: formatStr(item.lib_id),

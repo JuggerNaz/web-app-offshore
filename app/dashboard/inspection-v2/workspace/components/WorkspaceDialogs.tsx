@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
+import { PipelineSeabedEventMap } from "@/components/inspection/pipeline-seabed-event-map";
 import { ReportWizardDialog } from "./ReportWizardDialog";
 
 import DiveJobSetupDialog from "@/app/dashboard/inspection/dive/components/DiveJobSetupDialog";
@@ -139,6 +140,7 @@ interface WorkspaceDialogsProps {
         allComps: any[];
         selectorShowAll: boolean;
         isSeabedGuiOpen: boolean;
+        isPipelineMapOpen?: boolean;
         tapeId: number | null;
         vidTimer: number;
         dataAcqFields: any;
@@ -148,12 +150,18 @@ interface WorkspaceDialogsProps {
         photographyPreviewOpen: boolean;
         photographyLogPreviewOpen: boolean;
         seabedPreviewOpen: boolean;
+        seabedDetailPreviewOpen: boolean;
+        seabedGasDetailPreviewOpen: boolean;
+        seabedCraterDetailPreviewOpen: boolean;
         rcondPreviewOpen: boolean;
         rcasnPreviewOpen: boolean;
         rcasnSketchPreviewOpen: boolean;
         rrisiPreviewOpen: boolean;
+        rrisiDetailPreviewOpen: boolean;
         jtisiPreviewOpen: boolean;
+        jtisiDetailPreviewOpen: boolean;
         itisiPreviewOpen: boolean;
+        itisiDetailPreviewOpen: boolean;
         rgPreviewOpen: boolean;
         sgPreviewOpen: boolean;
         cuPreviewOpen: boolean;
@@ -180,6 +188,7 @@ interface WorkspaceDialogsProps {
         rovCalibrationDialogOpen: boolean;
         isReportWizardOpen: boolean;
         reportConfig: any;
+        seabedTemplateType: string;
     };
 
 
@@ -197,6 +206,7 @@ interface WorkspaceDialogsProps {
         setEditTapeStatus: (val: string) => void;
         setEditTapeRemarks: (val: string) => void;
         setIsNewTapeOpen: (open: boolean) => void;
+        setIsPipelineMapOpen?: (open: boolean) => void;
         setNewTapeNo: (val: string) => void;
         setNewTapeChapter: (val: string) => void;
         setNewTapeRemarks: (val: string) => void;
@@ -233,12 +243,18 @@ interface WorkspaceDialogsProps {
         setPhotographyPreviewOpen: (open: boolean) => void;
         setPhotographyLogPreviewOpen: (open: boolean) => void;
         setSeabedPreviewOpen: (open: boolean) => void;
+        setSeabedDetailPreviewOpen: (open: boolean) => void;
+        setSeabedGasDetailPreviewOpen: (open: boolean) => void;
+        setSeabedCraterDetailPreviewOpen: (open: boolean) => void;
         setRcondPreviewOpen: (open: boolean) => void;
         setRcasnPreviewOpen: (open: boolean) => void;
         setRcasnSketchPreviewOpen: (open: boolean) => void;
         setRrisiPreviewOpen: (open: boolean) => void;
+        setRrisiDetailPreviewOpen: (open: boolean) => void;
         setJtisiPreviewOpen: (open: boolean) => void;
+        setJtisiDetailPreviewOpen: (open: boolean) => void;
         setItisiPreviewOpen: (open: boolean) => void;
+        setItisiDetailPreviewOpen: (open: boolean) => void;
         setRgPreviewOpen: (open: boolean) => void;
         setSgPreviewOpen: (open: boolean) => void;
         setCuPreviewOpen: (open: boolean) => void;
@@ -295,8 +311,11 @@ interface WorkspaceDialogsProps {
         generateRSCORReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORV2ReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRRISIDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateJTISIDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateITISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateITISIDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateAnodeRsaniReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -311,7 +330,11 @@ interface WorkspaceDialogsProps {
         generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedReport: (templateId?: string) => Promise<void>;
         generateSeabedReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedGasDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateSeabedCraterDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateGVINSReport: () => void;
@@ -424,6 +447,7 @@ export function WorkspaceDialogs({
         allComps,
         selectorShowAll,
         isSeabedGuiOpen,
+        isPipelineMapOpen,
         tapeId,
         vidTimer,
         dataAcqFields,
@@ -433,12 +457,18 @@ export function WorkspaceDialogs({
         photographyPreviewOpen,
         photographyLogPreviewOpen,
         seabedPreviewOpen,
+        seabedDetailPreviewOpen,
+        seabedGasDetailPreviewOpen,
+        seabedCraterDetailPreviewOpen,
         rcondPreviewOpen,
         rcasnPreviewOpen,
         rcasnSketchPreviewOpen,
         rrisiPreviewOpen,
+        rrisiDetailPreviewOpen,
         jtisiPreviewOpen,
+        jtisiDetailPreviewOpen,
         itisiPreviewOpen,
+        itisiDetailPreviewOpen,
         rgPreviewOpen,
         sgPreviewOpen,
         cuPreviewOpen,
@@ -461,7 +491,8 @@ export function WorkspaceDialogs({
         divingDcondUwPreviewOpen,
         divingDcondTsPreviewOpen,
         isReportWizardOpen,
-        reportConfig
+        reportConfig,
+        seabedTemplateType
     } = states;
 
 
@@ -513,12 +544,18 @@ export function WorkspaceDialogs({
         setPhotographyPreviewOpen,
         setPhotographyLogPreviewOpen,
         setSeabedPreviewOpen,
+        setSeabedDetailPreviewOpen,
+        setSeabedGasDetailPreviewOpen,
+        setSeabedCraterDetailPreviewOpen,
         setRcondPreviewOpen,
         setRcasnPreviewOpen,
         setRcasnSketchPreviewOpen,
         setRrisiPreviewOpen,
+        setRrisiDetailPreviewOpen,
         setJtisiPreviewOpen,
+        setJtisiDetailPreviewOpen,
         setItisiPreviewOpen,
+        setItisiDetailPreviewOpen,
         setRgPreviewOpen,
         setSgPreviewOpen,
         setCuPreviewOpen,
@@ -570,8 +607,11 @@ export function WorkspaceDialogs({
         generateRSCORReportBlob,
         generateRSCORV2ReportBlob,
         generateRRISIReportBlob,
+        generateRRISIDetailReportBlob,
         generateJTISIReportBlob,
+        generateJTISIDetailReportBlob,
         generateITISIReportBlob,
+        generateITISIDetailReportBlob,
         generateAnodeReportBlob,
         generateAnodeRsaniReportBlob,
         generateCPReportBlob,
@@ -580,7 +620,11 @@ export function WorkspaceDialogs({
         generateRCASNSketchReportBlob,
         generateRCONDReportBlob,
         generateRCONDSketchReportBlob,
+        generateSeabedReport,
         generateSeabedReportBlob,
+        generateSeabedDetailReportBlob,
+        generateSeabedGasDetailReportBlob,
+        generateSeabedCraterDetailReportBlob,
         generatePhotographyReportBlob,
         generatePhotographyLogReportBlob,
         generateGVINSReport,
@@ -781,15 +825,16 @@ export function WorkspaceDialogs({
                             <button onClick={() => {
                                 setIsMovementLogOpen(false);
                                 if (activeDep) {
-                                    setEditingEvent(null); // Just to trigger a re-render if needed
+                                    setEditingEvent(null);
                                 }
+                                syncDeploymentState?.();
                             }} className="rounded-full p-1.5 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"><X className="w-5 h-5 text-slate-500 dark:text-slate-400" /></button>
                         </div>
                         <div className="p-6">
                             {inspMethod === "DIVING" ? (
-                                <DiveMovementLog diveJob={(activeDep as any)?.raw} />
+                                <DiveMovementLog diveJob={(activeDep as any)?.raw} onRefresh={syncDeploymentState} />
                             ) : (
-                                <ROVMovementLog diveJob={(activeDep as any)?.raw} />
+                                <ROVMovementLog diveJob={(activeDep as any)?.raw} onRefresh={syncDeploymentState} />
                             )}
                         </div>
                     </div>
@@ -1322,7 +1367,7 @@ export function WorkspaceDialogs({
                     const generatedConfig = {
                         jobPackId: Number(jobPackId),
                         structureId: Number(structureId),
-                        sowReportNo: headerData.sowReportNo,
+                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                         preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
                         reviewedBy: reportConfig.reviewedBy,
                         approvedBy: reportConfig.approvedBy,
@@ -1369,7 +1414,7 @@ export function WorkspaceDialogs({
                     const generatedConfig = {
                         jobPackId: Number(jobPackId),
                         structureId: Number(structureId),
-                        sowReportNo: headerData.sowReportNo,
+                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                         preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
                         reviewedBy: reportConfig.reviewedBy,
                         approvedBy: reportConfig.approvedBy,
@@ -1419,7 +1464,7 @@ export function WorkspaceDialogs({
                     const generatedConfig = {
                         jobPackId: Number(jobPackId),
                         structureId: Number(structureId),
-                        sowReportNo: headerData.sowReportNo,
+                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                         preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
                         reviewedBy: reportConfig.reviewedBy,
                         approvedBy: reportConfig.approvedBy,
@@ -1555,7 +1600,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1618,7 +1663,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1681,7 +1726,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1744,7 +1789,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1806,7 +1851,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -1867,7 +1912,7 @@ export function WorkspaceDialogs({
                         {
                             jobPackId: Number(jobPackId),
                             structureId: Number(structureId),
-                            sowReportNo: headerData.sowReportNo,
+                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
                             preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
                             returnBlob: true,
                             printFriendly: isPrintFriendly,
@@ -2214,6 +2259,41 @@ export function WorkspaceDialogs({
                 </div>
             )}
 
+            {isPipelineMapOpen && (
+                <PipelineSeabedEventMap
+                    isOpen={!!isPipelineMapOpen}
+                    onClose={() => setters.setIsPipelineMapOpen?.(false)}
+                    structureName={headerData?.structureName || "Pipeline Main Line"}
+                    pipelineLengthKm={headerData?.lineLength ? parseFloat(headerData.lineLength) : (selectedComp?.length ? parseFloat(selectedComp.length) : 10.0)}
+                    events={(currentRecords || []).map((r: any) => {
+                        const data = r.inspection_data || {};
+                        const kpNum = parseFloat(r.kp || data.kp || data.fp_kp || "0");
+                        return {
+                            id: r.insp_id || r.id,
+                            event_name: data.event_name || r.event_name || r.inspection_type_code || "Event",
+                            event_type: data.event_type || r.event_type || "",
+                            event_position: data.event_position || r.event_position || "",
+                            event_description: data.event_description || r.event_description || data.remarks || "",
+                            kp: isNaN(kpNum) ? 0 : kpNum,
+                            end_kp: data.end_kp ? parseFloat(data.end_kp) : undefined,
+                            northing: data.northing || r.northing || "",
+                            easting: data.easting || r.easting || "",
+                            depth: data.depth || data.verification_depth || r.depth || "",
+                            cp_fg_rdg: data.cp_fg_rdg || data.cp_fg || r.cp_fg_rdg || "",
+                            rov_heading: data.rov_heading || data.heading || r.rov_heading || "",
+                            inspection_date: r.inspection_date || data.inspection_date || "",
+                            inspection_time: r.inspection_time || data.inspection_time || "",
+                            tape_count_no: r.tape_count_no || data.tape_count_no || "",
+                            finding_type: r.finding_type || data.finding_type || "Complete",
+                            findings: data.findings || r.findings || "",
+                            anomaly_code: data.anomaly_code || r.anomaly_code || "",
+                            span_height: data.span_height ? parseFloat(data.span_height) : (data.gap_under_pipe ? parseFloat(data.gap_under_pipe) : undefined),
+                            burial_depth: data.burial_depth ? parseFloat(data.burial_depth) : (data.depth_of_burial ? parseFloat(data.depth_of_burial) : undefined),
+                        };
+                    })}
+                />
+            )}
+
             <ReportPreviewDialog
                 reportConfig={reportConfig}
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
@@ -2342,7 +2422,7 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rrisiPreviewOpen} 
                 onOpenChange={setRrisiPreviewOpen} 
-                title="ROV Riser Survey Report Preview" 
+                title="Riser Survey Inspection Sketch Report (ROV) Preview" 
                 fileName={`ROV_Riser_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRRISIReportBlob} 
             />
@@ -2351,9 +2431,20 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={rrisiDetailPreviewOpen} 
+                onOpenChange={setRrisiDetailPreviewOpen} 
+                title="Riser Inspection Report (ROV) Preview" 
+                fileName={`Riser_Inspection_Report_ROV_${headerData.sowReportNo}`} 
+                generateReport={generateRRISIDetailReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={jtisiPreviewOpen} 
                 onOpenChange={setJtisiPreviewOpen} 
-                title="ROV J-Tube Inspection Report Preview" 
+                title="J-Tube Survey Inspection Sketch Report (ROV) Preview" 
                 fileName={`ROV_JTube_Report_${headerData.sowReportNo}`} 
                 generateReport={generateJTISIReportBlob} 
             />
@@ -2362,11 +2453,33 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={jtisiDetailPreviewOpen} 
+                onOpenChange={setJtisiDetailPreviewOpen} 
+                title="J-Tube Inspection Report (ROV) Preview" 
+                fileName={`JTube_Inspection_Report_ROV_${headerData.sowReportNo}`} 
+                generateReport={generateJTISIDetailReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={itisiPreviewOpen} 
                 onOpenChange={setItisiPreviewOpen} 
-                title="ROV I-Tube Inspection Report Preview" 
+                title="I-Tube Survey Inspection Sketch Report (ROV) Preview" 
                 fileName={`ROV_ITube_Report_${headerData.sowReportNo}`} 
                 generateReport={generateITISIReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={itisiDetailPreviewOpen} 
+                onOpenChange={setItisiDetailPreviewOpen} 
+                title="I-Tube Inspection Report (ROV) Preview" 
+                fileName={`ITube_Inspection_Report_ROV_${headerData.sowReportNo}`} 
+                generateReport={generateITISIDetailReportBlob} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2472,11 +2585,54 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
-                open={seabedPreviewOpen} 
-                onOpenChange={setSeabedPreviewOpen} 
-                title="ROV Seabed Survey Report Preview" 
-                fileName={`ROV_Seabed_Report_${headerData.sowReportNo}`} 
+                open={seabedPreviewOpen}
+                onOpenChange={setSeabedPreviewOpen}
+                title={(() => {
+                    if (seabedTemplateType === 'seabed-survey-crater') return "Seabed Survey Crater Sketch Report (ROV) Preview";
+                    if (seabedTemplateType === 'seabed-survey-gas') return "Seabed Survey Gas Seepage Sketch Report (ROV) Preview";
+                    if (seabedTemplateType === 'seabed-survey-debris') return "Seabed Survey Debris Sketch Report (ROV) Preview";
+                    return "Seabed Survey Inspection Sketch Report (ROV) Preview";
+                })()}
+                fileName={(() => {
+                    if (seabedTemplateType === 'seabed-survey-crater') return `Seabed_Survey_Crater_Sketch_Report_${headerData.sowReportNo}`;
+                    if (seabedTemplateType === 'seabed-survey-gas') return `Seabed_Survey_Gas_Seepage_Sketch_Report_${headerData.sowReportNo}`;
+                    if (seabedTemplateType === 'seabed-survey-debris') return `Seabed_Survey_Debris_Sketch_Report_${headerData.sowReportNo}`;
+                    return `Seabed_Survey_Inspection_Sketch_Report_${headerData.sowReportNo}`;
+                })()}
                 generateReport={generateSeabedReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={seabedDetailPreviewOpen} 
+                onOpenChange={setSeabedDetailPreviewOpen} 
+                title="Seabed Survey Debris Inspection Report (ROV) Preview" 
+                fileName={`Seabed_Survey_Debris_Inspection_Report_${headerData.sowReportNo}`} 
+                generateReport={generateSeabedDetailReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={seabedGasDetailPreviewOpen} 
+                onOpenChange={setSeabedGasDetailPreviewOpen} 
+                title="Seabed Survey Gas Seepage Inspection Report (ROV) Preview" 
+                fileName={`Seabed_Survey_Gas_Seepage_Inspection_Report_${headerData.sowReportNo}`} 
+                generateReport={generateSeabedGasDetailReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={seabedCraterDetailPreviewOpen} 
+                onOpenChange={setSeabedCraterDetailPreviewOpen} 
+                title="Seabed Survey Crater Inspection Report (ROV) Preview" 
+                fileName={`Seabed_Survey_Crater_Inspection_Report_${headerData.sowReportNo}`} 
+                generateReport={generateSeabedCraterDetailReportBlob} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2676,7 +2832,7 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingDcasnTsPreviewOpen} 
                 onOpenChange={setDivingDcasnTsPreviewOpen} 
-                title="Caisson Inspection Topside Diving Report Preview" 
+                title="Caisson Inspection Above Water Diving Report Preview" 
                 fileName={`Diving_Caisson_TS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingDCASNTSReportBlob} 
             />
@@ -2700,7 +2856,7 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={divingDcondTsPreviewOpen} 
                 onOpenChange={setDivingDcondTsPreviewOpen} 
-                title="Conductor Inspection Topside Diving Report Preview" 
+                title="Conductor Inspection Above Water Diving Report Preview" 
                 fileName={`Diving_Conductor_TS_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingDCONDTSReportBlob} 
             />
@@ -2888,8 +3044,11 @@ export function WorkspaceDialogs({
                     generateRSCORReport: () => setters.setRscorPreviewOpen(true),
                     generateRSCORV2Report: () => setters.setRscorV2PreviewOpen(true),
                     generateRRISIReport: () => setters.setRrisiPreviewOpen(true),
+                    generateRRISIDetailReport: () => setRrisiDetailPreviewOpen(true),
                     generateJTISIReport: () => setters.setJtisiPreviewOpen(true),
+                    generateJTISIDetailReport: () => setJtisiDetailPreviewOpen(true),
                     generateITISIReport: () => setters.setItisiPreviewOpen(true),
+                    generateITISIDetailReport: () => setters.setItisiDetailPreviewOpen(true),
                     generateRCASNReport: () => setters.setRcasnPreviewOpen(true),
                     generateRCASNSketchReport: () => setters.setRcasnSketchPreviewOpen(true),
                     generateRCONDReport: () => setters.setRcondPreviewOpen(true),
@@ -2902,7 +3061,10 @@ export function WorkspaceDialogs({
                     generateDivingDCASNTSReport: () => setters.setDivingDcasnTsPreviewOpen(true),
                     generateDivingDCONDUWReport: () => setters.setDivingDcondUwPreviewOpen(true),
                     generateDivingDCONDTSReport: () => setters.setDivingDcondTsPreviewOpen(true),
-                    generateSeabedReport: (templateId: string) => setters.setSeabedPreviewOpen(true),
+                    generateSeabedReport: (templateId: string) => generateSeabedReport(templateId),
+                    generateSeabedDetailReport: () => setters.setSeabedDetailPreviewOpen(true),
+                    generateSeabedGasDetailReport: () => setters.setSeabedGasDetailPreviewOpen(true),
+                    generateSeabedCraterDetailReport: () => setters.setSeabedCraterDetailPreviewOpen(true),
                     generateFullInspectionReport: () => toast.info("Generating full inspection report..."),
                     generateInspectionReportByType: (id: any) => {
                         const type = states.allInspectionTypes.find(t => t.id === id);
@@ -2943,6 +3105,7 @@ export function WorkspaceDialogs({
                             case 'RRISI': setters.setRrisiPreviewOpen(true); break;
                             case 'JTISI': setters.setJtisiPreviewOpen(true); break;
                             case 'ITISI': setters.setItisiPreviewOpen(true); break;
+                            case 'ITISI-D': setters.setItisiDetailPreviewOpen(true); break;
                             case 'RCASN': setters.setRcasnPreviewOpen(true); break;
                             case 'RCASN-S': setters.setRcasnSketchPreviewOpen(true); break;
                             case 'RCOND': setters.setRcondPreviewOpen(true); break;

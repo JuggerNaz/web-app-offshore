@@ -88,6 +88,7 @@ type ComponentSpecDialogProps = {
   typeName?: string | null;
   listKey?: string | null;
   createdFrom?: string;
+  inline?: boolean;
 };
 
 export function ComponentSpecDialog({
@@ -100,6 +101,7 @@ export function ComponentSpecDialog({
   typeName,
   listKey,
   createdFrom,
+  inline = false,
 }: ComponentSpecDialogProps) {
   const isCreateMode = mode === "create";
   const [isEditing, setIsEditing] = useState(false);
@@ -1378,93 +1380,171 @@ export function ComponentSpecDialog({
   // Note: always render Dialog so Radix can fully clean up its portal/overlay
   // even when there is no selected component.
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl max-h-[95vh] flex flex-col">
-        <DialogHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/50 border-b relative overflow-hidden shrink-0">
-          <div className="absolute top-0 right-0 p-8 opacity-5">
-            <Wrench className="h-24 w-24 -rotate-12" />
-          </div>
-          <div className="flex items-center gap-4 mb-2">
-            <div className="h-12 w-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Wrench className="h-6 w-6" />
-            </div>
-            <div>
-              <DialogTitle className="text-2xl font-black uppercase tracking-tight">
+  const TitleElement = inline ? "h2" : DialogTitle;
+  const DescriptionElement = inline ? "div" : DialogDescription;
+
+  const dialogInnerContent = (
+    <div className={cn("p-0 overflow-hidden border-none max-h-full flex flex-col h-full bg-white dark:bg-slate-900 w-full", inline && "rounded-none")}>
+      <DialogHeader className={cn("p-8 bg-slate-50/50 dark:bg-slate-900/50 border-b relative overflow-hidden shrink-0", inline && "p-6 pr-16 pb-4")}>
+        {inline ? (
+          <div className="flex flex-col gap-4 w-full">
+            <div className="space-y-1.5">
+              <TitleElement className="text-xl font-black uppercase tracking-tight leading-none text-slate-900 dark:text-white">
                 {isCreateMode
                   ? "Create New Component"
                   : isEditing
                     ? "Edit Component"
                     : "Component Specifications"}
-              </DialogTitle>
-              <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex flex-col gap-1">
+              </TitleElement>
+              <DescriptionElement className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex flex-col gap-1.5">
                 {isCreateMode ? (
                   <>
                     <span>Configure specifications for the new component</span>
                     {typeName && (
-                      <span className="text-blue-600 dark:text-blue-400 font-black mt-1">
+                      <span className="text-blue-600 dark:text-blue-400 font-black mt-0.5">
                         {typeName}
                       </span>
                     )}
                   </>
                 ) : (
                   <>
-                    <span className="flex items-center gap-4 mt-1">
-                      <span className="text-blue-600 font-black text-sm uppercase">
+                    <span className="flex flex-col gap-1.5 mt-0.5">
+                      <span className="text-blue-600 dark:text-blue-400 font-black text-sm uppercase tracking-tight break-all leading-snug">
                         {typeName || component?.id_no} {component?.q_id ? `- ${component.q_id}` : ""}
                       </span>
                       {component?.updated_at && (
-                        <>
-                          <span className="opacity-20 text-slate-400">|</span>
-                          <span>
-                            Updated: {new Date(component.updated_at).toLocaleDateString()}
-                          </span>
-                        </>
+                        <span className="text-[9px] text-slate-400 font-bold tracking-widest">
+                          Updated: {new Date(component.updated_at).toLocaleDateString()}
+                        </span>
                       )}
                     </span>
                   </>
                 )}
-              </DialogDescription>
+              </DescriptionElement>
+            </div>
+            <div className="flex gap-2.5">
+              {!isCreateMode && (
+                <Button
+                  variant={isEditing ? "destructive" : "outline"}
+                  size="sm"
+                  className="rounded-xl font-bold uppercase text-[9px] tracking-widest gap-2 h-9 px-4 transition-all"
+                  onClick={() => setIsEditing(!isEditing)}
+                >
+                  {isEditing ? (
+                    <>
+                      <X className="h-3 w-3" /> Cancel
+                    </>
+                  ) : (
+                    <>
+                      <Settings2 className="h-3 w-3" /> Edit Data
+                    </>
+                  )}
+                </Button>
+              )}
+              {isEditing && (
+                <Button
+                  size="sm"
+                  className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase text-[9px] tracking-widest gap-2 h-9 px-5 shadow-lg shadow-blue-500/20 transition-all"
+                  onClick={handleUpdate}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Plus className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Save className="h-3 w-3" />
+                  )}
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              )}
             </div>
           </div>
-          <div className="absolute top-8 right-8 flex gap-2">
-            {!isCreateMode && (
-              <Button
-                variant={isEditing ? "destructive" : "outline"}
-                size="sm"
-                className="rounded-xl font-bold uppercase text-[10px] tracking-widest gap-2"
-                onClick={() => setIsEditing(!isEditing)}
-              >
-                {isEditing ? (
-                  <>
-                    <X className="h-3 w-3" /> Cancel
-                  </>
-                ) : (
-                  <>
-                    <Settings2 className="h-3 w-3" /> Edit Data
-                  </>
-                )}
-              </Button>
-            )}
-            {isEditing && (
-              <Button
-                size="sm"
-                className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase text-[10px] tracking-widest gap-2 shadow-lg shadow-blue-500/20"
-                onClick={handleUpdate}
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <Plus className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Save className="h-3 w-3" />
-                )}
-                Save Changes
-              </Button>
-            )}
-          </div>
+        ) : (
+          <>
+            <div className="absolute top-0 right-0 p-8 opacity-5">
+              <Wrench className="h-24 w-24 -rotate-12" />
+            </div>
+            <div className="flex items-center gap-4 mb-2">
+              <div className="h-12 w-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <Wrench className="h-6 w-6" />
+               </div>
+               <div>
+                 <TitleElement className="text-2xl font-black uppercase tracking-tight">
+                   {isCreateMode
+                     ? "Create New Component"
+                     : isEditing
+                       ? "Edit Component"
+                       : "Component Specifications"}
+                 </TitleElement>
+                 <DescriptionElement className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex flex-col gap-1">
+                   {isCreateMode ? (
+                     <>
+                       <span>Configure specifications for the new component</span>
+                       {typeName && (
+                         <span className="text-blue-600 dark:text-blue-400 font-black mt-1">
+                           {typeName}
+                         </span>
+                       )}
+                     </>
+                   ) : (
+                     <>
+                       <span className="flex items-center gap-4 mt-1">
+                         <span className="text-blue-600 font-black text-sm uppercase">
+                           {typeName || component?.id_no} {component?.q_id ? `- ${component.q_id}` : ""}
+                         </span>
+                         {component?.updated_at && (
+                           <>
+                             <span className="opacity-20 text-slate-400">|</span>
+                             <span>
+                               Updated: {new Date(component.updated_at).toLocaleDateString()}
+                             </span>
+                           </>
+                         )}
+                       </span>
+                     </>
+                   )}
+                 </DescriptionElement>
+               </div>
+             </div>
+             <div className="absolute top-8 right-8 flex gap-2">
+               {!isCreateMode && (
+                 <Button
+                   variant={isEditing ? "destructive" : "outline"}
+                   size="sm"
+                   className="rounded-xl font-bold uppercase text-[10px] tracking-widest gap-2"
+                   onClick={() => setIsEditing(!isEditing)}
+                 >
+                   {isEditing ? (
+                     <>
+                       <X className="h-3 w-3" /> Cancel
+                     </>
+                   ) : (
+                     <>
+                       <Settings2 className="h-3 w-3" /> Edit Data
+                     </>
+                   )}
+                 </Button>
+               )}
+               {isEditing && (
+                 <Button
+                   size="sm"
+                   className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase text-[10px] tracking-widest gap-2 shadow-lg shadow-blue-500/20"
+                   onClick={handleUpdate}
+                   disabled={isSaving}
+                 >
+                   {isSaving ? (
+                     <Plus className="h-3 w-3 animate-spin" />
+                   ) : (
+                     <Save className="h-3 w-3" />
+                   )}
+                   Save Changes
+                 </Button>
+               )}
+             </div>
+           </>
+         )}
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto p-8 pt-6">
+        <div className={cn("flex-1 overflow-y-auto p-8 pt-6", inline && "p-6 pt-4")}>
           {!isCreateMode && (component?.is_deleted || component?.metadata?.del === 1 || component?.metadata?.del === true || component?.metadata?.del === '1' || component?.metadata?.del === 'true') && (
             <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
               <AlertCircle className="h-5 w-5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -1478,11 +1558,11 @@ export function ComponentSpecDialog({
           )}
           <Tabs defaultValue="specifications" className="w-full">
             <TabsList
-              className={`grid w-full mb-8 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl ${isCreateMode ? "grid-cols-1" : "grid-cols-4 h-12"}`}
+              className={cn("grid w-full bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl", inline ? "mb-5 h-10" : "mb-8 h-12", isCreateMode ? "grid-cols-1" : "grid-cols-4")}
             >
               <TabsTrigger
                 value="specifications"
-                className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
+                className={cn("rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm", inline && "h-8 rounded-lg text-[9px]")}
               >
                 Specifications
               </TabsTrigger>
@@ -1490,19 +1570,19 @@ export function ComponentSpecDialog({
                 <>
                   <TabsTrigger
                     value="specifications2"
-                    className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
+                    className={cn("rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm", inline && "h-8 rounded-lg text-[9px]")}
                   >
                     Association
                   </TabsTrigger>
                   <TabsTrigger
                     value="comments"
-                    className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
+                    className={cn("rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm", inline && "h-8 rounded-lg text-[9px]")}
                   >
                     Comments
                   </TabsTrigger>
                   <TabsTrigger
                     value="attachments"
-                    className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
+                    className={cn("rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm", inline && "h-8 rounded-lg text-[9px]")}
                   >
                     Attachments
                   </TabsTrigger>
@@ -1512,7 +1592,7 @@ export function ComponentSpecDialog({
 
             {/* Specifications Tab */}
             <TabsContent value="specifications" className="space-y-8 mt-0 outline-none">
-              <div className="grid grid-cols-12 gap-6 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">
+              <div className={cn(inline ? "flex flex-col gap-6" : "grid grid-cols-12 gap-6", "bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem]", inline ? "p-6" : "p-8")}>
                 {/* Row 1: Q ID, Description, Code */}
                 <div className="col-span-3 space-y-2">
                   <Label
@@ -2332,7 +2412,7 @@ export function ComponentSpecDialog({
                 {pageType === "pipeline" && (
                   <>
                     {effectiveCode?.toLowerCase() === "pp" ? (
-                      <div className="col-span-12 grid grid-cols-5 gap-6">
+                      <div className={cn("col-span-12", inline ? "flex flex-col gap-6" : "grid grid-cols-5 gap-6")}>
                         <div className="space-y-2">
                           <Label
                             htmlFor="start_kp"
@@ -2872,7 +2952,7 @@ export function ComponentSpecDialog({
                         Additional Specifications
                       </h3>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-6 px-1">
+                    <div className={cn(inline ? "flex flex-col gap-y-6" : "grid grid-cols-2 gap-x-12 gap-y-6", "px-1")}>
                       {Object.entries(formData.additionalInfo)
                         .sort(([a], [b]) => {
                           if (a === "has_gas_seepage") return 1;
@@ -3854,13 +3934,13 @@ export function ComponentSpecDialog({
           </Tabs>
         </div>
 
-        <DialogFooter className="p-8 bg-slate-50/50 dark:bg-slate-900/50 border-t shrink-0">
+        <DialogFooter className={cn("p-8 bg-slate-50/50 dark:bg-slate-900/50 border-t shrink-0", inline && "p-4 px-6")}>
           <div className="flex justify-end gap-3 w-full">
             <Button
               type="button"
               variant="ghost"
               onClick={() => onOpenChange(false)}
-              className="rounded-xl font-bold px-6 h-11 transition-all"
+              className={cn("rounded-xl font-bold px-6 h-11 transition-all", inline && "h-10 px-5 text-xs")}
             >
               Cancel
             </Button>
@@ -3869,7 +3949,7 @@ export function ComponentSpecDialog({
                 type="submit"
                 onClick={handleSave}
                 disabled={isSaving}
-                className="rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]"
+                className={cn("rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]", inline && "h-10 px-6 text-xs")}
               >
                 {isSaving ? (
                   <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -3884,7 +3964,7 @@ export function ComponentSpecDialog({
                   type="button"
                   variant="outline"
                   onClick={() => setIsEditing(false)}
-                  className="rounded-xl font-bold px-6 h-11"
+                  className={cn("rounded-xl font-bold px-6 h-11", inline && "h-10 px-5 text-xs")}
                 >
                   Cancel Edit
                 </Button>
@@ -3892,7 +3972,7 @@ export function ComponentSpecDialog({
                   type="button"
                   onClick={handleUpdate}
                   disabled={isSaving}
-                  className="rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]"
+                  className={cn("rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]", inline && "h-10 px-6 text-xs")}
                 >
                   {isSaving ? (
                     <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -3906,13 +3986,24 @@ export function ComponentSpecDialog({
               <Button
                 type="button"
                 onClick={() => onOpenChange(false)}
-                className="rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 uppercase tracking-widest text-[10px]"
+                className={cn("rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 uppercase tracking-widest text-[10px]", inline && "h-10 px-8 text-xs")}
               >
                 OK
               </Button>
             )}
           </div>
         </DialogFooter>
+      </div>
+  );
+
+  if (inline) {
+    return dialogInnerContent;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-5xl rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl max-h-[95vh] flex flex-col">
+        {dialogInnerContent}
       </DialogContent>
     </Dialog>
   );

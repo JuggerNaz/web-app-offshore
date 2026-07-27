@@ -14,7 +14,7 @@ export interface CompanySettings {
 }
 
 export interface ReportConfig {
-    reportNoPrefix: string;
+    reportNoPrefix?: string;
     reportYear: string;
     preparedBy: { name: string; date: string };
     reviewedBy?: { name: string; date: string };

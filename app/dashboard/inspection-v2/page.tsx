@@ -17,7 +17,7 @@ interface JobPack {
     jobpack_title: string;
     structure_name: string;
     status: string;
-    structures: Array<{ id: number; name: string }>;
+    structures: Array<{ id: string; name: string; type?: "platform" | "pipeline" }>;
     start_date?: string;
     year: string;
     vessel?: string;
@@ -25,8 +25,9 @@ interface JobPack {
 }
 
 interface Structure {
-    id: number;
+    id: string;
     name: string;
+    type?: "platform" | "pipeline";
 }
 
 interface SOWReport {
@@ -126,10 +127,10 @@ export default function InspectionLanding() {
         return b.localeCompare(a); // Descending order
     });
 
-    // Refresh job packs and structure names when component mounts or structure changes
+    // Refresh job packs and structure names when component mounts
     useEffect(() => {
         loadJobPacks();
-    }, [selectedStructure]);
+    }, []);
 
     // Restore selections AFTER jobPacks are loaded, with query parameters taking priority
     useEffect(() => {
@@ -217,15 +218,13 @@ export default function InspectionLanding() {
 
     // Validate and update job pack selection when selected structure changes
     useEffect(() => {
-        if (selectedStructure) {
+        if (selectedStructure && jobPacks.length > 0) {
             setSelectedJobPack(prev => {
                 if (!prev) return "";
-                const stillValid = jobPacks.find(jp => jp.id.toString() === prev)
-                    ?.structures.some(s => s.id.toString() === selectedStructure);
+                const matchedJp = jobPacks.find(jp => jp.id.toString() === prev);
+                const stillValid = matchedJp?.structures.some(s => s.id.toString() === selectedStructure);
                 return stillValid ? prev : "";
             });
-        } else {
-            setSelectedJobPack("");
         }
     }, [selectedStructure, jobPacks]);
 
@@ -253,10 +252,12 @@ export default function InspectionLanding() {
 
         async function fetchAnomalyCount(structId: string, jpId: string, sowReportNo: string) {
             try {
+                // Parse prefix e.g., platform-1 or pipeline-1
+                const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
                 const { count, error } = await supabase
                     .from("insp_anomalies")
                     .select("anomaly_id, insp_records!inner(structure_id, jobpack_id, sow_report_no)", { count: "exact", head: true })
-                    .eq("insp_records.structure_id", parseInt(structId))
+                    .eq("insp_records.structure_id", parseInt(rawId))
                     .eq("insp_records.jobpack_id", parseInt(jpId))
                     .eq("insp_records.sow_report_no", sowReportNo);
 
@@ -338,19 +339,21 @@ export default function InspectionLanding() {
             const platforms = platformsRes.data || [];
             const pipelines = pipelinesRes.data || [];
 
-            const structureMap = new Map<number, string>();
+            const structureMap = new Map<string, { title: string; type: "platform" | "pipeline" }>();
             const structuresList: Structure[] = [];
 
             platforms.forEach((p: any) => {
-                const id = Number(p.plat_id);
-                structureMap.set(id, p.title);
-                structuresList.push({ id, name: p.title });
+                const id = `platform-${p.plat_id}`;
+                const title = p.title || p.name || p.str_name || "";
+                structureMap.set(id, { title, type: "platform" });
+                structuresList.push({ id, name: title, type: "platform" });
             });
 
             pipelines.forEach((p: any) => {
-                const id = Number(p.pipe_id);
-                structureMap.set(id, p.title);
-                structuresList.push({ id, name: p.title });
+                const id = `pipeline-${p.pipe_id}`;
+                const title = p.title || p.name || p.str_name || "";
+                structureMap.set(id, { title, type: "pipeline" });
+                structuresList.push({ id, name: title, type: "pipeline" });
             });
 
             // Sort structures list alphabetically and update state
@@ -362,10 +365,17 @@ export default function InspectionLanding() {
                     const structures = (jp.metadata as any)?.structures || [];
                     const structureList = Array.isArray(structures)
                         ? structures
-                            .map((s: any) => ({
-                                id: Number(s.id),
-                                name: structureMap.get(Number(s.id)) || s.title || s.code || s.name || ""
-                            }))
+                            .map((s: any) => {
+                                // Fallback mapping in case jobpack metadata s.id has no type prefix
+                                const sType = s.type?.toLowerCase() === "pipeline" || s.name?.toLowerCase().includes("pipe") ? "pipeline" : "platform";
+                                const lookupId = s.id?.toString().includes("-") ? s.id.toString() : `${sType}-${s.id}`;
+                                const mapInfo = structureMap.get(lookupId);
+                                return {
+                                    id: lookupId,
+                                    name: mapInfo?.title || s.title || s.name || s.code || `Structure ${s.id}`,
+                                    type: mapInfo?.type || sType
+                                };
+                            })
                             .filter((s: Structure) => s.name !== "")
                         : [];
 
@@ -419,8 +429,8 @@ export default function InspectionLanding() {
     async function loadSOWReports(jobPackId: string, structureId: string) {
         try {
             console.log("Loading SOW reports via API for job pack:", jobPackId, "structure:", structureId);
-
-            const res = await fetch(`/api/sow?jobpack_id=${jobPackId}&structure_id=${structureId}`);
+            const rawId = structureId.includes("-") ? structureId.split("-")[1] : structureId;
+            const res = await fetch(`/api/sow?jobpack_id=${jobPackId}&structure_id=${rawId}`);
             if (!res.ok) {
                 throw new Error(`Failed to fetch SOW reports: ${res.statusText}`);
             }
@@ -617,7 +627,14 @@ export default function InspectionLanding() {
                                             >
                                                 <div className="flex items-center gap-2 font-semibold text-sm text-slate-900 dark:text-slate-100">
                                                     <Building2 className={`h-4 w-4 ${selectedStructure ? "text-green-600 dark:text-green-400" : "text-slate-400"}`} />
-                                                    {selectedStructureData ? selectedStructureData.name : (loading ? "Loading..." : allStructures.length === 0 ? "No structures" : "Choose structure...")}
+                                                    {selectedStructureData ? (
+                                                        <span>
+                                                            {selectedStructureData.name} 
+                                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-1.5 uppercase font-black bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-800/50">
+                                                                {selectedStructureData.type}
+                                                            </span>
+                                                        </span>
+                                                    ) : (loading ? "Loading..." : allStructures.length === 0 ? "No structures" : "Choose structure...")}
                                                 </div>
                                                 <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
                                             </Button>
@@ -663,7 +680,12 @@ export default function InspectionLanding() {
                                                                     >
                                                                         <div className="flex items-center gap-2">
                                                                             <Building2 className={`h-4 w-4 ${isSelected ? "text-green-600 dark:text-green-500" : "text-slate-400"}`} />
-                                                                            <span>{struct.name}</span>
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <span>{struct.name}</span>
+                                                                                <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-800/50">
+                                                                                    {struct.type || "platform"}
+                                                                                </span>
+                                                                            </div>
                                                                         </div>
                                                                         {isSelected && (
                                                                             <Check className="h-4 w-4 text-green-600 dark:text-green-500" />
@@ -708,7 +730,12 @@ export default function InspectionLanding() {
                                                                 >
                                                                     <div className="flex items-center gap-2">
                                                                         <Building2 className={`h-4 w-4 ${isSelected ? "text-green-600 dark:text-green-500" : "text-slate-400"}`} />
-                                                                        <span>{struct.name}</span>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span>{struct.name}</span>
+                                                                            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-800/50">
+                                                                                {struct.type || "platform"}
+                                                                            </span>
+                                                                        </div>
                                                                     </div>
                                                                     {isSelected && (
                                                                         <Check className="h-4 w-4 text-green-600 dark:text-green-500" />
@@ -951,9 +978,13 @@ export default function InspectionLanding() {
                                             onClick={() => {
                                                 if (!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode) return;
                                                 const selectedSOWData = sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW);
+                                                const isPipeline = selectedStructureData?.type === "pipeline";
+                                                const targetPath = isPipeline ? "/dashboard/inspection-v2/pipeline-workspace" : "/dashboard/inspection-v2/workspace";
+                                                const rawStructId = selectedStructure.includes("-") ? selectedStructure.split("-")[1] : selectedStructure;
+                                                
                                                 const params = new URLSearchParams({
                                                     jobpack: selectedJobPack,
-                                                    structure: selectedStructure,
+                                                    structure: rawStructId,
                                                     sow: String(selectedSOWData?.sow_id ?? ""),
                                                     mode: selectedMode,
                                                     jpName: jobPacks.find(j => j.id.toString() === selectedJobPack)?.jobpack_no || "",
@@ -961,11 +992,11 @@ export default function InspectionLanding() {
                                                     sowReport: selectedSOWData?.report_number || "",
                                                     jobType: selectedSOWData?.job_type || "",
                                                 });
-                                                router.push(`/dashboard/inspection-v2/workspace?${params.toString()}`);
+                                                router.push(`${targetPath}?${params.toString()}`);
                                             }}
                                             className={`w-full h-12 text-sm font-black transition-all duration-300 ${
                                                 (!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode)
-                                                    ? "bg-slate-200 dark:bg-slate-805 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                                                    ? "bg-slate-205 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
                                                      : "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-600 text-white shadow-md shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:-translate-y-0.5"}`}
                                         >
                                             <span>Start Inspection</span>
@@ -1128,7 +1159,7 @@ export default function InspectionLanding() {
                         </div>
                     </Card>
 
-                    <Card className="p-3 bg-cyan-50/30 dark:bg-cyan-950/10 border-cyan-105/50 dark:border-cyan-900/50 flex flex-col justify-between">
+                    <Card className="p-3 bg-cyan-50/30 dark:bg-cyan-950/10 border-cyan-100/50 dark:border-cyan-900/50 flex flex-col justify-between">
                         <div>
                             <p className="text-[10px] font-bold text-cyan-900 dark:text-cyan-100 uppercase tracking-wider mb-1">
                                 {selectedJobPack ? "SOW Reports in Job Pack" : "SOW Reports"}
@@ -1139,7 +1170,7 @@ export default function InspectionLanding() {
                         </div>
                     </Card>
 
-                    <Card className="p-3 bg-purple-50/30 dark:bg-purple-950/10 border-purple-105/50 dark:border-purple-900/50 flex flex-col justify-between">
+                    <Card className="p-3 bg-purple-50/30 dark:bg-purple-950/10 border-purple-100/50 dark:border-purple-900/50 flex flex-col justify-between">
                         <div>
                             <p className="text-[10px] font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider mb-1">
                                 Job Type

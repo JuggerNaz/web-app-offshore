@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Box, AlertTriangle, Plus, X, ChevronRight, CheckCircle2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import inspectionSpecs from "@/utils/types/inspection-types.json";
 import { InspectionForm } from "../../components/InspectionForm";
 
 interface InspectionFormPanelProps {
@@ -145,7 +146,14 @@ export function InspectionFormPanel({
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-[9px] h-4 px-2 font-black uppercase border-blue-500 text-blue-400 bg-blue-500/10 tracking-widest">
-                {activeSpec || "NO SPEC"}
+                {(() => {
+                  if (!activeSpec) return "NO SPEC";
+                  const codeClean = activeSpec.toUpperCase().trim();
+                  const jsonSpec = (inspectionSpecs?.inspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
+                  if (jsonSpec?.name) return jsonSpec.name;
+                  const specObj = (allInspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
+                  return specObj?.name || activeSpec;
+                })()}
               </Badge>
               <button onClick={resetForm} className="p-1 hover:bg-slate-800 rounded transition-colors text-slate-400 hover:text-white" title="Close / Reset">
                 <X className="w-3.5 h-3.5" />

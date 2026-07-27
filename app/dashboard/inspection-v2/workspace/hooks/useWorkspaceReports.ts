@@ -13,6 +13,9 @@ import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVRSCORV2Report } from "@/utils/report-generators/rov-rscor-v2-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
+import { generateROVRRISIDetailReport } from "@/utils/report-generators/rov-rrisi-detail-report";
+import { generateROVRRISIJTubeDetailReport } from "@/utils/report-generators/rov-jtisi-detail-report";
+import { generateROVRRISIITubeDetailReport } from "@/utils/report-generators/rov-itisi-detail-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVAnodeRSANIReport } from "@/utils/report-generators/rov-anode-rsani-report";
 import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
@@ -79,8 +82,11 @@ export function useWorkspaceReports(
     const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
     const [rscorV2PreviewOpen, setRscorV2PreviewOpen] = useState(false);
     const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
+    const [rrisiDetailPreviewOpen, setRrisiDetailPreviewOpen] = useState(false);
     const [jtisiPreviewOpen, setJtisiPreviewOpen] = useState(false);
+    const [jtisiDetailPreviewOpen, setJtisiDetailPreviewOpen] = useState(false);
     const [itisiPreviewOpen, setItisiPreviewOpen] = useState(false);
+    const [itisiDetailPreviewOpen, setItisiDetailPreviewOpen] = useState(false);
     const [anodePreviewOpen, setAnodePreviewOpen] = useState(false);
     const [anodeRsaniPreviewOpen, setAnodeRsaniPreviewOpen] = useState(false);
     const [cpPreviewOpen, setCpPreviewOpen] = useState(false);
@@ -96,6 +102,9 @@ export function useWorkspaceReports(
     const [sgPreviewOpen, setSgPreviewOpen] = useState(false);
     const [cuPreviewOpen, setCuPreviewOpen] = useState(false);
     const [seabedPreviewOpen, setSeabedPreviewOpen] = useState(false);
+    const [seabedDetailPreviewOpen, setSeabedDetailPreviewOpen] = useState(false);
+    const [seabedGasDetailPreviewOpen, setSeabedGasDetailPreviewOpen] = useState(false);
+    const [seabedCraterDetailPreviewOpen, setSeabedCraterDetailPreviewOpen] = useState(false);
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
@@ -159,17 +168,29 @@ export function useWorkspaceReports(
         const filterMap: Record<string, string> = {
             "seabed-survey-debris": "Debris",
             "seabed-survey-gas": "Gas Seepage",
-            "seabed-survey-crater": "Crater"
+            "seabed-survey-crater": "Crater",
+            "rov-seabed-report": ""
         };
         
-        const itemTypeFilter = filterMap[tid] || "Debris";
-        const recordsToPrint = currentRecords.filter(r => 
-            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SEABED') && 
-            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
-        );
+        const itemTypeFilter = filterMap[tid] !== undefined ? filterMap[tid] : "Debris";
+        const recordsToPrint = currentRecords.filter(r => {
+            if (!(r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SEABED')) {
+                return false;
+            }
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            if (tid === 'seabed-survey-gas') {
+                return cat === 'gas seepage' || desc.startsWith('gas seepage');
+            } else if (tid === 'seabed-survey-crater') {
+                return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+            } else if (tid === 'seabed-survey-debris') {
+                return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
+            }
+            return true;
+        });
 
         if (recordsToPrint.length === 0) {
-            toast.error(`No ${itemTypeFilter} records found for Seabed Survey.`);
+            toast.error(`No ${itemTypeFilter || "Seabed"} records found for Seabed Survey.`);
             return;
         }
 
@@ -181,14 +202,26 @@ export function useWorkspaceReports(
         const filterMap: Record<string, string> = {
             "seabed-survey-debris": "Debris",
             "seabed-survey-gas": "Gas Seepage",
-            "seabed-survey-crater": "Crater"
+            "seabed-survey-crater": "Crater",
+            "rov-seabed-report": ""
         };
         
-        const itemTypeFilter = filterMap[seabedTemplateType] || "Debris";
-        const recordsToPrint = currentRecords.filter(r => 
-            (r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB') && 
-            (r.inspection_data?.type === itemTypeFilter || (!r.inspection_data?.type && itemTypeFilter === "Debris"))
-        );
+        const itemTypeFilter = filterMap[seabedTemplateType] !== undefined ? filterMap[seabedTemplateType] : "Debris";
+        const recordsToPrint = currentRecords.filter(r => {
+            if (!(r.inspection_type_code === 'RSEAB' || r.inspection_type?.code === 'RSEAB' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SEABED')) {
+                return false;
+            }
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            if (seabedTemplateType === 'seabed-survey-gas') {
+                return cat === 'gas seepage' || desc.startsWith('gas seepage');
+            } else if (seabedTemplateType === 'seabed-survey-crater') {
+                return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+            } else if (seabedTemplateType === 'seabed-survey-debris') {
+                return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
+            }
+            return true;
+        });
 
         if (recordsToPrint.length === 0) return;
 
@@ -216,6 +249,126 @@ export function useWorkspaceReports(
             itemTypeFilter
         );
         return result as Blob;
+    };
+
+    const generateSeabedDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || !desc.startsWith('gas') && !desc.startsWith('crater')));
+        });
+        if (records.length === 0) {
+            toast.error("No Seabed Survey Debris records found to generate report");
+            return;
+        }
+        setSeabedDetailPreviewOpen(true);
+    };
+
+    const generateSeabedDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || !desc.startsWith('gas') && !desc.startsWith('crater')));
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        const { generateROVRSEABDetailReport } = await import("@/utils/report-generators/rov-rseab-detail-report");
+        return await generateROVRSEABDetailReport(
+            records.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), sowReportNo: headerData.sowReportNo }
+        ) as Blob;
+    };
+
+    const generateSeabedGasDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'gas seepage' || desc.startsWith('gas seepage');
+        });
+        if (records.length === 0) {
+            toast.error("No Seabed Survey Gas Seepage records found to generate report");
+            return;
+        }
+        setSeabedGasDetailPreviewOpen(true);
+    };
+
+    const generateSeabedGasDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'gas seepage' || desc.startsWith('gas seepage');
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        const { generateROVRSEABGasDetailReport } = await import("@/utils/report-generators/rov-rseab-gas-detail-report");
+        return await generateROVRSEABGasDetailReport(
+            records.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), sowReportNo: headerData.sowReportNo }
+        ) as Blob;
+    };
+
+    const generateSeabedCraterDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+        });
+        if (records.length === 0) {
+            toast.error("No Seabed Survey Crater records found to generate report");
+            return;
+        }
+        setSeabedCraterDetailPreviewOpen(true);
+    };
+
+    const generateSeabedCraterDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (typeCode !== 'RSEAB') return false;
+            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
+            const desc = (r.description || '').toLowerCase();
+            return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
+        return await generateROVRSEABCraterDetailReport(
+            records.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), sowReportNo: headerData.sowReportNo }
+        ) as Blob;
     };
 
     const generateRMGIReport = async () => {
@@ -759,6 +912,70 @@ export function useWorkspaceReports(
         return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'R' }) as Blob;
     };
 
+    const generateRRISIDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+        });
+        if (records.length === 0) {
+            toast.error("No Riser records found to generate report");
+            return;
+        }
+        setRrisiDetailPreviewOpen(true);
+    };
+
+    const generateRRISIDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateROVRRISIDetailReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
+    };
+
+    const generateJTISIDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            return typeCode === 'RRISI' && qid.startsWith('J') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+        });
+        if (records.length === 0) {
+            toast.error("No J-Tube records found to generate report");
+            return;
+        }
+        setJtisiDetailPreviewOpen(true);
+    };
+
+    const generateJTISIDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            return typeCode === 'RRISI' && qid.startsWith('J') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateROVRRISIJTubeDetailReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
+    };
+
     const generateJTISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.structure_components?.q_id || "").toUpperCase().startsWith('J'));
         if (records.length === 0) return;
@@ -783,6 +1000,38 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVRRISIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'I' }) as Blob;
+    };
+
+    const generateITISIDetailReport = async () => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            return typeCode === 'RRISI' && qid.startsWith('I') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+        });
+        if (records.length === 0) {
+            toast.error("No I-Tube records found to generate report");
+            return;
+        }
+        setItisiDetailPreviewOpen(true);
+    };
+
+    const generateITISIDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            const qid = (r.structure_components?.q_id || "").toUpperCase();
+            const compCode = (r.structure_components?.code || "").toUpperCase();
+            return typeCode === 'RRISI' && qid.startsWith('I') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+        });
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateROVRRISIITubeDetailReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
     };
 
     const generateAnodeReport = async () => {
@@ -1964,8 +2213,11 @@ export function useWorkspaceReports(
         rscorPreviewOpen, setRscorPreviewOpen,
         rscorV2PreviewOpen, setRscorV2PreviewOpen,
         rrisiPreviewOpen, setRrisiPreviewOpen,
+        rrisiDetailPreviewOpen, setRrisiDetailPreviewOpen,
         jtisiPreviewOpen, setJtisiPreviewOpen,
+        jtisiDetailPreviewOpen, setJtisiDetailPreviewOpen,
         itisiPreviewOpen, setItisiPreviewOpen,
+        itisiDetailPreviewOpen, setItisiDetailPreviewOpen,
         anodePreviewOpen, setAnodePreviewOpen,
         anodeRsaniPreviewOpen, setAnodeRsaniPreviewOpen,
         cpPreviewOpen, setCpPreviewOpen,
@@ -1982,6 +2234,7 @@ export function useWorkspaceReports(
         sgPreviewOpen, setSgPreviewOpen,
         cuPreviewOpen, setCuPreviewOpen,
         seabedPreviewOpen, setSeabedPreviewOpen,
+        seabedDetailPreviewOpen, setSeabedDetailPreviewOpen,
         photographyPreviewOpen, setPhotographyPreviewOpen,
         photographyLogPreviewOpen, setPhotographyLogPreviewOpen,
         gvinsPreviewOpen, setGvinsPreviewOpen,
@@ -2029,10 +2282,16 @@ export function useWorkspaceReports(
         generateRSCORV2ReportBlob,
         generateRRISIReport,
         generateRRISIReportBlob,
+        generateRRISIDetailReport,
+        generateRRISIDetailReportBlob,
         generateJTISIReport,
         generateJTISIReportBlob,
+        generateJTISIDetailReport,
+        generateJTISIDetailReportBlob,
         generateITISIReport,
         generateITISIReportBlob,
+        generateITISIDetailReport,
+        generateITISIDetailReportBlob,
         generateAnodeReport,
         generateAnodeReportBlob,
         generateAnodeRsaniReport,
@@ -2057,6 +2316,14 @@ export function useWorkspaceReports(
         generateRCONDSketchReportBlob,
         generateSeabedReport,
         generateSeabedReportBlob,
+        generateSeabedDetailReport,
+        generateSeabedDetailReportBlob,
+        generateSeabedGasDetailReport,
+        generateSeabedGasDetailReportBlob,
+        seabedGasDetailPreviewOpen, setSeabedGasDetailPreviewOpen,
+        generateSeabedCraterDetailReport,
+        generateSeabedCraterDetailReportBlob,
+        seabedCraterDetailPreviewOpen, setSeabedCraterDetailPreviewOpen,
         generatePhotographyReport,
         generatePhotographyReportBlob,
         generatePhotographyLogReport,

@@ -11,6 +11,7 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
+    reportNoPrefix?: string;
     printFriendly?: boolean;
     jobPackId?: number;
     structureId?: number;
@@ -107,7 +108,7 @@ export const generateDivingDCASNUWReport = async (
             d.setFontSize(12); d.setFont("helvetica", "bold");
             d.text("Caisson Inspection Underwater Diving", margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`SOW Report No: ${headerData.sowReportNo || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -683,7 +684,7 @@ export const generateDivingDCASNUWReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Caisson Inspection Underwater Diving  |  SOW: ${headerData.sowReportNo || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Caisson Inspection Underwater Diving  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
@@ -699,7 +700,7 @@ export const generateDivingDCASNUWReport = async (
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`Caisson_Inspection_Underwater_Diving_${headerData.sowReportNo || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`Caisson_Inspection_Underwater_Diving_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving Caisson UW Report] Error:", err);
         throw err;

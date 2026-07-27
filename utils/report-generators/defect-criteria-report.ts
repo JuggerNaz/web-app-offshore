@@ -5,7 +5,7 @@ import "jspdf-autotable";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface ReportConfig {
-    reportNoPrefix: string;
+    reportNoPrefix?: string;
     reportYear: string;
     preparedBy: { name: string; date: string 
     approvedBy?: { name: string; date: string };

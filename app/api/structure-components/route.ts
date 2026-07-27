@@ -19,19 +19,41 @@ export async function GET(request: NextRequest) {
 
         console.log("Fetching components for structure_id:", structureId);
 
-        // Fetch components from structure_components table
-        // q_id and code are direct columns, rest are in metadata JSONB column
-        const { data, error } = await supabase
-            .from("structure_components")
-            .select("*")
-            .eq("structure_id", parseInt(structureId))
-            .eq("is_deleted", false)
-            .order("q_id", { ascending: true });
+        let allData: any[] = [];
+        let page = 0;
+        const pageSize = 1000;
+        let hasMore = true;
 
-        if (error) {
-            console.error("Error fetching components from structure_components:", error);
-            return NextResponse.json({ error: error.message }, { status: 400 });
+        while (hasMore) {
+            const from = page * pageSize;
+            const to = from + pageSize - 1;
+
+            const { data: pageData, error } = await supabase
+                .from("structure_components")
+                .select("*")
+                .eq("structure_id", parseInt(structureId))
+                .eq("is_deleted", false)
+                .order("q_id", { ascending: true })
+                .range(from, to);
+
+            if (error) {
+                console.error("Error fetching components from structure_components:", error);
+                return NextResponse.json({ error: error.message }, { status: 400 });
+            }
+
+            if (!pageData || pageData.length === 0) {
+                hasMore = false;
+            } else {
+                allData.push(...pageData);
+                if (pageData.length < pageSize) {
+                    hasMore = false;
+                } else {
+                    page++;
+                }
+            }
         }
+
+        const data = allData;
 
         // Map data: q_id and code are direct columns, rest from metadata or columns
         const mappedData = (data || []).map((item: any) => {

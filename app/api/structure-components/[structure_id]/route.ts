@@ -1,8 +1,11 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
+import { syncWebapp3D } from "@/utils/platform-3d-math";
 
 /**
  * GET /api/structure-components/[structure_id]
@@ -24,35 +27,58 @@ export const GET = withAuth(
 
     const structureIdNumber = Number(structure_id);
 
-    // Build query
-    let query = supabase
-      .from("structure_components")
-      .select("*")
-      .eq("structure_id", structureIdNumber)
-      .order("q_id");
+    let allData: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
 
-    // Filter by archived / active / all
-    if (archived === "true") {
-      query = query.eq("is_deleted", true);
-    } else if (viewFilter === "show_all" || showAll) {
-      // Don't filter is_deleted
-    } else {
-      // Default: show only active components
-      query = query.eq("is_deleted", false);
+    while (hasMore) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+
+      let query = supabase
+        .from("structure_components")
+        .select("*")
+        .eq("structure_id", structureIdNumber)
+        .order("q_id")
+        .range(from, to);
+
+      // Filter by archived / active / all
+      if (archived === "true") {
+        query = query.eq("is_deleted", true);
+      } else if (viewFilter === "show_all" || showAll) {
+        // Don't filter is_deleted
+      } else {
+        // Default: show only active components
+        query = query.eq("is_deleted", false);
+      }
+
+      // Apply code filter if provided and not "ALL COMPONENTS"
+      if (code && code !== "ALL COMPONENTS") {
+        query = query.eq("code", code);
+      }
+
+      const { data: pageData, error } = await query;
+
+      if (error) {
+        return handleSupabaseError(error, "Failed to fetch structure components");
+      }
+
+      if (!pageData || pageData.length === 0) {
+        hasMore = false;
+      } else {
+        allData.push(...pageData);
+        if (pageData.length < pageSize) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      }
     }
 
-    // Apply code filter if provided and not "ALL COMPONENTS"
-    if (code && code !== "ALL COMPONENTS") {
-      query = query.eq("code", code);
-    }
+    const data = allData;
 
-    const { data, error } = await query;
-
-    if (error) {
-      return handleSupabaseError(error, "Failed to fetch structure components");
-    }
-
-    if (!data || data.length === 0) {
+    if (data.length === 0) {
       return apiSuccess([]);
     }
 
@@ -207,6 +233,11 @@ export const POST = withAuth(
     if (error) {
       return handleSupabaseError(error, "Failed to create structure component");
     }
+
+    // Trigger asynchronous 3D coordinates recalculation for this structure
+    syncWebapp3D(supabase, structureIdNumber).catch((err) => {
+      console.error("[3D Sync Error]", err);
+    });
 
     return apiSuccess(data);
   }
