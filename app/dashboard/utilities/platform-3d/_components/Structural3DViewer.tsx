@@ -1,6 +1,7 @@
+import * as THREE from 'three';
 "use client";
 
-import React, { useMemo, useState, useRef } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import { Fender } from "./Fender";
 import { RiserGuard } from "./RiserGuard";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -17,10 +18,10 @@ import {
     Float,
     useHelper,
 } from "@react-three/drei";
-import * as THREE from "three";
+
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass, RefreshCw, Maximize2 } from "lucide-react";
+import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight} from "lucide-react";
 
 interface Component3D {
     id: number;
@@ -31,6 +32,7 @@ interface Component3D {
 }
 
 interface Structural3DViewerProps {
+    webapp3dData?: any;
     components: Component3D[];
     platformDetails?: any;
     elevations?: any[];
@@ -52,6 +54,10 @@ const ComponentMesh = ({
     end,
     thickness = 0.3,
     showWeldNumbering = true,
+    isInspectionMode = false,
+    inspectionStatus = "NOT_INSPECTED",
+    isStatusChecked = true,
+    inspectionColor,
 }: {
     component: Component3D;
     isSelected: boolean;
@@ -60,17 +66,70 @@ const ComponentMesh = ({
     end: [number, number, number];
     thickness?: number;
     showWeldNumbering?: boolean;
+    isInspectionMode?: boolean;
+    inspectionStatus?: "NOT_INSPECTED" | "NO_ANOMALY" | "HAS_ANOMALY";
+    isStatusChecked?: boolean;
+    inspectionColor?: string;
 }) => {
     const [hovered, setHovered] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
 
-    const code = (component.code || "").toUpperCase();
-    const isNode = code.includes("NODE") || component.q_id.includes("NODE") || code === "ND";
+    const code = (component?.code || "").toUpperCase();
+    const qIdUpper = (component?.q_id || "").toUpperCase();
+    const isNode = code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND";
     const isAnode = code === "AN" || code.includes("ANOD");
     const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
-    const isClamp = code === "CL" || code.includes("CLAM") || component.q_id.includes("SUPP") || component.q_id.includes("CLP");
-    const isRiser = code === "RS" || code.includes("RISER") || code.includes("RISR");
-    const isConductor = code === "CD" || code.includes("COND") || code === "CS" || code === "CO" || code === "CA" || code.includes("CAIS");
+    const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL";
+    const isClamp = code === "CL" || code.includes("CLAM") || isRiserSupport;
+    const isRiser = !isAnode && !isRiserSupport && (
+        code === "RS" || code === "CS" || code === "CD" ||
+        code.includes("RISER") || code.includes("RISR") ||
+        /^R\d+[-_]/i.test(qIdUpper) ||
+        (qIdUpper.startsWith("R") && !qIdUpper.startsWith("RIS-"))
+    );
+    const isConductor = code === "CD" || code === "CS" || code.includes("COND") || code === "CO" || code === "CA" || code.includes("CAIS");
+
+    const defaultMeshColor = isAnode
+        ? "#F8FAFC"
+        : isWeld
+            ? "#d946ef"
+            : isClamp
+                ? "#d97706"
+                : isRiser
+                    ? "#334155"
+                    : isConductor
+                        ? "#475569"
+                        : "#cbd5e1";
+
+    const isInspectionHighlighted = isInspectionMode && isStatusChecked;
+
+    const displayColor = isSelected
+        ? "#f97316"
+        : hovered
+            ? "#60a5fa"
+            : isInspectionHighlighted
+                ? (inspectionStatus === "HAS_ANOMALY"
+                    ? "#ef4444"
+                    : inspectionStatus === "NO_ANOMALY"
+                        ? "#10b981"
+                        : "#94a3b8")
+                : defaultMeshColor;
+
+    const emissiveColor = isSelected
+        ? "#ea580c"
+        : (isInspectionHighlighted && inspectionStatus === "HAS_ANOMALY")
+            ? "#ef4444"
+            : isWeld
+                ? "#a21caf"
+                : "#000000";
+
+    const emissiveInt = isSelected
+        ? 0.6
+        : (isInspectionHighlighted && inspectionStatus === "HAS_ANOMALY")
+            ? 0.5
+            : isWeld
+                ? 0.4
+                : 0;
 
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
@@ -150,13 +209,54 @@ const ComponentMesh = ({
 
         // Tangent rotation angle for anode group orientation
         anodeRotY = Math.atan2(ox, oz);
+    } else if (isRiser || isClamp) {
+        // Calculate outward radial vector away from platform center (0, 0, 0)
+        const legMid = startVec.clone().add(endVec).multiplyScalar(0.5);
+        const outwardDir = new THREE.Vector3(legMid.x, 0, legMid.z).normalize();
+
+        // Enforce exact uniform fixed distance of 0.65m for all Riser components
+        const fixedRiserDist = 0.65;
+        const globalOffset = outwardDir.multiplyScalar(fixedRiserDist);
+
+        // Convert global offset back to local coordinates of the parent group
+        const localOffset = globalOffset.applyQuaternion(quaternion.clone().invert());
+        ox = localOffset.x;
+        oy = localOffset.y;
+        oz = localOffset.z;
     }
 
     if (isNaN(ox)) ox = 0;
     if (isNaN(oy)) oy = 0;
     if (isNaN(oz)) oz = 0;
 
-    const offsetPos: [number, number, number] = isAnode ? [ox, oy, oz] : [0, 0, 0];
+    const offsetPos: [number, number, number] = (isAnode || isRiser || isClamp) ? [ox, oy, oz] : [0, 0, 0];
+
+    const riserBendGeometry = useMemo(() => {
+        if (!isRiser) return null;
+
+        const isEndLower = endVec.y <= startVec.y;
+        const bottomLocalY = isEndLower ? (safeMeshLength / 2) : (-safeMeshLength / 2);
+        const bottomYDir = isEndLower ? 1 : -1;
+
+        // Calculate global outward radial vector pointing away from platform center (0, 0, 0)
+        const legMid = startVec.clone().add(endVec).multiplyScalar(0.5);
+        const globalOutward = new THREE.Vector3(legMid.x, 0, legMid.z).normalize();
+
+        // Convert global outward direction to local coordinates of the component group
+        const localOutward = globalOutward.applyQuaternion(quaternion.clone().invert()).normalize();
+
+        const bendRadius = 0.8;
+        const spoolLength = 1.8;
+
+        // Smooth 90-degree protruding J-tube elbow curve extending outward along the seabed
+        const p0 = new THREE.Vector3(0, bottomLocalY, 0);
+        const p1 = p0.clone().add(new THREE.Vector3(0, bottomYDir * bendRadius * 0.35, 0)).add(localOutward.clone().multiplyScalar(bendRadius * 0.25));
+        const p2 = p0.clone().add(new THREE.Vector3(0, bottomYDir * bendRadius * 0.85, 0)).add(localOutward.clone().multiplyScalar(bendRadius * 0.85));
+        const p3 = p0.clone().add(new THREE.Vector3(0, bottomYDir * bendRadius, 0)).add(localOutward.clone().multiplyScalar(bendRadius + spoolLength));
+
+        const curve = new THREE.CatmullRomCurve3([p0, p1, p2, p3]);
+        return new THREE.TubeGeometry(curve, 24, baseThickness > 0.3 ? 0.25 : baseThickness, 16, false);
+    }, [isRiser, startVec, endVec, safeMeshLength, baseThickness, quaternion]);
 
     const hasNaN = [
         startVec.x,
@@ -477,27 +577,11 @@ const ComponentMesh = ({
                         <cylinderGeometry args={[baseThickness, baseThickness, safeMeshLength, 6]} />
                     )}
                     <meshStandardMaterial
-                        color={
-                            isSelected
-                                ? "#f97316"
-                                : hovered
-                                    ? "#60a5fa"
-                                    : isAnode
-                                        ? "#F8FAFC"
-                                        : isWeld
-                                            ? "#d946ef"
-                                            : isClamp
-                                                ? "#d97706"
-                                                : isRiser
-                                                    ? "#334155"
-                                                    : isConductor
-                                                        ? "#475569"
-                                                        : "#cbd5e1"
-                        }
+                        color={displayColor}
                         metalness={isAnode ? 0.85 : isWeld ? 0.2 : isClamp ? 0.8 : isRiser || isConductor ? 0.75 : 0.7}
                         roughness={isAnode ? 0.25 : isWeld ? 0.5 : isClamp ? 0.25 : isRiser || isConductor ? 0.45 : 0.3}
-                        emissive={isSelected ? "#ea580c" : isWeld ? "#a21caf" : "#000000"}
-                        emissiveIntensity={isSelected ? 0.6 : isWeld ? 0.4 : 0}
+                        emissive={emissiveColor}
+                        emissiveIntensity={emissiveInt}
                     />
                     {(!isAnode && !isWeld && !isClamp) && (
                         <Edges
@@ -518,6 +602,19 @@ const ComponentMesh = ({
                             thickness={0.02}
                             color="#38bdf8"
                         />
+                    )}
+                    {isRiser && riserBendGeometry && (
+                        <mesh geometry={riserBendGeometry} castShadow receiveShadow>
+                            <meshStandardMaterial
+                                color={displayColor}
+                                metalness={0.75}
+                                roughness={0.45}
+                                emissive={emissiveColor}
+                                emissiveIntensity={emissiveInt}
+                            />
+                            {isSelected && <Outlines thickness={0.04} color="#f97316" />}
+                            {hovered && !isSelected && <Outlines thickness={0.02} color="#38bdf8" />}
+                        </mesh>
                     )}
                     {isClamp && (
                         <mesh position={[0, 0, 0]} castShadow receiveShadow>
@@ -728,6 +825,29 @@ function ResetViewHandler({ trigger }: { trigger: number }) {
 
 
 
+
+
+function CameraRig({ selectedPos, isActivated }: { selectedPos: THREE.Vector3 | null; isActivated: boolean }) {
+    const { camera, controls } = useThree();
+    
+    useEffect(() => {
+        if (!isActivated) return;
+        if (selectedPos && controls) {
+            const target = new THREE.Vector3(selectedPos.x, selectedPos.y, selectedPos.z);
+            const offset = new THREE.Vector3(15, 10, 15);
+            const cameraPos = target.clone().add(offset);
+            
+            (controls as any).target.copy(target);
+            camera.position.copy(cameraPos);
+            if (typeof (controls as any).update === 'function') {
+                (controls as any).update();
+            }
+        }
+    }, [selectedPos, camera, controls, isActivated]);
+
+    return null;
+}
+
 export function Structural3DViewer({
     components: rawComponents,
     platformDetails,
@@ -740,6 +860,7 @@ export function Structural3DViewer({
     useWincairsMode = false,
     wincairsParams = [],
     onFallbackComponentsChange,
+    webapp3dData,
 }: Structural3DViewerProps) {
     const wincairsParamsMap = useMemo(() => {
         const map = new Map<number, any>();
@@ -760,10 +881,12 @@ export function Structural3DViewer({
             if (excludeCodes.includes(code)) {
                 return false;
             }
-            const isNodeWeld = code === "WN";
-            if (isNodeWeld && c.q_id && c.q_id.includes("-")) {
+
+            // Exclude intermediate member seam welds (keep only primary junction node welds)
+            if (code === "WN" && c.q_id && c.q_id.includes("-")) {
                 return false;
             }
+
             // Exclude fender support components like FEND 1-SUPP-A2 / FEND x-SUPP-xx
             const qIdUpper = (c.q_id || "").toUpperCase();
             if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) {
@@ -778,15 +901,24 @@ export function Structural3DViewer({
     }, [rawComponents]);
 
     const [showGrid, setShowGrid] = useState(true);
+    const [isInspectionMode, setIsInspectionMode] = useState(false);
     const [resetTrigger, setResetTrigger] = useState(0);
     const [showWater, setShowWater] = useState(true);
     const [showWeldNumbering, setShowWeldNumbering] = useState(true);
     const [isCameraClose, setIsCameraClose] = useState(false);
     const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
     const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
-    const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | null>(null);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+    const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | "inspection" | null>(null);
     const [isActivated, setIsActivated] = useState(false);
     const [isActivating, setIsActivating] = useState(false);
+
+    const [selectedInspectionFilters, setSelectedInspectionFilters] = useState<Array<"NOT_INSPECTED" | "NO_ANOMALY" | "HAS_ANOMALY">>([
+        "NOT_INSPECTED",
+        "NO_ANOMALY",
+        "HAS_ANOMALY"
+    ]);
 
     const handleActivate = () => {
         setIsActivating(true);
@@ -828,1626 +960,79 @@ export function Structural3DViewer({
         return Array.from(new Set(faces.map((f) => f.face).filter(Boolean)));
     }, [faces]);
 
+    
+    // USE WEBAPP_3D DATABASE INSTEAD OF FRONTEND PROCEDURAL MATH
     const { componentLayouts, foundationMembers, elvMarkers } = useMemo(() => {
-        // 1. Determine Leg Footprints and Grid Centering
-        const SPACING = 15; // default spacing between rows/cols
-        const legMap: Record<string, { x: number; z: number }> = {};
+        if (!webapp3dData) return { componentLayouts: [], foundationMembers: [], elvMarkers: [] };
 
+        const layouts = (webapp3dData.components || []).map((dbItem: any) => {
+            const comp: any = rawComponents.find((c: any) => String(c.id) === String(dbItem.component_id)) || dbItem.component || {};
+            const code = (comp.code || dbItem.code || "").toUpperCase();
+            const q_id = comp.q_id || dbItem.q_id || `COMP-${dbItem.component_id}`;
 
-
-        // Collect all leg names from details and faces
-        const allLegNamesSet = new Set<string>();
-        if (platformDetails) {
-            for (let i = 1; i <= 20; i++) {
-                const name = platformDetails[`leg_t${i}`];
-                if (name) allLegNamesSet.add(name.toString().toUpperCase());
-            }
-        }
-        faces.forEach((f) => {
-            if (f.face_from) allLegNamesSet.add(f.face_from.toUpperCase());
-            if (f.face_to) allLegNamesSet.add(f.face_to.toUpperCase());
-        });
-
-        const allLegNames = Array.from(allLegNamesSet);
-
-        // Extract unique rows (letters) and columns (numbers)
-        const rowLetters = Array.from(new Set(allLegNames.map((n) => n.match(/([A-Z]+)/)?.[1] || "")))
-            .filter(Boolean)
-            .sort();
-        const colNumbers = Array.from(new Set(allLegNames.map((n) => n.match(/(\d+)/)?.[1] || "")))
-            .filter(Boolean)
-            .sort((a, b) => parseInt(a) - parseInt(b));
-
-        const centerRow = (rowLetters.length - 1) / 2;
-        const centerCol = (colNumbers.length - 1) / 2;
-
-        const legRowCol: Record<string, { row: number; col: number }> = {};
-
-        allLegNames.forEach((name) => {
-            const match = name.match(/([A-Z]+)(\d+)/);
-            if (match) {
-                const letter = match[1];
-                const num = match[2];
-                const rowIndex = rowLetters.indexOf(letter);
-                const colIndex = colNumbers.indexOf(num);
-
-                // Map to centered coordinates
-                // Letter (A, B...) -> Z-axis (A is top/positive)
-                // Number (1, 2...) -> X-axis (1 is left/negative)
-                legMap[name] = {
-                    x: (colIndex - centerCol) * SPACING,
-                    z: -(rowIndex - centerRow) * SPACING,
-                };
-                legRowCol[name.toUpperCase()] = { row: rowIndex, col: colIndex };
-            }
-        });
-
-        // Extract horizontal member length data points to compute splay factor at different elevations
-        interface MemberDataPoint {
-            y: number;
-            length: number;
-            type: "X" | "Z";
-        }
-        const dataPoints: MemberDataPoint[] = [];
-
-        components.forEach((c) => {
-            const code = (c.code || "").toUpperCase();
-            if (!["HM", "HOM", "HD", "HDM"].includes(code)) return;
-            const md = c.metadata || {};
-            if (!md.s_leg || !md.f_leg) return;
-            const sLeg = md.s_leg.toUpperCase();
-            const fLeg = md.f_leg.toUpperCase();
-            if (sLeg === fLeg) return;
-
-            const sInfo = legRowCol[sLeg];
-            const fInfo = legRowCol[fLeg];
-            if (!sInfo || !fInfo) return;
-
-            // Make sure it's horizontal
-            const y1 = sanitizeElevation(md.elv_1 || (md.depth ? -parseFloat(md.depth) / 10 : undefined));
-            const y2 = sanitizeElevation(md.elv_2 || (md.depth ? -parseFloat(md.depth) / 10 : undefined));
-            if (Math.abs(y1 - y2) > 0.01) return; // not horizontal
-
-            const lengthVal = parseFloat(md.length || md.additionalInfo?.length || "0");
-            if (isNaN(lengthVal) || lengthVal <= 0.1) return;
-
-            const colDiff = Math.abs(fInfo.col - sInfo.col);
-            const rowDiff = Math.abs(fInfo.row - sInfo.row);
-
-            if (sInfo.row === fInfo.row && colDiff > 0) {
-                dataPoints.push({ y: y1, length: lengthVal / colDiff, type: "X" });
-            } else if (sInfo.col === fInfo.col && rowDiff > 0) {
-                dataPoints.push({ y: y1, length: lengthVal / rowDiff, type: "Z" });
-            }
-        });
-
-        const xScalesByY = new Map<number, number[]>();
-        const zScalesByY = new Map<number, number[]>();
-
-        dataPoints.forEach((p) => {
-            if (p.type === "X") {
-                if (!xScalesByY.has(p.y)) xScalesByY.set(p.y, []);
-                xScalesByY.get(p.y)!.push(p.length / SPACING);
-            } else if (p.type === "Z") {
-                if (!zScalesByY.has(p.y)) zScalesByY.set(p.y, []);
-                zScalesByY.get(p.y)!.push(p.length / SPACING);
-            }
-        });
-
-        const xPoints: { y: number; scale: number }[] = [];
-        const zPoints: { y: number; scale: number }[] = [];
-
-        xScalesByY.forEach((scales, y) => {
-            const avg = scales.reduce((a, b) => a + b, 0) / scales.length;
-            xPoints.push({ y, scale: avg });
-        });
-
-        zScalesByY.forEach((scales, y) => {
-            const avg = scales.reduce((a, b) => a + b, 0) / scales.length;
-            zPoints.push({ y, scale: avg });
-        });
-
-        xPoints.sort((a, b) => a.y - b.y);
-        zPoints.sort((a, b) => a.y - b.y);
-
-        const getScaleAtY = (points: { y: number; scale: number }[], yVal: number): number => {
-            if (points.length === 0) return 1.0;
-            if (points.length === 1) return points[0].scale;
-
-            // Extrapolate below lowest elevation
-            if (yVal <= points[0].y) {
-                const p0 = points[0];
-                const p1 = points[1];
-                const slope = (p1.scale - p0.scale) / (p1.y - p0.y);
-                return p0.scale + slope * (yVal - p0.y);
-            }
-            // Extrapolate above highest elevation
-            if (yVal >= points[points.length - 1].y) {
-                const p0 = points[points.length - 2];
-                const p1 = points[points.length - 1];
-                const slope = (p1.scale - p0.scale) / (p1.y - p0.y);
-                return p1.scale + slope * (yVal - p1.y);
-            }
-            // Interpolate between surrounding elevations
-            for (let i = 0; i < points.length - 1; i++) {
-                const p0 = points[i];
-                const p1 = points[i + 1];
-                if (yVal >= p0.y && yVal <= p1.y) {
-                    const t = (yVal - p0.y) / (p1.y - p0.y);
-                    return p0.scale + (p1.scale - p0.scale) * t;
-                }
-            }
-            return 1.0;
-        };
-
-        const isD21JT = platformDetails?.title?.toUpperCase().includes("D21JT") || false;
-
-        const getLegCoordsAtElv = (legName: string, yVal: number) => {
-            const key = legName.toUpperCase();
-            if (isD21JT) {
-                const L = 13.91 - 0.12489 * (yVal - 2.872);
-                const W = 12.45 - 0.16665 * (yVal - 2.872);
-
-                if (key === "A1") return { x: -L / 2, z: W / 2 };
-                if (key === "B1") return { x: L / 2, z: W / 2 };
-                if (key === "A2") return { x: -L / 2, z: -W / 2 };
-                if (key === "B2") return { x: L / 2, z: -W / 2 };
-            }
-            if (legMap[key]) {
-                const nominal = legMap[key];
-                const scaleX = getScaleAtY(xPoints, yVal);
-                const scaleZ = getScaleAtY(zPoints, yVal);
-                return { x: nominal.x * scaleX, z: nominal.z * scaleZ };
-            }
-            return { x: 0, z: 0 };
-        };
-
-        // 2. Determine Elevation Levels
-        const elvValues = elevations.map((e) => sanitizeElevation(e.elv)).sort((a, b) => b - a);
-        const maxElv = elvValues.length > 0 ? Math.max(...elvValues) : 5;
-        const minElv = elvValues.length > 0 ? Math.min(...elvValues) : -30;
-
-        // 3. Generate Foundation Members (Legs and Rows)
-        const foundationMembers: any[] = [];
-        const elvMarkers: any[] = [];
-
-        // Render Vertical Legs (Tapered/Splayed)
-        Object.keys(legMap).forEach((name) => {
-            const startCoords = getLegCoordsAtElv(name, maxElv + 5);
-            const endCoords = getLegCoordsAtElv(name, minElv);
-            foundationMembers.push({
-                id: `leg-${name}`,
-                start: [startCoords.x, maxElv + 5, startCoords.z], // Extend slightly above max
-                end: [endCoords.x, minElv, endCoords.z],
-                thickness: 0.8,
-                color: "#94a3b8", // slate-400 (galvanized look)
-                label: name,
-                renderMesh: false,
-            });
-        });
-
-        // Render Horizontal Rows (Faces) at each elevation
-        faces.forEach((face) => {
-            elvValues.forEach((elv, idx) => {
-                const fromCoords = getLegCoordsAtElv(face.face_from, elv);
-                const toCoords = getLegCoordsAtElv(face.face_to, elv);
-                foundationMembers.push({
-                    id: `face-${face.face}-${idx}`,
-                    start: [fromCoords.x, elv, fromCoords.z],
-                    end: [toCoords.x, elv, toCoords.z],
-                    thickness: 0.4,
-                    color: "#64748b", // slate-500
-                    label: face.face,
-                    renderMesh: false,
-                });
-            });
-        });
-
-        // Generate Elevation Markers
-        elevations.forEach((e) => {
-            const y = sanitizeElevation(e.elv);
-            elvMarkers.push({
-                y: y,
-                label: `${y.toFixed(3)}m`,
-            });
-        });
-
-        // 4. Build 3D Node Map for existing components
-        const nodeMap = new Map<string, THREE.Vector3>();
-        const nodeLegMap = new Map<string, string>();
-
-        // Helper to scan nodeMap for any existing aliases of the target node and return its vector reference
-        const getExistingNodeVector = (nodeId: string, legKey?: string): THREE.Vector3 | undefined => {
-            const normalized = nodeId.toUpperCase().trim();
-            const aliases = [normalized];
-            if (/^N\d+$/.test(normalized)) aliases.push(normalized.slice(1));
-            if (/^\d+$/.test(normalized)) aliases.push(`N${normalized}`);
-            if (!normalized.startsWith("WN")) {
-                aliases.push(`WN ${normalized}`);
-                aliases.push(`WN${normalized}`);
-            }
-            // 1. Prioritize weld vectors if they exist in nodeMap
-            for (const alias of aliases) {
-                if (alias.startsWith("WN") && nodeMap.has(alias)) {
-                    const vec = nodeMap.get(alias)!;
-                    if (vec.x !== 0 || vec.z !== 0) return vec;
-                }
-            }
-            // 2. Standard composite/alias lookups
-            for (const alias of aliases) {
-                if (legKey) {
-                    const compositeKey = `${alias}|${legKey.toUpperCase()}`;
-                    if (nodeMap.has(compositeKey)) {
-                        const vec = nodeMap.get(compositeKey)!;
-                        if (vec.x !== 0 || vec.z !== 0) return vec;
-                    }
-                }
-                if (nodeMap.has(alias)) {
-                    const vec = nodeMap.get(alias)!;
-                    if (vec.x !== 0 || vec.z !== 0) return vec;
-                }
-            }
-            return undefined;
-        };
-
-        // Helper to register a vector under multiple alias keys in nodeMap
-        const registerNodeAlias = (alias: string, vec: THREE.Vector3, legKey: string) => {
-            const key = alias.toUpperCase();
-
-            // Look for any existing vector instance for this node name to share reference
-            const existingVec = getExistingNodeVector(key, legKey);
-            const activeVec = existingVec || vec;
-
-            if (!nodeMap.has(key) || (nodeMap.get(key)!.x === 0 && nodeMap.get(key)!.z === 0)) {
-                nodeMap.set(key, activeVec);
-                if (legKey) nodeLegMap.set(key, legKey);
-            }
-            if (legKey) {
-                const compositeKey = `${key}|${legKey.toUpperCase()}`;
-                if (
-                    !nodeMap.has(compositeKey) ||
-                    (nodeMap.get(compositeKey)!.x === 0 && nodeMap.get(compositeKey)!.z === 0)
-                ) {
-                    nodeMap.set(compositeKey, activeVec);
-                    nodeLegMap.set(compositeKey, legKey);
-                }
-            }
-        };
-
-        const processNode = (
-            nodeName: string | undefined,
-            legName: string | undefined,
-            elv: string | undefined,
-            depth: string | undefined,
-            easting: string | undefined,
-            northing: string | undefined,
-            isPrimary: boolean
-        ) => {
-            if (!nodeName) return;
-
-            const normalizedNodeName = nodeName.toUpperCase();
-            const legKey = legName?.toUpperCase() || "";
-            const mapKey = legKey ? `${normalizedNodeName}|${legKey}` : normalizedNodeName;
-
-            let x = 0,
-                y = 0,
-                z = 0;
-
-            if (elv) {
-                y = sanitizeElevation(elv);
-            } else if (depth) {
-                y = -sanitizeElevation(depth) / 10 || 0;
-            }
-
-            if (legKey) {
-                const coords = getLegCoordsAtElv(legKey, y);
-                x = coords.x;
-                z = coords.z;
-            } else if (easting || northing) {
-                x = parseFloat(easting || "0") / 100 || 0;
-                z = parseFloat(northing || "0") / 100 || 0;
-            }
-
-            const vec = new THREE.Vector3(x, y, z);
-            registerNodeAlias(normalizedNodeName, vec, legKey);
-        };
-
-        // Helper to extract bare node from q_id
-        const extractBareNode = (q_id: string): string => {
-            const matchFull = q_id.match(/WN\s*(N?[A-Za-z0-9]+)/i);
-            const matchBare = q_id.match(/(?:WN\s*)?(N?(\d+))$/i);
-            if (matchFull) return matchFull[1].toUpperCase();
-            if (matchBare) return matchBare[1].toUpperCase();
-            return q_id.toUpperCase();
-        };
-
-        // PASS 1: Authoritative Root Node Providers (WN, ND, NODE that define their own absolute coords)
-        const intermediateWelds: typeof components = [];
-
-        components.forEach((c) => {
-            const md = c.metadata || {};
-            const code = (c.code || "").toUpperCase();
             const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
-
-            if (isWeld || code.includes("NODE") || code === "ND") {
-                const bareNode = extractBareNode(c.q_id);
-                const sNode = (md.s_node || "").toUpperCase();
-                const fNode = (md.f_node || "").toUpperCase();
-
-                // If it has s_node and f_node, and neither is itself, it's an intermediate weld on a member!
-                // Point welds (where s_node === f_node) represent the root node itself, and are not intermediate.
-                const isIntermediate = sNode && fNode && sNode !== fNode && sNode !== bareNode && fNode !== bareNode;
-
-                if (isIntermediate) {
-                    intermediateWelds.push(c);
-                    return; // Process in Pass 2
-                }
-
-                // Root Node Weld Processing
-                const leg = (md.s_leg || md.f_leg || md.leg || "").toUpperCase();
-                const elv = md.elv_1 || md.elv_2 || md.depth;
-                const ePlainNum = md.elv_1 || md.elv_2;
-
-                let y = 0;
-                if (ePlainNum) y = sanitizeElevation(ePlainNum);
-                else if (md.depth) y = -sanitizeElevation(md.depth) / 10;
-
-                let x = 0,
-                    z = 0;
-                if (leg) {
-                    const coords = getLegCoordsAtElv(leg, y);
-                    x = coords.x;
-                    z = coords.z;
-                } else if (md.easting || md.northing) {
-                    x = parseFloat(md.easting || "0") / 100 || 0;
-                    z = parseFloat(md.northing || "0") / 100 || 0;
-                }
-
-                if (leg || md.easting || md.northing || ePlainNum || md.depth) {
-                    const vec = new THREE.Vector3(x, y, z);
-
-                    registerNodeAlias(c.q_id, vec, leg);
-
-                    const matchFull = c.q_id.match(/WN\s*(N?[A-Za-z0-9]+)/i);
-                    const matchBare = c.q_id.match(/(?:WN\s*)?(N?(\d+))$/i);
-                    if (matchFull) {
-                        const withN = matchFull[1].toUpperCase();
-                        registerNodeAlias(withN, vec, leg);
-                        const numOnly = withN.replace(/^N/, "");
-                        registerNodeAlias(numOnly, vec, leg);
-                        registerNodeAlias(`N${numOnly}`, vec, leg);
-                    } else if (matchBare) {
-                        const withN = matchBare[1].toUpperCase();
-                        registerNodeAlias(withN, vec, leg);
-                        registerNodeAlias(matchBare[2], vec, leg);
-                    }
-                }
-            }
-        });
-
-        // lookupNode tries multiple alias forms so that whatever format s_node/f_node uses,
-        // it resolves correctly ("N164", "164", "WN N164", etc.)
-        const lookupNode = (
-            nodeId: string | undefined,
-            legName: string | undefined
-        ): THREE.Vector3 | undefined => {
-            if (!nodeId) return undefined;
-            const normalizedNodeId = nodeId.toUpperCase().trim();
-            const legKey = legName?.toUpperCase() || "";
-
-            const aliases: string[] = [normalizedNodeId];
-            if (/^N\d+$/.test(normalizedNodeId)) aliases.push(normalizedNodeId.slice(1));
-            if (/^\d+$/.test(normalizedNodeId)) aliases.push(`N${normalizedNodeId}`);
-            if (!normalizedNodeId.startsWith("WN")) {
-                aliases.push(`WN ${normalizedNodeId}`);
-                aliases.push(`WN${normalizedNodeId}`);
-                if (/^\d+$/.test(normalizedNodeId)) {
-                    aliases.push(`WN N${normalizedNodeId}`);
-                    aliases.push(`WNN${normalizedNodeId}`);
-                }
-            }
-
-            // 1. Prioritize authoritative node weld references (e.g. "WN N4") if they exist in nodeMap
-            for (const alias of aliases) {
-                if (alias.startsWith("WN") && nodeMap.has(alias)) {
-                    const vec = nodeMap.get(alias)!;
-                    if (vec.x !== 0 || vec.z !== 0) return vec;
-                }
-            }
-
-            // 2. Standard composite/alias fallback lookup
-            for (const alias of aliases) {
-                if (legKey) {
-                    const compositeKey = `${alias}|${legKey}`;
-                    if (nodeMap.has(compositeKey)) return nodeMap.get(compositeKey);
-                }
-                if (nodeMap.has(alias)) return nodeMap.get(alias);
-            }
-            return undefined;
-        };
-
-        // PASS 1.2: Register endpoints for all primary member components
-        components.forEach((c) => {
-            const md = c.metadata || {};
-            const code = (c.code || "").toUpperCase();
-            const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG"].includes(code);
-            if (isPrimary) {
-                processNode(md.s_node, md.s_leg, md.elv_1, md.depth, md.easting, md.northing, true);
-                processNode(md.f_node, md.f_leg, md.elv_2, md.depth, md.easting, md.northing, true);
-            }
-        });
-
-        // PASS 1.5: Adjust primary member endpoint positions based on metadata length
-        // (Commented out to prevent cumulative in-place coordinate distortion on closed loop frames)
-        /*
-            components.forEach(c => {
-                const md = c.metadata || {};
-                const code = (c.code || "").toUpperCase();
-                const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(code);
-                if (isMember && md.s_node && md.f_node) {
-                    const sPos = lookupNode(md.s_node, md.s_leg);
-                    const fPos = lookupNode(md.f_node, md.f_leg);
-                    if (sPos && fPos) {
-                        const originalDist = sPos.distanceTo(fPos);
-                        if (originalDist > 0.001) {
-                            const lengthStr = md.length || md.additionalInfo?.length;
-                            if (lengthStr) {
-                                const memberLength = parseFloat(lengthStr);
-                                if (!isNaN(memberLength) && memberLength > 0) {
-                                    const dir = fPos.clone().sub(sPos).normalize();
-                                    const newFPos = sPos.clone().add(dir.multiplyScalar(memberLength));
-                                    fPos.copy(newFPos);
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            */
-
-        // PASS 2: Intermediate Node Welds (e.g. WN N170 sitting on HOM N166-N164)
-        // Group by endpoints, interpolate, and REGISTER back to nodeMap!
-        const intermediateWeldGroups = new Map<string, typeof intermediateWelds>();
-        intermediateWelds.forEach((c) => {
-            const md = c.metadata || {};
-            const sNode = lookupNode(md.s_node, md.s_leg);
-            const fNode = lookupNode(md.f_node, md.f_leg);
-            if (sNode && fNode) {
-                const key = `${sNode.x.toFixed(3)},${sNode.y.toFixed(3)},${sNode.z.toFixed(3)}|${fNode.x.toFixed(3)},${fNode.y.toFixed(3)},${fNode.z.toFixed(3)}`;
-                if (!intermediateWeldGroups.has(key)) intermediateWeldGroups.set(key, []);
-                intermediateWeldGroups.get(key)!.push(c);
-            }
-        });
-
-        intermediateWeldGroups.forEach((items, key) => {
-            const md0 = items[0].metadata || {};
-            const sNode = lookupNode(md0.s_node, md0.s_leg)!;
-            const fNode = lookupNode(md0.f_node, md0.f_leg)!;
-
-            items.sort((a, b) => a.q_id.localeCompare(b.q_id));
-            const count = items.length;
-
-            items.forEach((item, idx) => {
-                const md = item.metadata || {};
-                let pos = new THREE.Vector3();
-
-                if ((md.elv_1 || md.depth) && Math.abs(fNode.y - sNode.y) > 0.001) {
-                    const targetY = sanitizeElevation(md.elv_1 || -parseFloat(md.depth) / 10);
-                    const t = (targetY - sNode.y) / (fNode.y - sNode.y);
-                    pos.copy(sNode).lerp(fNode, Math.max(0, Math.min(1, t)));
-                } else {
-                    // For horizontal members, distribute using dist if available, else evenly
-                    let t = (idx + 1) / (count + 1);
-                    const distVal = parseFloat(md.dist);
-                    if (!isNaN(distVal) && distVal > 0) {
-                        const dx = Math.abs(fNode.x - sNode.x);
-                        const dy = Math.abs(fNode.y - sNode.y);
-                        const dz = Math.abs(fNode.z - sNode.z);
-                        const model_projected_span = Math.max(dx, dy, dz);
-                        if (model_projected_span > 0.01) {
-                            t = Math.max(0, Math.min(1, distVal / model_projected_span));
-                        }
-                    }
-                    pos.copy(sNode).lerp(fNode, t);
-                }
-
-                if (md.dist) {
-                    const distance = parseFloat(md.dist);
-                    if (distance > 0 && distance < 3.0) {
-                        const clockPos = parseFloat(md.clk_pos || "12");
-                        const angle = (clockPos / 12) * Math.PI * 2;
-                        pos.x += Math.sin(angle) * distance;
-                        pos.z += Math.cos(angle) * distance;
-                    }
-                }
-
-                // Register interpolated position to nodeMap so HDM members can use it!
-                const bareNode = extractBareNode(item.q_id);
-                registerNodeAlias(item.q_id, pos, "");
-                registerNodeAlias(bareNode, pos, "");
-                if (/^N\d+$/.test(bareNode)) {
-                    registerNodeAlias(bareNode.slice(1), pos, "");
-                } else if (/^\d+$/.test(bareNode)) {
-                    registerNodeAlias(`N${bareNode}`, pos, "");
-                }
-            });
-        });
-
-        // PASS 3: Fallback registrations for endpoints on non-node and non-primary components
-        components.forEach((c) => {
-            const md = c.metadata || {};
-            const code = (c.code || "").toUpperCase();
-            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
-            const isNode = isWeld || code.includes("NODE") || code === "ND";
-            const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG"].includes(code);
-
-            if (!isNode && !isPrimary) {
-                const isPrimaryFallback = ["CF", "CG", "CD", "CO", "CA"].includes(code);
-                processNode(
-                    md.s_node,
-                    md.s_leg,
-                    md.elv_1,
-                    md.depth,
-                    md.easting,
-                    md.northing,
-                    isPrimaryFallback
-                );
-                processNode(
-                    md.f_node,
-                    md.f_leg,
-                    md.elv_2,
-                    md.depth,
-                    md.easting,
-                    md.northing,
-                    isPrimaryFallback
-                );
-            }
-        });
-
-        // 5. Resolve Structural Layouts for components
-        const intermediateLayouts = new Map<
-            number,
-            { component: any; start: THREE.Vector3; end: THREE.Vector3; thickness: number }
-        >();
-
-        // PASS 1.7: Interpolate and register child node welds (WN) on parent members
-        const childWeldGroups = new Map<number, typeof components>();
-        components.forEach((c) => {
-            const md = c.metadata || {};
-            const code = (c.code || "").toUpperCase();
-            if (code === "WN" && md.associated_comp_id) {
-                const parentId = md.associated_comp_id;
-                if (!childWeldGroups.has(parentId)) {
-                    childWeldGroups.set(parentId, []);
-                }
-                childWeldGroups.get(parentId)!.push(c);
-            }
-        });
-
-        // Run interpolation multiple times (3 iterations) to resolve dependency ordering
-        // (e.g. child welds whose parent endpoints themselves depend on other child welds)
-        for (let iter = 0; iter < 3; iter++) {
-            childWeldGroups.forEach((children, parentId) => {
-                // Find parent component
-                const parentComp = components.find((c) => c.id === parentId);
-                if (!parentComp) return;
-
-                const parentMd = parentComp.metadata || {};
-                const pStart = lookupNode(parentMd.s_node, parentMd.s_leg);
-                const pEnd = lookupNode(parentMd.f_node, parentMd.f_leg);
-                if (!pStart || !pEnd) return;
-
-                const direction = pEnd.clone().sub(pStart).normalize();
-
-                // Sort children by dist ascending
-                children.sort((a, b) => {
-                    const distA = parseFloat(a.metadata?.dist || "0");
-                    const distB = parseFloat(b.metadata?.dist || "0");
-                    if (distA !== distB) return distA - distB;
-                    return (a.q_id || "").localeCompare(b.q_id || "");
-                });
-
-                // Determine the real physical length of the parent member.
-                // We look for a child weld that is located at the end node (f_node) of the parent.
-                let realParentLength = 0;
-                const endNodeWeld = children.find(c => {
-                    const cNode = (c.metadata?.s_node || "").toUpperCase().trim();
-                    const parentFNode = (parentMd.f_node || "").toUpperCase().trim();
-                    return cNode === parentFNode && parentFNode !== "";
-                });
-                if (endNodeWeld) {
-                    realParentLength = parseFloat(endNodeWeld.metadata?.dist || "0");
-                }
-
-                const count = children.length;
-                children.forEach((c, idx) => {
-                    let t = (idx + 1) / (count + 1);
-                    const distVal = parseFloat(c.metadata?.dist);
-                    if (!isNaN(distVal) && distVal > 0) {
-                        const dx = Math.abs(pEnd.x - pStart.x);
-                        const dy = Math.abs(pEnd.y - pStart.y);
-                        const dz = Math.abs(pEnd.z - pStart.z);
-                        const model_projected_span = Math.max(dx, dy, dz);
-                        if (realParentLength > 0.01) {
-                            t = Math.max(0, Math.min(1, distVal / realParentLength));
-                        } else if (model_projected_span > 0.01) {
-                            t = Math.max(0, Math.min(1, distVal / model_projected_span));
-                        }
-                    }
-                    const pos = pStart.clone().lerp(pEnd, t);
-
-                    // Update position in nodeMap
-                    const nodeName = (c.metadata?.s_node || "").toUpperCase();
-                    if (nodeName) {
-                        const nodeVec = lookupNode(nodeName, "");
-                        if (nodeVec) {
-                            nodeVec.copy(pos);
-                        } else {
-                            registerNodeAlias(nodeName, pos, "");
-                            registerNodeAlias(c.q_id, pos, "");
-                        }
-                    }
-
-                    // Add layout to intermediateLayouts immediately
-                    let thickness = 0.15; // default weld thickness
-                    if (parentComp) {
-                        const parentCode = (parentComp.code || "").toUpperCase();
-                        let parentThickness = 0.2;
-                        if (parentCode.includes("LG")) parentThickness = 0.5;
-                        else if (parentCode === "RS" || parentCode.includes("RISER")) parentThickness = 0.3;
-                        else if (parentCode.includes("HM") || parentCode.includes("HD")) parentThickness = 0.2;
-                        else if (parentCode.includes("VM") || parentCode.includes("VD")) parentThickness = 0.16;
-                        thickness = parentThickness * 1.15;
-                    }
-                    const start = pos.clone();
-                    const end = pos.clone();
-                    if (direction.lengthSq() > 0.1) {
-                        end.add(direction.clone().multiplyScalar(0.1));
-                    }
-                    intermediateLayouts.set(c.id, { component: c, start, end, thickness });
-                });
-            });
-
-            // Project cantilever/protruding members with clk_pos & dist
-            components.forEach((c) => {
-                const md = c.metadata || {};
-                const code = (c.code || "").toUpperCase();
-                const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(code);
-                if (isMember && md.clk_pos && md.clk_pos !== "N/A" && md.dist) {
-                    const sNodePos = lookupNode(md.s_node, md.s_leg);
-                    if (!sNodePos) return;
-
-                    // Find parent component to get direction reference
-                    let parentComp: any = null;
-                    const parentWeld = components.find(
-                        (w) =>
-                            (w.code || "").toUpperCase() === "WN" &&
-                            (w.metadata?.s_node || "").toUpperCase() === (md.s_node || "").toUpperCase() &&
-                            w.metadata?.associated_comp_id
-                    );
-                    if (parentWeld) {
-                        parentComp = components.find((pc) => pc.id === parentWeld.metadata.associated_comp_id);
-                    }
-
-                    const dir = new THREE.Vector3(0, 0, -1); // default fallback direction
-                    if (parentComp) {
-                        const pStart = lookupNode(parentComp.metadata.s_node, parentComp.metadata.s_leg);
-                        const pEnd = lookupNode(parentComp.metadata.f_node, parentComp.metadata.f_leg);
-                        if (pStart && pEnd && pStart.distanceTo(pEnd) > 0.01) {
-                            dir.copy(pEnd).sub(pStart).normalize();
-                        }
-                    }
-
-                    // Compute orthogonal plane vectors
-                    const up = new THREE.Vector3(0, 1, 0);
-                    if (Math.abs(dir.y) > 0.99) {
-                        up.set(0, 0, -1);
-                    }
-                    up.sub(dir.clone().multiplyScalar(up.dot(dir))).normalize();
-                    const right = new THREE.Vector3().crossVectors(up, dir).normalize();
-
-                    // Calculate offset direction using clock position
-                    const clockPos = parseFloat(md.clk_pos);
-                    if (!isNaN(clockPos)) {
-                        const angle = (clockPos / 12) * Math.PI * 2;
-                        const offsetDir = right
-                            .clone()
-                            .multiplyScalar(Math.sin(angle))
-                            .add(up.clone().multiplyScalar(Math.cos(angle)))
-                            .normalize();
-
-                        const distance = parseFloat(md.dist);
-                        if (!isNaN(distance)) {
-                            const fNodePos = sNodePos.clone().add(offsetDir.multiplyScalar(distance));
-
-                            // Update/register f_node in nodeMap
-                            const fNodeName = (md.f_node || "").toUpperCase();
-                            if (fNodeName) {
-                                const fNodeVec = lookupNode(fNodeName, "");
-                                if (fNodeVec) {
-                                    fNodeVec.copy(fNodePos);
-                                } else {
-                                    registerNodeAlias(fNodeName, fNodePos, "");
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        const pendingAttachments: typeof components = [];
-        const pendingSpanAccessories: { component: any; sNode: THREE.Vector3; fNode: THREE.Vector3 }[] =
-            [];
-        const pendingRiserSupports: { component: any; riserNum: string; targetElv: number }[] = [];
-        const wincairsAppliedSet = new Set<number>();
-
-        components.forEach((c, i) => {
-            const md = c.metadata || {};
-            const code = (c.code || "").toUpperCase();
-
-            // Check WINCAIRS Mode 3D CAD parameter override
-            const wincairsParam = useWincairsMode ? wincairsParamsMap.get(c.comp_id || c.id) : null;
-            const hasWincairsParam = !!(
-                wincairsParam &&
-                isFinite(Number(wincairsParam.s_point3d_x)) &&
-                isFinite(Number(wincairsParam.s_point3d_y)) &&
-                isFinite(Number(wincairsParam.s_point3d_z)) &&
-                !(Number(wincairsParam.s_point3d_x) === 0 && Number(wincairsParam.s_point3d_y) === 0 && Number(wincairsParam.s_point3d_z) === 0 && Number(wincairsParam.e_point3d_x) === 0 && Number(wincairsParam.e_point3d_y) === 0 && Number(wincairsParam.e_point3d_z) === 0)
-            );
-
-            if (hasWincairsParam) {
-                const start = new THREE.Vector3(
-                    Number(wincairsParam.s_point3d_x),
-                    Number(wincairsParam.s_point3d_y),
-                    Number(wincairsParam.s_point3d_z)
-                );
-                let end = new THREE.Vector3();
-                const hasEndVec = isFinite(Number(wincairsParam.e_point3d_x)) &&
-                                  isFinite(Number(wincairsParam.e_point3d_y)) &&
-                                  isFinite(Number(wincairsParam.e_point3d_z)) &&
-                                  !(Number(wincairsParam.e_point3d_x) === 0 && Number(wincairsParam.e_point3d_y) === 0 && Number(wincairsParam.e_point3d_z) === 0);
-
-                if (hasEndVec) {
-                    end.set(
-                        Number(wincairsParam.e_point3d_x),
-                        Number(wincairsParam.e_point3d_y),
-                        Number(wincairsParam.e_point3d_z)
-                    );
-                } else {
-                    end.copy(start).add(new THREE.Vector3(0, 0.2, 0));
-                }
-
-                let thickness = 0.15;
-                if (code.includes("LG")) thickness = 0.5;
-                else if (code === "RS" || code.includes("RISER") || code.includes("RISR")) thickness = 0.3;
-                else if (code.includes("HM") || code.includes("HD")) thickness = 0.2;
-                else if (code.includes("VM") || code.includes("VD")) thickness = 0.16;
-                else if (code === "CO" || code === "CA" || code === "CS" || code.includes("COND") || code.includes("CAIS") || code === "CD") thickness = 0.30;
-
-                intermediateLayouts.set(c.id, { component: c, start, end, thickness });
-                wincairsAppliedSet.add(c.id);
-                return;
-            }
-
-            // Skip child welds already resolved in PASS 1.7
-            if (code === "WN" && md.associated_comp_id) {
-                return;
-            }
-
-            const isConductor = code === "CD" || code.includes("COND");
-            if (isConductor) {
-                return;
-            }
-
-            const qIdUpper = (c.q_id || "").toUpperCase();
-            const clampMatch = qIdUpper.match(/RIS-?(\d+)-SUPP-?(\d+)M/i) || qIdUpper.match(/RIS-?(\d+)-CLP-?(\d+)M/i);
-            if (clampMatch) {
-                const riserNum = clampMatch[1];
-                const elevationVal = parseFloat(clampMatch[2]);
-                let targetElv = -elevationVal;
-
-                if (elvValues.length > 0) {
-                    const possibleElvs = [-elevationVal, elevationVal];
-                    let closest = elvValues[0];
-                    let minDist = Math.abs(elvValues[0] - targetElv);
-                    for (const elv of elvValues) {
-                        for (const possible of possibleElvs) {
-                            const dist = Math.abs(elv - possible);
-                            if (dist < minDist) {
-                                minDist = dist;
-                                closest = elv;
-                            }
-                        }
-                    }
-                    targetElv = closest;
-                }
-
-                pendingRiserSupports.push({
-                    component: c,
-                    riserNum,
-                    targetElv,
-                });
-                return;
-            }
-
-            const isAnode = code === "AN" || code.includes("ANOD");
-            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
-            const isClamp = code === "CL" || code.includes("CLAM");
-            const isPointAccessory = isAnode || isWeld || isClamp;
-
-            let thickness = 0.15;
-            if (code.includes("LG")) thickness = 0.5;
-            else if (code === "RS" || code.includes("RISER") || code.includes("RISR")) thickness = 0.3;
-            else if (code.includes("HM") || code.includes("HD")) thickness = 0.2;
-            else if (code.includes("VM") || code.includes("VD")) thickness = 0.16;
-            else if (code === "CO" || code === "CA" || code === "CS" || code.includes("COND") || code.includes("CAIS") || code === "CD")
-                thickness = 0.30;
-
-            const startNode = lookupNode(md.s_node, md.s_leg);
-            const endNode = lookupNode(md.f_node, md.f_leg);
-            const hasStartNode = !!startNode;
-            const hasEndNode = !!endNode;
-
-            let start = new THREE.Vector3();
-            let end = new THREE.Vector3();
-            let resolved = false;
-
-            if (md.associated_comp_id && code !== "VM") {
-                if (code !== "WN") {
-                    pendingAttachments.push(c);
-                }
-                return;
-            } else if (
-                isPointAccessory &&
-                hasStartNode &&
-                hasEndNode &&
-                startNode!.distanceTo(endNode!) > 0.001
-            ) {
-                pendingSpanAccessories.push({ component: c, sNode: startNode!, fNode: endNode! });
-                return;
-            } else if (isPointAccessory && (hasStartNode || hasStartNode !== hasEndNode || md.s_leg)) {
-                const y = md.elv_1 ? sanitizeElevation(md.elv_1) : (startNode?.y ?? endNode?.y ?? 0);
-                if (startNode) {
-                    start.set(startNode.x, y, startNode.z);
-                } else if (md.s_leg) {
-                    const coords = getLegCoordsAtElv(md.s_leg.toUpperCase(), y);
-                    start.set(coords.x, y, coords.z);
-                } else if (endNode) {
-                    start.set(endNode.x, y, endNode.z);
-                }
-                if (md.dist && !isAnode) {
-                    const distance = parseFloat(md.dist);
-                    if (distance > 0 && distance < 3.0) {
-                        const clockPos = parseFloat(md.clk_pos || "12");
-                        const angle = (clockPos / 12) * Math.PI * 2;
-                        start.x += Math.sin(angle) * distance;
-                        start.z += Math.cos(angle) * distance;
-                    }
-                }
-                end.copy(start);
-                resolved = true;
-            } else if (
-                code === "RS" ||
-                code === "CS" ||
-                code === "CO" ||
-                code === "CA" ||
-                code.includes("RISER") ||
-                code.includes("RISR") ||
-                code.includes("CAIS")
-            ) {
-                if (hasStartNode && hasEndNode) {
-                    const distVal = parseFloat(md.dist || "0");
-                    const y1 = sanitizeElevation(md.elv_1);
-                    const y2 = sanitizeElevation(md.elv_2);
-                    const yTop = Math.max(y1, y2);
-
-                    const getScaleFactor = (yVal: number) => {
-                        if (isD21JT) {
-                            const L = 13.91 - 0.12489 * (yVal - 2.872);
-                            const W = 12.45 - 0.16665 * (yVal - 2.872);
-                            return { x: L, z: W };
-                        } else {
-                            const scaleX = getScaleAtY(xPoints, yVal);
-                            const scaleZ = getScaleAtY(zPoints, yVal);
-                            return { x: scaleX, z: scaleZ };
-                        }
-                    };
-
-                    const getCoordsAtElv = (p: THREE.Vector3, yRef: number, yTarget: number) => {
-                        const sRef = getScaleFactor(yRef);
-                        const sTarget = getScaleFactor(yTarget);
-
-                        const nominalX = p.x / (sRef.x || 1.0);
-                        const nominalZ = p.z / (sRef.z || 1.0);
-
-                        return new THREE.Vector3(
-                            nominalX * sTarget.x,
-                            yTarget,
-                            nominalZ * sTarget.z
-                        );
-                    };
-
-                    // Compute start and end node coords at both elevations
-                    const sNode1 = getCoordsAtElv(startNode, startNode.y, y1);
-                    const eNode1 = getCoordsAtElv(endNode, endNode.y, y1);
-
-                    const sNode2 = getCoordsAtElv(startNode, startNode.y, y2);
-                    const eNode2 = getCoordsAtElv(endNode, endNode.y, y2);
-
-                    // Compute points along the members at y1 and y2
-                    const len1 = eNode1.distanceTo(sNode1);
-                    const dir1 = len1 > 0.001 ? eNode1.clone().sub(sNode1).normalize() : new THREE.Vector3(0, 0, 0);
-                    const offsetPos1 = sNode1.clone().add(dir1.clone().multiplyScalar(distVal));
-
-                    const len2 = eNode2.distanceTo(sNode2);
-                    const dir2 = len2 > 0.001 ? eNode2.clone().sub(sNode2).normalize() : new THREE.Vector3(0, 0, 0);
-                    const offsetPos2 = sNode2.clone().add(dir2.clone().multiplyScalar(distVal));
-
-                    const offsetDistance = 0.0;
-                    const finalStart = offsetPos1.clone();
-                    const finalEnd = offsetPos2.clone();
-
-                    if (dir1.lengthSq() > 0.001) {
-                        const perp1 = new THREE.Vector3(-dir1.z, 0, dir1.x);
-                        const vCenter1 = new THREE.Vector3(offsetPos1.x, 0, offsetPos1.z);
-                        if (perp1.dot(vCenter1) < 0) {
-                            perp1.negate();
-                        }
-                        finalStart.add(perp1.multiplyScalar(offsetDistance));
-                    }
-
-                    if (dir2.lengthSq() > 0.001) {
-                        const perp2 = new THREE.Vector3(-dir2.z, 0, dir2.x);
-                        const vCenter2 = new THREE.Vector3(offsetPos2.x, 0, offsetPos2.z);
-                        if (perp2.dot(vCenter2) < 0) {
-                            perp2.negate();
-                        }
-                        finalEnd.add(perp2.multiplyScalar(offsetDistance));
-                    }
-
-                    // Apply straight-slant constraint based on member horizontal direction:
-                    // If the member has no horizontal direction (length close to 0, e.g., caissons):
-                    // - Simply use the computed finalStart and finalEnd.
-                    // If the member is parallel to X (along row/face):
-                    // - Riser does not slant along X (start.x == end.x).
-                    // - Riser slants along Z (start.z = finalStart.z, end.z = finalEnd.z).
-                    // If the member is parallel to Z:
-                    // - Riser does not slant along Z (start.z == end.z).
-                    // - Riser slants along X (start.x = finalStart.x, end.x = finalEnd.x).
-                    if (len1 < 0.001) {
-                        start.copy(finalStart);
-                        end.copy(finalEnd);
-                    } else if (Math.abs(dir1.x) >= Math.abs(dir1.z)) {
-                        start.set(finalStart.x, y1, finalStart.z);
-                        end.set(finalStart.x, y2, finalEnd.z);
-                    } else {
-                        start.set(finalStart.x, y1, finalStart.z);
-                        end.set(finalEnd.x, y2, finalStart.z);
-                    }
-                    resolved = true;
-                }
-            } else if (hasStartNode || hasEndNode) {
-                if (hasStartNode) start.copy(startNode!);
-                if (hasEndNode) end.copy(endNode!);
-
-                if (hasStartNode && !hasEndNode) end.copy(start);
-                else if (!hasStartNode && hasEndNode) start.copy(end);
-
-                resolved = true;
-            } else if (md.s_leg) {
-                const y = sanitizeElevation(md.elv_1 || (md.depth ? -parseFloat(md.depth) / 10 : 0));
-                const coords = getLegCoordsAtElv(md.s_leg, y);
-                start.set(coords.x, y, coords.z);
-                if (md.f_leg && md.elv_2) {
-                    const y2 = sanitizeElevation(md.elv_2);
-                    const coords2 = getLegCoordsAtElv(md.f_leg, y2);
-                    end.set(coords2.x, y2, coords2.z);
-                } else {
-                    end.copy(start);
-                }
-                resolved = true;
-            } else if (md.easting || md.northing) {
-                const x = parseFloat(md.easting || "0") / 100 || 0;
-                const z = parseFloat(md.northing || "0") / 100 || 0;
-                start.set(x, maxElv + 2, z);
-                end.set(x, minElv, z);
-                resolved = true;
-            }
-
-            if (!resolved) {
-                const layer = Math.floor(i / 16);
-                const posInLayer = i % 16;
-                const radius = 20 + layer * 2;
-                const angle = (posInLayer / 16) * Math.PI * 2;
-                start.set(Math.cos(angle) * radius, -layer * 4, Math.sin(angle) * radius);
-                end.set(start.x, start.y + 4, start.z);
-            }
-
-            intermediateLayouts.set(c.id, { component: c, start, end, thickness });
-        });
-
-        // Pass 1.8: Resolve pending riser support clamps along parent risers
-        pendingRiserSupports.forEach(({ component, riserNum, targetElv }) => {
-            // Find parent riser layout in intermediateLayouts
-            let parentLayout: any = null;
-            for (const layout of Array.from(intermediateLayouts.values())) {
-                const comp = layout.component;
-                const compCode = (comp.code || "").toUpperCase();
-                const isRiser = compCode === "RS" || compCode.includes("RISER") || compCode.includes("RISR");
-                if (isRiser) {
-                    const qIdUpper = (comp.q_id || "").toUpperCase();
-                    if (
-                        qIdUpper.includes(`R${riserNum}`) ||
-                        qIdUpper.includes(`R-${riserNum}`) ||
-                        qIdUpper.includes(`RISER${riserNum}`) ||
-                        qIdUpper.includes(`RISER ${riserNum}`)
-                    ) {
-                        parentLayout = layout;
-                        break;
-                    }
-                }
-            }
-
-            if (parentLayout) {
-                const start = new THREE.Vector3();
-                const end = new THREE.Vector3();
-
-                const y1 = parentLayout.start.y;
-                const y2 = parentLayout.end.y;
-
-                if (Math.abs(y2 - y1) > 0.001) {
-                    const t = (targetElv - y1) / (y2 - y1);
-                    const clampedT = Math.max(0, Math.min(1, t));
-                    start.copy(parentLayout.start).lerp(parentLayout.end, clampedT);
-                } else {
-                    start.copy(parentLayout.start);
-                    start.setY(targetElv);
-                }
-
-                // Align with riser direction
-                const direction = parentLayout.end.clone().sub(parentLayout.start).normalize();
-                if (direction.lengthSq() > 0.1) {
-                    end.copy(start).add(direction.multiplyScalar(0.4)); // 0.4m clamp length
-                } else {
-                    end.copy(start).add(new THREE.Vector3(0, 0.4, 0));
-                }
-
-                const thickness = parentLayout.thickness * 1.35;
-                intermediateLayouts.set(component.id, { component, start, end, thickness });
-            } else {
-                // Fallback if parent riser is not found (render in unresolved area)
-                const start = new THREE.Vector3(0, targetElv, 20);
-                const end = start.clone().add(new THREE.Vector3(0, 0.4, 0));
-                intermediateLayouts.set(component.id, { component, start, end, thickness: 0.3 });
-            }
-        });
-
-        const spanMap = new Map<string, typeof pendingSpanAccessories>();
-        pendingSpanAccessories.forEach((item) => {
-            const key = `${item.sNode.x.toFixed(3)},${item.sNode.y.toFixed(3)},${item.sNode.z.toFixed(3)}|${item.fNode.x.toFixed(3)},${item.fNode.y.toFixed(3)},${item.fNode.z.toFixed(3)}`;
-            if (!spanMap.has(key)) spanMap.set(key, []);
-            spanMap.get(key)!.push(item);
-        });
-
-        spanMap.forEach((items, key) => {
-            const sNode = items[0].sNode;
-            const fNode = items[0].fNode;
-
-            items.sort((a, b) => a.component.q_id.localeCompare(b.component.q_id));
-            const count = items.length;
-
-            items.forEach((item, idx) => {
-                const md = item.component.metadata || {};
-                const itemCode = (item.component.code || "").toUpperCase();
-                const itemQId = (item.component.q_id || "").toUpperCase();
-                const isAnode = itemCode === "AN" || itemCode.includes("ANOD");
-
-                let start = new THREE.Vector3();
-                let end = new THREE.Vector3();
-
-                if (isAnode) {
-                    // For anodes on member spans, default to equal gap distribution (1 anode = middle t=0.5)
-                    const t = (idx + 1) / (count + 1);
-                    start.copy(sNode).lerp(fNode, t);
-                } else if ((md.elv_1 || md.depth) && Math.abs(fNode.y - sNode.y) > 0.001) {
-                    const targetY = sanitizeElevation(md.elv_1 || -parseFloat(md.depth) / 10);
-                    const t = (targetY - sNode.y) / (fNode.y - sNode.y);
-                    const clampedT = Math.max(0, Math.min(1, t));
-                    start.copy(sNode).lerp(fNode, clampedT);
-                } else {
-                    const t = (idx + 1) / (count + 1);
-                    start.copy(sNode).lerp(fNode, t);
-                }
-
-                if (md.dist && !isAnode) {
-                    const distance = parseFloat(md.dist);
-                    if (distance > 0 && distance < 3.0) {
-                        const clockPos = parseFloat(md.clk_pos || "12");
-                        const angle = (clockPos / 12) * Math.PI * 2;
-                        start.x += Math.sin(angle) * distance;
-                        start.z += Math.cos(angle) * distance;
-                    }
-                }
-
-                const direction = fNode.clone().sub(sNode).normalize();
-                if (direction.lengthSq() > 0.1) {
-                    end.copy(start).add(direction.clone().multiplyScalar(0.8));
-                } else {
-                    end.copy(start);
-                }
-
-                intermediateLayouts.set(item.component.id, {
-                    component: item.component,
-                    start,
-                    end,
-                    thickness: 0.15,
-                });
-            });
-        });
-
-        // Pass 2: Resolve attachments relative to their parents
-        const pendingAttachmentsByParent = new Map<number, typeof components>();
-        pendingAttachments.forEach((c) => {
-            const parentId = c.metadata?.associated_comp_id;
-            if (parentId) {
-                if (!pendingAttachmentsByParent.has(parentId)) {
-                    pendingAttachmentsByParent.set(parentId, []);
-                }
-                pendingAttachmentsByParent.get(parentId)!.push(c);
-            } else {
-                const fallbackId = -1;
-                if (!pendingAttachmentsByParent.has(fallbackId)) {
-                    pendingAttachmentsByParent.set(fallbackId, []);
-                }
-                pendingAttachmentsByParent.get(fallbackId)!.push(c);
-            }
-        });
-
-        let unattachedIndex = 0;
-        pendingAttachmentsByParent.forEach((children, parentId) => {
-            if (parentId === -1) {
-                children.forEach((c) => {
-                    let start = new THREE.Vector3();
-                    const layer = Math.floor(unattachedIndex / 16);
-                    const radius = 25 + layer * 2;
-                    const angle = (unattachedIndex / 16) * Math.PI * 2;
-                    start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
-                    let end = start.clone();
-                    intermediateLayouts.set(c.id, { component: c, start, end, thickness: 0.15 });
-                    unattachedIndex++;
-                });
-                return;
-            }
-
-            const parentLayout = intermediateLayouts.get(parentId);
-            if (!parentLayout) {
-                children.forEach((c) => {
-                    let start = new THREE.Vector3();
-                    const layer = Math.floor(unattachedIndex / 16);
-                    const radius = 25 + layer * 2;
-                    const angle = (unattachedIndex / 16) * Math.PI * 2;
-                    start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
-                    let end = start.clone();
-                    intermediateLayouts.set(c.id, { component: c, start, end, thickness: 0.15 });
-                    unattachedIndex++;
-                });
-                return;
-            }
-
-            const { start: pStart, end: pEnd, thickness: pThickness, component: parentComp } = parentLayout;
-            const parentCode = (parentComp?.code || "").toUpperCase();
-            const parentQId = (parentComp?.q_id || "").toUpperCase();
-            const isParentVD =
-                parentCode === "VD" ||
-                parentCode === "VDM" ||
-                parentCode.includes("VD") ||
-                parentCode.includes("V-DIAG") ||
-                parentQId.includes("VD") ||
-                parentQId.includes("VDM");
-
-            const direction = pEnd.clone().sub(pStart).normalize();
-
-            const anodeChildren = children.filter((c) => {
-                const code = (c.code || "").toUpperCase();
-                return code === "AN" || code.includes("ANOD");
-            });
-
-            if (anodeChildren.length > 0) {
-                // Force equal spacing for all anodes attached to a member
-                anodeChildren.sort((a, b) => a.q_id.localeCompare(b.q_id));
-                const anodeCount = anodeChildren.length;
-                anodeChildren.forEach((c, idx) => {
-                    let start = new THREE.Vector3();
-                    let end = new THREE.Vector3();
-                    const t = (idx + 1) / (anodeCount + 1);
-                    start.copy(pStart).lerp(pEnd, t);
-                    if (direction.lengthSq() > 0.1) {
-                        end.copy(start).add(direction.clone().multiplyScalar(0.1));
-                    } else {
-                        end.copy(start);
-                    }
-                    intermediateLayouts.set(c.id, { component: c, start, end, thickness: pThickness });
-                });
-            }
-
-            const nonAnodeChildren = children.filter((c) => {
-                const code = (c.code || "").toUpperCase();
-                return code !== "AN" && !code.includes("ANOD");
-            });
-
-            const childrenWithPos = nonAnodeChildren.filter((c) => c.metadata?.depth || c.metadata?.elv_1);
-            const childrenWithoutPos = nonAnodeChildren.filter((c) => !c.metadata?.depth && !c.metadata?.elv_1);
-
-            childrenWithoutPos.sort((a, b) => a.q_id.localeCompare(b.q_id));
-
-            childrenWithPos.forEach((c) => {
-                const md = c.metadata || {};
-                let thickness = pThickness;
-                let start = new THREE.Vector3();
-                let end = new THREE.Vector3();
-
-                const targetY = sanitizeElevation(md.elv_1 || -parseFloat(md.depth) / 10);
-                if (Math.abs(pEnd.y - pStart.y) > 0.001) {
-                    const t = (targetY - pStart.y) / (pEnd.y - pStart.y);
-                    const clampedT = Math.max(0, Math.min(1, t));
-                    start.copy(pStart).lerp(pEnd, clampedT);
-                } else {
-                    start.copy(pStart).add(pEnd).multiplyScalar(0.5);
-                    start.setY(targetY);
-                }
-
-                if (direction.lengthSq() > 0.1) {
-                    end.copy(start).add(direction.multiplyScalar(0.1));
-                } else {
-                    end.copy(start);
-                }
-                intermediateLayouts.set(c.id, { component: c, start, end, thickness });
-            });
-
-            const count = childrenWithoutPos.length;
-            childrenWithoutPos.forEach((c, idx) => {
-                let thickness = pThickness;
-                let start = new THREE.Vector3();
-                let end = new THREE.Vector3();
-
-                const t = (idx + 1) / (count + 1);
-                start.copy(pStart).lerp(pEnd, t);
-
-                if (direction.lengthSq() > 0.1) {
-                    end.copy(start).add(direction.multiplyScalar(0.1));
-                } else {
-                    end.copy(start);
-                }
-                intermediateLayouts.set(c.id, { component: c, start, end, thickness });
-            });
-        });
-
-        // Align endpoint welds with connecting members
-        intermediateLayouts.forEach((layout) => {
-            const c = layout.component;
-            const code = (c.code || "").toUpperCase();
-            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
-
-            if (isWeld && layout.start.distanceTo(layout.end) < 0.001) {
-                const md = c.metadata || {};
-                const leg = (md.s_leg || md.f_leg || md.leg || "").toUpperCase();
-                const isCorner = leg && !md.associated_comp_id;
-
-                if (isCorner) {
-                    // Set corner node welds to be vertical cylinders
-                    const verticalDir = new THREE.Vector3(0, 1, 0);
-                    layout.end.copy(layout.start.clone().add(verticalDir.multiplyScalar(0.1)));
-                } else {
-                    const nodeName = String(md.s_node || "")
-                        .toUpperCase()
-                        .trim();
-                    if (nodeName) {
-                        let foundMemberLayout: any = null;
-                        if (md.associated_comp_id) {
-                            foundMemberLayout = intermediateLayouts.get(md.associated_comp_id);
-                        }
-                        if (!foundMemberLayout) {
-                            for (const otherLayout of Array.from(intermediateLayouts.values())) {
-                                const otherComp = otherLayout.component;
-                                const otherCode = (otherComp.code || "").toUpperCase();
-                                const isMember = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM"].includes(otherCode);
-                                if (isMember) {
-                                    const otherMd = otherComp.metadata || {};
-                                    const sNodeStr = String(otherMd.s_node || "")
-                                        .toUpperCase()
-                                        .trim();
-                                    const fNodeStr = String(otherMd.f_node || "")
-                                        .toUpperCase()
-                                        .trim();
-                                    if (sNodeStr === nodeName || fNodeStr === nodeName) {
-                                        foundMemberLayout = otherLayout;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (foundMemberLayout) {
-                            const mStart = foundMemberLayout.start;
-                            const mEnd = foundMemberLayout.end;
-                            const mDist = mStart.distanceTo(mEnd);
-                            if (mDist > 0.001) {
-                                const dir = mEnd.clone().sub(mStart).normalize();
-                                layout.end.copy(layout.start.clone().add(dir.multiplyScalar(0.1)));
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        const initialResolvedLayouts = Array.from(intermediateLayouts.values())
-            // Filter out any layouts where coordinates are NaN or non-finite
-            .filter((layout) => {
-                const coords = [
-                    layout.start.x,
-                    layout.start.y,
-                    layout.start.z,
-                    layout.end.x,
-                    layout.end.y,
-                    layout.end.z,
-                ];
-                return coords.every((v) => isFinite(v));
-            })
-            // Filter out leg and CGF guide frame components from the 3D visualization
-            .filter((layout) => {
-                const code = (layout.component.code || "").toUpperCase();
-                const qId = (layout.component.q_id || "").toUpperCase();
-                const isCgf = code === "CF" || qId.includes("CGF");
-                return !(code === "LG" || code === "LEG" || qId.includes("LEG") || isCgf);
-            })
-            .map((layout) => ({
-                id: `${layout.component.id}`,
-                component: layout.component,
-                start: [layout.start.x, layout.start.y, layout.start.z] as [number, number, number],
-                end: [layout.end.x, layout.end.y, layout.end.z] as [number, number, number],
-                thickness: layout.thickness,
-            }));
-
-        const conductorLayouts: {
-            id: string;
-            component: any;
-            start: [number, number, number];
-            end: [number, number, number];
-            thickness: number;
-        }[] = [];
-
-        const conductors = components.filter(c => {
-            const code = (c.code || "").toUpperCase();
-            return code === "CD" || (c.q_id || "").toUpperCase().includes("CON");
-        });
-
-        conductors.forEach(c => {
-            const md = c.metadata || {};
-            const topElv = sanitizeElevation(md.elv_1 || 3);
-            const botElv = sanitizeElevation(md.elv_2 || -55);
-            const condName = (c.q_id || "").toUpperCase();
-            const numMatch = condName.match(/\d+/);
-            if (!numMatch) return;
-            const indexStr = numMatch[0];
-
-            // Find all CGF (Conductor Guide Frame) components that match this index
-            const matchingCgfs = components.filter(other => {
-                const otherCode = (other.code || "").toUpperCase();
-                const otherQId = (other.q_id || "").toUpperCase();
-                const isCgf = otherCode === "CF" || otherQId.includes("CGF");
-                return isCgf && otherQId.includes(indexStr);
-            });
-
-            // Map CGFs to their elevations and midpoints
-            const cgfMidpoints: { elv: number; midpoint: THREE.Vector3 }[] = [];
-            matchingCgfs.forEach(cgf => {
-                const cgfMd = cgf.metadata || {};
-                const sPos = lookupNode(cgfMd.s_node, cgfMd.s_leg);
-                const fPos = lookupNode(cgfMd.f_node, cgfMd.f_leg);
-                if (sPos && fPos) {
-                    const midpoint = new THREE.Vector3(
-                        (sPos.x + fPos.x) / 2,
-                        (sPos.y + fPos.y) / 2,
-                        (sPos.z + fPos.z) / 2
-                    );
-                    const elv = sanitizeElevation(cgfMd.elv_1 || cgfMd.elv_2 || sPos.y);
-                    cgfMidpoints.push({ elv, midpoint });
-                }
-            });
-
-            // Sort midpoints by elevation descending (top to bottom)
-            cgfMidpoints.sort((a, b) => b.elv - a.elv);
-
-            // Generate segments
-            if (cgfMidpoints.length > 0) {
-                // Generate segments between consecutive midpoints
-                for (let i = 0; i < cgfMidpoints.length - 1; i++) {
-                    const startMid = cgfMidpoints[i];
-                    const endMid = cgfMidpoints[i + 1];
-                    conductorLayouts.push({
-                        id: `${c.id}-seg-${i}`,
-                        component: c,
-                        start: [startMid.midpoint.x, startMid.elv, startMid.midpoint.z],
-                        end: [endMid.midpoint.x, endMid.elv, endMid.midpoint.z],
-                        thickness: 0.10,
-                    });
-                }
-                // Append bottom extension segment if target botElv is lower than the last guide frame
-                const lastFrame = cgfMidpoints[cgfMidpoints.length - 1];
-                if (botElv < lastFrame.elv - 0.1) {
-                    conductorLayouts.push({
-                        id: `${c.id}-seg-bottom`,
-                        component: c,
-                        start: [lastFrame.midpoint.x, lastFrame.elv, lastFrame.midpoint.z],
-                        end: [lastFrame.midpoint.x, botElv, lastFrame.midpoint.z],
-                        thickness: 0.10,
-                    });
-                }
-                // Prepend top extension segment if target topElv is higher than the first guide frame
-                const firstFrame = cgfMidpoints[0];
-                if (topElv > firstFrame.elv + 0.1) {
-                    conductorLayouts.push({
-                        id: `${c.id}-seg-top`,
-                        component: c,
-                        start: [firstFrame.midpoint.x, topElv, firstFrame.midpoint.z],
-                        end: [firstFrame.midpoint.x, firstFrame.elv, firstFrame.midpoint.z],
-                        thickness: 0.10,
-                    });
-                }
-            } else {
-                // Fallback to vertical line at s_node coordinate if no guide frame matched
-                const startNode = lookupNode(md.s_node, md.s_leg);
-                if (startNode) {
-                    conductorLayouts.push({
-                        id: `${c.id}-fallback`,
-                        component: c,
-                        start: [startNode.x, topElv, startNode.z],
-                        end: [startNode.x, botElv, startNode.z],
-                        thickness: 0.10,
-                    });
-                }
-            }
-        });
-
-        const resolvedLayouts = [
-            ...initialResolvedLayouts,
-            ...conductorLayouts
-        ];
-
-        const getComponentLegs = (comp: any) => {
-            const compMd = comp.metadata || {};
-            let targetComp = comp;
-            if (compMd.associated_comp_id) {
-                const parent = components.find((c) => c.id === compMd.associated_comp_id);
-                if (parent) {
-                    targetComp = parent;
-                }
-            }
-            const targetMd = targetComp.metadata || {};
-            const sNodeKey = (targetMd.s_node || "").toUpperCase();
-            const fNodeKey = (targetMd.f_node || "").toUpperCase();
-            const sLeg = (
-                targetMd.s_leg ||
-                nodeLegMap.get(sNodeKey) ||
-                nodeLegMap.get(`N${sNodeKey}`) ||
-                ""
-            ).toUpperCase();
-            const fLeg = (
-                targetMd.f_leg ||
-                nodeLegMap.get(fNodeKey) ||
-                nodeLegMap.get(`N${fNodeKey}`) ||
-                ""
-            ).toUpperCase();
-            return { sLeg, fLeg };
-        };
-
-        // Helper to check if component belongs strictly to the face plane (outermost members only)
-        const isComponentOnFace = (comp: any, faceName: string) => {
-            const compMd = comp.metadata || {};
-            const faceObj = faces.find((f) => f.face?.toUpperCase() === faceName.toUpperCase());
-            if (!faceObj) return false;
-
-            const fFrom = (faceObj.face_from || "").toUpperCase();
-            const fTo = (faceObj.face_to || "").toUpperCase();
-            const faceLegs = [fFrom, fTo].filter(Boolean);
-            if (faceLegs.length !== 2) return false;
-
-            const { sLeg, fLeg } = getComponentLegs(comp);
-            if (!sLeg || !fLeg) return false;
-
-            const sMatch = faceLegs.includes(sLeg);
-            const fMatch = faceLegs.includes(fLeg);
-
-            // Outermost face members only: both ends must belong to the face's leg set {fFrom, fTo}
-            if (sMatch && fMatch) return true;
-
-            // If explicit face metadata is present, still require the component to be on the face legs
-            if (compMd.face?.toUpperCase() === faceName.toUpperCase()) {
-                return sMatch && fMatch;
-            }
-
-            return false;
-        };
-
-        const filteredLayouts = resolvedLayouts.filter((layout) => {
-            const c = layout.component;
-            const md = c.metadata || {};
-
-            // Filter out riser guard supports (e.g. RISG 1-SUPP-A1) from the 3D scene representation
-            const qidUpper = (c.q_id || "").toUpperCase();
-            if (qidUpper.startsWith("RISG") && qidUpper.includes("-SUPP-")) {
-                return false;
-            }
-
-            if (selectedElevations.length > 0) {
-                const startY = layout.start[1];
-                const endY = layout.end[1];
-
-                const matchesStart = selectedElevations.some((selElv) => Math.abs(startY - selElv) < 0.5);
-                const matchesEnd = selectedElevations.some((selElv) => Math.abs(endY - selElv) < 0.5);
-
-                // Both start and end coordinates must match one of the selected elevations
-                // (keeps only the horizontal members/components at this level slice)
-                if (!matchesStart || !matchesEnd) return false;
-            }
-
-            if (selectedFaces.length > 0) {
-                const matchesFace = selectedFaces.some((faceName) => isComponentOnFace(c, faceName));
-                if (!matchesFace) return false;
-            }
-
-            return true;
-        });
-
-        const filteredFoundationMembers = foundationMembers.filter((m) => {
-            if (m.id.startsWith("leg-")) {
-                return true;
-            }
-
-            if (m.id.startsWith("face-")) {
-                const faceName = m.label;
-                if (selectedFaces.length > 0) {
-                    if (!selectedFaces.includes(faceName)) return false;
-                }
-            }
-
-            // Both start and end coordinates of foundation members must match selected elevations
-            if (selectedElevations.length > 0) {
-                const startY = m.start[1];
-                const endY = m.end[1];
-
-                const matchesStart = selectedElevations.some((selElv) => Math.abs(startY - selElv) < 0.1);
-                const matchesEnd = selectedElevations.some((selElv) => Math.abs(endY - selElv) < 0.1);
-
-                if (!matchesStart || !matchesEnd) return false;
-            }
-
-            return true;
-        });
-
-        const filteredElvMarkers = elvMarkers.filter((m) => {
-            if (selectedElevations.length > 0) {
-                return selectedElevations.some((selElv) => Math.abs(m.y - selElv) < 0.1);
-            }
-            return true;
+            const weldColor = isWeld ? "#d946ef" : null;
+            const finalColor = isInspectionMode ? dbItem.inspection_color : (weldColor || dbItem.color_hex || "#64748b");
+            
+            const startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
+                ? [dbItem.start_x, dbItem.start_y, dbItem.start_z]
+                : (dbItem.start || [dbItem.pos_x || 0, dbItem.pos_y || 0, dbItem.pos_z || 0]);
+
+            const endVec = (dbItem.end_x !== undefined && dbItem.end_y !== undefined && dbItem.end_z !== undefined)
+                ? [dbItem.end_x, dbItem.end_y, dbItem.end_z]
+                : (dbItem.end || [dbItem.pos_x || 0, dbItem.pos_y || 0, dbItem.pos_z || 0]);
+
+            const enrichedComp = { ...comp, code, q_id };
+
+            const isInspected = Boolean(dbItem.is_inspected);
+            const hasAnomaly = Boolean(dbItem.has_anomaly);
+            const inspectionStatus = hasAnomaly
+                ? "HAS_ANOMALY"
+                : isInspected
+                    ? "NO_ANOMALY"
+                    : "NOT_INSPECTED";
+
+            return {
+                id: dbItem.component_id,
+                q_id: q_id,
+                type: dbItem.shape_type,
+                code: code,
+                start: startVec,
+                end: endVec,
+                position: [dbItem.pos_x || 0, dbItem.pos_y || 0, dbItem.pos_z || 0],
+                rotation: [dbItem.rot_x || 0, dbItem.rot_y || 0, dbItem.rot_z || 0],
+                scale: [dbItem.scale_x || 1, dbItem.scale_y || 1, dbItem.scale_z || 1],
+                color: finalColor,
+                thickness: dbItem.dimensions?.radius || (isWeld ? 0.25 : 0.5),
+                length: dbItem.dimensions?.length || 1,
+                offsetDistance: dbItem.dimensions?.offset || 0,
+                shape: dbItem.shape_type,
+                renderMesh: dbItem.visibility_flag,
+                hasGeometryIssue: dbItem.has_geometry_issue,
+                is_inspected: isInspected,
+                has_anomaly: hasAnomaly,
+                inspectionStatus: inspectionStatus,
+                originalComp: enrichedComp,
+                component: enrichedComp
+            };
         });
 
         return {
-            componentLayouts: filteredLayouts,
-            foundationMembers: filteredFoundationMembers,
-            elvMarkers: filteredElvMarkers,
+            componentLayouts: layouts,
+            foundationMembers: webapp3dData.foundationMembers || [],
+            elvMarkers: webapp3dData.elvMarkers || []
         };
-    }, [components, platformDetails, elevations, faces, selectedElevations, selectedFaces, useWincairsMode, wincairsParamsMap]);
+    }, [webapp3dData, rawComponents, isInspectionMode]);
 
     const fallbackComponents = useMemo(() => {
         if (!useWincairsMode) return [];
         const wincairsRenderedIds = new Set<number>();
-        componentLayouts.forEach((l) => {
-            const param = wincairsParamsMap.get(l.component.comp_id || l.component.id);
+        componentLayouts.forEach((l: any) => {
+            const comp = l.component || l.originalComp || { id: l.id };
+            const compId = comp.id || l.id;
+            const param = compId ? wincairsParamsMap.get(comp.comp_id || compId) : undefined;
             if (param && isFinite(Number(param.s_point3d_x))) {
-                wincairsRenderedIds.add(l.component.id);
+                if (compId) wincairsRenderedIds.add(compId);
             }
         });
         return components.filter((c) => !wincairsRenderedIds.has(c.id));
@@ -2468,6 +1053,39 @@ export function Structural3DViewer({
             onFallbackComponentsChange(fallbackComponents);
         }
     }, [fallbackComponents, onFallbackComponentsChange]);
+
+    React.useEffect(() => {
+        if (selectedCompId && !isActivated) {
+            setIsActivated(true);
+        }
+    }, [selectedCompId, isActivated]);
+
+    const selectedLayout = useMemo(() => {
+        if (!selectedCompId) return null;
+        return componentLayouts.find((l: any) => 
+            l.id === selectedCompId ||
+            l.component_id === selectedCompId ||
+            l.component?.id === selectedCompId ||
+            l.originalComp?.id === selectedCompId ||
+            String(l.id) === String(selectedCompId) ||
+            String(l.component?.id) === String(selectedCompId)
+        );
+    }, [componentLayouts, selectedCompId]);
+
+    const selectedPos = useMemo(() => {
+        if (!selectedLayout) return null;
+        if (selectedLayout.start && selectedLayout.end) {
+            return new THREE.Vector3(
+                (selectedLayout.start[0] + selectedLayout.end[0]) / 2,
+                (selectedLayout.start[1] + selectedLayout.end[1]) / 2,
+                (selectedLayout.start[2] + selectedLayout.end[2]) / 2
+            );
+        }
+        if (selectedLayout.position) {
+            return new THREE.Vector3(selectedLayout.position[0], selectedLayout.position[1], selectedLayout.position[2]);
+        }
+        return null;
+    }, [selectedLayout]);
 
     if (!isActivated) {
         return (
@@ -2588,6 +1206,8 @@ export function Structural3DViewer({
         );
     }
 
+
+
     return (
         <div className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative rounded-3xl overflow-hidden shadow-2xl">
             <Canvas
@@ -2601,6 +1221,7 @@ export function Structural3DViewer({
                 <color attach="background" args={["#ffffff"]} />
                 <fog attach="fog" args={["#ffffff", 40, 220]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
+                <CameraRig selectedPos={selectedPos} isActivated={isActivated} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
 
                 <ambientLight intensity={0.35} />
@@ -2627,37 +1248,48 @@ export function Structural3DViewer({
                     <CameraDistanceController onChange={setIsCameraClose} />
                     <SelectToZoom>
                         {/* Elevation Markers */}
-                        {elvMarkers.map((m, i) => (
+                        {elvMarkers.map((m: any, i: number) => (
                             <ElevationMarker key={i} y={m.y} label={m.label} />
                         ))}
 
                         {/* Foundation Members (Skeleton) */}
-                        {foundationMembers.map((m) => (
+                        {foundationMembers.map((m: any, fIdx: number) => (
                             <FoundationMember
-                                key={m.id}
+                                key={`fm-${m.id || "item"}-${fIdx}`}
                                 start={m.start}
                                 end={m.end}
                                 thickness={m.thickness}
                                 color={m.color}
                                 label={m.label}
-                                showLabel={m.start[1] !== m.end[1]} // only show labels for vertical legs
+                                showLabel={m.start[1] !== m.end[1]}
                                 renderMesh={m.renderMesh}
                             />
                         ))}
 
                         {/* Existing Components */}
-                        {componentLayouts.map((layout, idx) => (
-                            <ComponentMesh
-                                key={(layout as any).id || `${layout.component.id}-${idx}`}
-                                component={layout.component}
-                                isSelected={selectedCompId === layout.component.id}
-                                onClick={() => onSelectComponent(layout.component)}
-                                start={layout.start}
-                                end={layout.end}
-                                thickness={layout.thickness}
-                                showWeldNumbering={isCameraClose && showWeldNumbering}
-                            />
-                        ))}
+                        {componentLayouts.map((layout: any, idx: number) => {
+                            const comp = layout.component || layout.originalComp || { id: layout.id, q_id: layout.q_id, code: layout.code };
+                            const compId = comp?.id || layout.id;
+                            const status = layout.inspectionStatus || "NOT_INSPECTED";
+                            const isChecked = selectedInspectionFilters.includes(status);
+
+                            return (
+                                <ComponentMesh
+                                    key={`comp-${layout.id || compId || "item"}-${idx}`}
+                                    component={comp}
+                                    isSelected={selectedCompId === compId}
+                                    onClick={() => onSelectComponent && onSelectComponent(comp)}
+                                    start={layout.start || layout.position}
+                                    end={layout.end || layout.position}
+                                    thickness={layout.thickness}
+                                    showWeldNumbering={showWeldNumbering}
+                                    isInspectionMode={isInspectionMode}
+                                    inspectionStatus={status}
+                                    isStatusChecked={isChecked}
+                                    inspectionColor={layout.color}
+                                />
+                            );
+                        })}
                     </SelectToZoom>
                 </Bounds>
 
@@ -2746,6 +1378,9 @@ export function Structural3DViewer({
 
 
 
+            
+
+
             {/* Click-outside backdrop */}
             {openDropdown && (
                 <div
@@ -2771,6 +1406,127 @@ export function Structural3DViewer({
                         <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
                     </Button>
                 )}
+
+                
+                {/* Inspection Filter */}
+                <div className="relative">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setOpenDropdown(openDropdown === "inspection" ? null : "inspection")}
+                        className={cn(
+                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                            isInspectionMode
+                                ? "border-purple-400 text-purple-600 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+                                : "border-slate-200 text-slate-500"
+                        )}
+                    >
+                        Inspection {isInspectionMode ? `(${selectedInspectionFilters.length}/3)` : "OFF"} ▼
+                    </Button>
+
+                    {openDropdown === "inspection" && (
+                        <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-72 flex flex-col gap-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    Inspection Mode
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    {selectedInspectionFilters.length < 3 && (
+                                        <button
+                                            onClick={() => {
+                                                setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
+                                                setIsInspectionMode(true);
+                                            }}
+                                            className="text-[9px] font-black uppercase text-purple-600 hover:text-purple-800 transition-colors"
+                                        >
+                                            Select All
+                                        </button>
+                                    )}
+                                    <label className="flex items-center cursor-pointer">
+                                        <div className="relative">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only"
+                                                checked={isInspectionMode}
+                                                onChange={(e) => {
+                                                    const nextState = e.target.checked;
+                                                    setIsInspectionMode(nextState);
+                                                    if (nextState && selectedInspectionFilters.length === 0) {
+                                                        setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
+                                                    }
+                                                }}
+                                            />
+                                            <div className={`block w-8 h-5 rounded-full ${isInspectionMode ? 'bg-purple-500' : 'bg-slate-200'}`}></div>
+                                            <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition ${isInspectionMode ? 'transform translate-x-3' : ''}`}></div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div className="flex flex-col gap-1.5 py-1">
+                                {/* Not Inspected Checkbox */}
+                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedInspectionFilters.includes("NOT_INSPECTED")}
+                                        onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            if (!isInspectionMode) setIsInspectionMode(true);
+                                            if (checked) {
+                                                setSelectedInspectionFilters((prev) => [...prev, "NOT_INSPECTED"]);
+                                            } else {
+                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NOT_INSPECTED"));
+                                            }
+                                        }}
+                                        className="h-4 w-4 rounded border-slate-300 text-slate-600 focus:ring-purple-500 accent-slate-600"
+                                    />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-slate-400 border border-slate-500 shrink-0" />
+                                    <span className="text-xs font-bold text-slate-700">Not Inspected</span>
+                                </label>
+
+                                {/* Inspected (No Anomaly) Checkbox */}
+                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-emerald-50/60 cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedInspectionFilters.includes("NO_ANOMALY")}
+                                        onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            if (!isInspectionMode) setIsInspectionMode(true);
+                                            if (checked) {
+                                                setSelectedInspectionFilters((prev) => [...prev, "NO_ANOMALY"]);
+                                            } else {
+                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NO_ANOMALY"));
+                                            }
+                                        }}
+                                        className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 accent-emerald-600"
+                                    />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] border border-emerald-600 shrink-0" />
+                                    <span className="text-xs font-bold text-emerald-700">Inspected (No Anomaly)</span>
+                                </label>
+
+                                {/* Inspected (Has Anomaly) Checkbox */}
+                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50/80 cursor-pointer transition-colors border border-transparent hover:border-red-100">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedInspectionFilters.includes("HAS_ANOMALY")}
+                                        onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            if (!isInspectionMode) setIsInspectionMode(true);
+                                            if (checked) {
+                                                setSelectedInspectionFilters((prev) => [...prev, "HAS_ANOMALY"]);
+                                            } else {
+                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "HAS_ANOMALY"));
+                                            }
+                                        }}
+                                        className="h-4 w-4 rounded border-red-400 text-red-600 focus:ring-red-500 accent-red-600"
+                                    />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] border border-red-600 shrink-0 animate-pulse" />
+                                    <span className="text-xs font-bold text-red-700">Inspected (Has Anomaly)</span>
+                                </label>
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 {/* Elevation Filter */}
                 <div className="relative">

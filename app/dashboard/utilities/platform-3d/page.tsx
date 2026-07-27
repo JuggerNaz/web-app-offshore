@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { 
@@ -66,6 +66,11 @@ export default function Platform3DPage() {
     const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
     const [isSpecOpen, setIsSpecOpen] = useState(false);
 
+    // Component Search state for Top Header
+    const [componentSearchQuery, setComponentSearchQuery] = useState("");
+    const [showComponentSearchDropdown, setShowComponentSearchDropdown] = useState(false);
+    const searchRef = useRef<HTMLDivElement>(null);
+
     // WINCAIRS Mode state & Fallback Dialog state
     const [useWincairsMode, setUseWincairsMode] = useState(false);
     const [fallbackComponents, setFallbackComponents] = useState<any[]>([]);
@@ -73,6 +78,16 @@ export default function Platform3DPage() {
 
     const [, setGlobalUrlId] = useAtom(urlId);
     const [, setGlobalUrlType] = useAtom(urlType);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+                setShowComponentSearchDropdown(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     React.useEffect(() => {
         if (selectedPlatform) {
@@ -110,11 +125,12 @@ export default function Platform3DPage() {
                 if (excludeCodes.includes(code) && !isRiserSupport) {
                     return false;
                 }
-                // Exclude node weld components (code 'WN') that have a dash '-' in their q_id
-                const isNodeWeld = code === "WN";
-                if (isNodeWeld && c.q_id && c.q_id.includes("-")) {
+
+                // Exclude intermediate member seam welds (keep only primary junction node welds)
+                if (code === "WN" && c.q_id && c.q_id.includes("-")) {
                     return false;
                 }
+
                 // Exclude fender support components like FEND 1-SUPP-A2 / FEND x-SUPP-xx
                 if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) {
                     return false;
@@ -141,6 +157,13 @@ export default function Platform3DPage() {
     );
     const platformDetails = platformDetailData?.data;
 
+    // Fetch WebApp 3D Coordinates
+    const { data: webapp3dResponse, isLoading: isWebapp3dLoading } = useSWR(
+        selectedPlatform ? `/api/platform/webapp-3d/${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const webapp3dData = webapp3dResponse?.data;
+
     // 4. Fetch Elevations
     const { data: elevationsData } = useSWR(
         selectedPlatform ? `/api/platform/elevation/${selectedPlatform.plat_id}` : null,
@@ -164,10 +187,21 @@ export default function Platform3DPage() {
 
     const filteredPlatforms = useMemo(() => {
         return platforms.filter(p => 
-            p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.plat_id.toString().includes(searchQuery)
+            (p.title || "").toLowerCase().includes((searchQuery || "").toLowerCase()) ||
+            String(p.plat_id || "").includes(searchQuery || "")
         );
     }, [platforms, searchQuery]);
+
+    const filteredComponents = useMemo(() => {
+        if (!componentSearchQuery.trim()) return [];
+        const query = componentSearchQuery.toLowerCase();
+        return components
+            .filter((c: any) => 
+                (c?.q_id || "").toLowerCase().includes(query) || 
+                (c?.code || "").toLowerCase().includes(query)
+            )
+            .slice(0, 15);
+    }, [components, componentSearchQuery]);
 
     const handleSelectComponent = (comp: any) => {
         setSelectedComponent(comp);
@@ -178,8 +212,8 @@ export default function Platform3DPage() {
         return (
             <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 animate-in fade-in duration-500">
                 {/* Header */}
-                <div className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-4">
+                <div className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shadow-sm relative z-[100]">
+                    <div className="flex items-center gap-4 shrink-0">
                         <Button 
                             variant="ghost" 
                             size="icon" 
@@ -200,7 +234,73 @@ export default function Platform3DPage() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    {/* Component Search Bar in Top Header */}
+                    <div ref={searchRef} className="relative flex-1 max-w-md mx-6">
+                        <div className="relative">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="SEARCH COMPONENTS"
+                                value={componentSearchQuery}
+                                onChange={(e) => {
+                                    setComponentSearchQuery(e.target.value);
+                                    setShowComponentSearchDropdown(true);
+                                }}
+                                onFocus={() => setShowComponentSearchDropdown(true)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        if (filteredComponents.length > 0) {
+                                            handleSelectComponent(filteredComponents[0]);
+                                            setComponentSearchQuery("");
+                                            setShowComponentSearchDropdown(false);
+                                        }
+                                    }
+                                }}
+                                className="w-full bg-slate-100 dark:bg-slate-800/80 h-10 pl-10 pr-9 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 uppercase focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:normal-case placeholder:font-bold placeholder:text-slate-400 shadow-xs"
+                            />
+                            {componentSearchQuery && (
+                                <button
+                                    onClick={() => {
+                                        setComponentSearchQuery("");
+                                        setShowComponentSearchDropdown(false);
+                                    }}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            )}
+                        </div>
+
+                        {showComponentSearchDropdown && componentSearchQuery.trim().length > 0 && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-h-72 overflow-y-auto z-[1000] animate-in fade-in slide-in-from-top-2 duration-200 p-1">
+                                {filteredComponents.length > 0 ? (
+                                    filteredComponents.map((comp: any, sIdx: number) => (
+                                        <button
+                                            key={`search-top-${comp.id || comp.q_id || "item"}-${sIdx}`}
+                                            onClick={() => {
+                                                handleSelectComponent(comp);
+                                                setComponentSearchQuery("");
+                                                setShowComponentSearchDropdown(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/80 flex items-center justify-between group transition-colors border-b border-slate-100 dark:border-slate-800/40 last:border-0"
+                                        >
+                                            <div>
+                                                <div className="text-xs font-black text-slate-800 dark:text-slate-100">{comp.q_id}</div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{comp.code || "COMPONENT"}</div>
+                                            </div>
+                                            <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                                        </button>
+                                    ))
+                                ) : (
+                                    <div className="px-4 py-3 text-xs text-slate-400 text-center font-medium">
+                                        No component found matching "{componentSearchQuery}"
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
                         {/* WINCAIRS Mode Toggle Button */}
                         <Button
                             variant={useWincairsMode ? "default" : "outline"}
@@ -268,12 +368,14 @@ export default function Platform3DPage() {
                             platformDetails={platformDetails}
                             elevations={elevations}
                             faces={faces}
+                            selectedCompId={selectedComponent?.id}
                             onSelectComponent={handleSelectComponent}
                             onSync={mutateComponents}
                             isSyncing={isComponentsValidating}
                             useWincairsMode={useWincairsMode}
                             wincairsParams={wincairsParams}
                             onFallbackComponentsChange={setFallbackComponents}
+                            webapp3dData={webapp3dData}
                         />
                     </div>
 

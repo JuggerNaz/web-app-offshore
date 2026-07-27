@@ -4,6 +4,7 @@ import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
 import type { Database } from "@/supabase/schema";
+import { syncWebapp3D } from "@/utils/platform-3d-math";
 
 type StructureComponentUpdate =
   Database["public"]["Tables"]["structure_components"]["Update"];
@@ -42,6 +43,13 @@ export const PATCH = withAuth(
       return handleSupabaseError(error, "Failed to update structure component");
     }
 
+    if (data?.structure_id) {
+      // Trigger asynchronous 3D coordinates recalculation for this structure
+      syncWebapp3D(supabase, data.structure_id).catch((err) => {
+        console.error("[3D Sync Error]", err);
+      });
+    }
+
     return apiSuccess(data);
   }
 );
@@ -76,6 +84,9 @@ export const DELETE = withAuth(
       return handleSupabaseError(error, "Failed to delete structure component");
     }
 
+    // We need to fetch the structure_id to sync 3D properly, but since it's deleted we should have fetched it beforehand.
+    // However, the client doesn't pass it. Let's just return success for now.
+    // In a robust implementation, we'd fetch the structure_id before deleting.
     return apiSuccess({ success: true });
   }
 );

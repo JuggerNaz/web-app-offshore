@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/server";
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
+import { syncWebapp3D } from "@/utils/platform-3d-math";
 
 /**
  * GET /api/structure-components/[structure_id]
@@ -232,6 +233,11 @@ export const POST = withAuth(
     if (error) {
       return handleSupabaseError(error, "Failed to create structure component");
     }
+
+    // Trigger asynchronous 3D coordinates recalculation for this structure
+    syncWebapp3D(supabase, structureIdNumber).catch((err) => {
+      console.error("[3D Sync Error]", err);
+    });
 
     return apiSuccess(data);
   }
