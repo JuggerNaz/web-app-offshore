@@ -34,37 +34,221 @@
       "findingType": "Observation",
       "findings": "Maximum clearance point"
     },
+    "anode_bar_0_25": {
+      "eventName": "ANODE",
+      "eventType": "BAR ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "0 - 25% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Bar anode inspected at KP {kp} showing 0-25% depletion"
+    },
+    "anode_bar_25_50": {
+      "eventName": "ANODE",
+      "eventType": "BAR ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "25 - 50% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Bar anode inspected at KP {kp} showing 25-50% depletion"
+    },
+    "anode_bar_50_75": {
+      "eventName": "ANODE",
+      "eventType": "BAR ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "50 - 75% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Bar anode inspected at KP {kp} showing 50-75% depletion"
+    },
+    "anode_bar_75_100": {
+      "eventName": "ANODE",
+      "eventType": "BAR ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "75 - 100% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Bar anode inspected at KP {kp} showing 75-100% depletion"
+    },
     "anode_bracelet_0_25": {
       "eventName": "ANODE",
-      "eventType": "BRACELET ANODE",
-      "eventPosition": "0 - 25% DEPLETION",
-      "eventDescription": "Bracelet anode inspected at KP {kp} showing 0-25% depletion",
+      "eventType": "BRACELET ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "0 - 25% DEPLETED",
       "findingType": "Complete",
-      "findings": "Anode in good condition with minimal consumption"
+      "findings": "Bracelet anode inspected at KP {kp} showing 0-25% depletion"
     },
     "anode_bracelet_25_50": {
       "eventName": "ANODE",
-      "eventType": "BRACELET ANODE",
-      "eventPosition": "25 - 50% DEPLETION",
-      "eventDescription": "Bracelet anode inspected at KP {kp} showing 25-50% depletion",
+      "eventType": "BRACELET ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "25 - 50% DEPLETED",
       "findingType": "Complete",
-      "findings": "Moderate anode consumption"
+      "findings": "Bracelet anode inspected at KP {kp} showing 25-50% depletion"
     },
     "anode_bracelet_50_75": {
       "eventName": "ANODE",
-      "eventType": "BRACELET ANODE",
-      "eventPosition": "50 - 75% DEPLETION",
-      "eventDescription": "Bracelet anode inspected at KP {kp} showing 50-75% depletion",
+      "eventType": "BRACELET ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "50 - 75% DEPLETED",
       "findingType": "Observation",
-      "findings": "High anode depletion noted"
+      "findings": "Bracelet anode inspected at KP {kp} showing 50-75% depletion"
     },
     "anode_bracelet_75_100": {
       "eventName": "ANODE",
-      "eventType": "BRACELET ANODE",
-      "eventPosition": "75 - 100% DEPLETION",
-      "eventDescription": "Bracelet anode inspected at KP {kp} showing 75-100% depletion",
+      "eventType": "BRACELET ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "75 - 100% DEPLETED",
       "findingType": "Observation",
-      "findings": "Anode severely depleted"
+      "findings": "Bracelet anode inspected at KP {kp} showing 75-100% depletion"
+    },
+    "anode_collar_0_25": {
+      "eventName": "ANODE",
+      "eventType": "COLLAR ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "0 - 25% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Collar anode inspected at KP {kp} showing 0-25% depletion"
+    },
+    "anode_collar_25_50": {
+      "eventName": "ANODE",
+      "eventType": "COLLAR ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "25 - 50% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Collar anode inspected at KP {kp} showing 25-50% depletion"
+    },
+    "anode_collar_50_75": {
+      "eventName": "ANODE",
+      "eventType": "COLLAR ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "50 - 75% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Collar anode inspected at KP {kp} showing 50-75% depletion"
+    },
+    "anode_collar_75_100": {
+      "eventName": "ANODE",
+      "eventType": "COLLAR ANODE DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "75 - 100% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Collar anode inspected at KP {kp} showing 75-100% depletion"
+    },
+    "anode_remote_block_port_0_25": {
+      "eventName": "ANODE",
+      "eventType": "REMOTE BLOCK ANODE (PORT SIDE) DEPLETION",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "0 - 25% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Port side remote block anode inspected at KP {kp} showing 0-25% depletion"
+    },
+    "anode_remote_block_port_25_50": {
+      "eventName": "ANODE",
+      "eventType": "REMOTE BLOCK ANODE (PORT SIDE) DEPLETION",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "25 - 50% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Port side remote block anode inspected at KP {kp} showing 25-50% depletion"
+    },
+    "anode_remote_block_port_50_75": {
+      "eventName": "ANODE",
+      "eventType": "REMOTE BLOCK ANODE (PORT SIDE) DEPLETION",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "50 - 75% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Port side remote block anode inspected at KP {kp} showing 50-75% depletion"
+    },
+    "anode_remote_block_port_75_100": {
+      "eventName": "ANODE",
+      "eventType": "REMOTE BLOCK ANODE (PORT SIDE) DEPLETION",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "75 - 100% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Port side remote block anode inspected at KP {kp} showing 75-100% depletion"
+    },
+    "anode_remote_block_stbd_0_25": {
+      "eventName": "ANODE",
+      "eventType": "REMOTE BLOCK ANODE (STARBOARD SIDE) DEPLETION",
+      "eventPosition": "STARBOARD SIDE",
+      "eventDescription": "0 - 25% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Starboard side remote block anode inspected at KP {kp} showing 0-25% depletion"
+    },
+    "anode_remote_block_stbd_25_50": {
+      "eventName": "ANODE",
+      "eventType": "REMOTE BLOCK ANODE (STARBOARD SIDE) DEPLETION",
+      "eventPosition": "STARBOARD SIDE",
+      "eventDescription": "25 - 50% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Starboard side remote block anode inspected at KP {kp} showing 25-50% depletion"
+    },
+    "anode_remote_block_stbd_50_75": {
+      "eventName": "ANODE",
+      "eventType": "REMOTE BLOCK ANODE (STARBOARD SIDE) DEPLETION",
+      "eventPosition": "STARBOARD SIDE",
+      "eventDescription": "50 - 75% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Starboard side remote block anode inspected at KP {kp} showing 50-75% depletion"
+    },
+    "anode_remote_block_stbd_75_100": {
+      "eventName": "ANODE",
+      "eventType": "REMOTE BLOCK ANODE (STARBOARD SIDE) DEPLETION",
+      "eventPosition": "STARBOARD SIDE",
+      "eventDescription": "75 - 100% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Starboard side remote block anode inspected at KP {kp} showing 75-100% depletion"
+    },
+    "anode_sled_0_25": {
+      "eventName": "ANODE",
+      "eventType": "ANODE SLED DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "0 - 25% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Anode sled inspected at KP {kp} showing 0-25% depletion"
+    },
+    "anode_sled_25_50": {
+      "eventName": "ANODE",
+      "eventType": "ANODE SLED DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "25 - 50% DEPLETED",
+      "findingType": "Complete",
+      "findings": "Anode sled inspected at KP {kp} showing 25-50% depletion"
+    },
+    "anode_sled_50_75": {
+      "eventName": "ANODE",
+      "eventType": "ANODE SLED DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "50 - 75% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Anode sled inspected at KP {kp} showing 50-75% depletion"
+    },
+    "anode_sled_75_100": {
+      "eventName": "ANODE",
+      "eventType": "ANODE SLED DEPLETION",
+      "eventPosition": "",
+      "eventDescription": "75 - 100% DEPLETED",
+      "findingType": "Observation",
+      "findings": "Anode sled inspected at KP {kp} showing 75-100% depletion"
+    },
+    "anode_cable_intact": {
+      "eventName": "ANODE",
+      "eventType": "CONTINUITY CABLE",
+      "eventPosition": "INTACT",
+      "eventDescription": "INTACT / CONNECTED",
+      "findingType": "Complete",
+      "findings": "Anode continuity cable inspected at KP {kp} - Intact / Connected"
+    },
+    "anode_cable_damaged": {
+      "eventName": "ANODE",
+      "eventType": "CONTINUITY CABLE",
+      "eventPosition": "DAMAGED",
+      "eventDescription": "DAMAGED / LOOSE",
+      "findingType": "Observation",
+      "findings": "Anode continuity cable inspected at KP {kp} - Damaged / Loose"
+    },
+    "anode_cable_severed": {
+      "eventName": "ANODE",
+      "eventType": "CONTINUITY CABLE",
+      "eventPosition": "SEVERED",
+      "eventDescription": "DISCONNECTED / SEVERED",
+      "findingType": "Observation",
+      "findings": "Anode continuity cable inspected at KP {kp} - Disconnected / Severed"
     },
     "cp_stab_anode": {
       "eventName": "CP STAB",
@@ -82,6 +266,94 @@
       "findingType": "Complete",
       "findings": "Pipeline CP potential measured"
     },
+    "cp_anode_stab": {
+      "eventName": "CP STAB",
+      "eventType": "CP STAB",
+      "eventPosition": "ANODE STAB",
+      "eventDescription": "Anode CP stab reading at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Anode CP stab recorded"
+    },
+    "cp_fj_stab": {
+      "eventName": "CP STAB",
+      "eventType": "CP STAB",
+      "eventPosition": "FIELD JOINT STAB",
+      "eventDescription": "Field joint CP stab reading at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Field joint CP stab recorded"
+    },
+    "cp_line_stab": {
+      "eventName": "CP STAB",
+      "eventType": "CP STAB",
+      "eventPosition": "LINE STAB",
+      "eventDescription": "Line CP stab reading at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Line CP stab recorded"
+    },
+    "cp_flange_stab": {
+      "eventName": "CP STAB",
+      "eventType": "CP STAB",
+      "eventPosition": "FLANGE STAB",
+      "eventDescription": "Flange CP stab reading at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Flange CP stab recorded"
+    },
+    "cp_riser_stab": {
+      "eventName": "CP STAB",
+      "eventType": "CP STAB",
+      "eventPosition": "RISER STAB",
+      "eventDescription": "Riser CP stab reading at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Riser CP stab recorded"
+    },
+    "cp_connector_stab": {
+      "eventName": "CP STAB",
+      "eventType": "CP STAB",
+      "eventPosition": "CONNECTOR STAB",
+      "eventDescription": "Connector CP stab reading at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Connector CP stab recorded"
+    },
+    "cp_repair_clamp_stab": {
+      "eventName": "CP STAB",
+      "eventType": "CP STAB",
+      "eventPosition": "REPAIR CLAMP STAB",
+      "eventDescription": "Repair clamp CP stab reading at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Repair clamp CP stab recorded"
+    },
+    "cp_clamp_stab": {
+      "eventName": "CP STAB",
+      "eventType": "CP STAB",
+      "eventPosition": "CLAMP STAB",
+      "eventDescription": "Clamp CP stab reading at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Clamp CP stab recorded"
+    },
+    "cp_proximity_image": {
+      "eventName": "CP STAB",
+      "eventType": "IMAGE",
+      "eventPosition": "PROXIMITY IMAGE",
+      "eventDescription": "CP proximity image captured at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Proximity image recorded"
+    },
+    "cp_stab_loc_image": {
+      "eventName": "CP STAB",
+      "eventType": "IMAGE",
+      "eventPosition": "STAB LOCATION IMAGE",
+      "eventDescription": "CP stab location image captured at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Stab location image recorded"
+    },
+    "cp_calib_cell_image": {
+      "eventName": "CP STAB",
+      "eventType": "IMAGE",
+      "eventPosition": "CALIBRATION CELL IMAGE",
+      "eventDescription": "CP calibration cell image captured at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Calibration cell image recorded"
+    },
     "fj_start": {
       "eventName": "FIELD JOINT",
       "eventType": "FIELD JOINT",
@@ -97,6 +369,118 @@
       "eventDescription": "Field joint coating end recorded at KP {kp}",
       "findingType": "Complete",
       "findings": "Field joint termination"
+    },
+    "fj_tin_good": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TIN WRAP",
+      "eventPosition": "IN GOOD CONDITION",
+      "eventDescription": "Tin wrap field joint in good condition at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Tin wrap in good condition"
+    },
+    "fj_tin_clad_bitumen_good": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TIN WRAP",
+      "eventPosition": "CLAD OFF - BITUMEN GOOD",
+      "eventDescription": "Tin wrap clad off - Bitumen in good condition at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Clad off, bitumen intact"
+    },
+    "fj_tin_clad_cracked_no_bare": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TIN WRAP",
+      "eventPosition": "CLAD OFF - BITUMEN CRACKED (NO BARE)",
+      "eventDescription": "Tin wrap clad off - Bitumen cracked, no bare metal showing at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Bitumen cracked without bare metal exposed"
+    },
+    "fj_tin_clad_cracked_bare": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TIN WRAP",
+      "eventPosition": "CLAD OFF - BITUMEN CRACKED (BARE)",
+      "eventDescription": "Tin wrap clad off - Bitumen cracked, bare metal showing at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Bitumen cracked with bare metal exposed"
+    },
+    "fj_tin_clad_disint_no_bare": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TIN WRAP",
+      "eventPosition": "CLAD OFF - BITUMEN DISINTEGRATED (NO BARE)",
+      "eventDescription": "Tin wrap clad off - Bitumen disintegrated, no bare metal showing at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Bitumen disintegrated without bare metal exposed"
+    },
+    "fj_tin_clad_disint_bare": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TIN WRAP",
+      "eventPosition": "CLAD OFF - BITUMEN DISINTEGRATED (BARE)",
+      "eventDescription": "Tin wrap clad off - Bitumen disintegrated, bare metal showing at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Bitumen disintegrated with bare metal exposed"
+    },
+    "fj_tin_other": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TIN WRAP",
+      "eventPosition": "OTHER DEFECT",
+      "eventDescription": "Tin wrap defect recorded at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Tin wrap defect noted"
+    },
+    "fj_tape_good": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TAPE WRAP",
+      "eventPosition": "IN GOOD CONDITION",
+      "eventDescription": "Tape wrap field joint in good condition at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Tape wrap in good condition"
+    },
+    "fj_tape_off_no_bare": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TAPE WRAP",
+      "eventPosition": "WRAPPING OFF (NO BARE)",
+      "eventDescription": "Tape wrap off - Bare metal not showing at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Wrapping off without bare metal exposed"
+    },
+    "fj_tape_off_bare": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TAPE WRAP",
+      "eventPosition": "WRAPPING OFF (BARE)",
+      "eventDescription": "Tape wrap off - Bare metal showing at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Wrapping off with bare metal exposed"
+    },
+    "fj_tape_other": {
+      "eventName": "FIELD JOINT",
+      "eventType": "TAPE WRAP",
+      "eventPosition": "OTHER DEFECT",
+      "eventDescription": "Tape wrap defect recorded at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Tape wrap defect noted"
+    },
+    "fj_nv_buried": {
+      "eventName": "FIELD JOINT",
+      "eventType": "NOT VISIBLE",
+      "eventPosition": "BURIED",
+      "eventDescription": "Field joint not visible - Buried at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Field joint obscured by burial"
+    },
+    "fj_nv_debris": {
+      "eventName": "FIELD JOINT",
+      "eventType": "NOT VISIBLE",
+      "eventPosition": "COVERED BY DEBRIS/GROWTH",
+      "eventDescription": "Field joint not visible - Covered by debris/growth at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Field joint covered by marine growth/debris"
+    },
+    "fj_nv_other": {
+      "eventName": "FIELD JOINT",
+      "eventType": "NOT VISIBLE",
+      "eventPosition": "OTHER",
+      "eventDescription": "Field joint not visible at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Field joint not visible"
     },
     "debris_pipe": {
       "eventName": "DEBRIS",
@@ -114,85 +498,1085 @@
       "findingType": "Observation",
       "findings": "Debris item within 5m of pipeline route"
     },
+    "debris_boat_landing": {
+      "eventName": "DEBRIS",
+      "eventType": "BOAT LANDING",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Boat landing debris observed at KP {kp}"
+    },
+    "debris_grating": {
+      "eventName": "DEBRIS",
+      "eventType": "GRATING",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Grating debris observed at KP {kp}"
+    },
+    "debris_ladder": {
+      "eventName": "DEBRIS",
+      "eventType": "LADDER",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Ladder debris observed at KP {kp}"
+    },
+    "debris_metallic_items": {
+      "eventName": "DEBRIS",
+      "eventType": "METALLIC ITEMS",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Metallic debris item observed at KP {kp}"
+    },
+    "debris_metallic_small": {
+      "eventName": "DEBRIS",
+      "eventType": "METALLIC SMALL ITEMS",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Small metallic debris item observed at KP {kp}"
+    },
+    "debris_metallic_tubular": {
+      "eventName": "DEBRIS",
+      "eventType": "METALLIC TUBULAR",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Metallic tubular debris observed at KP {kp}"
+    },
+    "debris_scaffolding_pole": {
+      "eventName": "DEBRIS",
+      "eventType": "SCAFFOLDING POLE",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Scaffolding pole debris observed at KP {kp}"
+    },
+    "debris_stairway": {
+      "eventName": "DEBRIS",
+      "eventType": "STAIRWAY",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Stairway debris observed at KP {kp}"
+    },
+    "debris_fish_trap": {
+      "eventName": "DEBRIS",
+      "eventType": "FISH TRAP",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Fish trap debris observed at KP {kp}"
+    },
+    "debris_fishing_net": {
+      "eventName": "DEBRIS",
+      "eventType": "FISHING NET",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Fishing net debris observed at KP {kp}"
+    },
+    "debris_hard_line": {
+      "eventName": "DEBRIS",
+      "eventType": "HARD LINE",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Hard line debris observed at KP {kp}"
+    },
+    "debris_soft_line": {
+      "eventName": "DEBRIS",
+      "eventType": "SOFT LINE",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Soft line debris observed at KP {kp}"
+    },
+    "debris_soft_rope": {
+      "eventName": "DEBRIS",
+      "eventType": "SOFT ROPE",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Soft rope debris observed at KP {kp}"
+    },
+    "debris_rock_boulders": {
+      "eventName": "DEBRIS",
+      "eventType": "ROCK / BOULDERS",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Rock or boulder debris observed at KP {kp}"
+    },
+    "debris_tyre": {
+      "eventName": "DEBRIS",
+      "eventType": "TYRE",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Tyre debris observed at KP {kp}"
+    },
+    "debris_wood": {
+      "eventName": "DEBRIS",
+      "eventType": "WOOD",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Wood debris observed at KP {kp}"
+    },
+    "debris_sand_bag": {
+      "eventName": "DEBRIS",
+      "eventType": "SAND BAG",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Sand bag debris observed at KP {kp}"
+    },
+    "debris_other": {
+      "eventName": "DEBRIS",
+      "eventType": "OTHER",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "NOT TOUCHING THE LINE",
+      "findingType": "Observation",
+      "findings": "Debris item observed at KP {kp}"
+    },
+    "mg_hard_0_20": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD",
+      "eventPosition": "0 - 20% COVERAGE",
+      "eventDescription": "Hard marine growth recorded at KP {kp} (0-20% coverage)",
+      "findingType": "Complete",
+      "findings": "Hard marine growth 0-20% coverage"
+    },
+    "mg_hard_20_40": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD",
+      "eventPosition": "20 - 40% COVERAGE",
+      "eventDescription": "Hard marine growth recorded at KP {kp} (20-40% coverage)",
+      "findingType": "Complete",
+      "findings": "Hard marine growth 20-40% coverage"
+    },
+    "mg_hard_40_60": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD",
+      "eventPosition": "40 - 60% COVERAGE",
+      "eventDescription": "Hard marine growth recorded at KP {kp} (40-60% coverage)",
+      "findingType": "Observation",
+      "findings": "Hard marine growth 40-60% coverage"
+    },
+    "mg_hard_60_80": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD",
+      "eventPosition": "60 - 80% COVERAGE",
+      "eventDescription": "Hard marine growth recorded at KP {kp} (60-80% coverage)",
+      "findingType": "Observation",
+      "findings": "Hard marine growth 60-80% coverage"
+    },
+    "mg_hard_80_100": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD",
+      "eventPosition": "80 - 100% COVERAGE",
+      "eventDescription": "Hard marine growth recorded at KP {kp} (80-100% coverage)",
+      "findingType": "Observation",
+      "findings": "Hard marine growth 80-100% coverage"
+    },
+    "mg_hard_all_over": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD",
+      "eventPosition": "ALL OVER",
+      "eventDescription": "Hard marine growth all over recorded at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Hard marine growth all over"
+    },
+    "mg_hs_0_20": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD AND SOFT",
+      "eventPosition": "0 - 20% COVERAGE",
+      "eventDescription": "Hard & soft marine growth recorded at KP {kp} (0-20% coverage)",
+      "findingType": "Complete",
+      "findings": "Hard & soft growth 0-20% coverage"
+    },
+    "mg_hs_20_40": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD AND SOFT",
+      "eventPosition": "20 - 40% COVERAGE",
+      "eventDescription": "Hard & soft marine growth recorded at KP {kp} (20-40% coverage)",
+      "findingType": "Complete",
+      "findings": "Hard & soft growth 20-40% coverage"
+    },
+    "mg_hs_40_60": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD AND SOFT",
+      "eventPosition": "40 - 60% COVERAGE",
+      "eventDescription": "Hard & soft marine growth recorded at KP {kp} (40-60% coverage)",
+      "findingType": "Observation",
+      "findings": "Hard & soft growth 40-60% coverage"
+    },
+    "mg_hs_60_80": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD AND SOFT",
+      "eventPosition": "60 - 80% COVERAGE",
+      "eventDescription": "Hard & soft marine growth recorded at KP {kp} (60-80% coverage)",
+      "findingType": "Observation",
+      "findings": "Hard & soft growth 60-80% coverage"
+    },
+    "mg_hs_80_100": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD AND SOFT",
+      "eventPosition": "80 - 100% COVERAGE",
+      "eventDescription": "Hard & soft marine growth recorded at KP {kp} (80-100% coverage)",
+      "findingType": "Observation",
+      "findings": "Hard & soft growth 80-100% coverage"
+    },
+    "mg_hs_all_over": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "HARD AND SOFT",
+      "eventPosition": "ALL OVER",
+      "eventDescription": "Hard & soft marine growth all over recorded at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Hard & soft marine growth all over"
+    },
+    "mg_soft_0_20": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "SOFT",
+      "eventPosition": "0 - 20% COVERAGE",
+      "eventDescription": "Soft marine growth recorded at KP {kp} (0-20% coverage)",
+      "findingType": "Complete",
+      "findings": "Soft marine growth 0-20% coverage"
+    },
+    "mg_soft_20_40": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "SOFT",
+      "eventPosition": "20 - 40% COVERAGE",
+      "eventDescription": "Soft marine growth recorded at KP {kp} (20-40% coverage)",
+      "findingType": "Complete",
+      "findings": "Soft marine growth 20-40% coverage"
+    },
+    "mg_soft_40_60": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "SOFT",
+      "eventPosition": "40 - 60% COVERAGE",
+      "eventDescription": "Soft marine growth recorded at KP {kp} (40-60% coverage)",
+      "findingType": "Observation",
+      "findings": "Soft marine growth 40-60% coverage"
+    },
+    "mg_soft_60_80": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "SOFT",
+      "eventPosition": "60 - 80% COVERAGE",
+      "eventDescription": "Soft marine growth recorded at KP {kp} (60-80% coverage)",
+      "findingType": "Observation",
+      "findings": "Soft marine growth 60-80% coverage"
+    },
+    "mg_soft_80_100": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "SOFT",
+      "eventPosition": "80 - 100% COVERAGE",
+      "eventDescription": "Soft marine growth recorded at KP {kp} (80-100% coverage)",
+      "findingType": "Observation",
+      "findings": "Soft marine growth 80-100% coverage"
+    },
+    "mg_soft_all_over": {
+      "eventName": "MARINE GROWTH",
+      "eventType": "SOFT",
+      "eventPosition": "ALL OVER",
+      "eventDescription": "Soft marine growth all over recorded at KP {kp}",
+      "findingType": "Observation",
+      "findings": "Soft marine growth all over"
+    },
+    "riser_clamp_guide": {
+      "eventName": "RISER FEATURE",
+      "eventType": "CLAMPS & SUPPORTS",
+      "eventPosition": "RISER CLAMP / GUIDE FRAME",
+      "eventDescription": "Riser clamp / guide frame inspected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Riser clamp frame inspected"
+    },
+    "riser_neoprene": {
+      "eventName": "RISER FEATURE",
+      "eventType": "CLAMPS & SUPPORTS",
+      "eventPosition": "NEOPRENE LINER / ISOLATOR",
+      "eventDescription": "Riser neoprene liner / isolator inspected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Neoprene isolator inspected"
+    },
+    "riser_bolt_assembly": {
+      "eventName": "RISER FEATURE",
+      "eventType": "CLAMPS & SUPPORTS",
+      "eventPosition": "BOLT ASSEMBLY",
+      "eventDescription": "Riser clamp bolt assembly inspected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Bolt assembly inspected"
+    },
+    "riser_bend_elbow": {
+      "eventName": "RISER FEATURE",
+      "eventType": "RISER BASE & TOUCHDOWN",
+      "eventPosition": "RISER BEND / 90 DEG ELBOW",
+      "eventDescription": "Riser bend / 90° elbow inspected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Riser elbow inspected"
+    },
+    "riser_tdp": {
+      "eventName": "RISER FEATURE",
+      "eventType": "RISER BASE & TOUCHDOWN",
+      "eventPosition": "TOUCHDOWN POINT (TDP)",
+      "eventDescription": "Riser touchdown point (TDP) recorded at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Riser touchdown point recorded"
+    },
+    "riser_bellmouth": {
+      "eventName": "RISER FEATURE",
+      "eventType": "RISER BASE & TOUCHDOWN",
+      "eventPosition": "J-TUBE BELLMOUTH ENTRY",
+      "eventDescription": "J-Tube bellmouth entry inspected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Bellmouth entry inspected"
+    },
+    "riser_stiffener": {
+      "eventName": "RISER FEATURE",
+      "eventType": "PROTECTION & COATING",
+      "eventPosition": "BEND STIFFENER / RESTRICTOR",
+      "eventDescription": "Riser bend stiffener / restrictor inspected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Bend stiffener inspected"
+    },
+    "riser_splashzone": {
+      "eventName": "RISER FEATURE",
+      "eventType": "PROTECTION & COATING",
+      "eventPosition": "SPLASH ZONE MONEL WRAP",
+      "eventDescription": "Splash zone monel wrap inspected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Monel wrap inspected"
+    },
+    "line_start": {
+      "eventName": "LINE FEATURE",
+      "eventType": "START",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line start location recorded at KP {kp}"
+    },
+    "line_end": {
+      "eventName": "LINE FEATURE",
+      "eventType": "END",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line end location recorded at KP {kp}"
+    },
     "line_skip_start": {
       "eventName": "LINE FEATURE",
-      "eventType": "LINE SKIP",
+      "eventType": "SKIP",
       "eventPosition": "START",
-      "eventDescription": "Line inspection skip section start at KP {kp}",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Inspection pause initiated"
+      "findings": "Line inspection skip section start at KP {kp}"
     },
     "line_skip_end": {
       "eventName": "LINE FEATURE",
-      "eventType": "LINE SKIP",
+      "eventType": "SKIP",
       "eventPosition": "END",
-      "eventDescription": "Line inspection skip section end at KP {kp}",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Inspection resumed"
+      "findings": "Line inspection skip section end at KP {kp}"
+    },
+    "line_turn_port": {
+      "eventName": "LINE FEATURE",
+      "eventType": "LINE TURNS",
+      "eventPosition": "TOWARDS PORT SIDE",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line turn to port side recorded at KP {kp}"
+    },
+    "line_turn_starboard": {
+      "eventName": "LINE FEATURE",
+      "eventType": "LINE TURNS",
+      "eventPosition": "TOWARDS STARBOARD SIDE",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line turn to starboard side recorded at KP {kp}"
+    },
+    "line_turn_upwards": {
+      "eventName": "LINE FEATURE",
+      "eventType": "LINE TURNS",
+      "eventPosition": "UPWARDS",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line turn upwards recorded at KP {kp}"
+    },
+    "line_jtube": {
+      "eventName": "LINE FEATURE",
+      "eventType": "J-TUBE",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "J-Tube connection inspected at KP {kp}"
+    },
+    "line_flange": {
+      "eventName": "LINE FEATURE",
+      "eventType": "FLANGE",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Flange connection inspected at KP {kp}"
+    },
+    "line_sidetap": {
+      "eventName": "LINE FEATURE",
+      "eventType": "SIDE TAP",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Side tap connection inspected at KP {kp}"
+    },
+    "line_t_joint": {
+      "eventName": "LINE FEATURE",
+      "eventType": "T-JOINT",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "T-Joint connection inspected at KP {kp}"
+    },
+    "line_valve_spindle": {
+      "eventName": "LINE FEATURE",
+      "eventType": "VALVES",
+      "eventPosition": "",
+      "eventDescription": "SPINDLE HANDLE",
+      "findingType": "Complete",
+      "findings": "Valve spindle handle inspected at KP {kp}"
+    },
+    "line_valve_normal": {
+      "eventName": "LINE FEATURE",
+      "eventType": "VALVES",
+      "eventPosition": "",
+      "eventDescription": "NORMAL",
+      "findingType": "Complete",
+      "findings": "Normal valve assembly inspected at KP {kp}"
+    },
+    "line_connector": {
+      "eventName": "LINE FEATURE",
+      "eventType": "CONNECTOR",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line connector inspected at KP {kp}"
+    },
+    "line_crossing": {
+      "eventName": "LINE CROSSING",
+      "eventType": "CROSSINGS & SUPPORTS",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": ""
+    },
+    "line_elbow_port": {
+      "eventName": "LINE FEATURE",
+      "eventType": "ELBOW",
+      "eventPosition": "PORT SIDE",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line elbow (port side) inspected at KP {kp}"
+    },
+    "line_elbow_starboard": {
+      "eventName": "LINE FEATURE",
+      "eventType": "ELBOW",
+      "eventPosition": "STARBOARD SIDE",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line elbow (starboard side) inspected at KP {kp}"
+    },
+    "line_repair_clamp": {
+      "eventName": "LINE FEATURE",
+      "eventType": "CROSSINGS & SUPPORTS",
+      "eventPosition": "REPAIR CLAMP",
+      "eventDescription": "Repair clamp assembly inspected at KP {kp}",
+      "findingType": "Complete",
+      "findings": "Repair clamp inspected"
+    },
+    "line_clamp": {
+      "eventName": "LINE FEATURE",
+      "eventType": "CLAMP",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Line clamp assembly inspected at KP {kp}"
+    },
+    "line_mag_tape": {
+      "eventName": "LINE FEATURE",
+      "eventType": "MAGNETIC TAPE MARKER",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Magnetic tape marker recorded at KP {kp}"
+    },
+    "line_trawl_guard": {
+      "eventName": "LINE FEATURE",
+      "eventType": "OVER TRAWL GUARD",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Over trawl guard structure inspected at KP {kp}"
+    },
+    "line_anchor_drag": {
+      "eventName": "LINE FEATURE",
+      "eventType": "ANCHOR DRAG",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Anchor drag mark observed at KP {kp}"
+    },
+    "line_buckle_arrestor": {
+      "eventName": "LINE FEATURE",
+      "eventType": "BUCKLE ARRESTOR",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Buckle arrestor inspected at KP {kp}"
+    },
+    "line_buckle_trigger": {
+      "eventName": "LINE FEATURE",
+      "eventType": "BUCKLE TRIGGER",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Buckle trigger inspected at KP {kp}"
+    },
+    "line_cd_bare_metal": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "BARE METAL SHOWING",
+      "findingType": "Observation",
+      "findings": "Coating damage with bare metal showing at KP {kp}"
+    },
+    "line_cd_cracked": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "COATING CRACKED",
+      "findingType": "Observation",
+      "findings": "Cracked coating observed at KP {kp}"
+    },
+    "line_cd_cracked_long": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "CRACKED LONGITUDINALLY",
+      "findingType": "Observation",
+      "findings": "Longitudinal coating crack observed at KP {kp}"
+    },
+    "line_cd_cracked_circ": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "CRACKED CIRCUMFERENTIALLY",
+      "findingType": "Observation",
+      "findings": "Circumferential coating crack observed at KP {kp}"
+    },
+    "line_cd_reinf_exposed": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "REINFORCING EXPOSED",
+      "findingType": "Observation",
+      "findings": "Reinforcing mesh exposed at KP {kp}"
+    },
+    "line_cd_superficial": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "SUPERFICIAL DAMAGE",
+      "findingType": "Observation",
+      "findings": "Superficial coating scrape recorded at KP {kp}"
+    },
+    "line_cd_wire_scars": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "WIRE SCARS",
+      "findingType": "Observation",
+      "findings": "Wire scars on coating recorded at KP {kp}"
+    },
+    "line_cd_wrap_damage": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "WRAP DAMAGE",
+      "findingType": "Observation",
+      "findings": "Coating wrap damage observed at KP {kp}"
+    },
+    "line_cd_other": {
+      "eventName": "LINE FEATURE",
+      "eventType": "COATING DAMAGE",
+      "eventPosition": "",
+      "eventDescription": "OTHER DEFECT",
+      "findingType": "Observation",
+      "findings": "Coating damage defect observed at KP {kp}"
+    },
+    "line_pd_bend_port": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "BEND / BUCKLE TO PORT SIDE",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Physical damage - Bend/buckle to port side at KP {kp}"
+    },
+    "line_pd_bend_starboard": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "BEND / BUCKLE TO STARBOARD SIDE",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Physical damage - Bend/buckle to starboard side at KP {kp}"
+    },
+    "line_pd_bend_upwards": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "BEND / BUCKLE UPWARDS",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Physical damage - Bend/buckle upwards at KP {kp}"
+    },
+    "line_pd_bend_downwards": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "BEND / BUCKLE DOWNWARDS",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Physical damage - Bend/buckle downwards at KP {kp}"
+    },
+    "line_pd_dent_port": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "DENT - PORT SIDE",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Dent observed on port side at KP {kp}"
+    },
+    "line_pd_dent_starboard": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "DENT - STARBOARD SIDE",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Dent observed on starboard side at KP {kp}"
+    },
+    "line_pd_dent_top": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "DENT - TOP",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Dent observed on top of pipeline at KP {kp}"
+    },
+    "line_pd_dent_bottom": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "DENT - BOTTOM",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Dent observed on bottom of pipeline at KP {kp}"
+    },
+    "line_pd_leak": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICALDAMAGE",
+      "eventPosition": "LEAK",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Leak indication detected at KP {kp}"
+    },
+    "line_pd_ruptured": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "RUPTURED",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Ruptured pipe section observed at KP {kp}"
+    },
+    "line_pd_other": {
+      "eventName": "LINE FEATURE",
+      "eventType": "PHYSICAL DAMAGE",
+      "eventPosition": "OTHER DEFECT",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Physical damage defect observed at KP {kp}"
+    },
+    "line_other": {
+      "eventName": "LINE FEATURE",
+      "eventType": "OTHER",
+      "eventPosition": "LOCATION",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Line feature anomaly observed at KP {kp}"
     },
     "burial_start": {
-      "eventName": "STABILISATION",
-      "eventType": "BURIAL",
-      "eventPosition": "START",
-      "eventDescription": "Pipeline burial start detected at KP {kp}",
+      "eventName": "SEABED PROFILE",
+      "eventType": "LINE BURIAL",
+      "eventPosition": "STARTS",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Pipeline entering buried trench section"
+      "findings": "Pipeline burial start detected at KP {kp}"
     },
     "burial_end": {
-      "eventName": "STABILISATION",
-      "eventType": "BURIAL",
-      "eventPosition": "END",
-      "eventDescription": "Pipeline burial end detected at KP {kp}",
+      "eventName": "SEABED PROFILE",
+      "eventType": "LINE BURIAL",
+      "eventPosition": "ENDS",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Pipeline emerging from buried section"
+      "findings": "Pipeline burial end detected at KP {kp}"
+    },
+    "burial_depth": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "LINE BURIAL",
+      "eventPosition": "DEPTH",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Burial depth measured"
+    },
+    "exp_fully": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "LINE FULLY EXPOSED",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Pipeline fully exposed on seabed at KP {kp}"
+    },
+    "exp_part_0_25": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "LINE PARTIALLY EXPOSED",
+      "eventPosition": "",
+      "eventDescription": "0 - 25% EXPOSED",
+      "findingType": "Complete",
+      "findings": "Pipeline partially exposed (0-25%) at KP {kp}"
+    },
+    "exp_part_25_50": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "LINE PARTIALLY EXPOSED",
+      "eventPosition": "",
+      "eventDescription": "25 - 50% EXPOSED",
+      "findingType": "Complete",
+      "findings": "Partially exposed 25-50% at KP {kp}"
+    },
+    "exp_part_50_75": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "LINE PARTIALLY EXPOSED",
+      "eventPosition": "",
+      "eventDescription": "50 - 75% EXPOSED",
+      "findingType": "Complete",
+      "findings": "Partially exposed 50-75% at KP {kp}"
+    },
+    "exp_buried": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "LINE BURIED",
+      "eventPosition": "",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Pipeline buried at KP {kp}"
     },
     "inter_span_start": {
       "eventName": "SEABED PROFILE",
-      "eventType": "INTER SPAN",
-      "eventPosition": "START",
-      "eventDescription": "Intermediate span section start at KP {kp}",
+      "eventType": "INTERMITTENT SPAN",
+      "eventPosition": "STARTS",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Inter-span section start"
+      "findings": "Intermittent span section start"
     },
     "inter_span_end": {
       "eventName": "SEABED PROFILE",
-      "eventType": "INTER SPAN",
-      "eventPosition": "END",
-      "eventDescription": "Intermediate span section end at KP {kp}",
+      "eventType": "INTERMITTENT SPAN",
+      "eventPosition": "ENDS",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Inter-span section end"
+      "findings": "Intermittent span section end"
+    },
+    "inter_span_max_ht": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "INTERMITTENT SPAN",
+      "eventPosition": "MAXIMUM SPAN HEIGHT",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Intermittent span maximum height recorded"
+    },
+    "scour_fish": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "SCOUR",
+      "eventPosition": "",
+      "eventDescription": "FISH SCOUR",
+      "findingType": "Observation",
+      "findings": "Fish scour depression observed near pipeline at KP {kp}"
+    },
+    "scour_natural": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "SCOUR",
+      "eventPosition": "",
+      "eventDescription": "NATURAL SCOUR",
+      "findingType": "Observation",
+      "findings": "Natural seabed scour observed at KP {kp}"
+    },
+    "scour_max_depth": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "SCOUR",
+      "eventPosition": "",
+      "eventDescription": "MAXIMUM SCOUR DEPTH",
+      "findingType": "Observation",
+      "findings": "Maximum scour depth recorded at KP {kp}"
+    },
+    "span_max_ht": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "SPAN",
+      "eventPosition": "MAXIMUM SPAN HEIGHT",
+      "eventDescription": "",
+      "findingType": "Observation",
+      "findings": "Free span maximum gap height recorded at KP {kp}"
     },
     "trench_start": {
-      "eventName": "STABILISATION",
+      "eventName": "SEABED PROFILE",
       "eventType": "TRENCH",
-      "eventPosition": "START",
-      "eventDescription": "Open seabed trench start detected at KP {kp}",
+      "eventPosition": "STARTS",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Trench entry point"
+      "findings": "Open seabed trench start detected at KP {kp}"
     },
     "trench_end": {
-      "eventName": "STABILISATION",
+      "eventName": "SEABED PROFILE",
       "eventType": "TRENCH",
-      "eventPosition": "END",
-      "eventDescription": "Open seabed trench end detected at KP {kp}",
+      "eventPosition": "ENDS",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Trench exit point"
+      "findings": "Open seabed trench end detected at KP {kp}"
+    },
+    "trench_depth": {
+      "eventName": "SEABED PROFILE",
+      "eventType": "TRENCH",
+      "eventPosition": "DEPTH",
+      "eventDescription": "",
+      "findingType": "Complete",
+      "findings": "Trench depth measured at KP {kp}"
     },
     "undulated_start": {
       "eventName": "SEABED PROFILE",
       "eventType": "UNDULATED SEABED",
-      "eventPosition": "START",
-      "eventDescription": "Undulated seabed terrain start at KP {kp}",
+      "eventPosition": "STARTS",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Irregular seabed profile start"
+      "findings": "Undulated seabed terrain start detected at KP {kp}"
     },
     "undulated_end": {
       "eventName": "SEABED PROFILE",
       "eventType": "UNDULATED SEABED",
-      "eventPosition": "END",
-      "eventDescription": "Undulated seabed terrain end at KP {kp}",
+      "eventPosition": "ENDS",
+      "eventDescription": "",
       "findingType": "Complete",
-      "findings": "Irregular seabed profile end"
+      "findings": "Undulated seabed terrain end detected at KP {kp}"
+    },
+    "anchor_intact": {
+      "eventName": "STABILISATION",
+      "eventType": "PIPELINE ANCHOR",
+      "eventPosition": "",
+      "eventDescription": "INTACT",
+      "findingType": "Complete",
+      "findings": "Pipeline anchor intact at KP {kp}"
+    },
+    "anchor_displaced": {
+      "eventName": "STABILISATION",
+      "eventType": "PIPELINE ANCHOR",
+      "eventPosition": "",
+      "eventDescription": "DISPLACED / LOOSE",
+      "findingType": "Observation",
+      "findings": "Pipeline anchor displaced at KP {kp}"
+    },
+    "saddle_concrete": {
+      "eventName": "STABILISATION",
+      "eventType": "SADDLE / SLEEPER",
+      "eventPosition": "",
+      "eventDescription": "CONCRETE",
+      "findingType": "Complete",
+      "findings": "Concrete saddle inspected at KP {kp}"
+    },
+    "saddle_precast": {
+      "eventName": "STABILISATION",
+      "eventType": "SADDLE / SLEEPER",
+      "eventPosition": "",
+      "eventDescription": "PRECAST",
+      "findingType": "Complete",
+      "findings": "Precast sleeper inspected at KP {kp}"
+    },
+    "saddle_other": {
+      "eventName": "STABILISATION",
+      "eventType": "SADDLE / SLEEPER",
+      "eventPosition": "",
+      "eventDescription": "OTHER",
+      "findingType": "Complete",
+      "findings": "Saddle support inspected at KP {kp}"
+    },
+    "grout_normal": {
+      "eventName": "STABILISATION",
+      "eventType": "SAND / GROUT BAG",
+      "eventPosition": "",
+      "eventDescription": "NORMAL",
+      "findingType": "Complete",
+      "findings": "Sand/grout bag support inspected at KP {kp}"
+    },
+    "grout_pyramid": {
+      "eventName": "STABILISATION",
+      "eventType": "SAND / GROUT BAG",
+      "eventPosition": "",
+      "eventDescription": "PYRAMID",
+      "findingType": "Complete",
+      "findings": "Pyramid grout bag arrangement inspected at KP {kp}"
+    },
+    "matt_concrete": {
+      "eventName": "STABILISATION",
+      "eventType": "MATTRESS",
+      "eventPosition": "",
+      "eventDescription": "CONCRETE",
+      "findingType": "Complete",
+      "findings": "Concrete mattress inspected at KP {kp}"
+    },
+    "matt_precast": {
+      "eventName": "STABILISATION",
+      "eventType": "MATTRESS",
+      "eventPosition": "",
+      "eventDescription": "PRECAST",
+      "findingType": "Complete",
+      "findings": "Precast mattress inspected at KP {kp}"
+    },
+    "matt_other": {
+      "eventName": "STABILISATION",
+      "eventType": "MATTRESS",
+      "eventPosition": "",
+      "eventDescription": "OTHER",
+      "findingType": "Complete",
+      "findings": "Mattress protection inspected at KP {kp}"
+    },
+    "tiein_flange": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "TIE-IN FLANGE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "Tie-In flange inspected at KP {kp}"
+    },
+    "tiein_tee": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "TIE-IN TEE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "Tie-In tee junction inspected at KP {kp}"
+    },
+    "tiein_valve": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "TIE-IN VALVE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "Tie-In valve assembly inspected at KP {kp}"
+    },
+    "tiein_wye": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "TIE-IN WYE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "Tie-In wye piece inspected at KP {kp}"
+    },
+    "tiein_other": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "TIE-IN OTHER",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "Tie-In structure inspected at KP {kp}"
+    },
+    "plet_flange": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLET FLANGE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLET flange connection inspected at KP {kp}"
+    },
+    "plet_tee": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLET TEE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLET tee junction inspected at KP {kp}"
+    },
+    "plet_valve": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLET VALVE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLET valve assembly inspected at KP {kp}"
+    },
+    "plet_wye": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLET WYE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLET wye piece inspected at KP {kp}"
+    },
+    "plet_other": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLET OTHER",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLET structure component inspected at KP {kp}"
+    },
+    "plem_flange": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLEM FLANGE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLEM flange connection inspected at KP {kp}"
+    },
+    "plem_tee": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLEM TEE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLEM tee junction inspected at KP {kp}"
+    },
+    "plem_valve": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLEM VALVE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLEM valve assembly inspected at KP {kp}"
+    },
+    "plem_wye": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLEM WYE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLEM wye piece inspected at KP {kp}"
+    },
+    "plem_other": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "PLEM OTHER",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "PLEM structure component inspected at KP {kp}"
+    },
+    "struct_other_item": {
+      "eventName": "SUBSEA STRUCTURE",
+      "eventType": "OTHER STRUCTURE",
+      "eventPosition": "",
+      "eventDescription": "PORT SIDE",
+      "findingType": "Complete",
+      "findings": "Subsea structure item inspected at KP {kp}"
     }
   }
 }

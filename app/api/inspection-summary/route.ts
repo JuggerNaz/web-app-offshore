@@ -48,17 +48,58 @@ export const GET = withTenant(async (request, { companyId }) => {
         const jobpackIdRaw = searchParams.get("jobpack_id");
         const jobpackId = jobpackIdRaw ? jobpackIdRaw.split('-')[0] : null;
         const sowReportNo = searchParams.get("sow_report_no");
-
-        if (!sowId && !structureId && !jobpackId) {
-            return NextResponse.json({ error: "sow_id, structure_id, or jobpack_id required" }, { status: 400 });
-        }
-
-        // ─── 1. RESOLVE SOW ID ────────────────────────────────────────────────
-        let resolvedSowId = sowId;
         const jpNum = parseInt(String(jobpackId));
         const strNum = parseInt(String(structureId));
 
-        console.log(`[Summary API] sowId=${sowId}, jp=${jpNum}, str=${strNum}`);
+        // ─── 1. RESOLVE STRUCTURE METADATA & PIPELINE SPECS ─────────────────
+        let structureInfo: any = null;
+        let pipelineSpec: any = null;
+
+        if (!isNaN(strNum)) {
+            const [structRes, pipeRes] = await Promise.all([
+                (supabase as any)
+                    .from("u_structures")
+                    .select("id, name, code, type, metadata")
+                    .eq("id", strNum)
+                    .maybeSingle(),
+                (supabase as any)
+                    .from("u_pipeline")
+                    .select("*")
+                    .eq("pipe_id", strNum)
+                    .maybeSingle(),
+            ]);
+
+            if (structRes.data) structureInfo = structRes.data;
+            if (pipeRes.data) pipelineSpec = pipeRes.data;
+        }
+
+        const isPipelineStructure =
+            !!pipelineSpec ||
+            (structureInfo?.type || "").toUpperCase() === "PIPELINE" ||
+            (structureInfo?.code || "").toUpperCase().startsWith("PL") ||
+            (structureInfo?.name || "").toUpperCase().includes("PIPELINE");
+
+        // Merge pipeline spec fields into structureInfo.metadata
+        if (pipelineSpec) {
+            structureInfo = {
+                ...structureInfo,
+                name: structureInfo?.name || pipelineSpec.title || pipelineSpec.name,
+                code: structureInfo?.code || pipelineSpec.code || "PL",
+                type: "PIPELINE",
+                metadata: {
+                    ...(structureInfo?.metadata || {}),
+                    st_loc: pipelineSpec.st_loc || pipelineSpec.from_location,
+                    end_loc: pipelineSpec.end_loc || pipelineSpec.to_location,
+                    plength: pipelineSpec.plength || pipelineSpec.total_length || pipelineSpec.length,
+                    ...pipelineSpec,
+                },
+            };
+        }
+
+        // ─── 1B. RESOLVE SOW ID ───────────────────────────────────────────────
+        let resolvedSowId = sowId;
+
+        console.log(`[Summary API] sowId=${sowId}, jp=${jpNum}, str=${strNum}, isPipeline=${isPipelineStructure}`);
 
         if (!resolvedSowId && !isNaN(jpNum) && !isNaN(strNum)) {
             const { data: sowRec } = await (supabase as any)
@@ -1530,6 +1571,235 @@ export const GET = withTenant(async (request, { companyId }) => {
                     maxDepthFace: maxScourFace
                 },
                 attachmentGroups: attachmentGroupBreakdown,
+
+                // ─── PIPELINE SPECIFIC EVENT SUMMARY ─────────────────────────────────
+                pipelineSummary: (() => {
+                    let totalAnodes = 0;
+                    let totalFieldJoints = 0;
+                    let totalSpanCount = 0;
+                    let totalBurialCount = 0;
+                    let burialDepth = 0;
+                    let totalCpStab = 0;
+                    let totalAnodeCpStab = 0;
+                    let totalFjCpStab = 0;
+                    let totalLineCpStab = 0;
+                    let totalFlangeCpStab = 0;
+                    let totalOtherCpStab = 0;
+                    let totalLineCrossing = 0;
+                    let totalDebris = 0;
+                    let lineSkippedCount = 0;
+                    let totalSkippedKm = 0;
+
+                    let minKp = 999999;
+                    let maxKp = 0;
+
+                    let span0_5 = 0;
+                    let span5_10 = 0;
+                    let span10_20 = 0;
+                    let span20_30 = 0;
+                    let span30_40 = 0;
+                    let span40_plus = 0;
+
+                    let totalSpanKm = 0;
+                    let totalBurialKm = 0;
+
+                    // Parse inspection records for pipeline event features
+                    records.forEach((r: any) => {
+                        const d = r.inspection_data || {};
+                        const evtName = (d.event_name || d.eventName || r.inspection_type_code || "").toUpperCase();
+                        const evtType = (d.event_type || d.eventType || r.description || "").toUpperCase();
+                        const desc = (d.event_description || d.description || r.description || "").toUpperCase();
+                        const kp = typeof r.fp_kp === "number" ? r.fp_kp : parseFloat(d.kp || r.fp_kp || "0");
+
+                        if (!isNaN(kp) && kp > 0) {
+                            if (kp < minKp) minKp = kp;
+                            if (kp > maxKp) maxKp = kp;
+                        }
+
+                        // Anodes
+                        if (evtName.includes("ANODE") || evtType.includes("ANODE")) {
+                            totalAnodes++;
+                        }
+
+                        // Field Joints
+                        if (evtName.includes("FIELD JOINT") || evtType.includes("FIELD JOINT") || evtType.includes("FJ")) {
+                            totalFieldJoints++;
+                        }
+
+                        // Spans
+                        if (evtName.includes("SPAN") || evtType.includes("SPAN")) {
+                            totalSpanCount++;
+                            // Extract LENGTH:xx.xxm from description if present
+                            const lenMatch = desc.match(/LENGTH:([\d.]+)/);
+                            if (lenMatch) {
+                                const lenM = parseFloat(lenMatch[1]);
+                                if (!isNaN(lenM)) {
+                                    const lenKm = lenM / 1000;
+                                    totalSpanKm += lenKm;
+                                }
+                            }
+                            if (!isNaN(kp) && kp >= 0) {
+                                if (kp < 5) span0_5++;
+                                else if (kp < 10) span5_10++;
+                                else if (kp < 20) span10_20++;
+                                else if (kp < 30) span20_30++;
+                                else if (kp < 40) span30_40++;
+                                else span40_plus++;
+                            }
+                        }
+
+                        // Burials
+                        if (evtName.includes("BURIAL") || evtType.includes("BURIAL") || evtName.includes("BURIED")) {
+                            totalBurialCount++;
+                            const lenMatch = desc.match(/LENGTH:([\d.]+)/);
+                            if (lenMatch) {
+                                const lenM = parseFloat(lenMatch[1]);
+                                if (!isNaN(lenM)) {
+                                    totalBurialKm += lenM / 1000;
+                                }
+                            }
+                        }
+
+                        // CP Stabs
+                        const hasCp = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || evtName.includes("CP");
+                        if (hasCp) {
+                            totalCpStab++;
+                            if (evtName.includes("ANODE") || evtType.includes("ANODE")) totalAnodeCpStab++;
+                            else if (evtName.includes("FIELD JOINT") || evtType.includes("FJ")) totalFjCpStab++;
+                            else if (evtName.includes("LINE") || evtName.includes("PIPE")) totalLineCpStab++;
+                            else if (evtName.includes("FLANGE")) totalFlangeCpStab++;
+                            else totalOtherCpStab++;
+                        }
+
+                        // Crossings
+                        if (evtName.includes("CROSSING") || evtType.includes("CROSSING")) {
+                            totalLineCrossing++;
+                        }
+
+                        // Debris
+                        if (evtName.includes("DEBRIS") || evtType.includes("DEBRIS")) {
+                            totalDebris++;
+                        }
+
+                        // Line Skipped
+                        if (evtName.includes("SKIP") || evtType.includes("SKIP")) {
+                            lineSkippedCount++;
+                            const lenMatch = desc.match(/LENGTH:([\d.]+)/);
+                            if (lenMatch) {
+                                const lenM = parseFloat(lenMatch[1]);
+                                if (!isNaN(lenM)) totalSkippedKm += lenM / 1000;
+                            }
+                        }
+                    });
+
+                    const meta = structureInfo?.metadata || {};
+                    const pipeTotalLengthKm = parseFloat(
+                        String(
+                            meta.plength ||
+                            meta.total_length ||
+                            meta.length ||
+                            meta.line_length ||
+                            meta.totalLength ||
+                            meta.pipeline_length ||
+                            structureInfo?.length ||
+                            "0"
+                        )
+                    ) || (maxKp > 0 ? maxKp : 0);
+
+                    const fromLoc =
+                        meta.st_loc ||
+                        meta.from_location ||
+                        meta.from_platform ||
+                        meta.from_structure ||
+                        meta.start_location ||
+                        meta.start_platform ||
+                        meta.from ||
+                        "N/A";
+
+                    const toLoc =
+                        meta.end_loc ||
+                        meta.to_location ||
+                        meta.to_platform ||
+                        meta.to_structure ||
+                        meta.end_location ||
+                        meta.end_platform ||
+                        meta.to ||
+                        "N/A";
+
+                    // Determine inspection direction from latest record
+                    const latestRecord = records[records.length - 1];
+                    const isDecreaseFlow = String(latestRecord?.flow_direction || latestRecord?.inspection_data?.flow_direction || "")
+                        .toUpperCase()
+                        .includes("DECREASE");
+
+                    // Raw surveyed coverage based on flow direction
+                    const lastInspectedKp = maxKp;
+                    let surveyedLengthKm = 0;
+                    if (pipeTotalLengthKm > 0) {
+                        if (isDecreaseFlow) {
+                            // Reverse inspection: inspected distance = Total Length - Current KP
+                            surveyedLengthKm = Math.max(0, pipeTotalLengthKm - lastInspectedKp);
+                        } else {
+                            // Forward inspection: inspected distance = Current KP
+                            surveyedLengthKm = Math.min(pipeTotalLengthKm, lastInspectedKp);
+                        }
+                    } else {
+                        surveyedLengthKm = maxKp;
+                    }
+
+                    // Net Completed Length = Surveyed Length - Skipped Length
+                    const netCompletedLengthKm = Math.max(0, surveyedLengthKm - totalSkippedKm);
+
+                    // Overall Progress Percentage
+                    const completionPct = pipeTotalLengthKm > 0
+                        ? Math.min(100, Math.max(0, (netCompletedLengthKm / pipeTotalLengthKm) * 100))
+                        : 0;
+
+                    const totalPctSpan = pipeTotalLengthKm > 0 ? (totalSpanKm / pipeTotalLengthKm) * 100 : 0;
+                    const totalPctBurial = pipeTotalLengthKm > 0 ? (totalBurialKm / pipeTotalLengthKm) * 100 : 0;
+
+                    return {
+                        isPipeline: isPipelineStructure,
+                        pipelineName: structureInfo?.name || "Pipeline",
+                        pipelineCode: structureInfo?.code || "PL",
+                        totalLength: pipeTotalLengthKm,
+                        surveyedLengthKm,
+                        netCompletedLengthKm,
+                        completionPct,
+                        isDecreaseFlow,
+                        fromLocation: fromLoc,
+                        toLocation: toLoc,
+                        totalAnodes,
+                        totalFieldJoints,
+                        totalSpanCount,
+                        totalBurialCount,
+                        burialDepth,
+                        totalCpStab,
+                        totalAnodeCpStab,
+                        totalFjCpStab,
+                        totalLineCpStab,
+                        totalFlangeCpStab,
+                        totalOtherCpStab,
+                        totalLineCrossing,
+                        totalDebris,
+                        totalAnomaly: anomalyValidTotal,
+                        totalRectified: rectifiedCount,
+                        lineStartKp: minKp,
+                        lineEndKp: maxKp,
+                        lineSkippedCount,
+                        totalSkippedKm,
+                        span0_5,
+                        span5_10,
+                        span10_20,
+                        span20_30,
+                        span30_40,
+                        span40_plus,
+                        totalSpanKm,
+                        totalPctSpan,
+                        totalBurialKm,
+                        totalPctBurial,
+                    };
+                })(),
                 
                  // Detailed Item Lists for Tables
                 cp_items: rawRecords.filter((r: any) => {

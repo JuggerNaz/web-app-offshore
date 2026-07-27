@@ -26,6 +26,8 @@ import {
   FileSearch,
   Ship,
   LayoutGrid,
+  Printer,
+  Compass,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -144,6 +146,7 @@ interface InspectionSummaryPanelProps {
     sowReportNo: string;
     jobType: string;
   };
+  isPipeline?: boolean;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -558,6 +561,7 @@ export function InspectionSummaryPanel({
   jobpackId,
   sowReportNo,
   headerData,
+  isPipeline = false,
 }: InspectionSummaryPanelProps) {
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -635,22 +639,367 @@ export function InspectionSummaryPanel({
   const anomalies = data?.anomalies;
   const findings = data?.findings;
   const attachmentGroups = data?.attachmentGroups;
+  const pipelineSummary = (data as any)?.pipelineSummary;
+  const isPipelineMode =
+    isPipeline ||
+    !!pipelineSummary?.isPipeline ||
+    headerData.jobType?.toLowerCase().includes("pipeline") ||
+    headerData.platformName?.toLowerCase().includes("pipe");
+
+  const handlePrintPipelineSummary = () => {
+    const ps = pipelineSummary || {};
+    const printWin = window.open("", "_blank");
+    if (!printWin) return;
+
+    const fromLoc = ps.fromLocation !== "N/A" ? ps.fromLocation : (headerData.platformName.includes("-") ? headerData.platformName.split("-")[0] : "N/A");
+    const toLoc = ps.toLocation !== "N/A" ? ps.toLocation : (headerData.platformName.includes("-") ? headerData.platformName.split("-")[1] : "N/A");
+
+    printWin.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>PIPELINE INSPECTION SUMMARY REPORT - ${ps.pipelineName || headerData.platformName}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 12mm 15mm 15mm 15mm;
+            }
+            body {
+              font-family: "Segoe UI", Arial, sans-serif;
+              color: #0f172a;
+              margin: 0;
+              padding: 0;
+              background: #ffffff;
+              -webkit-print-color-adjust: exact;
+            }
+            .report-container {
+              width: 100%;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 0;
+            }
+            
+            /* Executive Corporate Header */
+            .doc-header {
+              border-bottom: 3px solid #0284c7;
+              padding-bottom: 12px;
+              margin-bottom: 16px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+            }
+            .doc-title {
+              font-size: 20px;
+              font-weight: 800;
+              color: #0369a1;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin: 0;
+            }
+            .doc-subtitle {
+              font-size: 11px;
+              font-weight: 600;
+              color: #475569;
+              margin-top: 4px;
+            }
+            .meta-block {
+              text-align: right;
+              font-size: 10px;
+              color: #64748b;
+              line-height: 1.4;
+            }
+            .meta-block b { color: #0f172a; }
+
+            /* Spec & Progress Summary Grid */
+            .section-title {
+              font-size: 12px;
+              font-weight: 800;
+              text-transform: uppercase;
+              color: #0f172a;
+              border-bottom: 1.5px solid #cbd5e1;
+              padding-bottom: 4px;
+              margin: 16px 0 10px 0;
+              letter-spacing: 0.5px;
+            }
+            
+            .spec-banner {
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-left: 4px solid #0284c7;
+              border-radius: 6px;
+              padding: 10px 14px;
+              margin-bottom: 14px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              font-size: 11px;
+            }
+            .spec-banner .pipe-name { font-size: 16px; font-weight: 800; color: #0284c7; }
+            .spec-banner .pipe-locs { color: #475569; font-weight: 600; }
+
+            .summary-grid {
+              display: grid;
+              grid-template-cols: 1fr 1fr;
+              gap: 14px;
+              margin-bottom: 16px;
+            }
+            .summary-card {
+              border: 1px solid #e2e8f0;
+              border-radius: 6px;
+              background: #ffffff;
+              overflow: hidden;
+            }
+            .summary-card-header {
+              background: #f1f5f9;
+              padding: 6px 12px;
+              font-size: 11px;
+              font-weight: 700;
+              color: #1e293b;
+              border-bottom: 1px solid #e2e8f0;
+              text-transform: uppercase;
+            }
+            .summary-row {
+              display: flex;
+              justify-content: space-between;
+              font-size: 10.5px;
+              padding: 5px 12px;
+              border-bottom: 1px dashed #f1f5f9;
+            }
+            .summary-row:last-child { border-bottom: none; }
+            .summary-label { color: #475569; }
+            .summary-val { font-weight: 700; color: #0f172a; font-family: monospace; }
+
+            /* Detailed Tables */
+            table.report-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 8px;
+              font-size: 10px;
+            }
+            table.report-table th {
+              background: #0f172a;
+              color: #ffffff;
+              text-transform: uppercase;
+              padding: 7px 8px;
+              text-align: left;
+              font-size: 9px;
+              font-weight: 700;
+              border: 1px solid #0f172a;
+            }
+            table.report-table td {
+              border: 1px solid #e2e8f0;
+              padding: 6px 8px;
+              color: #334155;
+            }
+            table.report-table tr:nth-child(even) td {
+              background: #f8fafc;
+            }
+
+            /* Priority Badges */
+            .prio-badge {
+              display: inline-block;
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-weight: 800;
+              font-size: 9px;
+              text-align: center;
+            }
+            .prio-p1 { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+            .prio-p2 { background: #ffedd5; color: #9a3412; border: 1px solid #fdba74; }
+            .prio-p3 { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+
+            /* Footer Section */
+            .doc-footer {
+              margin-top: 30px;
+              padding-top: 12px;
+              border-top: 1.5px solid #cbd5e1;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              font-size: 9px;
+              color: #64748b;
+            }
+            .signatures {
+              margin-top: 40px;
+              display: grid;
+              grid-template-cols: 1fr 1fr 1fr;
+              gap: 20px;
+              text-align: center;
+              font-size: 10px;
+            }
+            .sig-line {
+              border-top: 1px solid #94a3b8;
+              margin-top: 35px;
+              padding-top: 4px;
+              font-weight: 600;
+              color: #334155;
+            }
+
+            @media print {
+              .no-print { display: none !important; }
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="report-container">
+            <!-- Action Toolbar (Hidden during print) -->
+            <div class="no-print" style="margin-bottom: 16px; text-align: right;">
+              <button onclick="window.print()" style="padding: 8px 18px; background: #0284c7; color: white; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                🖨️ Print Inspection Report
+              </button>
+            </div>
+
+            <!-- Corporate Header Block -->
+            <div class="doc-header">
+              <div>
+                <h1 class="doc-title">Pipeline Inspection Summary Report</h1>
+                <div class="doc-subtitle">Subsea Structural & Pipeline Integrity Engineering</div>
+              </div>
+              <div class="meta-block">
+                <div><b>Jobpack / Asset:</b> ${headerData.jobpackName || "OFFSHORE PIPELINE"}</div>
+                <div><b>Report No:</b> ${headerData.sowReportNo || "N/A"}</div>
+                <div><b>Date Generated:</b> ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</div>
+              </div>
+            </div>
+
+            <!-- Pipeline Specification Banner -->
+            <div class="spec-banner">
+              <div>
+                <div class="pipe-name">${ps.pipelineName || headerData.platformName} (${ps.pipelineCode || "PL"})</div>
+                <div class="pipe-locs">From Location: <b>${fromLoc}</b> &nbsp;|&nbsp; To Location: <b>${toLoc}</b></div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total Spec Length</div>
+                <div style="font-size: 15px; font-weight: 800; color: #0284c7; font-family: monospace;">${(ps.totalLength || 0).toFixed(3)} km</div>
+              </div>
+            </div>
+
+            <!-- Inspection Progress Overview -->
+            <div class="section-title">1. Survey Progress & Execution Metrics</div>
+            <div class="summary-grid">
+              <div class="summary-card">
+                <div class="summary-card-header">Progress & Distance Metrics</div>
+                <div class="summary-row"><span class="summary-label">Survey Flow Direction:</span><span class="summary-val">${ps.isDecreaseFlow ? "Reverse (Decrease KP)" : "Forward (Increase KP)"}</span></div>
+                <div class="summary-row"><span class="summary-label">Gross Inspected KP:</span><span class="summary-val">${(ps.surveyedLengthKm || 0).toFixed(3)} km</span></div>
+                <div class="summary-row"><span class="summary-label">Total Skipped Length:</span><span class="summary-val">${(ps.totalSkippedKm || 0).toFixed(3)} km</span></div>
+                <div class="summary-row"><span class="summary-label">Net Completed Length:</span><span class="summary-val">${(ps.netCompletedLengthKm || 0).toFixed(3)} km</span></div>
+                <div class="summary-row"><span class="summary-label">Overall Completion:</span><span class="summary-val" style="color:#0284c7;">${Math.round(ps.completionPct || 0)}%</span></div>
+              </div>
+
+              <div class="summary-card">
+                <div class="summary-card-header">Seabed Profile & Coverage</div>
+                <div class="summary-row"><span class="summary-label">Line Start KP:</span><span class="summary-val">${(ps.lineStartKp || 0).toFixed(3)} km</span></div>
+                <div class="summary-row"><span class="summary-label">Line End KP:</span><span class="summary-val">${(ps.lineEndKp || 0).toFixed(3)} km</span></div>
+                <div class="summary-row"><span class="summary-label">Total Span Distance:</span><span class="summary-val">${(ps.totalSpanKm || 0).toFixed(4)} km (${(ps.totalPctSpan || 0).toFixed(2)}%)</span></div>
+                <div class="summary-row"><span class="summary-label">Total Burial Distance:</span><span class="summary-val">${(ps.totalBurialKm || 0).toFixed(4)} km (${(ps.totalPctBurial || 0).toFixed(2)}%)</span></div>
+                <div class="summary-row"><span class="summary-label">Burial Depth Avg:</span><span class="summary-val">${ps.burialDepth || 0}</span></div>
+              </div>
+            </div>
+
+            <!-- Pipeline Features Counter Grid -->
+            <div class="section-title">2. Subsea Survey Features Counter</div>
+            <div class="summary-grid">
+              <div class="summary-card">
+                <div class="summary-card-header">Features Breakdown</div>
+                <div class="summary-row"><span class="summary-label">Total Anodes:</span><span class="summary-val">${ps.totalAnodes || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Total Field Joints:</span><span class="summary-val">${ps.totalFieldJoints || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Total Free Spans #:</span><span class="summary-val">${ps.totalSpanCount || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Total Burial Events #:</span><span class="summary-val">${ps.totalBurialCount || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Total Pipeline Crossings:</span><span class="summary-val">${ps.totalLineCrossing || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Total Debris Items:</span><span class="summary-val">${ps.totalDebris || 0}</span></div>
+              </div>
+
+              <div class="summary-card">
+                <div class="summary-card-header">CP Stab Distribution</div>
+                <div class="summary-row"><span class="summary-label">Total CP Stabs:</span><span class="summary-val">${ps.totalCpStab || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Anode CP Stabs:</span><span class="summary-val">${ps.totalAnodeCpStab || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Field Joint CP Stabs:</span><span class="summary-val">${ps.totalFjCpStab || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Line CP Stabs:</span><span class="summary-val">${ps.totalLineCpStab || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Flange CP Stabs:</span><span class="summary-val">${ps.totalFlangeCpStab || 0}</span></div>
+                <div class="summary-row"><span class="summary-label">Other CP Stabs:</span><span class="summary-val">${ps.totalOtherCpStab || 0}</span></div>
+              </div>
+            </div>
+
+            <!-- Anomalies & Findings Section -->
+            <div class="section-title">3. Recorded Anomalies & Findings Log (${ps.totalAnomaly || anomalies?.total || 0})</div>
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th style="width: 25px;">#</th>
+                  <th style="width: 100px;">Defect Category</th>
+                  <th>Component QID</th>
+                  <th>Inspection Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  (() => {
+                    const defectDetails = anomalies?.defectTypeDetails || {};
+                    const rows: string[] = [];
+                    let idx = 1;
+                    Object.entries(defectDetails).forEach(([code, list]) => {
+                      (list || []).forEach((item) => {
+                        rows.push(`
+                          <tr>
+                            <td>${idx++}</td>
+                            <td><b>${code}</b></td>
+                            <td>${item.qid || 'N/A'}</td>
+                            <td>${item.inspectionTypeName || 'N/A'}</td>
+                          </tr>
+                        `);
+                      });
+                    });
+                    return rows.length > 0
+                      ? rows.join('')
+                      : '<tr><td colspan="4" style="text-align: center; color: #64748b; padding: 12px;">No structural anomalies recorded for this pipeline survey.</td></tr>';
+                  })()
+                }
+              </tbody>
+            </table>
+
+            <!-- Signatures Block -->
+            <div class="signatures">
+              <div>
+                <div class="sig-line">Inspected By (ROV / Diver Lead)</div>
+              </div>
+              <div>
+                <div class="sig-line">Reviewed By (Senior Inspector)</div>
+              </div>
+              <div>
+                <div class="sig-line">Approved By (Client Representative)</div>
+              </div>
+            </div>
+
+            <!-- Report Footer -->
+            <div class="doc-footer">
+              <div>Offshore Subsea Asset Management System &nbsp;|&nbsp; Confidential</div>
+              <div>Page 1 of 1</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWin.document.close();
+  };
 
   const navSections = [
     { id: "all", label: "All Summary" },
-    { id: "sow", label: "Scope of Work", show: !!sow },
-    { id: "components", label: "Component Breakdown", show: !!data?.componentSummary },
-    { id: "overview", label: "Inspection Overview", show: !!records },
-    { id: "fmd", label: "FMD Details", show: !!(fmd && fmd.total > 0) },
-    { id: "anode", label: "Anode Inspection", show: !!(anodeGvi && anodeGvi.total > 0) },
+    { id: "pipeline", label: "Pipeline Structure Summary", show: isPipelineMode },
+    { id: "pipeline-anomalies", label: "Pipeline Anomalies & Findings", show: isPipelineMode },
+    { id: "sow", label: "Scope of Work", show: !isPipelineMode && !!sow },
+    { id: "components", label: "Component Breakdown", show: !isPipelineMode && !!data?.componentSummary },
+    { id: "overview", label: "Inspection Overview", show: !isPipelineMode && !!records },
+    { id: "fmd", label: "FMD Details", show: !isPipelineMode && !!(fmd && fmd.total > 0) },
+    { id: "anode", label: "Anode Inspection", show: !isPipelineMode && !!(anodeGvi && anodeGvi.total > 0) },
     {
       id: "cp",
       label: "CP Readings",
-      show: !!(cp && (cp.primaryCount > 0 || cp.additionalCount > 0)),
+      show: !isPipelineMode && !!(cp && (cp.primaryCount > 0 || cp.additionalCount > 0)),
     },
-    { id: "anomalies", label: "Anomaly Breakdown", show: !!(anomalies && anomalies.total > 0) },
-    { id: "findings", label: "Findings Breakdown", show: !!(findings && findings.total > 0) },
-    { id: "attachments", label: "Attachment Groups", show: !!attachmentGroups },
+    { id: "anomalies", label: "Anomaly Breakdown", show: !isPipelineMode && !!(anomalies && anomalies.total > 0) },
+    { id: "findings", label: "Findings Breakdown", show: !isPipelineMode && !!(findings && findings.total > 0) },
+    { id: "attachments", label: "Attachment Groups", show: !isPipelineMode && !!attachmentGroups },
   ].filter((s) => s.show !== false);
 
   const scrollToSection = (id: string) => {
@@ -710,6 +1059,14 @@ export function InspectionSummaryPanel({
                 Updated {lastUpdated.toLocaleTimeString()}
               </div>
             )}
+            <button
+              onClick={handlePrintPipelineSummary}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600/30 border border-blue-500/40 text-blue-300 hover:text-white hover:bg-blue-600/50 transition-all text-xs font-bold shadow-sm"
+              title="Print Summary Report"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Report</span>
+            </button>
             <button
               onClick={fetchSummary}
               disabled={loading}
@@ -781,9 +1138,247 @@ export function InspectionSummaryPanel({
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto px-6 py-5 space-y-7 custom-scrollbar"
         >
+          {/* ═══ PIPELINE STRUCTURE SUMMARY SECTION (MATCHING PIC-2 & PIC-1) ═════ */}
+          {isPipelineMode && (
+            <section id="summary-sec-pipeline" className="space-y-4">
+              <SectionHeader icon={Compass} title="Pipeline Structure Inspection Summary" color="cyan" />
+
+              {/* Pipeline Header Banner (Pic-2 Style: SKGPL426 Length: 8.11 From: AJJT-A To: KAKG-A) */}
+              <div className="bg-[#0b1829] border border-cyan-500/30 rounded-xl p-4 shadow-lg flex flex-wrap justify-between items-center gap-3">
+                <div>
+                  <div className="text-xl font-black text-white tracking-wide flex items-center gap-2">
+                    <span>{pipelineSummary?.pipelineName || headerData.platformName}</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-700/50 font-mono">
+                      {pipelineSummary?.pipelineCode || "PL"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-300 font-medium mt-1 flex items-center gap-4">
+                    <span>
+                      <b>From:</b>{" "}
+                      {pipelineSummary?.fromLocation && pipelineSummary.fromLocation !== "N/A"
+                        ? pipelineSummary.fromLocation
+                        : headerData.platformName.includes("-")
+                        ? headerData.platformName.split("-")[0]
+                        : "N/A"}
+                    </span>
+                    <span>
+                      <b>To:</b>{" "}
+                      {pipelineSummary?.toLocation && pipelineSummary.toLocation !== "N/A"
+                        ? pipelineSummary.toLocation
+                        : headerData.platformName.includes("-")
+                        ? headerData.platformName.split("-")[1]
+                        : "N/A"}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right bg-cyan-950/60 border border-cyan-500/20 px-3.5 py-1.5 rounded-lg">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Total Pipeline Length</div>
+                  <div className="text-lg font-black text-cyan-400 font-mono">
+                    {loading && !pipelineSummary
+                      ? "..."
+                      : `${(pipelineSummary?.totalLength || 0).toFixed(3)} km`}
+                  </div>
+                </div>
+              </div>
+
+              {/* PIPELINE INSPECTION PROGRESS CARD */}
+              <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-5 shadow-md">
+                <div className="flex items-center gap-6 mb-4">
+                  <div className="relative flex-shrink-0">
+                    <RingChart pct={Math.round(pipelineSummary?.completionPct || 0)} color="#06b6d4" size={100} />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-2xl font-black text-white leading-none">
+                        {loading && !pipelineSummary ? "..." : `${Math.round(pipelineSummary?.completionPct || 0)}%`}
+                      </span>
+                      <span className="text-[8px] font-bold text-cyan-400 uppercase tracking-wider">
+                        Progress
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 grid grid-cols-3 gap-3">
+                    <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3 text-center">
+                      <div className="text-xl font-black text-cyan-400 font-mono">
+                        {loading && !pipelineSummary ? "..." : `${(pipelineSummary?.netCompletedLengthKm || 0).toFixed(3)} km`}
+                      </div>
+                      <div className="text-[9px] font-bold text-cyan-500 uppercase tracking-wider mt-0.5">
+                        Net Completed
+                      </div>
+                    </div>
+
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center">
+                      <div className="text-xl font-black text-amber-400 font-mono">
+                        {loading && !pipelineSummary ? "..." : `${(pipelineSummary?.totalSkippedKm || 0).toFixed(3)} km`}
+                      </div>
+                      <div className="text-[9px] font-bold text-amber-500 uppercase tracking-wider mt-0.5">
+                        Skipped (Incomplete)
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-500/10 border border-slate-500/20 rounded-xl p-3 text-center">
+                      <div className="text-xl font-black text-slate-300 font-mono">
+                        {loading && !pipelineSummary
+                          ? "..."
+                          : `${Math.max(
+                              0,
+                              (pipelineSummary?.totalLength || 0) - (pipelineSummary?.surveyedLengthKm || 0)
+                            ).toFixed(3)} km`}
+                      </div>
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                        Remaining
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-slate-400 flex items-center justify-between pt-2 border-t border-slate-700/40">
+                  <span>
+                    Flow Direction:{" "}
+                    <b className="text-cyan-300">
+                      {pipelineSummary?.isDecreaseFlow ? "Reverse (Decrease KP)" : "Forward (Increase KP)"}
+                    </b>
+                  </span>
+                  <span>
+                    Gross Surveyed:{" "}
+                    <b className="text-slate-200">
+                      {loading && !pipelineSummary ? "..." : `${(pipelineSummary?.surveyedLengthKm || 0).toFixed(3)} km`}
+                    </b>
+                  </span>
+                </div>
+              </div>
+
+              {/* Inspection Summary List Card (Exact pic-2 specifications) */}
+              <div className="bg-[#0a1320] border border-slate-700/60 rounded-xl p-4 font-mono text-xs text-slate-200 space-y-1.5 shadow-inner">
+                <div className="text-sm font-bold text-sky-400 font-sans border-b border-slate-700/80 pb-1.5 mb-2 flex justify-between items-center">
+                  <span>Inspection Summary</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Real-Time Survey Counters</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Anodes:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalAnodes || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Field Joints:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalFieldJoints || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Span#:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalSpanCount || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Burial#:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalBurialCount || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Burial Depth:</span>
+                    <span className="font-bold text-slate-400">{pipelineSummary?.burialDepth || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total CP Stab:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalCpStab || 0} (0)</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Anode CP Stab:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalAnodeCpStab || 0} (0)</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total FJ CP Stab:</span>
+                    <span className="font-bold text-slate-400">{pipelineSummary?.totalFjCpStab || 0} (0)</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Line CP Stab:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalLineCpStab || 0} (0)</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Flange CP Stab:</span>
+                    <span className="font-bold text-slate-400">{pipelineSummary?.totalFlangeCpStab || 0} (0)</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Other CP Stab:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalOtherCpStab || 0} (0)</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Line Crossing:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalLineCrossing || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Debris:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.totalDebris || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Anomaly:</span>
+                    <span className="font-bold text-red-400">{pipelineSummary?.totalAnomaly || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Rectified:</span>
+                    <span className="font-bold text-emerald-400">{pipelineSummary?.totalRectified || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Line Start@:</span>
+                    <span className="font-bold text-cyan-400">{(pipelineSummary?.lineStartKp || 0).toFixed(3)}km</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Line End@:</span>
+                    <span className="font-bold text-cyan-400">{(pipelineSummary?.lineEndKp || 0).toFixed(3)}km</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Line Skipped#:</span>
+                    <span className="font-bold text-slate-400">{pipelineSummary?.lineSkippedCount || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Skipped (Km):</span>
+                    <span className="font-bold text-slate-400">{(pipelineSummary?.totalSkippedKm || 0).toFixed(4)}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Span@0-5KM:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.span0_5 || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Span@5-10KM:</span>
+                    <span className="font-bold text-cyan-400">{pipelineSummary?.span5_10 || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Span@10-20KM:</span>
+                    <span className="font-bold text-slate-400">{pipelineSummary?.span10_20 || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Span@20-30KM:</span>
+                    <span className="font-bold text-slate-400">{pipelineSummary?.span20_30 || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Span@30-40KM:</span>
+                    <span className="font-bold text-slate-400">{pipelineSummary?.span30_40 || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Span@40---KM:</span>
+                    <span className="font-bold text-slate-400">{pipelineSummary?.span40_plus || 0}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Span (Km):</span>
+                    <span className="font-bold text-cyan-400">{(pipelineSummary?.totalSpanKm || 0).toFixed(4)}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total % Span:</span>
+                    <span className="font-bold text-cyan-400">{(pipelineSummary?.totalPctSpan || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total Burial (Km):</span>
+                    <span className="font-bold text-cyan-400">{(pipelineSummary?.totalBurialKm || 0).toFixed(4)}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-300">Total % Burial:</span>
+                    <span className="font-bold text-cyan-400">{(pipelineSummary?.totalPctBurial || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
           {/* ═══ SECTION 1: SOW COMPLETION ═══════════════════════════════════════ */}
-          <section id="summary-sec-sow">
-            <SectionHeader icon={Target} title="Scope of Work Completion" color="blue" />
+          {!isPipelineMode && (
+            <section id="summary-sec-sow">
+              <SectionHeader icon={Target} title="Scope of Work Completion" color="blue" />
 
             {/* Big completion ring + stats */}
             <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl p-5">
@@ -866,9 +1461,10 @@ export function InspectionSummaryPanel({
               </div>
             </div>
           </section>
+          )}
 
           {/* ═══ SECTION: COMPONENT BREAKDOWN ═══════════════════════════════════ */}
-          {data?.componentSummary && Object.keys(data.componentSummary).length > 0 && (
+          {!isPipelineMode && data?.componentSummary && Object.keys(data.componentSummary).length > 0 && (
             <section id="summary-sec-components">
               <SectionHeader icon={Layers} title="Component Breakdown" color="blue" />
               <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl p-4 space-y-3">
@@ -980,7 +1576,8 @@ export function InspectionSummaryPanel({
           )}
 
           {/* ═══ SECTION 2: INSPECTION OVERVIEW ════════════════════════════════ */}
-          <section id="summary-sec-overview">
+          {!isPipelineMode && (
+            <section id="summary-sec-overview">
             <SectionHeader
               icon={Activity}
               title="Inspection Overview"
@@ -1104,6 +1701,7 @@ export function InspectionSummaryPanel({
               </div>
             )}
           </section>
+          )}
 
           {/* ═══ SECTION 3: FMD ═════════════════════════════════════════════════ */}
           {fmd && fmd.total > 0 && (
@@ -1573,8 +2171,117 @@ export function InspectionSummaryPanel({
             </section>
           )}
 
+          {/* ═══ PIPELINE ANOMALIES & FINDINGS BREAKDOWN SECTION ═══════════════ */}
+          {isPipelineMode && (
+            <section id="summary-sec-pipeline-anomalies" className="space-y-4">
+              <SectionHeader icon={AlertTriangle} title="Pipeline Anomalies & Findings Details" color="red" />
+
+              <div className="bg-slate-800/30 border border-red-500/20 rounded-2xl p-5 space-y-5">
+                {/* Stats Header */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-black text-red-400">
+                      {anomalies?.total || pipelineSummary?.totalAnomaly || 0}
+                    </div>
+                    <div className="text-[9px] font-bold text-red-500 uppercase tracking-wider mt-0.5">
+                      Total Anomalies
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-black text-emerald-400">
+                      {anomalies?.rectified || pipelineSummary?.totalRectified || 0}
+                    </div>
+                    <div className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider mt-0.5">
+                      Rectified
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-black text-amber-400">
+                      {anomalies?.open ?? Math.max(0, (anomalies?.total || pipelineSummary?.totalAnomaly || 0) - (anomalies?.rectified || pipelineSummary?.totalRectified || 0))}
+                    </div>
+                    <div className="text-[9px] font-bold text-amber-500 uppercase tracking-wider mt-0.5">
+                      Open Anomalies
+                    </div>
+                  </div>
+
+                  <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-black text-violet-400">
+                      {findings?.total || 0}
+                    </div>
+                    <div className="text-[9px] font-bold text-violet-500 uppercase tracking-wider mt-0.5">
+                      Total Findings
+                    </div>
+                  </div>
+                </div>
+
+                {/* Priority Breakdown (P1, P2, P3) */}
+                {anomalies?.byPriority && Object.keys(anomalies.byPriority).length > 0 && (
+                  <div className="border-t border-slate-700/40 pt-4">
+                    <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2.5">
+                      Anomalies By Priority
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {Object.entries(anomalies.byPriority).map(([prio, cnt]) => (
+                        <div key={prio} className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between">
+                          <span className="text-[10px] font-black text-slate-300 uppercase">{prio}</span>
+                          <Badge className="bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-mono font-bold">
+                            {cnt as number}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Defect Code Categories & Counts */}
+                {anomalies?.byDefectType && Object.keys(anomalies.byDefectType).length > 0 ? (
+                  <div className="border-t border-slate-700/40 pt-4 space-y-3">
+                    <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                      Defect Code Categories & Counts
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Object.entries(anomalies.byDefectType).map(([defectCode, cnt]) => {
+                        const details = anomalies.defectTypeDetails?.[defectCode] || [];
+                        return (
+                          <div key={defectCode} className="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2">
+                              <span className="text-xs font-black text-sky-400 font-mono">{defectCode}</span>
+                              <Badge className="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-mono font-bold">
+                                {cnt as number} Event{(cnt as number) !== 1 ? "s" : ""}
+                              </Badge>
+                            </div>
+                            {details.length > 0 ? (
+                              <div className="space-y-1.5 text-[10px] font-mono">
+                                {details.map((d, i) => (
+                                  <div key={i} className="flex justify-between items-center text-slate-300 bg-slate-950/40 p-1.5 rounded border border-slate-900">
+                                    <span>QID: <b>{d.qid}</b></span>
+                                    <span className="text-slate-400">{d.inspectionTypeName}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-slate-500 italic">No specific QIDs attached</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border-t border-slate-700/40 pt-4 text-center py-4">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400/60 mx-auto mb-2" />
+                    <div className="text-xs font-bold text-slate-300">No Defect Anomalies Reported</div>
+                    <div className="text-[10px] text-slate-500">Pipeline inspection running clear of anomalies</div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* ═══ SECTION 7: ANOMALIES ═══════════════════════════════════════════ */}
-          {anomalies && anomalies.total > 0 && (
+          {!isPipelineMode && anomalies && anomalies.total > 0 && (
             <section id="summary-sec-anomalies">
               <SectionHeader
                 icon={AlertTriangle}
@@ -1836,7 +2543,7 @@ export function InspectionSummaryPanel({
           )}
 
           {/* ═══ SECTION 9: ATTACHMENT GROUPS ══════════════════════════════════ */}
-          {attachmentGroups && (
+          {!isPipelineMode && attachmentGroups && (
             <section id="summary-sec-attachments">
               <SectionHeader icon={Anchor} title="Attachment Group Inspections" color="blue" />
               <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl overflow-hidden">

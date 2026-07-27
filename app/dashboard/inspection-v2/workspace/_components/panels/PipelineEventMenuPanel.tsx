@@ -212,13 +212,23 @@ export const PIPELINE_EVENT_CATEGORIES: PipelineCategory[] = [
         ],
       },
       {
-        id: "anode_remote_block",
-        name: "Remote Block Anode",
+        id: "anode_remote_block_port",
+        name: "Remote Block Anode (Port Side)",
         subEvents: [
-          { id: "anode_remote_block_0_25", name: "Remote Block - 0 - 25% Depletion" },
-          { id: "anode_remote_block_25_50", name: "Remote Block - 25 - 50% Depletion" },
-          { id: "anode_remote_block_50_75", name: "Remote Block - 50 - 75% Depletion" },
-          { id: "anode_remote_block_75_100", name: "Remote Block - 75 - 100% Depletion" },
+          { id: "anode_remote_block_port_0_25", name: "Remote Block Port - 0 - 25% Depletion" },
+          { id: "anode_remote_block_port_25_50", name: "Remote Block Port - 25 - 50% Depletion" },
+          { id: "anode_remote_block_port_50_75", name: "Remote Block Port - 50 - 75% Depletion" },
+          { id: "anode_remote_block_port_75_100", name: "Remote Block Port - 75 - 100% Depletion" },
+        ],
+      },
+      {
+        id: "anode_remote_block_starboard",
+        name: "Remote Block Anode (Starboard Side)",
+        subEvents: [
+          { id: "anode_remote_block_stbd_0_25", name: "Remote Block Stbd - 0 - 25% Depletion" },
+          { id: "anode_remote_block_stbd_25_50", name: "Remote Block Stbd - 25 - 50% Depletion" },
+          { id: "anode_remote_block_stbd_50_75", name: "Remote Block Stbd - 50 - 75% Depletion" },
+          { id: "anode_remote_block_stbd_75_100", name: "Remote Block Stbd - 75 - 100% Depletion" },
         ],
       },
       {
@@ -428,19 +438,106 @@ export const PIPELINE_EVENT_CATEGORIES: PipelineCategory[] = [
     icon: RiserIcon,
     subCategories: [
       {
-        id: "riser_clamps",
-        name: "Clamps & Supports",
+        id: "riser_bend_sub",
+        name: "Bend",
         subEvents: [
+          { id: "riser_bend_elbow", name: "Riser Bend / 90° Elbow" },
+        ],
+      },
+      {
+        id: "riser_clamps",
+        name: "Clamp",
+        subEvents: [
+          {
+            id: "riser_clamp_hinge",
+            name: "Hinge",
+            subEvents: [
+              { id: "riser_clamp_hinge_2bolt", name: "2 Bolt" },
+              { id: "riser_clamp_hinge_4bolt", name: "4 Bolt" },
+              { id: "riser_clamp_hinge_6bolt", name: "6 Bolt" },
+              { id: "riser_clamp_hinge_8bolt", name: "8 Bolt" },
+            ],
+          },
+          {
+            id: "riser_clamp_shell",
+            name: "Shell",
+            subEvents: [
+              { id: "riser_clamp_shell_2bolt", name: "2 Bolt" },
+              { id: "riser_clamp_shell_4bolt", name: "4 Bolt" },
+              { id: "riser_clamp_shell_6bolt", name: "6 Bolt" },
+              { id: "riser_clamp_shell_8bolt", name: "8 Bolt" },
+            ],
+          },
           { id: "riser_clamp_guide", name: "Riser Clamp / Guide Frame" },
           { id: "riser_neoprene", name: "Neoprene Liner / Isolator" },
           { id: "riser_bolt_assembly", name: "Riser Clamp Bolt Assembly" },
         ],
       },
       {
-        id: "riser_base",
+        id: "riser_elbow_sub",
+        name: "Elbow",
+        subEvents: [
+          { id: "riser_elbow_90", name: "90° Elbow" },
+          { id: "riser_elbow_45", name: "45° Elbow" },
+        ],
+      },
+      {
+        id: "riser_flange_sub",
+        name: "Flange",
+        subEvents: [
+          { id: "riser_flange_swivel", name: "Swivel Flange" },
+          { id: "riser_flange_weldneck", name: "Weld Neck Flange" },
+          { id: "riser_flange_blind", name: "Blind Flange" },
+        ],
+      },
+      {
+        id: "riser_guard_sub",
+        name: "Guard",
+        subEvents: [
+          { id: "riser_guard_frame", name: "Protection Guard Frame" },
+        ],
+      },
+      {
+        id: "riser_knee_brace_sub",
+        name: "Knee Brace",
+        subEvents: [
+          {
+            id: "riser_kb_lower_conn",
+            name: "Lower Connection",
+            subEvents: [
+              { id: "riser_kb_lower_bracket", name: "Bracket" },
+              { id: "riser_kb_lower_welded", name: "Welded" },
+            ],
+          },
+          {
+            id: "riser_kb_upper_conn",
+            name: "Upper Connection",
+            subEvents: [
+              { id: "riser_kb_upper_bracket", name: "Bracket" },
+              { id: "riser_kb_upper_welded", name: "Welded" },
+            ],
+          },
+        ],
+      },
+      {
+        id: "riser_spool_piece_sub",
+        name: "Spool Piece",
+        subEvents: [
+          { id: "riser_spool_piece", name: "Spool Piece / Tie-in Spool" },
+        ],
+      },
+      {
+        id: "riser_tie_in_sub",
+        name: "Tie - In",
+        subEvents: [
+          { id: "riser_tie_in_flange", name: "Tie-In Flange" },
+          { id: "riser_tie_in_spool", name: "Tie-In Spool" },
+        ],
+      },
+      {
+        id: "riser_base_td_sub",
         name: "Riser Base & Touchdown",
         subEvents: [
-          { id: "riser_bend_elbow", name: "Riser Bend / 90° Elbow" },
           { id: "riser_tdp", name: "Touchdown Point (TDP)" },
           { id: "riser_bellmouth", name: "J-Tube Bellmouth Entry" },
         ],
@@ -451,6 +548,23 @@ export const PIPELINE_EVENT_CATEGORIES: PipelineCategory[] = [
         subEvents: [
           { id: "riser_stiffener", name: "Bend Stiffener / Restrictor" },
           { id: "riser_splashzone", name: "Splash Zone Monel Wrap" },
+        ],
+      },
+      {
+        id: "riser_other_sub",
+        name: "Other",
+        subEvents: [
+          { id: "riser_other_feature", name: "Other Riser Feature" },
+        ],
+      },
+      {
+        id: "riser_damage_sub",
+        name: "Damage",
+        subEvents: [
+          { id: "riser_damage_coating", name: "Coating Damage" },
+          { id: "riser_damage_corrosion", name: "Corrosion / Pitting" },
+          { id: "riser_damage_mechanical", name: "Mechanical / Impact Damage" },
+          { id: "riser_damage_deformed", name: "Deformed / Bent Support" },
         ],
       },
     ],
@@ -466,72 +580,96 @@ export const PIPELINE_EVENT_CATEGORIES: PipelineCategory[] = [
     icon: LineFeatureIcon,
     subCategories: [
       {
-        id: "line_boundaries_turns",
-        name: "Line Boundaries & Turns",
+        id: "line_items_general",
+        name: "General Line Features",
         subEvents: [
           { id: "line_start", name: "Line Start" },
           { id: "line_end", name: "Line End" },
-          { id: "line_skip_start", name: "Skip Start" },
-          { id: "line_skip_end", name: "Skip End" },
-          { id: "line_turns", name: "Line Turns" },
-        ],
-      },
-      {
-        id: "line_fittings_conn",
-        name: "Fittings & Connections",
-        subEvents: [
           { id: "line_jtube", name: "J - Tube" },
+          { id: "line_crossing", name: "Crossing..." },
           { id: "line_flange", name: "Flange" },
           { id: "line_sidetap", name: "Side Tap" },
           { id: "line_t_joint", name: "T - Joint" },
-          { id: "line_valve_spindle", name: "Valve - Spindle Handle" },
-          { id: "line_valve_normal", name: "Valve - Normal" },
-          { id: "line_connector", name: "Connector" },
-        ],
-      },
-      {
-        id: "line_crossings_supports",
-        name: "Crossings & Supports",
-        subEvents: [
-          { id: "line_crossing", name: "Crossing..." },
-          { id: "line_elbow_port", name: "Elbow - Port Side" },
-          { id: "line_elbow_starboard", name: "Elbow - Starboard Side" },
+          { id: "line_anchor_drag", name: "Anchor Drag" },
           { id: "line_repair_clamp", name: "Repair Clamp" },
           { id: "line_clamp", name: "Clamp" },
+          { id: "line_connector", name: "Connector" },
           { id: "line_mag_tape", name: "Magnetic Tape Marker" },
           { id: "line_trawl_guard", name: "Over Trawl Guard" },
+          { id: "line_other", name: "Other" },
         ],
       },
       {
-        id: "line_damage_anomalies",
-        name: "Damage & Anomalies",
+        id: "line_skip_sub",
+        name: "Line Skip",
         subEvents: [
-          { id: "line_anchor_drag", name: "Anchor Drag" },
+          { id: "line_skip_start", name: "Skip Start" },
+          { id: "line_skip_end", name: "Skip End" },
+        ],
+      },
+      {
+        id: "line_elbow_sub",
+        name: "Elbow",
+        subEvents: [
+          { id: "line_elbow_port", name: "Elbow - Port Side" },
+          { id: "line_elbow_starboard", name: "Elbow - Starboard Side" },
+        ],
+      },
+      {
+        id: "line_turns_sub",
+        name: "Line Turns",
+        subEvents: [
+          { id: "line_turn_port", name: "To Port Side" },
+          { id: "line_turn_starboard", name: "To Starboard Side" },
+          { id: "line_turn_upwards", name: "Upwards" },
+        ],
+      },
+      {
+        id: "line_valves_sub",
+        name: "Valves",
+        subEvents: [
+          { id: "line_valve_spindle", name: "Spindle Handle" },
+          { id: "line_valve_normal", name: "Normal" },
+        ],
+      },
+      {
+        id: "line_buckle_sub",
+        name: "Buckle",
+        subEvents: [
           { id: "line_buckle_arrestor", name: "Buckle Arrestor" },
           { id: "line_buckle_trigger", name: "Buckle Trigger" },
-          // Coating Damage Options
-          { id: "line_cd_bare_metal", name: "Coating Damage - Bare Metal Showing" },
-          { id: "line_cd_cracked", name: "Coating Damage - Coating Cracked" },
-          { id: "line_cd_cracked_long", name: "Coating Damage - Coating Cracked Longitudinally" },
-          { id: "line_cd_cracked_circ", name: "Coating Damage - Coating Cracked Circumferentially" },
-          { id: "line_cd_reinf_exposed", name: "Coating Damage - Reinforcing Exposed" },
-          { id: "line_cd_superficial", name: "Coating Damage - Superficial Damage" },
-          { id: "line_cd_wire_scars", name: "Coating Damage - Wire Scars" },
-          { id: "line_cd_wrap_damage", name: "Coating Damage - Wrap Damage" },
-          { id: "line_cd_other", name: "Coating Damage - Other Defect" },
-          // Physical Damage Options
-          { id: "line_pd_bend_port", name: "Physical Damage - Bend/Buckle To Port Side" },
-          { id: "line_pd_bend_starboard", name: "Physical Damage - Bend/Buckle To Starboard Side" },
-          { id: "line_pd_bend_upwards", name: "Physical Damage - Bend/Buckle Upwards" },
-          { id: "line_pd_bend_downwards", name: "Physical Damage - Bend/Buckle Downwards" },
+        ],
+      },
+      {
+        id: "line_coating_damage_sub",
+        name: "Coating Damage",
+        subEvents: [
+          { id: "line_cd_bare_metal", name: "Bare Metal Showing" },
+          { id: "line_cd_cracked", name: "Coating Cracked" },
+          { id: "line_cd_cracked_long", name: "Coating Cracked Longitudinally" },
+          { id: "line_cd_cracked_circ", name: "Coating Cracked Circumferentially" },
+          { id: "line_cd_reinf_exposed", name: "Reinforcing Exposed" },
+          { id: "line_cd_superficial", name: "Superficial Damage" },
+          { id: "line_cd_wire_scars", name: "Wire Scars" },
+          { id: "line_cd_wrap_damage", name: "Wrap Damage" },
+          { id: "line_cd_other", name: "Other Defect" },
+        ],
+      },
+      {
+        id: "line_physical_damage_sub",
+        name: "Physical Damage",
+        subEvents: [
+          { id: "line_pd_bend_port", name: "Bend/Buckle To Port Side" },
+          { id: "line_pd_bend_starboard", name: "Bend/Buckle To Starboard Side" },
+          { id: "line_pd_bend_upwards", name: "Bend/Buckle Upwards" },
+          { id: "line_pd_bend_downwards", name: "Bend/Buckle Downwards" },
           { id: "line_pd_dent_port", name: "Dent - Port Side" },
           { id: "line_pd_dent_starboard", name: "Dent - Starboard Side" },
           { id: "line_pd_dent_top", name: "Dent - Top" },
           { id: "line_pd_dent_bottom", name: "Dent - Bottom" },
-          { id: "line_pd_leak", name: "Physical Damage - Leak" },
-          { id: "line_pd_ruptured", name: "Physical Damage - Ruptured" },
-          { id: "line_pd_other", name: "Physical Damage - Other Defect" },
-          { id: "line_other", name: "Other" },
+          { id: "line_pd_leak", name: "Leak" },
+          { id: "line_pd_ruptured", name: "Ruptured" },
+          { id: "line_pd_other", name: "Other Defect" },
         ],
       },
     ],
@@ -760,6 +898,13 @@ interface PipelineEventMenuPanelProps {
   rovDataString?: string; // Optional raw ROV string payload (NMEA/serial)
   isRovDataConnected?: boolean;
   isVideoPlaying?: boolean; // Prop indicating external video logger playback status
+  unitSystem?: "METRIC" | "IMPERIAL"; // Unit system setting ("METRIC" | "IMPERIAL")
+  totalPipelineLength?: number | string; // Total length of pipeline (e.g. 130.000)
+  inspectionDirection?: string; // Inspection direction (e.g. "INCREASE_KP" / "DECREASE_KP")
+  inspectionLocation?: string; // Inspection location (e.g. "PIPELINE" vs "CROSSING" etc)
+  structureId?: string | number; // Current structure ID for historical queries
+  sowReportNo?: string; // Current SOW report number
+  jobPackId?: string | number; // Current jobpack ID
 }
 
 export function PipelineEventMenuPanel({
@@ -770,6 +915,13 @@ export function PipelineEventMenuPanel({
   rovDataString,
   isRovDataConnected,
   isVideoPlaying: isVideoPlayingProp = true,
+  unitSystem = "METRIC",
+  totalPipelineLength,
+  inspectionDirection = "INCREASE_KP",
+  inspectionLocation = "PIPELINE",
+  structureId,
+  sowReportNo,
+  jobPackId,
 }: PipelineEventMenuPanelProps) {
   const { isConnected: hookIsConnected, fields: rovConnectionFields } = useROVConnection();
   const effectiveConnected = isRovDataConnected || hookIsConnected;
@@ -780,6 +932,111 @@ export function PipelineEventMenuPanel({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isViewAllOpen, setIsViewAllOpen] = useState(false);
   const [isInlineExpanded, setIsInlineExpanded] = useState(false);
+
+  // Position Details Dialog State (Debris & Subsea Structure)
+  const [isPositionModalOpen, setIsPositionModalOpen] = useState(false);
+  const [pendingPositionItem, setPendingPositionItem] = useState<{
+    catName: string;
+    subCatName: string;
+    eventName: string;
+    eventId?: string;
+    isDebris?: boolean;
+    isSubseaStructure?: boolean;
+  } | null>(null);
+  const [positionIsTouching, setPositionIsTouching] = useState<boolean>(false);
+  const [selectedPosition, setSelectedPosition] = useState<"PORT SIDE" | "STARBOARD SIDE" | "OVER" | "UNDER">("PORT SIDE");
+
+  // Pipeline Crossing Details Dialog State
+  const [isCrossingModalOpen, setIsCrossingModalOpen] = useState(false);
+  const [pendingCrossingItem, setPendingCrossingItem] = useState<{
+    catName: string;
+    subCatName: string;
+    eventName: string;
+    eventId?: string;
+  } | null>(null);
+  const [crossingOrientation, setCrossingOrientation] = useState<"Over the Current Line" | "Under the Current Line">("Over the Current Line");
+  const [crossingLineName, setCrossingLineName] = useState<string>("");
+  const [crossingKp, setCrossingKp] = useState<string>("");
+  const [crossingAngle, setCrossingAngle] = useState<string>("");
+  const [crossingType, setCrossingType] = useState<string>("CONVENTIONAL");
+  const [crossingGap, setCrossingGap] = useState<string>("");
+  const [crossingNumSupports, setCrossingNumSupports] = useState<string>("");
+
+  // Span End Details Dialog State (Span Length & Height)
+  const [isSpanEndModalOpen, setIsSpanEndModalOpen] = useState(false);
+  const [pendingSpanEndItem, setPendingSpanEndItem] = useState<{
+    catName: string;
+    subCatName: string;
+    eventName: string;
+    eventId?: string;
+  } | null>(null);
+  const [spanLengthInput, setSpanLengthInput] = useState<string>("0.00");
+  const [spanHeightInput, setSpanHeightInput] = useState<string>("0.0");
+  const [spanCalcMode, setSpanCalcMode] = useState<"KP" | "NORTHING_EASTING">("KP");
+  const [spanStartKp, setSpanStartKp] = useState<number | null>(null);
+  const [spanStartNorthing, setSpanStartNorthing] = useState<number | null>(null);
+  const [spanStartEasting, setSpanStartEasting] = useState<number | null>(null);
+
+  // Historical Survey Events for Next Upcoming Predictions
+  const [historicalEvents, setHistoricalEvents] = useState<Array<{ eventType: string; kp: number }>>([]);
+
+  // Fetch historical inspection records for this structure to calculate next upcoming events
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchHistoricalData() {
+      if (!structureId) return;
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("insp_records")
+          .select("fp_kp, inspection_data")
+          .eq("structure_id", parseInt(String(structureId)))
+          .not("fp_kp", "is", null);
+
+        if (!error && data && isMounted) {
+          const parsedList: Array<{ eventType: string; kp: number }> = [];
+          data.forEach((row: any) => {
+            const kpVal = typeof row.fp_kp === "number" ? row.fp_kp : parseFloat(row.fp_kp);
+            const evtName = (row.inspection_data?.event_name || row.inspection_data?.eventName || "").toUpperCase();
+            const evtType = (row.inspection_data?.event_type || row.inspection_data?.eventType || "").toUpperCase();
+
+            if (!isNaN(kpVal) && kpVal > 0) {
+              if (evtName.includes("ANODE") || evtType.includes("ANODE")) {
+                parsedList.push({ eventType: "ANODE", kp: kpVal });
+              } else if (evtName.includes("CROSSING") || evtType.includes("CROSSING")) {
+                parsedList.push({ eventType: "CROSSING", kp: kpVal });
+              } else if (evtName.includes("FIELD JOINT") || evtType.includes("FIELD JOINT") || evtType.includes("FJ")) {
+                parsedList.push({ eventType: "FIELD_JOINT", kp: kpVal });
+              }
+            }
+          });
+          setHistoricalEvents(parsedList);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch historical survey records:", e);
+      }
+    }
+
+    fetchHistoricalData();
+    return () => {
+      isMounted = false;
+    };
+  }, [structureId]);
+
+  // Burial End Details Dialog State (Burial Length & Coverage)
+  const [isBurialEndModalOpen, setIsBurialEndModalOpen] = useState(false);
+  const [pendingBurialEndItem, setPendingBurialEndItem] = useState<{
+    catName: string;
+    subCatName: string;
+    eventName: string;
+    eventId?: string;
+  } | null>(null);
+  const [burialLengthInput, setBurialLengthInput] = useState<string>("0.00");
+  const [burialCoverageInput, setBurialCoverageInput] = useState<string>("100.0");
+  const [burialCalcMode, setBurialCalcMode] = useState<"KP" | "NORTHING_EASTING">("KP");
+  const [burialStartKp, setBurialStartKp] = useState<number | null>(null);
+  const [burialStartNorthing, setBurialStartNorthing] = useState<number | null>(null);
+  const [burialStartEasting, setBurialStartEasting] = useState<number | null>(null);
 
   // Live KP & Video Playback State for active event progress
   const [liveKp, setLiveKp] = useState<number>(() => {
@@ -810,6 +1067,91 @@ export function PipelineEventMenuPanel({
     // 3. Fallback to calculated incremented liveKp
     return { kp: liveKp.toFixed(3), numKp: liveKp, source: "CALCULATED" };
   };
+
+  // Compute Inspection Info values (Completion %, Next FJ, Next Anode, Next Crossing)
+  const inspectionInfoSummary = useMemo(() => {
+    const isImperial = unitSystem === "IMPERIAL";
+    const posPrefix = isImperial ? "FP" : "KP";
+    const distUnit = isImperial ? "ft" : "m";
+
+    // Value conversion multiplier: 1 KP = 1 km = 3280.84 ft
+    const toPosVal = (kpInKm: number): number => {
+      return isImperial ? kpInKm * 3280.84 : kpInKm;
+    };
+
+    const curPosVal = toPosVal(liveKp);
+    const curPosFormatted = isImperial ? curPosVal.toFixed(1) : curPosVal.toFixed(3);
+
+    const isIncreaseFlow = !inspectionDirection.toUpperCase().includes("DECREASE");
+    const flowLabel = isIncreaseFlow ? `Increase ${posPrefix}` : `Decrease ${posPrefix}`;
+    const isMainPipelineLocation = inspectionLocation.toUpperCase() === "PIPELINE";
+
+    // 1. Completion Percentage
+    let completionText = `${curPosFormatted}`;
+    const totalLenKm = typeof totalPipelineLength === "number" ? totalPipelineLength : parseFloat(String(totalPipelineLength || ""));
+    if (isMainPipelineLocation && !isNaN(totalLenKm) && totalLenKm > 0) {
+      const totalPosVal = toPosVal(totalLenKm);
+      const totalPosFormatted = isImperial ? totalPosVal.toFixed(1) : totalPosVal.toFixed(3);
+      const pct = Math.min(100, Math.max(0, (liveKp / totalLenKm) * 100));
+      completionText = `${curPosFormatted} / ${totalPosFormatted} = ${pct.toFixed(1)}%`;
+    }
+
+    // Helper to find next upcoming event from historical list or fallback interval (e.g. 12m for Field Joint)
+    const findNextUpcoming = (type: "FIELD_JOINT" | "ANODE" | "CROSSING", fallbackIntervalMeters?: number) => {
+      const matches = historicalEvents.filter((e) => e.eventType === type);
+      let upcomingKp: number | null = null;
+
+      if (matches.length > 0) {
+        if (isIncreaseFlow) {
+          const ahead = matches.filter((e) => e.kp > liveKp).sort((a, b) => a.kp - b.kp);
+          if (ahead.length > 0) upcomingKp = ahead[0].kp;
+        } else {
+          const ahead = matches.filter((e) => e.kp < liveKp).sort((a, b) => b.kp - a.kp);
+          if (ahead.length > 0) upcomingKp = ahead[0].kp;
+        }
+      }
+
+      // If no historical survey match, fallback to standard 12m joint spacing for Field Joint
+      if (upcomingKp === null && fallbackIntervalMeters) {
+        const intervalKp = fallbackIntervalMeters / 1000;
+        if (isIncreaseFlow) {
+          upcomingKp = Math.ceil(liveKp / intervalKp) * intervalKp;
+          if (upcomingKp <= liveKp) upcomingKp += intervalKp;
+        } else {
+          upcomingKp = Math.floor(liveKp / intervalKp) * intervalKp;
+          if (upcomingKp >= liveKp) upcomingKp -= intervalKp;
+        }
+      }
+
+      if (upcomingKp !== null) {
+        const distMeters = Math.abs(upcomingKp - liveKp) * 1000;
+        const displayUpcomingPos = toPosVal(upcomingKp);
+        const displayUpcomingStr = isImperial ? displayUpcomingPos.toFixed(1) : displayUpcomingPos.toFixed(3);
+        const displayDist = Math.round(isImperial ? distMeters * 3.28084 : distMeters);
+
+        return {
+          kpStr: `${posPrefix} ${displayUpcomingStr}`,
+          distStr: `(${displayDist}${distUnit} ahead)`,
+        };
+      }
+
+      return { kpStr: "N/A", distStr: "" };
+    };
+
+    const nextFj = findNextUpcoming("FIELD_JOINT", 12);
+    const nextAnode = findNextUpcoming("ANODE");
+    const nextCrossing = findNextUpcoming("CROSSING");
+
+    return {
+      posPrefix,
+      curPosFormatted,
+      completionText,
+      flowLabel,
+      nextFj,
+      nextAnode,
+      nextCrossing,
+    };
+  }, [liveKp, inspectionDirection, inspectionLocation, totalPipelineLength, historicalEvents, unitSystem]);
 
   // Sync liveKp when currentKp prop updates from parent
   useEffect(() => {
@@ -1182,8 +1524,220 @@ export function PipelineEventMenuPanel({
     return "";
   };
 
-  const handleTriggerEvent = (catName: string, subCatName: string, eventName: string, eventId?: string) => {
+  const handleTriggerEvent = (
+    catName: string,
+    subCatName: string,
+    eventName: string,
+    eventId?: string,
+    positionOverrides?: { touching?: boolean; position: "PORT SIDE" | "STARBOARD SIDE" | "OVER" | "UNDER"; isDamaged?: boolean },
+    crossingOverrides?: {
+      orientation: "Over the Current Line" | "Under the Current Line";
+      crossingLine: string;
+      crossingKp: string;
+      angle: string;
+      crossingType: string;
+      gap: string;
+      numSupports: string;
+    },
+    spanEndOverrides?: {
+      lengthPrimary: string;
+      lengthSecondary: string;
+      heightPrimary: string;
+      heightSecondary: string;
+      lengthValueNum: number;
+      heightValueNum: number;
+    },
+    burialEndOverrides?: {
+      lengthPrimary: string;
+      lengthSecondary: string;
+      coveragePct: string;
+    }
+  ) => {
     const targetId = eventId || allFlattenedEvents.find((e) => e.event === eventName)?.id;
+
+    // Track Start KP and Northing/Easting telemetry when span_start is triggered
+    if (targetId === "span_start" || targetId === "inter_span_start") {
+      const { numKp } = resolveEffectiveKp();
+      setSpanStartKp(numKp);
+
+      let curNorth: number | null = null;
+      let curEast: number | null = null;
+
+      if (effectiveConnected && Array.isArray(rovConnectionFields)) {
+        rovConnectionFields.forEach((f) => {
+          if (f.value && f.value !== "--") {
+            const tf = (f.targetField || f.label || "").toLowerCase().trim();
+            if (tf.includes("northing")) curNorth = parseFloat(f.value);
+            if (tf.includes("easting")) curEast = parseFloat(f.value);
+          }
+        });
+      }
+      if (typeof window !== "undefined") {
+        if (curNorth === null && (window as any).rovTelemetryNorthing) curNorth = parseFloat(String((window as any).rovTelemetryNorthing));
+        if (curEast === null && (window as any).rovTelemetryEasting) curEast = parseFloat(String((window as any).rovTelemetryEasting));
+      }
+      setSpanStartNorthing(curNorth);
+      setSpanStartEasting(curEast);
+    }
+
+    // Track Start KP and Northing/Easting telemetry when burial_start is triggered
+    if (targetId === "burial_start") {
+      const { numKp } = resolveEffectiveKp();
+      setBurialStartKp(numKp);
+
+      let curNorth: number | null = null;
+      let curEast: number | null = null;
+
+      if (effectiveConnected && Array.isArray(rovConnectionFields)) {
+        rovConnectionFields.forEach((f) => {
+          if (f.value && f.value !== "--") {
+            const tf = (f.targetField || f.label || "").toLowerCase().trim();
+            if (tf.includes("northing")) curNorth = parseFloat(f.value);
+            if (tf.includes("easting")) curEast = parseFloat(f.value);
+          }
+        });
+      }
+      if (typeof window !== "undefined") {
+        if (curNorth === null && (window as any).rovTelemetryNorthing) curNorth = parseFloat(String((window as any).rovTelemetryNorthing));
+        if (curEast === null && (window as any).rovTelemetryEasting) curEast = parseFloat(String((window as any).rovTelemetryEasting));
+      }
+      setBurialStartNorthing(curNorth);
+      setBurialStartEasting(curEast);
+    }
+
+    // Intercept Burial End event trigger to show Burial Length & Coverage modal dialog
+    const isBurialEndEvent = targetId === "burial_end";
+    if (isBurialEndEvent && !burialEndOverrides) {
+      const { numKp: endKp } = resolveEffectiveKp();
+
+      let calculatedLengthMeters = 0;
+
+      if (burialStartKp !== null && endKp > burialStartKp) {
+        calculatedLengthMeters = Math.abs(endKp - burialStartKp) * 1000;
+      }
+
+      let curNorth: number | null = null;
+      let curEast: number | null = null;
+      if (effectiveConnected && Array.isArray(rovConnectionFields)) {
+        rovConnectionFields.forEach((f) => {
+          if (f.value && f.value !== "--") {
+            const tf = (f.targetField || f.label || "").toLowerCase().trim();
+            if (tf.includes("northing")) curNorth = parseFloat(f.value);
+            if (tf.includes("easting")) curEast = parseFloat(f.value);
+          }
+        });
+      }
+      if (typeof window !== "undefined") {
+        if (curNorth === null && (window as any).rovTelemetryNorthing) curNorth = parseFloat(String((window as any).rovTelemetryNorthing));
+        if (curEast === null && (window as any).rovTelemetryEasting) curEast = parseFloat(String((window as any).rovTelemetryEasting));
+      }
+
+      if (burialCalcMode === "NORTHING_EASTING" && burialStartNorthing !== null && burialStartEasting !== null && curNorth !== null && curEast !== null) {
+        const dN = curNorth - burialStartNorthing;
+        const dE = curEast - burialStartEasting;
+        const distMeters = Math.sqrt(dN * dN + dE * dE);
+        if (!isNaN(distMeters) && distMeters > 0) {
+          calculatedLengthMeters = distMeters;
+        }
+      }
+
+      const finalLen = unitSystem === "IMPERIAL" ? (calculatedLengthMeters * 3.28084).toFixed(2) : calculatedLengthMeters.toFixed(2);
+
+      setPendingBurialEndItem({ catName, subCatName, eventName, eventId: targetId });
+      setBurialLengthInput(finalLen);
+      setBurialCoverageInput("100.0");
+      setIsBurialEndModalOpen(true);
+      return;
+    }
+
+    // Intercept Span End event trigger to show Span Length & Height modal dialog
+    const isSpanEndEvent = targetId === "span_end" || targetId === "inter_span_end";
+    if (isSpanEndEvent && !spanEndOverrides) {
+      const { numKp: endKp } = resolveEffectiveKp();
+
+      let calculatedLengthMeters = 0;
+
+      // 1. Calculate length using KP difference (KP is in km -> convert to meters)
+      if (spanStartKp !== null && endKp > spanStartKp) {
+        calculatedLengthMeters = Math.abs(endKp - spanStartKp) * 1000;
+      }
+
+      // 2. Check Northing / Easting distance calculation option if available
+      let curNorth: number | null = null;
+      let curEast: number | null = null;
+      if (effectiveConnected && Array.isArray(rovConnectionFields)) {
+        rovConnectionFields.forEach((f) => {
+          if (f.value && f.value !== "--") {
+            const tf = (f.targetField || f.label || "").toLowerCase().trim();
+            if (tf.includes("northing")) curNorth = parseFloat(f.value);
+            if (tf.includes("easting")) curEast = parseFloat(f.value);
+          }
+        });
+      }
+      if (typeof window !== "undefined") {
+        if (curNorth === null && (window as any).rovTelemetryNorthing) curNorth = parseFloat(String((window as any).rovTelemetryNorthing));
+        if (curEast === null && (window as any).rovTelemetryEasting) curEast = parseFloat(String((window as any).rovTelemetryEasting));
+      }
+
+      if (spanCalcMode === "NORTHING_EASTING" && spanStartNorthing !== null && spanStartEasting !== null && curNorth !== null && curEast !== null) {
+        const dN = curNorth - spanStartNorthing;
+        const dE = curEast - spanStartEasting;
+        const distMeters = Math.sqrt(dN * dN + dE * dE);
+        if (!isNaN(distMeters) && distMeters > 0) {
+          calculatedLengthMeters = distMeters;
+        }
+      }
+
+      setPendingSpanEndItem({ catName, subCatName, eventName, eventId: targetId });
+      setSpanLengthInput(calculatedLengthMeters.toFixed(2));
+      setSpanHeightInput("0.0");
+      setIsSpanEndModalOpen(true);
+      return;
+    }
+
+    // Intercept Crossing event trigger to show Pipeline Crossing modal dialog
+    const isCrossingEvent = targetId === "line_crossing" || eventName.toLowerCase().includes("crossing");
+    if (isCrossingEvent && !crossingOverrides) {
+      const { kp: effectiveKp } = resolveEffectiveKp();
+      setPendingCrossingItem({ catName, subCatName, eventName, eventId: targetId });
+      setCrossingOrientation("Over the Current Line");
+      setCrossingLineName("");
+      setCrossingKp(effectiveKp);
+      setCrossingAngle("");
+      setCrossingType("CONVENTIONAL");
+      setCrossingGap("");
+      setCrossingNumSupports("");
+      setIsCrossingModalOpen(true);
+      return;
+    }
+
+    // Intercept Debris items or Subsea Structure items to show position details prompt
+    const isDebrisCategory = Boolean(
+      catName.toUpperCase() === "DEBRIS" ||
+      subCatName.toUpperCase().includes("DEBRIS") ||
+      (targetId && targetId.toLowerCase().includes("debris"))
+    );
+
+    const isSubseaStructureCategory = Boolean(
+      catName.toUpperCase() === "SUBSEA STRUCTURE" ||
+      subCatName.toUpperCase().includes("SUBSEA STRUCTURE") ||
+      (targetId && (targetId.startsWith("tiein_") || targetId.startsWith("plet_") || targetId.startsWith("plem_") || targetId.startsWith("struct_")))
+    );
+
+    if ((isDebrisCategory || isSubseaStructureCategory) && !positionOverrides) {
+      setPendingPositionItem({
+        catName,
+        subCatName,
+        eventName,
+        eventId: targetId,
+        isDebris: isDebrisCategory,
+        isSubseaStructure: isSubseaStructureCategory,
+      });
+      setPositionIsTouching(false);
+      setSelectedPosition("PORT SIDE");
+      setIsPositionModalOpen(true);
+      return;
+    }
 
     if (targetId) {
       const disabledStatus = getEventDisabledStatus(targetId);
@@ -1211,22 +1765,64 @@ export function PipelineEventMenuPanel({
     const customDefault = targetId ? EVENT_AUTO_COPY_DEFAULTS[targetId] : undefined;
 
     // Mapping per user request:
-    // Event Name field -> Main Menu Category (e.g. SEABED PROFILE)
-    // Event Type field -> Submenu Category (e.g. SPAN)
-    // Event Position field -> Action / Event Name (e.g. START, END, TOUCHDOWN, MAX HEIGHT)
-    const mappedEventName = customDefault?.eventName || catName;
-    const mappedEventType = customDefault?.eventType || subCatName;
-    const mappedEventPosition = customDefault?.eventPosition || (
-      eventName.toLowerCase().includes("start")
-        ? "START"
-        : eventName.toLowerCase().includes("end")
-        ? "END"
-        : eventName
-    );
+    // DEBRIS: Event Name -> DEBRIS, Event Type -> Item Name, Event Position -> Position, Event Description -> TOUCHING THE LINE / NOT TOUCHING THE LINE
+    // SUBSEA STRUCTURE: Event Name -> SUBSEA STRUCTURE, Event Type -> Item Name, Event Description -> Position (PORT SIDE / STARBOARD SIDE / OVER / UNDER)
+    const isDebris = catName.toUpperCase() === "DEBRIS" || (targetId && targetId.startsWith("debris_"));
+    const isSubseaStructure =
+      catName.toUpperCase() === "SUBSEA STRUCTURE" ||
+      (targetId && (targetId.startsWith("tiein_") || targetId.startsWith("plet_") || targetId.startsWith("plem_") || targetId.startsWith("struct_")));
 
-    // Resolve Description template (replaces {kp}, {eventName}, {kpSource}, {inspMethod})
+    const mappedEventName = isDebris ? "DEBRIS" : isSubseaStructure ? "SUBSEA STRUCTURE" : (customDefault?.eventName || catName);
+    let mappedEventType = isDebris || isSubseaStructure ? eventName.toUpperCase() : (customDefault?.eventType || subCatName);
+    if (isCrossingEvent && crossingOverrides) {
+      mappedEventType = crossingOverrides.crossingType ? crossingOverrides.crossingType.toUpperCase() : "CONVENTIONAL";
+    }
+
+    let mappedEventPosition = isSubseaStructure
+      ? ""
+      : isDebris && positionOverrides
+      ? positionOverrides.position
+      : (customDefault?.eventPosition || (
+          eventName.toLowerCase().includes("start")
+            ? "START"
+            : eventName.toLowerCase().includes("end")
+            ? "END"
+            : eventName
+        ));
+    if (isCrossingEvent && crossingOverrides) {
+      mappedEventPosition = crossingOverrides.orientation.toLowerCase().includes("over") ? "OVER" : "UNDER";
+    }
+
+    // Resolve Description template & findings
     let mappedDescription = `${eventName} recorded at KP ${finalKpStr} [${kpSource === "ROV_DATA_STRING" ? "Live ROV Data String" : "Calculated KP Sync"}] during ${inspMethod} survey`;
-    if (customDefault?.eventDescription) {
+    let mappedFindings = customDefault?.findings || `${eventName} recorded`;
+
+    if (burialEndOverrides) {
+      mappedDescription = `LENGTH:${burialEndOverrides.lengthPrimary}/${burialEndOverrides.lengthSecondary} COVERAGE:${burialEndOverrides.coveragePct}%`;
+      mappedFindings = `Pipeline burial section ended at KP ${finalKpStr}. LENGTH:${burialEndOverrides.lengthPrimary}/${burialEndOverrides.lengthSecondary} COVERAGE:${burialEndOverrides.coveragePct}%`;
+    } else if (spanEndOverrides) {
+      mappedDescription = `LENGTH:${spanEndOverrides.lengthPrimary}/${spanEndOverrides.lengthSecondary} HEIGHT:${spanEndOverrides.heightPrimary}/${spanEndOverrides.heightSecondary}`;
+      mappedFindings = `Free span ended at KP ${finalKpStr}. LENGTH:${spanEndOverrides.lengthPrimary}/${spanEndOverrides.lengthSecondary} HEIGHT:${spanEndOverrides.heightPrimary}/${spanEndOverrides.heightSecondary}`;
+    } else if (isCrossingEvent && crossingOverrides) {
+      const descParts: string[] = [];
+      if (crossingOverrides.angle) descParts.push(`Angle: ${crossingOverrides.angle}°`);
+      if (crossingOverrides.gap) descParts.push(`Gap: ${crossingOverrides.gap}m`);
+      if (crossingOverrides.numSupports) descParts.push(`# Supports: ${crossingOverrides.numSupports}`);
+      mappedDescription = descParts.length > 0 ? descParts.join(", ") : "NO ANGLE / GAP / SUPPORTS DATA";
+
+      const findingParts: string[] = [crossingOverrides.orientation];
+      if (crossingOverrides.crossingLine) findingParts.push(`Line: ${crossingOverrides.crossingLine}`);
+      if (crossingOverrides.crossingKp) findingParts.push(`KP: ${crossingOverrides.crossingKp}`);
+      if (crossingOverrides.angle) findingParts.push(`Angle: ${crossingOverrides.angle}°`);
+      if (crossingOverrides.crossingType) findingParts.push(`Type: ${crossingOverrides.crossingType}`);
+      if (crossingOverrides.gap) findingParts.push(`Gap: ${crossingOverrides.gap}m`);
+      if (crossingOverrides.numSupports) findingParts.push(`# Supports: ${crossingOverrides.numSupports}`);
+      mappedFindings = findingParts.join(", ");
+    } else if (isDebris && positionOverrides) {
+      mappedDescription = positionOverrides.touching ? "TOUCHING THE LINE" : "NOT TOUCHING THE LINE";
+    } else if (isSubseaStructure && positionOverrides) {
+      mappedDescription = positionOverrides.isDamaged ? "Damaged" : "";
+    } else if (customDefault?.eventDescription) {
       mappedDescription = customDefault.eventDescription
         .replace(/\{kp\}/g, finalKpStr)
         .replace(/\{eventName\}/g, eventName)
@@ -1271,7 +1867,7 @@ export function PipelineEventMenuPanel({
       description: mappedDescription,
       eventDescription: mappedDescription,
       findingType: customDefault?.findingType,
-      findings: customDefault?.findings,
+      findings: mappedFindings,
       kp: finalKpStr,
       kpSource: kpSource,
       northing: telemetryNorthing,
@@ -1388,8 +1984,61 @@ export function PipelineEventMenuPanel({
           )}
         </div>
         <Badge variant="outline" className="text-[9px] font-semibold bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700/60 px-2 py-0.5 shadow-sm">
-          KP {liveKp.toFixed(3)}
+          {inspectionInfoSummary.posPrefix} {inspectionInfoSummary.curPosFormatted}
         </Badge>
+      </div>
+
+      {/* INSPECTION INFO Summary Card (Matching Reference Design) */}
+      <div className="bg-[#0b1626] border-b border-slate-800 px-3.5 py-2.5 shrink-0 text-slate-100 font-mono text-[11px] space-y-1 shadow-inner">
+        <div className="flex items-center justify-between pb-1 border-b border-slate-800/80 mb-1.5">
+          <span className="text-[11px] font-bold text-sky-400 tracking-wide font-sans">
+            INSPECTION INFO
+          </span>
+          <span className="w-3.5 h-3.5 rounded-full border border-sky-400/60 text-sky-400 flex items-center justify-center text-[9px] font-serif font-bold">
+            i
+          </span>
+        </div>
+
+        <div className="grid grid-cols-[115px_10px_1fr] items-center gap-y-1">
+          <span className="text-slate-300 font-sans">Current {inspectionInfoSummary.posPrefix}</span>
+          <span className="text-slate-400">:</span>
+          <span className="text-lime-400 font-bold">
+            {inspectionInfoSummary.completionText}
+          </span>
+
+          <span className="text-slate-300 font-sans">Inspection Flow</span>
+          <span className="text-slate-400">:</span>
+          <span className="text-lime-400 font-semibold">
+            {inspectionInfoSummary.flowLabel}
+          </span>
+
+          <span className="text-slate-300 font-sans">Next Field Joint</span>
+          <span className="text-slate-400">:</span>
+          <span className="text-lime-400">
+            {inspectionInfoSummary.nextFj.kpStr}{" "}
+            <span className="text-lime-300/80 text-[10px] font-normal">
+              {inspectionInfoSummary.nextFj.distStr}
+            </span>
+          </span>
+
+          <span className="text-slate-300 font-sans">Next Anode</span>
+          <span className="text-slate-400">:</span>
+          <span className="text-lime-400">
+            {inspectionInfoSummary.nextAnode.kpStr}{" "}
+            <span className="text-lime-300/80 text-[10px] font-normal">
+              {inspectionInfoSummary.nextAnode.distStr}
+            </span>
+          </span>
+
+          <span className="text-slate-300 font-sans">Next Crossing</span>
+          <span className="text-slate-400">:</span>
+          <span className="text-lime-400">
+            {inspectionInfoSummary.nextCrossing.kpStr}{" "}
+            <span className="text-lime-300/80 text-[10px] font-normal">
+              {inspectionInfoSummary.nextCrossing.distStr}
+            </span>
+          </span>
+        </div>
       </div>
 
       {/* Active Events Quick Stop Pill Buttons (All side-by-side in 1 Row) */}
@@ -2080,6 +2729,624 @@ export function PipelineEventMenuPanel({
               className="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 h-8"
             >
               Done &amp; Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Position Details Selection Dialog Modal (Debris & Subsea Structure) */}
+      <Dialog open={isPositionModalOpen} onOpenChange={setIsPositionModalOpen}>
+        <DialogContent className="max-w-[280px] sm:max-w-[300px] p-3.5 bg-[#e9e9e9] dark:bg-slate-900 border border-slate-400 dark:border-slate-700 rounded-none shadow-xl text-slate-900 dark:text-slate-100">
+          <DialogHeader className="pb-1 border-b border-slate-300 dark:border-slate-700">
+            <DialogTitle className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              {pendingPositionItem?.isSubseaStructure ? "Subsea Structure Details" : "Debris Details"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3">
+            {pendingPositionItem?.isSubseaStructure ? (
+              <>
+                {/* Damaged Checkbox */}
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="subsea-damaged-checkbox"
+                    checked={positionIsTouching}
+                    onCheckedChange={(checked) => setPositionIsTouching(!!checked)}
+                    className="w-4 h-4 rounded-none border-slate-500"
+                  />
+                  <label
+                    htmlFor="subsea-damaged-checkbox"
+                    className="text-xs font-medium text-slate-900 dark:text-slate-100 cursor-pointer select-none"
+                  >
+                    Damaged
+                  </label>
+                </div>
+
+                {/* Disabled Position Radio Buttons Box (as per reference screenshot) */}
+                <div className="p-2.5 bg-slate-200/60 dark:bg-slate-950/60 border border-slate-400 dark:border-slate-700 opacity-60 pointer-events-none select-none">
+                  <div className="grid grid-cols-2 gap-y-1.5 gap-x-3 text-xs">
+                    <label className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                      <input type="radio" disabled className="w-3.5 h-3.5" />
+                      <span>Port Side</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                      <input type="radio" disabled className="w-3.5 h-3.5" />
+                      <span>Starboard Side</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                      <input type="radio" disabled className="w-3.5 h-3.5" />
+                      <span>Over</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                      <input type="radio" disabled className="w-3.5 h-3.5" />
+                      <span>Under</span>
+                    </label>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Touching the Line Checkbox (Debris) */}
+                <div className="p-2.5 bg-white dark:bg-slate-950 rounded-md border border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
+                  <Checkbox
+                    id="debris-touching-checkbox"
+                    checked={positionIsTouching}
+                    onCheckedChange={(checked) => setPositionIsTouching(!!checked)}
+                  />
+                  <label
+                    htmlFor="debris-touching-checkbox"
+                    className="text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer select-none"
+                  >
+                    Touching the Line
+                  </label>
+                </div>
+
+                {/* Active Position Options for Debris */}
+                <div className="p-3 bg-white dark:bg-slate-950 rounded-md border border-slate-200 dark:border-slate-800 space-y-2">
+                  <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase block mb-1">
+                    POSITION
+                  </span>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {[
+                      { id: "PORT SIDE", label: "Port Side" },
+                      { id: "STARBOARD SIDE", label: "Starboard Side" },
+                      { id: "OVER", label: "Over" },
+                      { id: "UNDER", label: "Under" },
+                    ].map((option) => (
+                      <label
+                        key={option.id}
+                        onClick={() => setSelectedPosition(option.id as any)}
+                        className={`flex items-center gap-2 text-xs p-2 rounded cursor-pointer transition select-none ${
+                          selectedPosition === option.id
+                            ? "bg-teal-50 dark:bg-teal-950/80 text-teal-900 dark:text-teal-200 font-semibold border border-teal-300 dark:border-teal-700"
+                            : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 border border-transparent"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="position-option-radio"
+                          checked={selectedPosition === option.id}
+                          onChange={() => setSelectedPosition(option.id as any)}
+                          className="accent-teal-600 w-3.5 h-3.5"
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex justify-center pt-2 border-t border-slate-300 dark:border-slate-800">
+            <Button
+              size="sm"
+              onClick={() => {
+                if (pendingPositionItem) {
+                  const { catName, subCatName, eventName, eventId } = pendingPositionItem;
+                  setIsPositionModalOpen(false);
+                  setPendingPositionItem(null);
+                  handleTriggerEvent(catName, subCatName, eventName, eventId, {
+                    touching: positionIsTouching,
+                    position: selectedPosition,
+                    isDamaged: pendingPositionItem.isSubseaStructure ? positionIsTouching : undefined,
+                  });
+                }
+              }}
+              className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-400 dark:border-slate-600 h-7 text-xs font-semibold px-8 shadow-sm"
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pipeline Crossing Selection & Details Dialog Modal */}
+      <Dialog open={isCrossingModalOpen} onOpenChange={setIsCrossingModalOpen}>
+        <DialogContent className="max-w-xs sm:max-w-md bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-4 shadow-2xl">
+          <DialogHeader className="pb-2 border-b border-slate-300 dark:border-slate-800">
+            <DialogTitle className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+              Pipeline Crossing
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3">
+            {/* Orientation Radio Selector Box */}
+            <div className="p-2.5 bg-white dark:bg-slate-950 rounded border border-slate-300 dark:border-slate-800 space-y-1.5">
+              {[
+                "Over the Current Line",
+                "Under the Current Line",
+              ].map((opt) => (
+                <label
+                  key={opt}
+                  className="flex items-center gap-2 text-xs text-slate-800 dark:text-slate-200 cursor-pointer select-none font-medium"
+                >
+                  <input
+                    type="radio"
+                    name="crossing-orientation-radio"
+                    checked={crossingOrientation === opt}
+                    onChange={() => setCrossingOrientation(opt as any)}
+                    className="accent-blue-600 w-3.5 h-3.5"
+                  />
+                  <span>{opt}</span>
+                </label>
+              ))}
+            </div>
+
+            {/* Row 1: Crossing Line | KP(km) | Angle */}
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="col-span-1 space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block">
+                  Crossing Line
+                </label>
+                <input
+                  type="text"
+                  value={crossingLineName}
+                  onChange={(e) => setCrossingLineName(e.target.value)}
+                  className="w-full h-7 px-2 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="col-span-1 space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block">
+                  KP(km)
+                </label>
+                <input
+                  type="text"
+                  value={crossingKp}
+                  onChange={(e) => setCrossingKp(e.target.value)}
+                  className="w-full h-7 px-2 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="col-span-1 space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block">
+                  Angle
+                </label>
+                <input
+                  type="text"
+                  value={crossingAngle}
+                  onChange={(e) => setCrossingAngle(e.target.value)}
+                  className="w-full h-7 px-2 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Crossing Type | Gap | # Supports */}
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="col-span-1 space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block">
+                  Crossing Type
+                </label>
+                <select
+                  value={crossingType}
+                  onChange={(e) => setCrossingType(e.target.value)}
+                  className="w-full h-7 px-1 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="CONVENTIONAL">CONVENTIONAL</option>
+                  <option value="HARD">HARD</option>
+                  <option value="SOFT">SOFT</option>
+                  <option value="BRIDGE">BRIDGE</option>
+                  <option value="TUNNEL">TUNNEL</option>
+                  <option value="MATTRESS">MATTRESS</option>
+                  <option value="SLEEPER">SLEEPER</option>
+                  <option value="OTHER">OTHER</option>
+                </select>
+              </div>
+
+              <div className="col-span-1 space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block">
+                  Gap
+                </label>
+                <input
+                  type="text"
+                  value={crossingGap}
+                  onChange={(e) => setCrossingGap(e.target.value)}
+                  className="w-full h-7 px-2 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="col-span-1 space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block">
+                  # Supports
+                </label>
+                <input
+                  type="text"
+                  value={crossingNumSupports}
+                  onChange={(e) => setCrossingNumSupports(e.target.value)}
+                  className="w-full h-7 px-2 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center pt-2 border-t border-slate-300 dark:border-slate-800">
+            <Button
+              size="sm"
+              onClick={() => {
+                if (pendingCrossingItem) {
+                  const { catName, subCatName, eventName, eventId } = pendingCrossingItem;
+                  setIsCrossingModalOpen(false);
+                  setPendingCrossingItem(null);
+                  handleTriggerEvent(
+                    catName,
+                    subCatName,
+                    eventName,
+                    eventId,
+                    undefined,
+                    {
+                      orientation: crossingOrientation,
+                      crossingLine: crossingLineName,
+                      crossingKp,
+                      angle: crossingAngle,
+                      crossingType,
+                      gap: crossingGap,
+                      numSupports: crossingNumSupports,
+                    }
+                  );
+                }
+              }}
+              className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-400 dark:border-slate-600 h-8 text-xs font-semibold px-8 shadow-sm"
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Span Length & Height Dialog Prompt for Seabed Profile Span End */}
+      <Dialog open={isSpanEndModalOpen} onOpenChange={setIsSpanEndModalOpen}>
+        <DialogContent className="max-w-[340px] p-4 bg-[#e9e9e9] dark:bg-slate-900 border border-slate-400 dark:border-slate-700 rounded-none shadow-xl text-slate-900 dark:text-slate-100">
+          <DialogHeader className="pb-1 border-b border-slate-300 dark:border-slate-700">
+            <DialogTitle className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              Span Length & Height
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-3 space-y-3 text-xs">
+            {/* Length Row */}
+            <div className="flex items-center gap-2">
+              <span className="w-16 text-slate-800 dark:text-slate-200 font-medium text-xs">Length</span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={spanLengthInput}
+                  onChange={(e) => setSpanLengthInput(e.target.value)}
+                  className="w-20 h-6 px-1.5 text-right font-mono text-xs bg-white dark:bg-slate-950 border border-slate-400 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="font-semibold text-xs text-red-700 dark:text-red-400">
+                  {unitSystem === "IMPERIAL" ? "ft" : "m"}
+                </span>
+              </div>
+              <span className="ml-auto font-mono text-xs text-slate-700 dark:text-slate-300">
+                {(() => {
+                  const val = parseFloat(spanLengthInput) || 0;
+                  if (unitSystem === "IMPERIAL") {
+                    return `${(val / 3.28084).toFixed(2)} m`;
+                  } else {
+                    return `${(val * 3.28084).toFixed(2)} ft`;
+                  }
+                })()}
+              </span>
+            </div>
+
+            {/* Height Row */}
+            <div className="flex items-center gap-2">
+              <span className="w-16 text-slate-800 dark:text-slate-200 font-medium text-xs">Height</span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={spanHeightInput}
+                  onChange={(e) => setSpanHeightInput(e.target.value)}
+                  className="w-20 h-6 px-1.5 text-right font-mono text-xs bg-white dark:bg-slate-950 border border-slate-400 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="font-semibold text-xs text-red-700 dark:text-red-400">
+                  {unitSystem === "IMPERIAL" ? "in" : "mm"}
+                </span>
+              </div>
+              <span className="ml-auto font-mono text-xs text-slate-700 dark:text-slate-300">
+                {(() => {
+                  const val = parseFloat(spanHeightInput) || 0;
+                  if (unitSystem === "IMPERIAL") {
+                    return `${(val * 25.4).toFixed(1)} mm`;
+                  } else {
+                    return `${(val / 25.4).toFixed(2)} in`;
+                  }
+                })()}
+              </span>
+            </div>
+
+            {/* Calculation Method Selection */}
+            <div className="pt-2 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-[11px]">
+              <span className="text-slate-600 dark:text-slate-400">Calc Mode:</span>
+              <div className="flex gap-2">
+                <label className="flex items-center gap-1 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="span-calc-mode"
+                    checked={spanCalcMode === "KP"}
+                    onChange={() => {
+                      setSpanCalcMode("KP");
+                      const { numKp: endKp } = resolveEffectiveKp();
+                      if (spanStartKp !== null && endKp > spanStartKp) {
+                        const lenM = Math.abs(endKp - spanStartKp) * 1000;
+                        const finalLen = unitSystem === "IMPERIAL" ? (lenM * 3.28084).toFixed(2) : lenM.toFixed(2);
+                        setSpanLengthInput(finalLen);
+                      }
+                    }}
+                    className="accent-blue-600"
+                  />
+                  <span>KP Diff</span>
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="span-calc-mode"
+                    checked={spanCalcMode === "NORTHING_EASTING"}
+                    onChange={() => {
+                      setSpanCalcMode("NORTHING_EASTING");
+                      let curNorth: number | null = null;
+                      let curEast: number | null = null;
+                      if (effectiveConnected && Array.isArray(rovConnectionFields)) {
+                        rovConnectionFields.forEach((f) => {
+                          if (f.value && f.value !== "--") {
+                            const tf = (f.targetField || f.label || "").toLowerCase().trim();
+                            if (tf.includes("northing")) curNorth = parseFloat(f.value);
+                            if (tf.includes("easting")) curEast = parseFloat(f.value);
+                          }
+                        });
+                      }
+                      if (typeof window !== "undefined") {
+                        if (curNorth === null && (window as any).rovTelemetryNorthing) curNorth = parseFloat(String((window as any).rovTelemetryNorthing));
+                        if (curEast === null && (window as any).rovTelemetryEasting) curEast = parseFloat(String((window as any).rovTelemetryEasting));
+                      }
+                      if (spanStartNorthing !== null && spanStartEasting !== null && curNorth !== null && curEast !== null) {
+                        const dN = curNorth - spanStartNorthing;
+                        const dE = curEast - spanStartEasting;
+                        const distM = Math.sqrt(dN * dN + dE * dE);
+                        if (!isNaN(distM) && distM > 0) {
+                          const finalLen = unitSystem === "IMPERIAL" ? (distM * 3.28084).toFixed(2) : distM.toFixed(2);
+                          setSpanLengthInput(finalLen);
+                        }
+                      }
+                    }}
+                    className="accent-blue-600"
+                  />
+                  <span>N / E Dist</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center pt-2 border-t border-slate-300 dark:border-slate-800">
+            <Button
+              size="sm"
+              onClick={() => {
+                if (pendingSpanEndItem) {
+                  const { catName, subCatName, eventName, eventId } = pendingSpanEndItem;
+                  const lengthVal = parseFloat(spanLengthInput) || 0;
+                  const heightVal = parseFloat(spanHeightInput) || 0;
+
+                  let lengthPrimary = "";
+                  let lengthSecondary = "";
+                  let heightPrimary = "";
+                  let heightSecondary = "";
+
+                  if (unitSystem === "IMPERIAL") {
+                    lengthPrimary = `${lengthVal.toFixed(2)}ft`;
+                    lengthSecondary = `${(lengthVal / 3.28084).toFixed(2)}m`;
+                    heightPrimary = `${heightVal.toFixed(2)}in`;
+                    heightSecondary = `${(heightVal * 25.4).toFixed(1)}mm`;
+                  } else {
+                    lengthPrimary = `${lengthVal.toFixed(2)}m`;
+                    lengthSecondary = `${(lengthVal * 3.28084).toFixed(2)}ft`;
+                    heightPrimary = `${heightVal.toFixed(1)}mm`;
+                    heightSecondary = `${(heightVal / 25.4).toFixed(2)}in`;
+                  }
+
+                  setIsSpanEndModalOpen(false);
+                  setPendingSpanEndItem(null);
+
+                  handleTriggerEvent(
+                    catName,
+                    subCatName,
+                    eventName,
+                    eventId,
+                    undefined,
+                    undefined,
+                    {
+                      lengthPrimary,
+                      lengthSecondary,
+                      heightPrimary,
+                      heightSecondary,
+                      lengthValueNum: lengthVal,
+                      heightValueNum: heightVal,
+                    }
+                  );
+                }
+              }}
+              className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-400 dark:border-slate-600 h-7 text-xs font-semibold px-8 shadow-sm"
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Burial Length & Coverage Dialog Prompt for Burial End */}
+      <Dialog open={isBurialEndModalOpen} onOpenChange={setIsBurialEndModalOpen}>
+        <DialogContent className="max-w-[340px] p-4 bg-[#e9e9e9] dark:bg-slate-900 border border-slate-400 dark:border-slate-700 rounded-none shadow-xl text-slate-900 dark:text-slate-100">
+          <DialogHeader className="pb-1 border-b border-slate-300 dark:border-slate-700">
+            <DialogTitle className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              Burial Length & Coverage
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-3 space-y-3 text-xs">
+            {/* Length Row */}
+            <div className="flex items-center gap-2">
+              <span className="w-16 text-slate-800 dark:text-slate-200 font-medium text-xs">Length</span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={burialLengthInput}
+                  onChange={(e) => setBurialLengthInput(e.target.value)}
+                  className="w-20 h-6 px-1.5 text-right font-mono text-xs bg-white dark:bg-slate-950 border border-slate-400 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="font-semibold text-xs text-red-700 dark:text-red-400">
+                  {unitSystem === "IMPERIAL" ? "ft" : "m"}
+                </span>
+              </div>
+              <span className="ml-auto font-mono text-xs text-slate-700 dark:text-slate-300">
+                {(() => {
+                  const val = parseFloat(burialLengthInput) || 0;
+                  if (unitSystem === "IMPERIAL") {
+                    return `${(val / 3.28084).toFixed(2)} ft`;
+                  } else {
+                    return `${(val * 3.28084).toFixed(2)} ft`;
+                  }
+                })()}
+              </span>
+            </div>
+
+            {/* Coverage Row */}
+            <div className="flex items-center gap-2">
+              <span className="w-16 text-slate-800 dark:text-slate-200 font-medium text-xs">Coverage</span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={burialCoverageInput}
+                  onChange={(e) => setBurialCoverageInput(e.target.value)}
+                  className="w-20 h-6 px-1.5 text-right font-mono text-xs bg-white dark:bg-slate-950 border border-slate-400 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="font-semibold text-xs text-red-700 dark:text-red-400">%</span>
+              </div>
+            </div>
+
+            {/* Calculation Method Selection */}
+            <div className="pt-2 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-[11px]">
+              <span className="text-slate-600 dark:text-slate-400">Calc Mode:</span>
+              <div className="flex gap-2">
+                <label className="flex items-center gap-1 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="burial-calc-mode"
+                    checked={burialCalcMode === "KP"}
+                    onChange={() => {
+                      setBurialCalcMode("KP");
+                      const { numKp: endKp } = resolveEffectiveKp();
+                      if (burialStartKp !== null && endKp > burialStartKp) {
+                        const lenM = Math.abs(endKp - burialStartKp) * 1000;
+                        const finalLen = unitSystem === "IMPERIAL" ? (lenM * 3.28084).toFixed(2) : lenM.toFixed(2);
+                        setBurialLengthInput(finalLen);
+                      }
+                    }}
+                    className="accent-blue-600"
+                  />
+                  <span>KP Diff</span>
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="burial-calc-mode"
+                    checked={burialCalcMode === "NORTHING_EASTING"}
+                    onChange={() => {
+                      setBurialCalcMode("NORTHING_EASTING");
+                      let curNorth: number | null = null;
+                      let curEast: number | null = null;
+                      if (effectiveConnected && Array.isArray(rovConnectionFields)) {
+                        rovConnectionFields.forEach((f) => {
+                          if (f.value && f.value !== "--") {
+                            const tf = (f.targetField || f.label || "").toLowerCase().trim();
+                            if (tf.includes("northing")) curNorth = parseFloat(f.value);
+                            if (tf.includes("easting")) curEast = parseFloat(f.value);
+                          }
+                        });
+                      }
+                      if (typeof window !== "undefined") {
+                        if (curNorth === null && (window as any).rovTelemetryNorthing) curNorth = parseFloat(String((window as any).rovTelemetryNorthing));
+                        if (curEast === null && (window as any).rovTelemetryEasting) curEast = parseFloat(String((window as any).rovTelemetryEasting));
+                      }
+                      if (burialStartNorthing !== null && burialStartEasting !== null && curNorth !== null && curEast !== null) {
+                        const dN = curNorth - burialStartNorthing;
+                        const dE = curEast - burialStartEasting;
+                        const distM = Math.sqrt(dN * dN + dE * dE);
+                        if (!isNaN(distM) && distM > 0) {
+                          const finalLen = unitSystem === "IMPERIAL" ? (distM * 3.28084).toFixed(2) : distM.toFixed(2);
+                          setBurialLengthInput(finalLen);
+                        }
+                      }
+                    }}
+                    className="accent-blue-600"
+                  />
+                  <span>N / E Dist</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center pt-2 border-t border-slate-300 dark:border-slate-800">
+            <Button
+              size="sm"
+              onClick={() => {
+                if (pendingBurialEndItem) {
+                  const { catName, subCatName, eventName, eventId } = pendingBurialEndItem;
+                  const lengthVal = parseFloat(burialLengthInput) || 0;
+                  const covVal = parseFloat(burialCoverageInput) || 100;
+
+                  let lengthPrimary = "";
+                  let lengthSecondary = "";
+
+                  if (unitSystem === "IMPERIAL") {
+                    lengthPrimary = `${lengthVal.toFixed(2)}ft`;
+                    lengthSecondary = `${(lengthVal / 3.28084).toFixed(2)}m`;
+                  } else {
+                    lengthPrimary = `${lengthVal.toFixed(2)}m`;
+                    lengthSecondary = `${(lengthVal * 3.28084).toFixed(2)}ft`;
+                  }
+
+                  setIsBurialEndModalOpen(false);
+                  setPendingBurialEndItem(null);
+
+                  handleTriggerEvent(
+                    catName,
+                    subCatName,
+                    eventName,
+                    eventId,
+                    undefined,
+                    undefined,
+                    undefined,
+                    {
+                      lengthPrimary,
+                      lengthSecondary,
+                      coveragePct: covVal.toFixed(1),
+                    }
+                  );
+                }
+              }}
+              className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-400 dark:border-slate-600 h-7 text-xs font-semibold px-8 shadow-sm"
+            >
+              OK
             </Button>
           </div>
         </DialogContent>

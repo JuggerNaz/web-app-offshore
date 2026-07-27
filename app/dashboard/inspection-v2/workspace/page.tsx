@@ -7251,6 +7251,13 @@ function V10PreviewLayout() {
               currentKp={headerData.kp || "0.000"}
               inspMethod={inspMethod}
               isRovDataConnected={dataAcqConnected}
+              unitSystem={unitSystem}
+              totalPipelineLength={selectedComp?.raw?.metadata?.length || selectedComp?.raw?.length || (headerData as any).totalLength || 0}
+              inspectionDirection={inspectionDirection}
+              inspectionLocation={inspectionLocation}
+              structureId={structureId || undefined}
+              sowReportNo={headerData.sowReportNo}
+              jobPackId={jobPackId || undefined}
               onSelectEvent={async (evtData) => {
                 if (!manualOverride) {
                   if (!activeDep?.id || activeDep?.id === "AWAITING") {
@@ -7276,45 +7283,65 @@ function V10PreviewLayout() {
                 if (!targetComp) {
                   targetComp = (componentsSow && componentsSow.length > 0)
                     ? componentsSow[0]
-                    : {
-                        id: 999999,
-                        q_id: headerData.structureName || "PIPELINE-01",
-                        name: headerData.structureName || "Pipeline Main Line",
-                        type: "PIPELINE",
+                    : null;
+                }
+
+                // Auto-create or resolve a default Pipeline component in structure_components if not present
+                if (!targetComp && (isPipeline || headerData.structureType === "pipeline") && structureId) {
+                  try {
+                    const parsedStructId = parseInt(structureId);
+                    // Query if a Pipeline component already exists for this structure
+                    const { data: existingComps } = await supabase
+                      .from("structure_components")
+                      .select("id, q_id, name, type")
+                      .eq("structure_id", parsedStructId)
+                      .limit(1);
+
+                    if (existingComps && existingComps.length > 0) {
+                      targetComp = {
+                        id: existingComps[0].id,
+                        q_id: existingComps[0].q_id || headerData.structureName || "PIPELINE-01",
+                        name: existingComps[0].name || headerData.structureName || "Pipeline Main Line",
+                        type: existingComps[0].type || "PIPELINE",
                       };
-                  setSelectedComp(targetComp);
-                }
+                      setSelectedComp(targetComp);
+                    } else {
+                      // Create default Pipeline component in structure_components
+                      const { data: createdComp, error: createErr } = await supabase
+                        .from("structure_components")
+                        .insert({
+                          structure_id: parsedStructId,
+                          q_id: headerData.structureName || "PIPELINE-01",
+                          name: headerData.structureName || "Pipeline Main Line",
+                          type: "PIPELINE",
+                        })
+                        .select("id, q_id, name, type")
+                        .single();
 
-                const currentFindingType = evtData.findingType || "Complete";
-                setFindingType(currentFindingType as any);
-
-                // Extract live ROV data string telemetry if connected
-                const rovAcq: Record<string, any> = {};
-                if (dataAcqConnected && Array.isArray(dataAcqFields)) {
-                  dataAcqFields.forEach((f) => {
-                    if (f.value && f.value !== "--") {
-                      const tf = (f.targetField || f.label || "").toLowerCase().trim();
-                      if (tf.includes("kp") || tf === "kp" || tf === "fp_kp") rovAcq.fp_kp = f.value;
-                      if (tf.includes("northing") || tf === "northing") rovAcq.northing = f.value;
-                      if (tf.includes("easting") || tf === "easting") rovAcq.easting = f.value;
-                      if (tf.includes("depth") || tf === "depth") rovAcq.depth = f.value;
-                      if (tf.includes("cp") || tf === "cp_fg_rdg" || tf === "cp_fg") rovAcq.cp_fg_rdg = f.value;
-                      if (tf.includes("heading") || tf === "rov_heading") rovAcq.rov_heading = f.value;
+                      if (!createErr && createdComp) {
+                        targetComp = createdComp;
+                        setSelectedComp(targetComp);
+                      }
                     }
-                  });
+                  } catch (compErr) {
+                    console.warn("[onSelectEvent] Auto-creating Pipeline component warning:", compErr);
+                  }
                 }
 
-                const now = new Date();
-                const formattedDate = format(now, "yyyy-MM-dd");
-                const formattedTime = format(now, "HH:mm:ss");
+                // Strict Validation: Component ID MUST be present and valid before allowing inspection data creation
+                if (!targetComp?.id || targetComp.id === 999999) {
+                  toast.error("Cannot save inspection event: A registered Component is required. Please select or register a Component first.");
+                  return;
+                }
 
-                const validCompId = (isPipeline || headerData.structureType === "pipeline")
-                  ? ((targetComp?.id && targetComp.id !== 999999) ? targetComp.id : parseInt(structureId || "0"))
-                  : (targetComp?.id || parseInt(structureId || "0"));
-
+                const validCompId = targetComp.id;
                 const validCompType = (isPipeline || headerData.structureType === "pipeline")
                   ? "PP"
                   : (targetComp?.raw?.code || targetComp?.raw?.metadata?.comp_type || targetComp?.type || "PP");
+
+                const now = new Date();
+                const formattedDate = now.toISOString().split("T")[0];
+                const formattedTime = now.toTimeString().split(" ")[0];
 
                 const eventProps = {
                   event_name: evtData.eventName,
@@ -7328,16 +7355,16 @@ function V10PreviewLayout() {
                   insp_mode: inspectionLocation,
                   inspection_direction: inspectionDirection,
                   inspection_location: inspectionLocation,
-                  kp: evtData.kp || rovAcq.fp_kp || headerData.kp || "0.0000",
-                  fp_kp: evtData.kp || rovAcq.fp_kp || headerData.kp || "0.0000",
-                  northing: evtData.northing || rovAcq.northing || "",
-                  easting: evtData.easting || rovAcq.easting || "",
-                  depth: evtData.depth || rovAcq.depth || "",
-                  verification_depth: evtData.depth || rovAcq.depth || "",
-                  cp_fg_rdg: evtData.cp_fg_rdg || evtData.cp_fg || rovAcq.cp_fg_rdg || "",
-                  cp_fg: evtData.cp_fg_rdg || evtData.cp_fg || rovAcq.cp_fg_rdg || "",
-                  rov_heading: evtData.rov_heading || evtData.heading || rovAcq.rov_heading || "",
-                  heading: evtData.rov_heading || evtData.heading || rovAcq.rov_heading || "",
+                  kp: evtData.kp || headerData.kp || "0.0000",
+                  fp_kp: evtData.kp || headerData.kp || "0.0000",
+                  northing: evtData.northing || "",
+                  easting: evtData.easting || "",
+                  depth: evtData.depth || "",
+                  verification_depth: evtData.depth || "",
+                  cp_fg_rdg: evtData.cp_fg_rdg || evtData.cp_fg || "",
+                  cp_fg: evtData.cp_fg_rdg || evtData.cp_fg || "",
+                  rov_heading: evtData.rov_heading || evtData.heading || "",
+                  heading: evtData.rov_heading || evtData.heading || "",
                   tape_count_no: currentCounter,
                   counter: currentCounter,
                   _meta_timecode: currentCounter,
@@ -7350,8 +7377,10 @@ function V10PreviewLayout() {
 
                 // DIRECT RECORD INSERTION INTO `insp_records` TABLE
                 try {
-                  const user = (await supabase.auth.getUser()).data.user;
-                  const isAnomaly = currentFindingType === "Anomaly";
+                  const userRes = await supabase.auth.getUser();
+                  const user = userRes?.data?.user;
+                  const evAny = evtData as any;
+                  const isAnomaly = Boolean(evAny?.isAnomaly || evAny?.hasAnomaly || String(evAny?.status || "").toUpperCase() === "ANOMALY");
 
                   const recordPayload: Record<string, any> = {
                     company_id: activeCompanyId,
@@ -7372,7 +7401,7 @@ function V10PreviewLayout() {
                     tape_id: tapeId || null,
                     tape_count_no: vidTimer,
                     elevation: eventProps.depth || null,
-                    fp_kp: parseFloat(eventProps.kp) || 0,
+                    fp_kp: parseFloat(String(eventProps.kp)) || 0,
                     cr_user: user?.id || "system",
                     cr_date: now.toISOString(),
                     inspection_data: eventProps,
@@ -7649,6 +7678,7 @@ function V10PreviewLayout() {
         jobpackId={jobPackId || null}
         sowReportNo={headerData.sowReportNo}
         headerData={headerData}
+        isPipeline={isPipeline || headerData.structureType === "pipeline"}
       />
 
       {/* DEPLOYMENTS SUB-HEADER */}
