@@ -44,6 +44,8 @@ interface EventsTablePanelProps {
   syncLoading: boolean;
   recordSearchQuery: string;
   setRecordSearchQuery: (val: string) => void;
+  searchMode?: "ANY" | "ALL" | "EXACT";
+  setSearchMode?: (mode: "ANY" | "ALL" | "EXACT") => void;
   displayRecords: any[];
   sortedRecords: any[];
   capturedEventsPipWindow: any;
@@ -71,6 +73,8 @@ export function EventsTablePanel({
   syncLoading,
   recordSearchQuery,
   setRecordSearchQuery,
+  searchMode = "ALL",
+  setSearchMode,
   displayRecords,
   sortedRecords,
   capturedEventsPipWindow,
@@ -128,14 +132,39 @@ export function EventsTablePanel({
           </Badge>
         </div>
 
-        <div className="flex-1 max-w-sm mx-4 relative hidden md:block">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-          <Input
-            placeholder="Smart Filter..."
-            className="h-6 text-[9px] pl-8 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight"
-            value={recordSearchQuery}
-            onChange={(e) => setRecordSearchQuery(e.target.value)}
-          />
+        <div className="flex-1 max-w-md mx-4 relative hidden md:flex items-center gap-1">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+            <Input
+              placeholder="Search terms (e.g. Anode, P1, 0.050)..."
+              className="h-6 text-[9px] pl-8 pr-2 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight rounded-md"
+              value={recordSearchQuery}
+              onChange={(e) => setRecordSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <Select
+            value={searchMode}
+            onValueChange={(val: "ANY" | "ALL" | "EXACT") => setSearchMode?.(val)}
+          >
+            <SelectTrigger 
+              className="h-6 w-[80px] text-[8px] font-black uppercase bg-slate-900/70 border-slate-700 text-cyan-400 focus:ring-0 focus:ring-offset-0 shrink-0"
+              title="Search Filter Mode: Match ALL conditions, ANY condition, or EXACT phrase"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-700 text-slate-200 min-w-[130px]">
+              <SelectItem value="ALL" className="text-[10px] font-bold">
+                <span className="text-cyan-400">Match ALL</span> (And)
+              </SelectItem>
+              <SelectItem value="ANY" className="text-[10px] font-bold">
+                <span className="text-emerald-400">Match ANY</span> (Or)
+              </SelectItem>
+              <SelectItem value="EXACT" className="text-[10px] font-bold">
+                <span className="text-amber-400">Exact Phrase</span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex items-center gap-2">

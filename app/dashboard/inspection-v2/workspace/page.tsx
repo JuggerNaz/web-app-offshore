@@ -407,6 +407,17 @@ function V10PreviewLayout() {
         }
         if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
           console.log("[DEBUG] Restoring layout from storage", parsed);
+          if (!parsed.global) parsed.global = {};
+          parsed.global.tabEnableClose = true;
+          parsed.global.tabSetEnableMaximize = true;
+          parsed.global.enableEdgeDock = true;
+          if (!parsed.borders) {
+            parsed.borders = [
+              { type: "border", location: "left", size: 280, children: [] },
+              { type: "border", location: "right", size: 300, children: [] },
+              { type: "border", location: "bottom", size: 220, children: [] },
+            ];
+          }
           setLayoutModel(Model.fromJson(parsed));
           return;
         }
@@ -418,12 +429,17 @@ function V10PreviewLayout() {
     console.log("[DEBUG] Using default layout model");
     const defaultModel: IJsonModel = {
       global: { 
-        tabEnableClose: false, 
+        tabEnableClose: true, 
         tabSetEnableMaximize: true,
         tabSetEnableDivide: true,
         tabSetEnableDrop: true,
         enableEdgeDock: true,
       },
+      borders: [
+        { type: "border", location: "left", size: 280, children: [] },
+        { type: "border", location: "right", size: 300, children: [] },
+        { type: "border", location: "bottom", size: 220, children: [] },
+      ],
       layout: {
         type: "row",
         weight: 100,
@@ -450,7 +466,7 @@ function V10PreviewLayout() {
                 type: "tabset",
                 weight: 30,
                 children: [
-                  { type: "tab", name: "Live Preview", component: "videoPreview" },
+                  { type: "tab", name: "Photo / Video Grab", component: "videoPreview" },
                 ],
               },
             ],
@@ -512,6 +528,71 @@ function V10PreviewLayout() {
       window.location.reload();
     }
   }, []);
+
+  // Track closed floating panels so user can reopen individually
+  const allWorkspacePanels = useMemo(() => [
+    { id: "opsLog", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log" },
+    { id: "videoLog", name: "Video Log" },
+    { id: "videoPreview", name: "Photo / Video Grab" },
+    { id: "form", name: "Inspection Form" },
+    { id: "events", name: "Captured Events" },
+    { id: "components", name: isPipeline ? "Event Menu" : "Component List" },
+    { id: "history", name: "History Data" },
+  ], [inspMethod, isPipeline]);
+
+  const closedPanels = useMemo(() => {
+    if (!layoutModel) return [];
+    const openComponents = new Set<string>();
+    const visitNode = (node: any) => {
+      if (node.component) {
+        openComponents.add(node.component);
+      }
+      if (node.children) {
+        node.children.forEach(visitNode);
+      }
+    };
+    try {
+      const json = layoutModel.toJson();
+      visitNode(json.layout);
+      if (json.borders) {
+        json.borders.forEach(visitNode);
+      }
+    } catch (e) {
+      console.error("Error inspecting layout nodes", e);
+    }
+    return allWorkspacePanels.filter((p) => !openComponents.has(p.id));
+  }, [layoutModel, allWorkspacePanels]);
+
+  const handleRestorePanel = useCallback((panelId: string) => {
+    if (!layoutModel) return;
+    try {
+      const json = layoutModel.toJson();
+      const panelInfo = allWorkspacePanels.find((p) => p.id === panelId);
+      const tabName = panelInfo?.name || panelId;
+      
+      const newTab = { type: "tab", name: tabName, component: panelId };
+
+      // Find first row or tabset to insert tab into
+      const layoutObj = json.layout as any;
+      if (layoutObj && layoutObj.children && layoutObj.children.length > 0) {
+        const firstRow = layoutObj.children[0];
+        if (firstRow && firstRow.children && firstRow.children.length > 0) {
+          const firstTabset = firstRow.children[0];
+          if (firstTabset && firstTabset.children) {
+            firstTabset.children.push(newTab);
+          }
+        }
+      }
+      const updatedModel = Model.fromJson(json);
+      onLayoutChange(updatedModel);
+      toast.success(`Reopened ${tabName} window`);
+    } catch (err) {
+      console.error("Failed to restore panel", err);
+      // Fallback reset
+      localStorage.removeItem("inspection-workspace-layout-v2");
+      window.location.reload();
+    }
+  }, [layoutModel, allWorkspacePanels, onLayoutChange]);
 
 
   // Fetch Global Unit Preference
@@ -627,12 +708,12 @@ function V10PreviewLayout() {
     return sortableRecords;
   }, [currentRecords, sortConfig]);
 
-  const displayRecords = useMemo(() => {
-    const query = recordSearchQuery.toLowerCase().trim();
-    if (!query) return sortedRecords;
+  // Search Matching Mode ("ANY" | "ALL" | "EXACT")
+  const [searchMode, setSearchMode] = useState<"ANY" | "ALL" | "EXACT">("ALL");
 
-    const terms = query.split(/\s+/).filter(t => t.length > 0);
-    if (terms.length === 0) return sortedRecords;
+  const displayRecords = useMemo(() => {
+    const rawQuery = recordSearchQuery.trim();
+    if (!rawQuery) return sortedRecords;
 
     // Helper to extract all searchable data from a record
     const getSearchableText = (r: any) => {
@@ -689,41 +770,42 @@ function V10PreviewLayout() {
       return texts.map(t => String(t).toLowerCase()).join(" ");
     };
 
-    // Helper for boundary-aware matching
-    const matchesWord = (text: string, pattern: string) => {
+    // Helper for boundary-aware or substring matching
+    const matchesTerm = (text: string, term: string) => {
+      const lowerTerm = term.toLowerCase();
+      if (!lowerTerm) return true;
       try {
-        const hasWildcard = pattern.includes('*') || pattern.includes('?');
-        const escaped = pattern
-          .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-          .replace(/\\\*/g, '.*')
-          .replace(/\\\?/g, '.');
-        
-        if (hasWildcard) {
-          // For wildcards, we allow partial matches without strict word boundaries
-          return new RegExp(escaped, 'i').test(text);
-        }
-
-        // For regular terms, use strict boundary-aware regex
-        const regex = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
-        return regex.test(text);
+        const escaped = lowerTerm.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(escaped, 'i').test(text);
       } catch (e) {
-        return text.includes(pattern);
+        return text.includes(lowerTerm);
       }
     };
 
-    // PHASE 1: Try to find any record that matches the ENTIRE phrase exactly (with boundaries)
-    const exactMatches = sortedRecords.filter(r => matchesWord(getSearchableText(r), query));
-    
-    if (exactMatches.length > 0) {
-      return exactMatches;
+    // Support comma-separated conditions or space-separated terms
+    const conditions = rawQuery.includes(",")
+      ? rawQuery.split(",").map((s) => s.trim()).filter(Boolean)
+      : rawQuery.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+
+    if (conditions.length === 0) return sortedRecords;
+
+    if (searchMode === "EXACT") {
+      return sortedRecords.filter((r) => matchesTerm(getSearchableText(r), rawQuery));
     }
 
-    // PHASE 2: Fallback - only if no exact matches found, break up and search terms
-    return sortedRecords.filter(r => {
+    if (searchMode === "ANY") {
+      return sortedRecords.filter((r) => {
+        const fullText = getSearchableText(r);
+        return conditions.some((cond) => matchesTerm(fullText, cond));
+      });
+    }
+
+    // Default "ALL" - Multi-condition AND search
+    return sortedRecords.filter((r) => {
       const fullText = getSearchableText(r);
-      return terms.every(term => matchesWord(fullText, term));
+      return conditions.every((cond) => matchesTerm(fullText, cond));
     });
-  }, [sortedRecords, recordSearchQuery]);
+  }, [sortedRecords, recordSearchQuery, searchMode]);
   const [isFetchingDeps, setIsFetchingDeps] = useState(true);
   const [isDeploymentValid, setIsDeploymentValid] = useState(true);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -7221,6 +7303,8 @@ function V10PreviewLayout() {
             syncLoading={syncLoading}
             recordSearchQuery={recordSearchQuery}
             setRecordSearchQuery={setRecordSearchQuery}
+            searchMode={searchMode}
+            setSearchMode={setSearchMode}
             displayRecords={displayRecords}
             sortedRecords={sortedRecords}
             capturedEventsPipWindow={capturedEventsPipWindow}
@@ -7667,6 +7751,8 @@ function V10PreviewLayout() {
         onSummaryOpen={() => setIsSummaryOpen(true)}
         setIsReportWizardOpen={setIsReportWizardOpen}
         onResetLayout={handleResetLayout}
+        closedPanels={closedPanels}
+        onRestorePanel={handleRestorePanel}
       />
 
       {/* ── INSPECTION SUMMARY PANEL ───────────────────────────────────────── */}
@@ -8099,6 +8185,9 @@ function V10PreviewLayout() {
             factory={layoutFactory} 
             onModelChange={onLayoutChange} 
             onRenderTab={(node: TabNode, renderValues: any) => {
+              if (node.getComponent() === "videoPreview") {
+                renderValues.content = "Photo / Video Grab";
+              }
               if (node.getComponent() === "opsLog") {
                 renderValues.content = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
               }

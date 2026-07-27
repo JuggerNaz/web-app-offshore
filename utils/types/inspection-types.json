@@ -3257,7 +3257,7 @@
                 },
                 {
                     "name": "inc_reading_additional",
-                    "label": "Inclimeter Reading Additional",
+                    "label": "Inclinometer Reading Additional",
                     "type": "repeater",
                     "subFields": [
                         {
