@@ -4598,143 +4598,145 @@ function V10PreviewLayout() {
     headerData.sowReportNo,
   ]);
 
-  // Handle method switch overriding deps
-  useEffect(() => {
-    async function fetchDeps() {
-      setIsFetchingDeps(true);
-      setIsReadyForComps(false);
-      // Clear current states when switching modes
-      setDeployments([]);
-      setActiveDep(null);
-      setCurrentRecords([]);
-      setVideoEvents([]);
-      setJobTapes([]);
-      setSelectedComp(null);
-      setActiveSpec(null);
-      setVidState("IDLE");
-      setVidTimer(0);
-      setTapeNo("");
-      setTapeId(null);
-      setCurrentMovement("Awaiting Deployment");
-      setDiveStartTime(null);
-      setDiveEndTime(null);
-      setRequiredSpec(null);
-      setRequiredProps({});
-      setRequiredRecordId(null);
+  const fetchDeployments = useCallback(async () => {
+    setIsFetchingDeps(true);
+    setIsReadyForComps(false);
 
-      if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) {
-        setIsFetchingDeps(false);
-        setIsReadyForComps(true);
-        return;
+    if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) {
+      setIsFetchingDeps(false);
+      setIsReadyForComps(true);
+      return;
+    }
+
+    try {
+      const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
+      const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
+
+      console.log(
+        `[fetchDeps] Starting fetch from ${table} | jobpack: ${queryJobPackId} | structure: ${structureId}`
+      );
+
+      // Use the primary key column for ordering (created_at / cr_date may not exist)
+      const idCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+
+      let query = supabase
+        .from(table)
+        .select("*")
+        .eq("jobpack_id", queryJobPackId)
+        .order(idCol, { ascending: false });
+
+      if (structureId && !isNaN(Number(structureId))) {
+        query = query.eq("structure_id", Number(structureId));
       }
 
-      try {
-        const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
-        const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
+      const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
 
-        console.log(
-          `[fetchDeps] Starting fetch from ${table} | jobpack: ${queryJobPackId} | structure: ${structureId}`
+      let recQuery = supabase
+        .from("insp_records")
+        .select(targetColumn)
+        .eq("jobpack_id", queryJobPackId)
+        .eq("structure_id", Number(structureId))
+        .not(targetColumn, "is", null)
+        .limit(20); // Check for potential orphans
+
+      // Execute primary deployment query and records fallback query in parallel
+      const [primaryRes, recJobsRes] = await Promise.all([
+        query,
+        recQuery,
+      ]);
+
+      let results = primaryRes.data || [];
+      if (primaryRes.error) {
+        console.warn("[fetchDeps] Primary fetch error:", primaryRes.error.message);
+        results = [];
+      }
+
+      const recJobs = recJobsRes.data;
+      const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
+
+      if (recJobs && recJobs.length > 0) {
+        const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
+          (id) => !existingJobIds.has(id)
         );
 
-        // Use the primary key column for ordering (created_at / cr_date may not exist)
-        const idCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-
-        let query = supabase
-          .from(table)
-          .select("*")
-          .eq("jobpack_id", queryJobPackId)
-          .order(idCol, { ascending: false });
-
-        if (structureId && !isNaN(Number(structureId))) {
-          query = query.eq("structure_id", Number(structureId));
+        if (orphanedJobIds.length > 0) {
+          console.log("[fetchDeps] Merging orphaned job IDs from records:", orphanedJobIds);
+          const virtualJobs = orphanedJobIds.map((jid) => ({
+            [targetColumn]: jid,
+            dive_no: `Legacy-${jid}`,
+            diver_name: "Legacy Records",
+            status: "COMPLETED",
+            is_legacy: true,
+          }));
+          results = [...results, ...virtualJobs];
         }
-
-        const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-
-        let recQuery = supabase
-          .from("insp_records")
-          .select(targetColumn)
-          .eq("jobpack_id", queryJobPackId)
-          .eq("structure_id", Number(structureId))
-          .not(targetColumn, "is", null)
-          .limit(20); // Check for potential orphans
-
-        // Execute primary deployment query and records fallback query in parallel
-        const [primaryRes, recJobsRes] = await Promise.all([
-          query,
-          recQuery,
-        ]);
-
-        let results = primaryRes.data || [];
-        if (primaryRes.error) {
-          console.warn("[fetchDeps] Primary fetch error:", primaryRes.error.message);
-          results = [];
-        }
-
-        const recJobs = recJobsRes.data;
-        const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
-
-        if (recJobs && recJobs.length > 0) {
-          const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
-            (id) => !existingJobIds.has(id)
-          );
-
-          if (orphanedJobIds.length > 0) {
-            console.log("[fetchDeps] Merging orphaned job IDs from records:", orphanedJobIds);
-            const virtualJobs = orphanedJobIds.map((jid) => ({
-              [targetColumn]: jid,
-              dive_no: `Legacy-${jid}`,
-              diver_name: "Legacy Records",
-              status: "COMPLETED",
-              is_legacy: true,
-            }));
-            results = [...results, ...virtualJobs];
-          }
-        }
-
-        if (results.length > 0) {
-          console.log(`[fetchDeps] Mapping ${results.length} results from ${table}`);
-          const mapped = results.map((d) => {
-            // CRITICAL: Ensure we get the numeric ID for lookups
-            const rawId = d.dive_job_id || d.rov_job_id || d.id;
-            const idStr = String(rawId);
-
-            // jobNo: Prefer dive_no/deployment_no for display
-            let jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
-
-            // Add legacy indicator if applicable
-            if ((d as any).is_legacy) {
-              jNo = `Legacy-${rawId}`;
-            }
-
-            // name: Prefer diver_name/rov_system for display
-            const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
-
-            const dDate = d.created_at || d.date || d.dive_date || d.start_date || d.start_time;
-            console.log(`[fetchDeps] Mapped: No=${jNo}, Name=${dName}, ID=${idStr}, Date=${dDate}`);
-            return { id: idStr, jobNo: jNo, name: dName, created_at: dDate, raw: d };
-          });
-          setDeployments(mapped);
-
-          // If we have a saved selection or just pick the first
-          setActiveDep(mapped[0]);
-          console.log(
-            `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
-          );
-        } else {
-          console.warn("[fetchDeps] No deployment records found.");
-          setDeployments([]);
-          setActiveDep(null);
-        }
-      } catch (err) {
-        console.error("[fetchDeps] Critical error in fetchDeps:", err);
-      } finally {
-        setIsFetchingDeps(false);
-        setIsReadyForComps(true);
       }
+
+      if (results.length > 0) {
+        console.log(`[fetchDeps] Mapping ${results.length} results from ${table}`);
+        const mapped = results.map((d) => {
+          // CRITICAL: Ensure we get the numeric ID for lookups
+          const rawId = d.dive_job_id || d.rov_job_id || d.id;
+          const idStr = String(rawId);
+
+          // jobNo: Prefer dive_no/deployment_no for display
+          let jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
+
+          // Add legacy indicator if applicable
+          if ((d as any).is_legacy) {
+            jNo = `Legacy-${rawId}`;
+          }
+
+          // name: Prefer diver_name/rov_system for display
+          const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
+
+          const dDate = d.created_at || d.date || d.dive_date || d.start_date || d.start_time;
+          console.log(`[fetchDeps] Mapped: No=${jNo}, Name=${dName}, ID=${idStr}, Date=${dDate}`);
+          return { id: idStr, jobNo: jNo, name: dName, created_at: dDate, raw: d };
+        });
+        setDeployments(mapped);
+
+        // Set the newly created or latest deployment as active smoothly
+        setActiveDep(mapped[0]);
+        console.log(
+          `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
+        );
+      } else {
+        console.warn("[fetchDeps] No deployment records found.");
+        setDeployments([]);
+        setActiveDep(null);
+      }
+    } catch (err) {
+      console.error("[fetchDeps] Critical error in fetchDeps:", err);
+    } finally {
+      setIsFetchingDeps(false);
+      setIsReadyForComps(true);
     }
-    fetchDeps();
-  }, [inspMethod, jobPackId, structureId, headerData.sowReportNo, supabase]);
+  }, [inspMethod, jobPackId, structureId, supabase]);
+
+  // Handle method switch overriding deps
+  useEffect(() => {
+    // Clear current states when switching modes
+    setDeployments([]);
+    setActiveDep(null);
+    setCurrentRecords([]);
+    setVideoEvents([]);
+    setJobTapes([]);
+    setSelectedComp(null);
+    setActiveSpec(null);
+    setVidState("IDLE");
+    setVidTimer(0);
+    setTapeNo("");
+    setTapeId(null);
+    setCurrentMovement("Awaiting Deployment");
+    setDiveStartTime(null);
+    setDiveEndTime(null);
+    setRequiredSpec(null);
+    setRequiredProps({});
+    setRequiredRecordId(null);
+
+    fetchDeployments();
+  }, [fetchDeployments]);
 
   // Replacement: useQuery for SOW and Component Data
   const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
@@ -8469,6 +8471,7 @@ function V10PreviewLayout() {
           handleExternalFileUpload,
           handleLinkToRecord,
           syncDeploymentState,
+          fetchDeployments,
           queryClient,
           generateAnomalyReportBlob,
           generateMGIReportBlob,

@@ -297,6 +297,7 @@ interface WorkspaceDialogsProps {
         handleExternalFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
         handleLinkToRecord: (file: any) => void;
         syncDeploymentState: () => void;
+        fetchDeployments?: () => void;
         queryClient: any;
         generateAnomalyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -597,6 +598,7 @@ export function WorkspaceDialogs({
         handleExternalFileUpload,
         handleLinkToRecord,
         syncDeploymentState,
+        fetchDeployments,
         queryClient,
         generateAnomalyReportBlob,
         generateMGIReportBlob,
@@ -741,7 +743,11 @@ export function WorkspaceDialogs({
                         onOpenChange={setIsDiveSetupOpen}
                         onJobCreated={(job: any) => {
                             setIsDiveSetupOpen(false);
-                            window.location.reload();
+                            if (fetchDeployments) {
+                                fetchDeployments();
+                            } else {
+                                syncDeploymentState();
+                            }
                         }}
                     />
                 ) : (
@@ -754,7 +760,11 @@ export function WorkspaceDialogs({
                         onOpenChange={setIsDiveSetupOpen}
                         onJobCreated={(job: any) => {
                             setIsDiveSetupOpen(false);
-                            window.location.reload();
+                            if (fetchDeployments) {
+                                fetchDeployments();
+                            } else {
+                                syncDeploymentState();
+                            }
                         }}
                     />
                 )
