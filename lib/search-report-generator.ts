@@ -418,7 +418,7 @@ async function routeToGenerator(
       const recs = filterByCode(["DMGI", "MGROW"]);
       if (!recs.length) return;
       const { generateDivingMGIReport } = await import("@/utils/report-generators/diving-mgi-report");
-      return await generateDivingMGIReport(recs, headerData, companyInfo, opts) as Blob;
+      return await generateDivingMGIReport(recs, null, headerData, companyInfo, opts, supabase) as Blob;
     }
     // Caisson Diving variants
     case "diving-dcasn-report": {
@@ -613,7 +613,14 @@ async function routeToGenerator(
       const recs = filterByCode(["RSEAB", "SEABED"]);
       if (!recs.length) return;
       const { generateSeabedSurveyReport } = await import("@/utils/report-generators/seabed-survey-report");
-      return await generateSeabedSurveyReport(recs, headerData, companyInfo, opts, "") as Blob;
+      return await generateSeabedSurveyReport(
+        { id: opts.jobPackId, name: headerData.jobpackName },
+        { id: opts.structureId, name: headerData.platformName },
+        opts.sowReportNo || "",
+        companyInfo,
+        opts,
+        ""
+      ) as Blob;
     }
     case "seabed-debris-detail": {
       const recs = filterByCode(["RSEAB", "SEABED"]);
@@ -638,7 +645,7 @@ async function routeToGenerator(
       const recs = filterByCode(["RMGI", "MGROW"]);
       if (!recs.length) return;
       const { generateROVMGIGraphReport } = await import("@/utils/report-generators/rov-mgi-report");
-      return await generateROVMGIGraphReport(recs, headerData, companyInfo, opts) as Blob;
+      return await generateROVMGIGraphReport(recs, null, headerData, companyInfo, opts) as Blob;
     }
     case "rmgi-table": {
       const recs = filterByCode(["RMGI"]);
