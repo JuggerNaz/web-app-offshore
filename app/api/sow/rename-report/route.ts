@@ -29,6 +29,10 @@ export const POST = withTenant(async (request, { companyId }) => {
             );
         }
 
+        const jobpackIdNum = Number(jobpack_id);
+        const structureIdNum = Number(structure_id);
+        const sowIdNum = sow_id ? Number(sow_id) : null;
+
         if (old_report_no === new_report_no) {
             return NextResponse.json({ success: true, message: "No change needed", counts: {} });
         }
@@ -40,8 +44,8 @@ export const POST = withTenant(async (request, { companyId }) => {
             .from("insp_records")
             .update({ sow_report_no: new_report_no })
             .eq("company_id", companyId)
-            .eq("jobpack_id", jobpack_id)
-            .eq("structure_id", structure_id)
+            .eq("jobpack_id", jobpackIdNum)
+            .eq("structure_id", structureIdNum)
             .eq("sow_report_no", old_report_no)
             .select("insp_id");
 
@@ -56,8 +60,8 @@ export const POST = withTenant(async (request, { companyId }) => {
             .from("insp_dive_jobs")
             .update({ sow_report_no: new_report_no })
             .eq("company_id", companyId)
-            .eq("jobpack_id", jobpack_id)
-            .eq("structure_id", structure_id)
+            .eq("jobpack_id", jobpackIdNum)
+            .eq("structure_id", structureIdNum)
             .eq("sow_report_no", old_report_no)
             .select("dive_job_id");
 
@@ -72,8 +76,8 @@ export const POST = withTenant(async (request, { companyId }) => {
             .from("insp_rov_jobs")
             .update({ sow_report_no: new_report_no })
             .eq("company_id", companyId)
-            .eq("jobpack_id", jobpack_id)
-            .eq("structure_id", structure_id)
+            .eq("jobpack_id", jobpackIdNum)
+            .eq("structure_id", structureIdNum)
             .eq("sow_report_no", old_report_no)
             .select("rov_job_id");
 
@@ -84,12 +88,12 @@ export const POST = withTenant(async (request, { companyId }) => {
         counts.insp_rov_jobs = updatedRov?.length || 0;
 
         // ── 4. Update u_sow_items (report_number column) ──
-        if (sow_id) {
+        if (sowIdNum) {
             const { data: updatedItems, error: itemErr } = await (supabase as any)
                 .from("u_sow_items")
                 .update({ report_number: new_report_no })
                 .eq("company_id", companyId)
-                .eq("sow_id", sow_id)
+                .eq("sow_id", sowIdNum)
                 .eq("report_number", old_report_no)
                 .select("id");
 
@@ -103,7 +107,7 @@ export const POST = withTenant(async (request, { companyId }) => {
             const { data: sowData, error: sowFetchErr } = await (supabase as any)
                 .from("u_sow")
                 .select("id, report_numbers")
-                .eq("id", sow_id)
+                .eq("id", sowIdNum)
                 .eq("company_id", companyId)
                 .single();
 
@@ -121,7 +125,7 @@ export const POST = withTenant(async (request, { companyId }) => {
                         report_numbers: updatedReportNumbers,
                         updated_at: new Date().toISOString(),
                     })
-                    .eq("id", sow_id)
+                    .eq("id", sowIdNum)
                     .eq("company_id", companyId);
 
                 if (sowUpdateErr) {

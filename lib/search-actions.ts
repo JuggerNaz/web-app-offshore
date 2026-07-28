@@ -10,6 +10,13 @@ export type SearchResult = {
   url: string;
   score: number;
   year?: string;
+  // Fields for print-from-search:
+  inspectionTypeCode?: string;
+  jobpackId?: number;
+  structureId?: number;
+  sowReportNo?: string;
+  inspMode?: "DIVING" | "ROV";
+  componentQId?: string;
 };
 
 export async function searchGlobal(query: string): Promise<SearchResult[]> {
@@ -232,7 +239,13 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
           type: "inspection" as const,
           url: `/dashboard/inspection-v2/workspace?jobpack=${i.jobpack_id}&structure=${i.structure_id}&sowReport=${i.sow_report_no || ""}&recordId=${i.insp_id}&mode=${mode}`,
           score: 75,
-          year
+          year,
+          inspectionTypeCode: i.inspection_type_code,
+          jobpackId: i.jobpack_id,
+          structureId: i.structure_id,
+          sowReportNo: i.sow_report_no || undefined,
+          inspMode: mode as "DIVING" | "ROV",
+          componentQId: i.structure_components?.q_id || undefined,
         };
       });
     } catch (err) {
@@ -257,7 +270,12 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
             type: "inspection" as const,
             url: `/dashboard/inspection-v2/workspace?jobpack=${i.jobpack_id}&structure=${i.structure_id}&sowReport=${i.sow_report_no || ""}&recordId=${i.insp_id}&mode=${mode}`,
             score: 75,
-            year
+            year,
+            inspectionTypeCode: i.inspection_type_code,
+            jobpackId: i.jobpack_id,
+            structureId: i.structure_id,
+            sowReportNo: i.sow_report_no || undefined,
+            inspMode: mode as "DIVING" | "ROV",
           };
         });
       } catch (fallbackErr) {

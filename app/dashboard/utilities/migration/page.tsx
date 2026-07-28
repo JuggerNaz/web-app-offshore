@@ -83,7 +83,7 @@ export default function MigrationDashboard() {
     });
 
     try {
-      const res = await fetch(`/api/migration/summary/${selectedStructureId}/missing`, {
+      const res = await fetch(`/api/migration/summary/${encodeURIComponent(selectedStructureId)}/missing`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -917,7 +917,7 @@ export default function MigrationDashboard() {
     // Fetch summary
     try {
       setIsLoadingSummary(true);
-      const res = await fetch(`/api/migration/summary/${strId}`, {
+      const res = await fetch(`/api/migration/summary/${encodeURIComponent(strId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config)
@@ -951,7 +951,7 @@ export default function MigrationDashboard() {
     // Fetch jobpacks with inspection data for this structure from Oracle
     try {
       setIsLoadingJobpacks(true);
-      const res = await fetch(`/api/migration/jobpacks/${strId}`, {
+      const res = await fetch(`/api/migration/jobpacks/${encodeURIComponent(strId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config)
