@@ -307,7 +307,7 @@ export async function generateReportFromSearch(
   const tid = templateId.toLowerCase();
 
   try {
-    return await routeToGenerator(tid, code, records, headerData, companyInfo, reportOpts);
+    return await routeToGenerator(tid, code, records, headerData, companyInfo, reportOpts, supabase);
   } catch (error) {
     console.error(`[SearchReportGenerator] Error generating report (template=${templateId}, code=${code}):`, error);
     return;
@@ -322,7 +322,8 @@ async function routeToGenerator(
   records: any[],
   headerData: any,
   companyInfo: any,
-  opts: any
+  opts: any,
+  supabase: any
 ): Promise<Blob | void> {
   // Filter records by inspection type code (fallback to all records if code filtering returns empty)
   const filterByCode = (codes: string[]) => {
@@ -375,7 +376,7 @@ async function routeToGenerator(
       const recs = filterByCode(["SZONE", "DSZCI"]);
       if (!recs.length) return;
       const { generateDivingSZONEReport } = await import("@/utils/report-generators/diving-szone-report");
-      return await generateDivingSZONEReport(recs, headerData, companyInfo, opts) as Blob;
+      return await generateDivingSZONEReport(recs, headerData, companyInfo, opts, supabase) as Blob;
     }
     case "cpclb": {
       const recs = filterByCode(["CPCLB"]);
