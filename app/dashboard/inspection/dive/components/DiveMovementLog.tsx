@@ -176,6 +176,53 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
 
             if (error) throw error;
 
+            // Auto-stop active video log if diver reaches surface/recovered
+            const actLower = (newMovement.activity || "").toLowerCase();
+            const isRecovery =
+                actLower.includes("surface") ||
+                actLower.includes("recovered") ||
+                actLower.includes("tms") ||
+                actLower.includes("deck") ||
+                actLower.includes("chamber");
+
+            if (isRecovery) {
+                try {
+                    // Find active video tape for this dive job
+                    const { data: activeTape } = await supabase
+                        .from("insp_video_tapes")
+                        .select("tape_id")
+                        .eq("dive_job_id", depId)
+                        .order("tape_id", { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (activeTape?.tape_id) {
+                        // Check if latest video log is recording or paused (not END)
+                        const { data: latestVideoLog } = await supabase
+                            .from("insp_video_logs")
+                            .select("*")
+                            .eq("tape_id", activeTape.tape_id)
+                            .order("event_time", { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (latestVideoLog && latestVideoLog.event_type !== "END") {
+                            await supabase.from("insp_video_logs").insert({
+                                tape_id: activeTape.tape_id,
+                                event_type: "END",
+                                event_time: finalTime,
+                                timecode_start: latestVideoLog.timecode_start || "00:00:00",
+                                tape_counter_start: latestVideoLog.tape_counter_start || 0,
+                                remarks: "Auto-stopped: Diver returned to surface/chamber/recovered",
+                            });
+                            console.log("[AutoStop] Video log automatically stopped on diver recovery.");
+                        }
+                    }
+                } catch (vErr) {
+                    console.warn("[AutoStop] Warning stopping active video log on dive movement:", vErr);
+                }
+            }
+
             toast.success("Movement logged");
             setNewMovement({ activity: "", notes: "", timestamp: getLocalDatetimeString() });
             await loadMovements();
