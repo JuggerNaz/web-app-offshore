@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { Badge } from "@/components/ui/badge";
 import { generateSeabedSurveyReport } from '@/utils/report-generators/seabed-survey-report';
 import { getReportHeaderData } from '@/utils/company-settings';
+import { ReportPreviewDialog } from '@/components/ReportPreviewDialog';
 
 interface SeabedSurveyGuiDialogProps {
     open: boolean;
@@ -1124,64 +1125,17 @@ export function SeabedSurveyGuiInline({
         .filter(d => typeFilter === 'All' || d.type === typeFilter);
     const activeItem = existingDebris.find(d => d.id === activeId);
 
-    const [isPrinting, setIsPrinting] = useState(false);
+    const [reportPreviewOpen, setReportPreviewOpen] = useState(false);
 
-    const handlePrintReport = async () => {
-        try {
-            setIsPrinting(true);
-            toast.info("Generating Seabed Survey Sketch Report...");
-
-            const [compSettingsRes, jpRes, strRes] = await Promise.all([
-                supabase.from("company_settings").select("*").maybeSingle(),
-                jobpackId ? supabase.from("u_jobpacks").select("name, metadata").eq("id", Number(jobpackId)).maybeSingle() : Promise.resolve({ data: null }),
-                structureId ? supabase.from("u_structures").select("name, str_name, field_name").eq("id", Number(structureId)).maybeSingle() : Promise.resolve({ data: null })
-            ]);
-
-            const compSettings = compSettingsRes.data || {};
-            const jobpackData: any = jpRes.data || {};
-            const structData: any = strRes.data || {};
-
-            const headerData = {
-                platformName: structData.str_name || structData.name || structureName || "N/A",
-                jobpackName: jobpackData.name || "N/A",
-                vessel: rovJob?.raw?.vessel || rovJob?.vessel || "N/A",
-                sowReportNo: sowReportNo || "N/A",
-                date: new Date().toLocaleDateString("en-GB")
-            };
-
-            const currentComp = availableComparisons.find(c => c.key === selectedComparison);
-
-            await generateSeabedSurveyReport(
-                { id: jobpackId, name: headerData.jobpackName },
-                { id: structureId, name: headerData.platformName, str_name: headerData.platformName },
-                sowReportNo || headerData.sowReportNo || "",
-                compSettings,
-                {
-                    headerData,
-                    comparisonKey: selectedComparison !== "none" ? selectedComparison : undefined,
-                    comparisonName: currentComp ? currentComp.name : undefined,
-                    comparisonRecords: comparisonDebris,
-                    currentPage,
-                    printFriendly: false,
-                    showSignatures: true,
-                    showPageNumbers: true
-                },
-                typeFilter === "All" ? "" : typeFilter
-            );
-
-            toast.success("Seabed Survey Report generated successfully!");
-        } catch (err: any) {
-            console.error("Print report error:", err);
-            toast.error("Failed to generate report: " + (err.message || "Unknown error"));
-        } finally {
-            setIsPrinting(false);
-        }
+    const handlePrintReport = () => {
+        setReportPreviewOpen(true);
     };
 
     if (!open) return null;
 
     return (
-        <Card className="h-full w-full flex flex-col p-0 overflow-hidden shadow-2xl border-2 border-blue-200 dark:border-slate-500 bg-white dark:bg-slate-950 animate-in slide-in-from-right-8 duration-300">
+        <>
+            <Card className="h-full w-full flex flex-col p-0 overflow-hidden shadow-2xl border-2 border-blue-200 dark:border-slate-500 bg-white dark:bg-slate-950 animate-in slide-in-from-right-8 duration-300">
             <div className="px-6 py-4 border-b dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur-md flex items-center justify-between">
                 <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Seabed Survey Multi-Drop GUI</h2>
                 <div className="flex items-center gap-4">
@@ -1224,11 +1178,10 @@ export function SeabedSurveyGuiInline({
 
                     <Button 
                         onClick={handlePrintReport} 
-                        disabled={isPrinting}
                         className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 text-xs font-bold shadow-md"
                         size="sm"
                     >
-                        {isPrinting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                        <Printer className="w-3.5 h-3.5" />
                         Report
                     </Button>
 
@@ -1879,5 +1832,53 @@ export function SeabedSurveyGuiInline({
                     )}
                 </div>
         </Card>
+
+        <ReportPreviewDialog
+            open={reportPreviewOpen}
+            onOpenChange={setReportPreviewOpen}
+            title="Seabed Survey Multi-Drop Sketch Report"
+            fileName={`Seabed_Survey_Report_${sowReportNo || 'Draft'}`}
+            generateReport={async (isPrintFriendly, showSignatures) => {
+                const [compSettingsRes, jpRes, strRes] = await Promise.all([
+                    supabase.from("company_settings").select("*").maybeSingle(),
+                    jobpackId ? supabase.from("u_jobpacks").select("name, metadata").eq("id", Number(jobpackId)).maybeSingle() : Promise.resolve({ data: null }),
+                    structureId ? supabase.from("u_structures").select("name, str_name, field_name").eq("id", Number(structureId)).maybeSingle() : Promise.resolve({ data: null })
+                ]);
+
+                const compSettings = compSettingsRes.data || {};
+                const jobpackData: any = jpRes.data || {};
+                const structData: any = strRes.data || {};
+
+                const headerData = {
+                    platformName: structData.str_name || structData.name || structureName || "N/A",
+                    jobpackName: jobpackData.name || "N/A",
+                    vessel: rovJob?.raw?.vessel || rovJob?.vessel || "N/A",
+                    sowReportNo: sowReportNo || "N/A",
+                    date: new Date().toLocaleDateString("en-GB")
+                };
+
+                const currentComp = availableComparisons.find(c => c.key === selectedComparison);
+
+                return await generateSeabedSurveyReport(
+                    { id: jobpackId, name: headerData.jobpackName },
+                    { id: structureId, name: headerData.platformName, str_name: headerData.platformName },
+                    sowReportNo || headerData.sowReportNo || "",
+                    compSettings,
+                    {
+                        headerData,
+                        comparisonKey: selectedComparison !== "none" ? selectedComparison : undefined,
+                        comparisonName: currentComp ? currentComp.name : undefined,
+                        comparisonRecords: comparisonDebris,
+                        currentPage,
+                        printFriendly: isPrintFriendly,
+                        showSignatures: showSignatures,
+                        showPageNumbers: true,
+                        returnBlob: true
+                    },
+                    typeFilter === "All" ? "" : typeFilter
+                ) as Blob;
+            }}
+        />
+        </>
     );
 }
