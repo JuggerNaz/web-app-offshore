@@ -513,9 +513,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     <span className="truncate max-w-[340px] sm:max-w-md opacity-90">{(() => {
                         const codeClean = (activeSpec || '').toUpperCase().trim();
                         const jsonSpec = (inspectionSpecs?.inspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
-                        if (jsonSpec?.name) return jsonSpec.name;
-                        const specObj = (allInspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean) || (allInspectionTypes || []).find((t: any) => (t.name || '').toUpperCase().trim() === codeClean);
-                        return (specObj?.name && specObj.name.toUpperCase() !== specObj.code?.toUpperCase()) ? specObj.name : (jsonSpec?.name || activeSpec);
+                        let rawName = jsonSpec?.name;
+                        if (!rawName) {
+                            const specObj = (allInspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean) || (allInspectionTypes || []).find((t: any) => (t.name || '').toUpperCase().trim() === codeClean);
+                            rawName = (specObj?.name && specObj.name.toUpperCase() !== specObj.code?.toUpperCase()) ? specObj.name : (jsonSpec?.name || activeSpec);
+                        }
+                        return (rawName || '').replace(/^ROV\s+/i, '');
                     })()}</span>
                     {onChangeTaskClick && (
                         <button onClick={onChangeTaskClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">Change</button>
