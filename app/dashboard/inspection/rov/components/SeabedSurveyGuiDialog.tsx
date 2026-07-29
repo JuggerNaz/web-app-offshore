@@ -1842,15 +1842,17 @@ export function SeabedSurveyGuiInline({
                 const numJpId = Number(jobpackId);
                 const numStrId = Number(structureId);
 
-                const [compSettingsRes, jpRes, strRes] = await Promise.all([
+                const [compSettingsRes, jpRes, strRes, rovJobsRes] = await Promise.all([
                     supabase.from("company_settings").select("*").maybeSingle(),
                     !isNaN(numJpId) && numJpId > 0 ? supabase.from("jobpack").select("name, title, metadata").eq("id", numJpId).maybeSingle() : Promise.resolve({ data: null }),
-                    !isNaN(numStrId) && numStrId > 0 ? supabase.from("structure").select("str_name, title, str_title, field_name").eq("str_id", numStrId).maybeSingle() : Promise.resolve({ data: null })
+                    !isNaN(numStrId) && numStrId > 0 ? supabase.from("structure").select("str_name, title, str_title, field_name").eq("str_id", numStrId).maybeSingle() : Promise.resolve({ data: null }),
+                    !isNaN(numJpId) && numJpId > 0 ? supabase.from("insp_rov_jobs").select("vessel").eq("jobpack_id", numJpId).limit(5) : Promise.resolve({ data: null })
                 ]);
 
                 const compSettings = compSettingsRes.data || {};
                 const jobpackData: any = jpRes.data || {};
                 const structData: any = strRes.data || {};
+                const rovJobsData: any[] = rovJobsRes.data || [];
 
                 // Fetch contractor logo if present in jobpack metadata
                 let contractorLogoUrl = "";
@@ -1861,10 +1863,38 @@ export function SeabedSurveyGuiInline({
                     } catch (_) {}
                 }
 
-                // Resolve Vessel Name
-                const vesselName = rovJob?.raw?.vessel || rovJob?.vessel || jobpackData.metadata?.vessel || jobpackData.metadata?.vessel_name || "N/A";
-                const resolvedPlatform = structData.str_name || structData.str_title || structData.title || structureName || (typeof structureId === 'string' ? structureId : "N/A");
-                const resolvedJobpack = jobpackData.name || jobpackData.title || (typeof jobpackId === 'string' ? jobpackId : "N/A");
+                // Resolve Vessel Name from multiple possible locations (rovJob, insp_rov_jobs, jobpack metadata vessel_history / vessel)
+                let vesselName = "N/A";
+                const activeJobVessel = rovJob?.raw?.vessel || rovJob?.vessel;
+                if (activeJobVessel) {
+                    vesselName = activeJobVessel;
+                } else if (jobpackData.metadata?.vessel_history && Array.isArray(jobpackData.metadata.vessel_history) && jobpackData.metadata.vessel_history.length > 0) {
+                    vesselName = jobpackData.metadata.vessel_history.map((v: any) => v.name || v).join(", ");
+                } else if (jobpackData.metadata?.vessel || jobpackData.metadata?.vessel_name) {
+                    vesselName = jobpackData.metadata.vessel || jobpackData.metadata.vessel_name;
+                } else if (rovJobsData.length > 0) {
+                    const uniqueVessels = Array.from(new Set(rovJobsData.map(j => j.vessel).filter(Boolean)));
+                    if (uniqueVessels.length > 0) vesselName = uniqueVessels.join(", ");
+                }
+
+                // Resolve Platform & Jobpack Names (falling back to non-ID strings if available)
+                let resolvedPlatform = structData.str_name || structData.title || structData.str_title || structureName;
+                if (!resolvedPlatform || resolvedPlatform === String(structureId)) {
+                    if (typeof structureId === 'string' && isNaN(Number(structureId))) {
+                        resolvedPlatform = structureId;
+                    } else {
+                        resolvedPlatform = `Structure ${structureId}`;
+                    }
+                }
+
+                let resolvedJobpack = jobpackData.name || jobpackData.title;
+                if (!resolvedJobpack || resolvedJobpack === String(jobpackId)) {
+                    if (typeof jobpackId === 'string' && isNaN(Number(jobpackId))) {
+                        resolvedJobpack = jobpackId;
+                    } else {
+                        resolvedJobpack = `Job Pack ${jobpackId}`;
+                    }
+                }
 
                 const headerData = {
                     platformName: resolvedPlatform,
