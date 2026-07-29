@@ -2258,6 +2258,9 @@ export function WorkspaceDialogs({
                             sowRecordId={sowId ? Number(sowId) : null}
                             sowIdFull={sowIdFull}
                             sowReportNo={headerData?.sowReportNo}
+                            jobpackName={headerData?.jobpackName}
+                            structureName={headerData?.platformName}
+                            vessel={headerData?.vessel}
                             rovJob={activeDep || undefined}
                             tapeId={tapeId?.toString()}
                             tapeCounter={vidTimer?.toString()} 
