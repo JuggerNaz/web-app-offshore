@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import dynamic from "next/dynamic";
 
 const Structural3DViewer = dynamic(
@@ -75,6 +76,7 @@ export default function Platform3DPage() {
     const [useWincairsMode, setUseWincairsMode] = useState(false);
     const [fallbackComponents, setFallbackComponents] = useState<any[]>([]);
     const [isFallbackDialogOpen, setIsFallbackDialogOpen] = useState(false);
+    const [isResyncing3D, setIsResyncing3D] = useState(false);
 
     const [, setGlobalUrlId] = useAtom(urlId);
     const [, setGlobalUrlType] = useAtom(urlType);
@@ -113,22 +115,47 @@ export default function Platform3DPage() {
         selectedPlatform ? `/api/structure-components/${selectedPlatform.plat_id}` : null,
         fetcher
     );
+
+    const handleResync3DCache = async () => {
+        if (!selectedPlatform) return;
+        setIsResyncing3D(true);
+        try {
+            const res = await fetch(`/api/platform/webapp-3d/${selectedPlatform.plat_id}?resync=true`, { method: "POST" });
+            if (res.ok) {
+                toast.success("3D cache resynchronized successfully!");
+                await mutateComponents();
+            } else {
+                toast.error("Failed to resynchronize 3D cache.");
+            }
+        } catch (e) {
+            toast.error("Error resynchronizing 3D cache.");
+        } finally {
+            setIsResyncing3D(false);
+        }
+    };
     const components: Component[] = useMemo(() => {
         const all = componentsData?.data || [];
-        const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD"];
+        const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
         return all
             .filter((c: any) => {
                 if (c.is_deleted) return false;
                 const code = (c.code || "").trim().toUpperCase();
                 const qIdUpper = (c.q_id || "").toUpperCase();
                 const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
-                if (excludeCodes.includes(code) && !isRiserSupport) {
+                if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) {
+                    return false;
+                }
+
+                if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) {
                     return false;
                 }
 
                 // Exclude intermediate member seam welds (keep only primary junction node welds)
-                if (code === "WN" && c.q_id && c.q_id.includes("-")) {
-                    return false;
+                if (code === "WN") {
+                    const md = c.metadata || c;
+                    const sNode = (md.s_node || "").toString().trim().toUpperCase();
+                    const fNode = (md.f_node || "").toString().trim().toUpperCase();
+                    if (sNode && fNode && sNode !== fNode) return false;
                 }
 
                 // Exclude fender support components like FEND 1-SUPP-A2 / FEND x-SUPP-xx
@@ -343,13 +370,17 @@ export default function Platform3DPage() {
                             <span>Sync</span>
                         </Button>
 
-                        <div className="flex flex-col items-end pl-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Status</span>
-                            <span className="text-xs font-bold text-emerald-500 uppercase tracking-tight flex items-center gap-1.5">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                Interactive
-                            </span>
-                        </div>
+                        <Button 
+                            variant="outline"
+                            size="sm"
+                            onClick={handleResync3DCache}
+                            disabled={isResyncing3D || isComponentsValidating}
+                            className="h-9 px-3 gap-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all shadow-xs"
+                            title="Re-sync 3D positioning cache for all platform components"
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", (isResyncing3D || isComponentsValidating) && "animate-spin")} />
+                            <span>{isResyncing3D ? "Resynchronizing..." : "Re-sync 3D Cache"}</span>
+                        </Button>
                     </div>
                 </div>
 

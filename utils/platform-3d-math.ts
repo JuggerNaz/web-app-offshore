@@ -928,7 +928,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             }
 
             // Skip child welds already resolved in PASS 1.7
-            if (code === "WN" && md.associated_comp_id) {
+            if (code === "WN" && md.associated_comp_id && intermediateLayouts.has(c.id)) {
                 return;
             }
 
@@ -990,7 +990,9 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             let end = new THREE.Vector3();
             let resolved = false;
 
-            if (md.associated_comp_id && code !== "VM") {
+            const isPointNodeWeld = isWeld && (!md.s_node || !md.f_node || md.s_node === md.f_node || md.s_node.toString().toUpperCase() === extractBareNode(c.q_id));
+
+            if (md.associated_comp_id && code !== "VM" && !isPointNodeWeld) {
                 if (code !== "WN") {
                     pendingAttachments.push(c);
                 }
@@ -1003,15 +1005,15 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             ) {
                 pendingSpanAccessories.push({ component: c, sNode: startNode!, fNode: endNode! });
                 return;
-            } else if (isPointAccessory && (hasStartNode || hasStartNode !== hasEndNode || md.s_leg)) {
+            } else if (isPointAccessory && (hasStartNode || hasEndNode || md.s_leg || md.elv_1 !== undefined || isPointNodeWeld)) {
                 const y = md.elv_1 ? sanitizeElevation(md.elv_1) : (startNode?.y ?? endNode?.y ?? 0);
-                if (startNode) {
-                    start.set(startNode.x, y, startNode.z);
+                const bareNode = extractBareNode(c.q_id);
+                const nodePos = startNode || endNode || lookupNode(bareNode, md.s_leg);
+                if (nodePos) {
+                    start.set(nodePos.x, y || nodePos.y, nodePos.z);
                 } else if (md.s_leg) {
                     const coords = getLegCoordsAtElv(md.s_leg.toUpperCase(), y);
                     start.set(coords.x, y, coords.z);
-                } else if (endNode) {
-                    start.set(endNode.x, y, endNode.z);
                 }
                 if (md.dist && !isAnode) {
                     const distance = parseFloat(md.dist);
@@ -1077,18 +1079,18 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
                     // Compute points along the members at y1 and y2
                     const len1 = eNode1.distanceTo(sNode1);
-                    const dir1 = len1 > 0.001 ? eNode1.clone().sub(sNode1).normalize() : new THREE.Vector3(0, 0, 0);
+                    const dir1 = (len1 > 0.001 && distVal > 0) ? eNode1.clone().sub(sNode1).normalize() : new THREE.Vector3(0, 0, 0);
                     const offsetPos1 = sNode1.clone().add(dir1.clone().multiplyScalar(distVal));
 
                     const len2 = eNode2.distanceTo(sNode2);
-                    const dir2 = len2 > 0.001 ? eNode2.clone().sub(sNode2).normalize() : new THREE.Vector3(0, 0, 0);
+                    const dir2 = (len2 > 0.001 && distVal > 0) ? eNode2.clone().sub(sNode2).normalize() : new THREE.Vector3(0, 0, 0);
                     const offsetPos2 = sNode2.clone().add(dir2.clone().multiplyScalar(distVal));
 
-                    const offsetDistance = 0.35; // 0.35m standoff distance from structure
+                    const offsetDistance = distVal > 0 ? 0.35 : 0; // Standoff only applies if distVal > 0
                     const finalStart = offsetPos1.clone();
                     const finalEnd = offsetPos2.clone();
 
-                    if (dir1.lengthSq() > 0.001) {
+                    if (offsetDistance > 0 && dir1.lengthSq() > 0.001) {
                         const perp1 = new THREE.Vector3(-dir1.z, 0, dir1.x);
                         const vCenter1 = new THREE.Vector3(offsetPos1.x, 0, offsetPos1.z);
                         if (perp1.dot(vCenter1) < 0) {
@@ -1097,7 +1099,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         finalStart.add(perp1.multiplyScalar(offsetDistance));
                     }
 
-                    if (dir2.lengthSq() > 0.001) {
+                    if (offsetDistance > 0 && dir2.lengthSq() > 0.001) {
                         const perp2 = new THREE.Vector3(-dir2.z, 0, dir2.x);
                         const vCenter2 = new THREE.Vector3(offsetPos2.x, 0, offsetPos2.z);
                         if (perp2.dot(vCenter2) < 0) {
@@ -1720,21 +1722,47 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
       .select("*")
       .eq("plat_id", structureId);
 
-    // 4. Fetch Components
-    const { data: rawComponents } = await supabase
-      .from("structure_components")
-      .select("*")
-      .eq("structure_id", structureId)
-      .eq("is_deleted", false);
+    // 4. Fetch Components (Paginated)
+    let rawComponents: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+    while (hasMore) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      const { data, error } = await supabase
+        .from("structure_components")
+        .select("*")
+        .eq("structure_id", structureId)
+        .eq("is_deleted", false)
+        .range(from, to);
 
-    const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD"];
+      if (error || !data || data.length === 0) {
+        hasMore = false;
+      } else {
+        rawComponents = rawComponents.concat(data);
+        if (data.length < pageSize) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      }
+    }
+
+    const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
     const components = (rawComponents || [])
       .filter((c: any) => {
           const code = (c.code || "").trim().toUpperCase();
           const qIdUpper = (c.q_id || "").toUpperCase();
           const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
-          if (excludeCodes.includes(code) && !isRiserSupport) return false;
-          if (code === "WN" && c.q_id && c.q_id.includes("-")) return false;
+          if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) return false;
+          if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) return false;
+          if (code === "WN") {
+              const md = c.metadata || c;
+              const sNode = (md.s_node || "").toString().trim().toUpperCase();
+              const fNode = (md.f_node || "").toString().trim().toUpperCase();
+              if (sNode && fNode && sNode !== fNode) return false;
+          }
 
           if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) return false;
           if (qIdUpper.endsWith("TERM")) return false;
@@ -1760,26 +1788,43 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
     // 6. Delete old and Upsert new webapp_3d
     await supabase.from("webapp_3d").delete().eq("structure_id", structureId);
     
-    const insertData = componentLayouts.map((m: any) => ({
-      structure_id: structureId,
-      component_id: m.id,
-      pos_x: m.position?.[0] || 0,
-      pos_y: m.position?.[1] || 0,
-      pos_z: m.position?.[2] || 0,
-      rot_x: m.rotation?.[0] || 0,
-      rot_y: m.rotation?.[1] || 0,
-      rot_z: m.rotation?.[2] || 0,
-      scale_x: m.scale?.[0] || 1,
-      scale_y: m.scale?.[1] || 1,
-      scale_z: m.scale?.[2] || 1,
-      shape_type: m.shape || "cylinder",
-      dimensions: { length: m.length, radius: m.thickness, offset: m.offsetDistance },
-      color_hex: m.color || null,
-      material_type: "steel",
-      opacity: 1.0,
-      visibility_flag: true,
-      has_geometry_issue: false,
-    }));
+    const insertData = componentLayouts.map((m: any) => {
+      const startX = m.start?.[0] ?? m.position?.[0] ?? 0;
+      const startY = m.start?.[1] ?? m.position?.[1] ?? 0;
+      const startZ = m.start?.[2] ?? m.position?.[2] ?? 0;
+      const endX = m.end?.[0] ?? startX;
+      const endY = m.end?.[1] ?? startY;
+      const endZ = m.end?.[2] ?? startZ;
+      const posX = (startX + endX) / 2;
+      const posY = (startY + endY) / 2;
+      const posZ = (startZ + endZ) / 2;
+      return {
+        structure_id: structureId,
+        component_id: m.id,
+        start_x: startX,
+        start_y: startY,
+        start_z: startZ,
+        end_x: endX,
+        end_y: endY,
+        end_z: endZ,
+        pos_x: posX,
+        pos_y: posY,
+        pos_z: posZ,
+        rot_x: m.rotation?.[0] || 0,
+        rot_y: m.rotation?.[1] || 0,
+        rot_z: m.rotation?.[2] || 0,
+        scale_x: m.scale?.[0] || 1,
+        scale_y: m.scale?.[1] || 1,
+        scale_z: m.scale?.[2] || 1,
+        shape_type: m.shape || (startX === endX && startY === endY && startZ === endZ ? "sphere" : "cylinder"),
+        dimensions: { length: m.length, radius: m.thickness, offset: m.offsetDistance },
+        color_hex: m.color || null,
+        material_type: "steel",
+        opacity: 1.0,
+        visibility_flag: true,
+        has_geometry_issue: false,
+      };
+    });
 
     // Chunk the insert to avoid postgres limits
     const chunkSize = 500;

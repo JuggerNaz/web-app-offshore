@@ -81,13 +81,14 @@ const ComponentMesh = ({
     const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
     const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL";
     const isClamp = code === "CL" || code.includes("CLAM") || isRiserSupport;
-    const isRiser = !isAnode && !isRiserSupport && (
-        code === "RS" || code === "CS" || code === "CD" ||
+    const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS");
+    const isRiser = !isAnode && !isRiserSupport && !isCaisson && (
+        code === "RS" ||
         code.includes("RISER") || code.includes("RISR") ||
         /^R\d+[-_]/i.test(qIdUpper) ||
         (qIdUpper.startsWith("R") && !qIdUpper.startsWith("RIS-"))
     );
-    const isConductor = code === "CD" || code === "CS" || code.includes("COND") || code === "CO" || code === "CA" || code.includes("CAIS");
+    const isConductor = code === "CD" || isCaisson || code.includes("COND") || code === "CO";
 
     const defaultMeshColor = isAnode
         ? "#F8FAFC"
@@ -232,7 +233,7 @@ const ComponentMesh = ({
     const offsetPos: [number, number, number] = (isAnode || isRiser || isClamp) ? [ox, oy, oz] : [0, 0, 0];
 
     const riserBendGeometry = useMemo(() => {
-        if (!isRiser) return null;
+        if (!isRiser || isCaisson) return null;
 
         const isEndLower = endVec.y <= startVec.y;
         const bottomLocalY = isEndLower ? (safeMeshLength / 2) : (-safeMeshLength / 2);
@@ -767,18 +768,50 @@ const FoundationMember = ({
     );
 };
 
-const ElevationMarker = ({ y, label }: { y: number; label: string }) => (
-    <group position={[0, y, 0]}>
-        <Html position={[-30, 0, 0]} center distanceFactor={20}>
-            <div className="flex items-center gap-3">
-                <div className="h-[1px] w-12 bg-blue-500/50" />
-                <div className="px-2 py-1 bg-blue-600/90 backdrop-blur text-[10px] font-black text-white rounded border border-blue-400/50 shadow-lg whitespace-nowrap">
-                    EL {label}
+const ElevationLevelPlane = ({
+    y,
+    label,
+    isSelected,
+    onToggleSelect,
+}: {
+    y: number;
+    label: string;
+    isSelected: boolean;
+    onToggleSelect: () => void;
+}) => {
+    const formattedElv = y >= 0 ? `+${y.toFixed(2)}m` : `${y.toFixed(2)}m`;
+
+    return (
+        <group position={[0, y, 0]}>
+            {/* Interactive HTML Badge */}
+            <Html position={[32, 0, 0]} center distanceFactor={20}>
+                <div
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleSelect();
+                    }}
+                    className={cn(
+                        "flex items-center gap-2 cursor-pointer transition-all duration-300 select-none",
+                        isSelected ? "scale-110" : "hover:scale-105 opacity-85 hover:opacity-100"
+                    )}
+                >
+                    <div className={cn("h-[1px] w-6 transition-colors", isSelected ? "bg-amber-400" : "bg-sky-400/60")} />
+                    <div
+                        className={cn(
+                            "px-3 py-1 rounded-xl backdrop-blur-md text-[10px] font-black tracking-wider uppercase border shadow-xl flex items-center gap-2 transition-all",
+                            isSelected
+                                ? "bg-amber-950/90 text-amber-300 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.4)]"
+                                : "bg-sky-950/80 text-sky-200 border-sky-500/40 hover:border-sky-400"
+                        )}
+                    >
+                        <span className={cn("w-2 h-2 rounded-full", isSelected ? "bg-amber-400 animate-pulse" : "bg-sky-400")} />
+                        <span>EL {formattedElv}</span>
+                    </div>
                 </div>
-            </div>
-        </Html>
-    </group>
-);
+            </Html>
+        </group>
+    );
+};
 
 // Component to handle auto-framing
 function SelectToZoom({ children }: { children: React.ReactNode }) {
@@ -875,20 +908,29 @@ export function Structural3DViewer({
     }, [wincairsParams]);
 
     const components = useMemo(() => {
-        const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD"];
+        const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
         return rawComponents.filter((c) => {
             const code = (c.code || "").trim().toUpperCase();
-            if (excludeCodes.includes(code)) {
+            const qIdUpper = (c.q_id || "").toUpperCase();
+
+            if (excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) {
+                return false;
+            }
+
+            // Exclude FACE components like FACE A1-A4
+            if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) {
                 return false;
             }
 
             // Exclude intermediate member seam welds (keep only primary junction node welds)
-            if (code === "WN" && c.q_id && c.q_id.includes("-")) {
-                return false;
+            if (code === "WN") {
+                const md = c.metadata || c;
+                const sNode = (md.s_node || "").toString().trim().toUpperCase();
+                const fNode = (md.f_node || "").toString().trim().toUpperCase();
+                if (sNode && fNode && sNode !== fNode) return false;
             }
 
             // Exclude fender support components like FEND 1-SUPP-A2 / FEND x-SUPP-xx
-            const qIdUpper = (c.q_id || "").toUpperCase();
             if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) {
                 return false;
             }
@@ -938,10 +980,7 @@ export function Structural3DViewer({
         return val;
     };
 
-    const availableElevations = useMemo(() => {
-        const values = elevations.map((e) => sanitizeElevation(e.elv));
-        return Array.from(new Set(values)).sort((a, b) => b - a);
-    }, [elevations]);
+
 
     // Derived level markers from real elevation data
     const { seabedY, waterSurfaceY, waterDepth } = useMemo(() => {
@@ -966,7 +1005,13 @@ export function Structural3DViewer({
         if (!webapp3dData) return { componentLayouts: [], foundationMembers: [], elvMarkers: [] };
 
         const layouts = (webapp3dData.components || []).map((dbItem: any) => {
-            const comp: any = rawComponents.find((c: any) => String(c.id) === String(dbItem.component_id)) || dbItem.component || {};
+            const dbQIdUpper = (dbItem.q_id || dbItem.structure_components?.q_id || "").toUpperCase().trim();
+            const dbCompIdStr = String(dbItem.component_id || dbItem.comp_id || "");
+            const comp: any = rawComponents.find((c: any) => 
+                String(c.id) === dbCompIdStr || 
+                (c.comp_id && String(c.comp_id) === dbCompIdStr) ||
+                (dbQIdUpper && (c.q_id || "").toUpperCase().trim() === dbQIdUpper)
+            ) || dbItem.structure_components || dbItem.component || {};
             const code = (comp.code || dbItem.code || "").toUpperCase();
             const q_id = comp.q_id || dbItem.q_id || `COMP-${dbItem.component_id}`;
 
@@ -1023,6 +1068,90 @@ export function Structural3DViewer({
             elvMarkers: webapp3dData.elvMarkers || []
         };
     }, [webapp3dData, rawComponents, isInspectionMode]);
+
+    const availableElevations = useMemo(() => {
+        const values = elevations.map((e) => sanitizeElevation(e.elv));
+        if (values.length === 0 && componentLayouts.length > 0) {
+            componentLayouts.forEach((l: any) => {
+                const y1 = l.start ? l.start[1] : (l.position ? l.position[1] : null);
+                const y2 = l.end ? l.end[1] : (l.position ? l.position[1] : null);
+                if (y1 !== null && y2 !== null && Math.abs(y1 - y2) < 0.1) {
+                    values.push(Number(y1.toFixed(2)));
+                }
+            });
+        }
+        return Array.from(new Set(values.map(v => Number(v.toFixed(2))))).sort((a, b) => b - a);
+    }, [elevations, componentLayouts]);
+
+    const filteredFoundationMembers = useMemo(() => {
+        if (selectedElevations.length === 0) return foundationMembers;
+        return foundationMembers.filter((m: any) => {
+            const y1 = m.start ? m.start[1] : 0;
+            const y2 = m.end ? m.end[1] : 0;
+            return selectedElevations.some((elv) => Math.abs(y1 - elv) <= 1.2 && Math.abs(y2 - elv) <= 1.2);
+        });
+    }, [foundationMembers, selectedElevations]);
+
+    const filteredComponentLayouts = useMemo(() => {
+        return componentLayouts.filter((layout: any) => {
+            // 1. Elevation Filter
+            if (selectedElevations.length > 0) {
+                const startY = layout.start ? layout.start[1] : (layout.position ? layout.position[1] : 0);
+                const endY = layout.end ? layout.end[1] : (layout.position ? layout.position[1] : 0);
+
+                const matchesElev = selectedElevations.some((elv) => {
+                    const isHorizontal = Math.abs(startY - endY) < 1.0;
+                    const isPointObject = Math.abs(startY - endY) < 0.05;
+
+                    // 1. Horizontal framing member lying on this elevation level (both ends within 1.2m of elevation height)
+                    if (isHorizontal && Math.abs(startY - elv) <= 1.2 && Math.abs(endY - elv) <= 1.2) {
+                        return true;
+                    }
+                    // 2. Point objects (Nodes, Clamps, Anodes, Welds) positioned directly at this elevation level
+                    if (isPointObject && Math.abs(startY - elv) <= 1.2) {
+                        return true;
+                    }
+                    // 3. Short stub leg joint node at this elevation level
+                    const code = (layout.code || "").toUpperCase();
+                    const qId = (layout.q_id || "").toUpperCase();
+                    if (code.includes("NODE") || qId.includes("NODE") || code === "ND") {
+                        if (Math.abs(startY - elv) <= 1.2 || Math.abs(endY - elv) <= 1.2) return true;
+                    }
+
+                    // 4. Explicit metadata match
+                    const compElv = layout.component?.metadata?.elv || layout.originalComp?.metadata?.elv;
+                    if (compElv !== undefined && Math.abs(sanitizeElevation(compElv) - elv) < 0.1) return true;
+
+                    return false;
+                });
+
+                if (!matchesElev) return false;
+            }
+
+            // 2. Face Filter
+            if (selectedFaces.length > 0) {
+                const compCode = (layout.code || "").toUpperCase();
+                const qId = (layout.q_id || "").toUpperCase();
+                const md = layout.component?.metadata || layout.originalComp?.metadata || {};
+                const sLeg = (md.s_leg || md.s_node || "").toUpperCase();
+                const fLeg = (md.f_leg || md.f_node || "").toUpperCase();
+
+                const matchesFace = selectedFaces.some((face) => {
+                    const fUpper = face.toUpperCase();
+                    return qId.includes(`FACE ${fUpper}`) ||
+                           qId.includes(`-${fUpper}-`) ||
+                           qId.endsWith(`-${fUpper}`) ||
+                           qId.startsWith(`${fUpper}-`) ||
+                           compCode.includes(fUpper) ||
+                           sLeg.includes(fUpper) ||
+                           fLeg.includes(fUpper);
+                });
+                if (!matchesFace) return false;
+            }
+
+            return true;
+        });
+    }, [componentLayouts, selectedElevations, selectedFaces]);
 
     const fallbackComponents = useMemo(() => {
         if (!useWincairsMode) return [];
@@ -1247,13 +1376,28 @@ export function Structural3DViewer({
                     <ResetViewHandler trigger={resetTrigger} />
                     <CameraDistanceController onChange={setIsCameraClose} />
                     <SelectToZoom>
-                        {/* Elevation Markers */}
-                        {elvMarkers.map((m: any, i: number) => (
-                            <ElevationMarker key={i} y={m.y} label={m.label} />
-                        ))}
+                        {/* Elevation Level Planes & Markers */}
+                        {availableElevations.map((elvNum) => {
+                            const isSelected = selectedElevations.includes(elvNum);
+                            return (
+                                <ElevationLevelPlane
+                                    key={`elv-plane-${elvNum}`}
+                                    y={elvNum}
+                                    label={elvNum >= 0 ? `+${elvNum.toFixed(2)}m` : `${elvNum.toFixed(2)}m`}
+                                    isSelected={isSelected}
+                                    onToggleSelect={() => {
+                                        if (isSelected) {
+                                            setSelectedElevations((prev) => prev.filter((e) => e !== elvNum));
+                                        } else {
+                                            setSelectedElevations((prev) => [...prev, elvNum]);
+                                        }
+                                    }}
+                                />
+                            );
+                        })}
 
                         {/* Foundation Members (Skeleton) */}
-                        {foundationMembers.map((m: any, fIdx: number) => (
+                        {filteredFoundationMembers.map((m: any, fIdx: number) => (
                             <FoundationMember
                                 key={`fm-${m.id || "item"}-${fIdx}`}
                                 start={m.start}
@@ -1267,7 +1411,7 @@ export function Structural3DViewer({
                         ))}
 
                         {/* Existing Components */}
-                        {componentLayouts.map((layout: any, idx: number) => {
+                        {filteredComponentLayouts.map((layout: any, idx: number) => {
                             const comp = layout.component || layout.originalComp || { id: layout.id, q_id: layout.q_id, code: layout.code };
                             const compId = comp?.id || layout.id;
                             const status = layout.inspectionStatus || "NOT_INSPECTED";
@@ -1545,41 +1689,57 @@ export function Structural3DViewer({
                     </Button>
 
                     {openDropdown === "elevation" && (
-                        <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-56 flex flex-col gap-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-60 flex flex-col gap-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                                    Elevation
+                                    Elevations ({selectedElevations.length}/{availableElevations.length})
                                 </span>
-                                {selectedElevations.length > 0 && (
-                                    <button
-                                        onClick={() => setSelectedElevations([])}
-                                        className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
-                                    >
-                                        Clear
-                                    </button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    {selectedElevations.length < availableElevations.length && (
+                                        <button
+                                            onClick={() => setSelectedElevations([...availableElevations])}
+                                            className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
+                                        >
+                                            Select All
+                                        </button>
+                                    )}
+                                    {selectedElevations.length > 0 && (
+                                        <button
+                                            onClick={() => setSelectedElevations([])}
+                                            className="text-[9px] font-black uppercase text-slate-400 hover:text-slate-600 transition-colors"
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                            <div className="flex flex-col gap-2 max-h-60 overflow-y-auto py-1">
+                            <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto py-1">
                                 {availableElevations.map((elv) => {
                                     const isChecked = selectedElevations.includes(elv);
+                                    const labelText = elv >= 0 ? `+${elv.toFixed(3)}m` : `${elv.toFixed(3)}m`;
                                     return (
                                         <label
                                             key={elv}
-                                            className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors"
+                                            className={cn(
+                                                "flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all border",
+                                                isChecked
+                                                    ? "bg-blue-50/80 border-blue-200 text-blue-900"
+                                                    : "hover:bg-slate-50 border-transparent text-slate-700"
+                                            )}
                                         >
                                             <input
                                                 type="checkbox"
                                                 checked={isChecked}
                                                 onChange={() => {
                                                     if (isChecked) {
-                                                        setSelectedElevations(selectedElevations.filter((e) => e !== elv));
+                                                        setSelectedElevations((prev) => prev.filter((e) => e !== elv));
                                                     } else {
-                                                        setSelectedElevations([...selectedElevations, elv]);
+                                                        setSelectedElevations((prev) => [...prev, elv]);
                                                     }
                                                 }}
                                                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                                             />
-                                            <span className="text-xs font-bold text-slate-700">{elv.toFixed(3)}m</span>
+                                            <span className="text-xs font-bold font-mono">{labelText}</span>
                                         </label>
                                     );
                                 })}

@@ -43,11 +43,36 @@ export const GET = withAuth(
       .select("*")
       .eq("plat_id", structureIdNum);
 
-    const { data: rawComponents } = await (supabase as any)
-      .from("structure_components")
-      .select("*")
-      .eq("structure_id", structureIdNum)
-      .eq("is_deleted", false);
+    async function fetchAllRawComponents(supabaseClient: any, platId: number) {
+      let allData: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+      while (hasMore) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        const { data, error } = await (supabaseClient as any)
+          .from("structure_components")
+          .select("*")
+          .eq("structure_id", platId)
+          .eq("is_deleted", false)
+          .range(from, to);
+
+        if (error || !data || data.length === 0) {
+          hasMore = false;
+        } else {
+          allData = allData.concat(data);
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        }
+      }
+      return allData;
+    }
+
+    const rawComponents = await fetchAllRawComponents(supabase, structureIdNum);
 
     // 2. Try fetching from webapp_3d database table first
     const { data: webapp3d, error } = await (supabase as any)
@@ -64,14 +89,20 @@ export const GET = withAuth(
     let foundationMembers: any[] = [];
     let elvMarkers: any[] = [];
 
-    const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD"];
+    const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
     const filteredRawComponents = (rawComponents || [])
       .filter((c: any) => {
         const code = (c.code || "").trim().toUpperCase();
         const qIdUpper = (c.q_id || "").toUpperCase();
         const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
-        if (excludeCodes.includes(code) && !isRiserSupport) return false;
-        if (code === "WN" && c.q_id && c.q_id.includes("-")) return false;
+        if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) return false;
+        if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) return false;
+        if (code === "WN") {
+          const md = c.metadata || c;
+          const sNode = (md.s_node || "").toString().trim().toUpperCase();
+          const fNode = (md.f_node || "").toString().trim().toUpperCase();
+          if (sNode && fNode && sNode !== fNode) return false;
+        }
 
         if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) return false;
         if (qIdUpper.endsWith("TERM")) return false;
@@ -89,18 +120,105 @@ export const GET = withAuth(
     foundationMembers = mathResult.foundationMembers || [];
     elvMarkers = mathResult.elvMarkers || [];
 
-    let isDegenerate = false;
-    if (webapp3d && webapp3d.length > 0) {
+    const { searchParams } = new URL(request.url);
+    const forceResync = searchParams.get("resync") === "true" || searchParams.get("resync") === "1";
+
+    let isDegenerate = forceResync;
+    if (webapp3d && webapp3d.length > 0 && !forceResync) {
+      const unlinkedCount = webapp3d.filter((w: any) => !w.structure_components).length;
+      const isUnlinked = unlinkedCount > webapp3d.length * 0.2; // if > 20% unlinked, force auto-heal resync
+
       const legCoords = webapp3d
         .filter((w: any) => (w.code || "").toUpperCase().includes("LG") || (w.code || "").toUpperCase() === "LEG")
         .map((w: any) => ({ x: Number(w.start_x || 0), z: Number(w.start_z || 0) }));
       const coordsToCheck = legCoords.length >= 2 ? legCoords : webapp3d.map((w: any) => ({ x: Number(w.start_x || 0), z: Number(w.start_z || 0) }));
-      isDegenerate = isDegenerateFootprint(coordsToCheck);
+      isDegenerate = isDegenerateFootprint(coordsToCheck) || isUnlinked;
     }
 
     if (webapp3d && webapp3d.length > 0 && !isDegenerate) {
       // Use stored 3D data from webapp_3d table
       componentsToEnrich = webapp3d.filter((item: any) => !item.structure_components?.is_deleted);
+
+      // Build lookup maps of dynamic math layouts by component ID and Q ID
+      const mathLayoutsByCompId = new Map<number, any>();
+      const mathLayoutsByQId = new Map<string, any>();
+      (mathResult.componentLayouts || []).forEach((m: any) => {
+        const comp = m.component || m;
+        if (comp.id) mathLayoutsByCompId.set(Number(comp.id), m);
+        if (comp.q_id) mathLayoutsByQId.set(comp.q_id.toUpperCase(), m);
+      });
+
+      // Repair stored rows if their 3D coordinates are (0,0,0) or missing
+      componentsToEnrich = componentsToEnrich.map((item: any) => {
+        const cid = Number(item.comp_id || item.structure_components?.id);
+        const qid = (item.q_id || item.structure_components?.q_id || "").toUpperCase();
+        const mathLayout = mathLayoutsByCompId.get(cid) || mathLayoutsByQId.get(qid);
+
+        const isZero = (item.start_x === 0 || item.start_x === "0" || !item.start_x) &&
+                       (item.start_y === 0 || item.start_y === "0" || !item.start_y) &&
+                       (item.start_z === 0 || item.start_z === "0" || !item.start_z);
+
+        if (isZero && mathLayout) {
+          const start = mathLayout.start || [0, 0, 0];
+          const end = mathLayout.end || [0, 0, 0];
+          const posX = (start[0] + end[0]) / 2;
+          const posY = (start[1] + end[1]) / 2;
+          const posZ = (start[2] + end[2]) / 2;
+          return {
+            ...item,
+            start_x: start[0],
+            start_y: start[1],
+            start_z: start[2],
+            end_x: end[0],
+            end_y: end[1],
+            end_z: end[2],
+            pos_x: posX,
+            pos_y: posY,
+            pos_z: posZ,
+            thickness: mathLayout.thickness || item.thickness || 0.3,
+          };
+        }
+        return item;
+      });
+
+      // Also append any dynamic math layouts missing from webapp3d entirely
+      const cachedCompIds = new Set(componentsToEnrich.map((w: any) => Number(w.comp_id || w.structure_components?.id)).filter(Boolean));
+      const cachedQIds = new Set(componentsToEnrich.map((w: any) => (w.q_id || w.structure_components?.q_id || "").toUpperCase()).filter(Boolean));
+
+      const missingMathLayouts = (mathResult.componentLayouts || []).filter((m: any) => {
+        const comp = m.component || m;
+        const cid = Number(comp.id);
+        const qid = (comp.q_id || "").toUpperCase();
+        return (!cid || !cachedCompIds.has(cid)) && (!qid || !cachedQIds.has(qid));
+      });
+
+      if (missingMathLayouts.length > 0) {
+        const extraEnriched = missingMathLayouts.map((m: any) => {
+          const start = m.start || [0, 0, 0];
+          const end = m.end || [0, 0, 0];
+          const posX = (start[0] + end[0]) / 2;
+          const posY = (start[1] + end[1]) / 2;
+          const posZ = (start[2] + end[2]) / 2;
+          return {
+            component_id: m.id?.toString() || `${m.q_id || "COMP"}-${Math.random()}`,
+            comp_id: m.id || m.component?.id,
+            start_x: start[0],
+            start_y: start[1],
+            start_z: start[2],
+            end_x: end[0],
+            end_y: end[1],
+            end_z: end[2],
+            pos_x: posX,
+            pos_y: posY,
+            pos_z: posZ,
+            q_id: m.q_id || m.component?.q_id,
+            code: m.code || m.component?.code,
+            thickness: m.thickness || 0.3,
+            structure_components: m.component || m,
+          };
+        });
+        componentsToEnrich = [...componentsToEnrich, ...extraEnriched];
+      }
     } else {
       if (isDegenerate) {
         await (supabase as any).from("webapp_3d").delete().eq("structure_id", structureIdNum);
@@ -243,3 +361,6 @@ export const GET = withAuth(
     });
   }
 );
+
+export const POST = GET;
+
