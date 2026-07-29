@@ -4,206 +4,200 @@ import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
+export interface SeabedSurveyReportOptions extends ReportConfig {
+    comparisonKey?: string;
+    comparisonName?: string;
+    comparisonRecords?: any[];
+    currentPage?: number;
+    headerData?: any;
+}
+
 export const generateSeabedSurveyReport = async (
     jobPack: any,
     structure: any,
     sowReportNo: string,
     companySettings: CompanySettings,
-    config: ReportConfig,
-    itemTypeFilter: string
+    config: SeabedSurveyReportOptions = {},
+    itemTypeFilter: string = ""
 ) => {
     const supabase = createClient();
-    const doc = new jsPDF("p", "mm", "a4");
+    const doc = new jsPDF("l", "mm", "a4");
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
+    const margin = 12;
     const contentWidth = pageWidth - margin * 2;
 
-    // ── Fetch Data ──────────────────────────────────────────────────────────
+    const colors = {
+        navy: [31, 55, 93] as [number, number, number],
+        lightGray: [245, 247, 250] as [number, number, number],
+        border: [209, 213, 219] as [number, number, number],
+        text: [30, 41, 59] as [number, number, number],
+        muted: [100, 116, 139] as [number, number, number]
+    };
+
+    // ── Fetch Current Dataset Records ──────────────────────────────────────────
     let records: any[] = [];
     try {
-        const { data, error } = await supabase.from('insp_records')
+        let q = supabase.from('insp_records')
             .select(`
                 insp_id, inspection_data, description, structure_components:component_id ( q_id )
             `)
-            .eq('structure_id', Number(structure.id))
+            .eq('structure_id', Number(structure?.id || structure?.structure_id || 0))
             .eq('inspection_type_code', 'RSEAB')
             .order('insp_id', { ascending: true });
-            
-        if (data) {
-            // First map all records, then filter by type, then re-number sequentially
-            const allMapped = data.map((r: any) => ({
-                id: r.insp_id,
-                x: parseFloat(r.inspection_data?.x || '0'),
-                y: parseFloat(r.inspection_data?.y || '0'),
-                label: '', // will be assigned after filtering
-                qid: r.structure_components?.q_id || r.insp_id,
-                face: r.inspection_data?.face || '',
-                distance: parseFloat(r.inspection_data?.distance_from_leg) || 0,
-                northing: r.inspection_data?.northing || '',
-                easting: r.inspection_data?.easting || '',
-                type: (() => {
-                    const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
-                    const desc = (r.description || '').toLowerCase();
-                    if (cat === 'gas seepage' || desc.startsWith('gas seepage') || desc.includes('gas seepage')) return 'Gas Seepage';
-                    if (cat === 'crater' || desc.startsWith('crater') || desc.includes('crater') || desc.startsWith('seabed crater') || desc.includes('seabed crater')) return 'Crater';
-                    return 'Debris';
-                })(),
-                description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/i, '') || '',
-                size: r.inspection_data?.size_dimensions || r.inspection_data?.dimension_1 || '',
-                material: r.inspection_data?.material || r.inspection_data?.debris_material || 'Unknown',
-                isMetallic: (r.inspection_data?.material || r.inspection_data?.debris_material) === 'Metallic'
-            })).filter(r => !isNaN(r.x) && !isNaN(r.y) && r.type.toLowerCase().includes(itemTypeFilter.toLowerCase()));
 
-            // Re-number labels sequentially so map flags match table IDs
+        if (jobPack?.id || jobPack?.jobpack_id) {
+            q = q.eq('jobpack_id', Number(jobPack.id || jobPack.jobpack_id));
+        }
+
+        const { data, error } = await q;
+
+        if (data) {
+            const allMapped = data.map((r: any) => {
+                const idraw = r.inspection_data || {};
+                const cat = idraw.category || idraw.type || (r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris');
+                return {
+                    id: r.insp_id,
+                    x: parseFloat(idraw.x || '0'),
+                    y: parseFloat(idraw.y || '0'),
+                    label: '',
+                    qid: r.structure_components?.q_id || r.insp_id,
+                    face: idraw.face || '',
+                    distance: parseFloat(idraw.distance_from_leg || idraw.distance) || 0,
+                    northing: idraw.northing || '',
+                    easting: idraw.easting || '',
+                    type: cat,
+                    description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/i, '') || '',
+                    size: idraw.size_dimensions || idraw.dimension_1 || `${idraw.size_length || ''}${idraw.size_length_unit || 'm'} x ${idraw.size_width || ''}${idraw.size_width_unit || 'm'}`,
+                    material: idraw.material || idraw.debris_material || 'Unknown',
+                    isMetallic: (idraw.material || idraw.debris_material) === 'Metallic'
+                };
+            }).filter(r => !isNaN(r.x) && !isNaN(r.y) && (itemTypeFilter === '' || itemTypeFilter.toLowerCase() === 'all' || r.type.toLowerCase().includes(itemTypeFilter.toLowerCase())));
+
             records = allMapped.map((r, idx) => ({ ...r, label: (idx + 1).toString() }));
         }
     } catch (e) {
         console.error("Error fetching seabed data", e);
     }
 
+    // Process comparison dataset if present
+    let compRecords: any[] = [];
+    if (config.comparisonRecords && config.comparisonRecords.length > 0) {
+        compRecords = config.comparisonRecords.filter(r => 
+            itemTypeFilter === '' || itemTypeFilter.toLowerCase() === 'all' || r.type.toLowerCase().includes(itemTypeFilter.toLowerCase())
+        );
+    }
+
     // ── Logos ────────────────────────────────────────────────────────────────
     let clientLogo: any = null;
-    if (companySettings.logo_url) {
-        clientLogo = await loadLogoWithTransparency(companySettings.logo_url);
+    if (companySettings?.logo_url) {
+        try { clientLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
     }
 
     let contractorLogo: any = null;
     let contractorName = "";
-    if (config.showContractorLogo) {
-        const contractorId = jobPack?.metadata?.contrac;
-        if (contractorId) {
-            try {
-                const cid = String(contractorId);
-                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cid);
-                let q = supabase.from("u_lib_list").select("logo_url, lib_desc").eq("lib_code", "CONTR_NAM");
-                q = isUUID ? q.or(`id.eq.${cid},lib_id.eq.${cid}`) : q.eq("lib_id", cid);
-                const { data } = await q.maybeSingle();
-                if (data?.logo_url) contractorLogo = await loadLogoWithTransparency(data.logo_url);
-                if (data?.lib_desc) contractorName = data.lib_desc;
-            } catch (e) {
-                console.error("Error fetching contractor logo", e);
-            }
+    if (config.showContractorLogo || config.headerData?.contractorLogoUrl) {
+        const logoUrl = config.headerData?.contractorLogoUrl;
+        if (logoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(logoUrl); } catch (_) {}
         }
     }
 
-    // ── Layout Constants ─────────────────────────────────────────────────────
-    const headerH = 28;
-    const logoSize = 18;
-    const logoPadding = 4;
+    // ── Header & Subheader Drawers ───────────────────────────────────────────
     const isPrintFriendly = config.printFriendly === true;
-    const FOOTER_Y_OFFSET = 10; 
+    const headerH = 22;
 
-    // ── Draw Header ──────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const sx = margin, sy = margin;
-
         if (isPrintFriendly) {
-            d.setDrawColor(180, 180, 180);
-            d.setLineWidth(0.3);
-            d.rect(sx, sy, contentWidth, headerH);
+            d.setDrawColor(...colors.navy); d.setLineWidth(0.3); d.rect(margin, margin, contentWidth, headerH, 'S');
+            d.setTextColor(...colors.navy);
         } else {
-            d.setFillColor(31, 55, 93);
-            d.rect(sx, sy, contentWidth, headerH, "F");
+            d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, headerH, 'F');
+            d.setTextColor(255);
         }
 
-        // Contractor logo + name (left)
-        if (contractorLogo) {
-            drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + logoPadding, 'left', 'center');
-        }
+        if (clientLogo)     drawLogo(d, clientLogo,     16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
+        if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
 
-        // Client logo (right)
-        if (clientLogo) {
-            drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + logoPadding, 'right', 'center');
-        }
-
-        // Center text
-        d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
-        d.setFont("helvetica", "bold");
-        d.setFontSize(12);
-        d.text((companySettings.company_name || "").toUpperCase(), pageWidth / 2, sy + 8, { align: "center" });
-
-        d.setFont("helvetica", "normal");
-        d.setFontSize(9);
-        d.text(companySettings.departmentName || "Engineering Department", pageWidth / 2, sy + 12, { align: "center" });
-
-        d.setFont("helvetica", "bold");
-        d.setFontSize(13);
-        const titleType = itemTypeFilter ? itemTypeFilter.toUpperCase() : "GENERAL";
-        d.text(`SEABED SURVEY - ${titleType} REPORT`, pageWidth / 2, sy + 20, { align: "center" });
-
-        d.setTextColor(0, 0, 0);
+        d.setFontSize(10); d.setFont("helvetica", "bold");
+        d.text((companySettings.company_name || 'OFFSHORE INSPECTION DIVISION').toUpperCase(), margin + (contentWidth/2), margin + 6, { align: 'center' });
+        d.setFontSize(8); d.setFont("helvetica", "normal");
+        d.text(companySettings.department_name || companySettings.departmentName || 'Engineering & Technical Division', margin + (contentWidth/2), margin + 11, { align: 'center' });
+        
+        d.setFontSize(13); d.setFont("helvetica", "bold");
+        const titleType = itemTypeFilter && itemTypeFilter.toLowerCase() !== 'all' ? itemTypeFilter.toUpperCase() : "GENERAL";
+        d.text(`SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`, margin + (contentWidth/2), margin + 17, { align: 'center' });
     };
 
-    const drawSubHeader = (d: jsPDF) => {
-        const field = structure?.field_name || structure?.str_name || "N/A";
-        const installation = structure?.str_name || structure?.str_desc || "N/A";
-        const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || "N/A";
+    const drawSubHeader = (d: jsPDF, y: number) => {
+        const rowH = 6;
+        const colW = contentWidth / 2;
+        const hData = config.headerData || {};
+        
+        const structName = structure?.str_name || structure?.name || hData.platformName || "N/A";
+        const jobPackName = jobPack?.name || hData.jobpackName || "N/A";
+        const vessel = hData.vessel || "N/A";
+        const reportNo = sowReportNo || hData.sowReportNo || "N/A";
+        const inspDate = hData.date || new Date().toLocaleDateString("en-GB");
 
-        const labelColWidth = 32;
-        const valueColWidth = (contentWidth - labelColWidth * 2) / 2;
+        const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
+            d.setDrawColor(...colors.border); d.setLineWidth(0.1);
+            if (!isPrintFriendly) d.setFillColor(...colors.lightGray);
+            d.rect(x, ty, w, rowH, isPrintFriendly ? 'S' : 'F');
+            if (!isPrintFriendly) d.rect(x, ty, w, rowH, 'S');
+            d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
+            d.text(label, x + 2, ty + 4); d.setFont("helvetica", "normal");
+            d.text(String(value), x + 30, ty + 4);
+        };
 
-        const headStyle = isPrintFriendly
-            ? { fillColor: [255, 255, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] }
-            : { fillColor: [229, 231, 235] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] };
-
-        autoTable(d, {
-            startY: margin + headerH + 5,
-            margin: { left: margin, right: margin, top: margin + 28 + 6 },
-            head: [],
-            body: [
-                [
-                    { content: "Project Description:", styles: headStyle },
-                    { content: jobPack?.name || "N/A" },
-                    { content: "Report No.:", styles: headStyle },
-                    { content: reportNoDisplay }
-                ],
-                [
-                    { content: "Field:", styles: headStyle },
-                    { content: field },
-                    { content: "Installation:", styles: headStyle },
-                    { content: installation }
-                ]
-            ] as any,
-            theme: "grid",
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
-            columnStyles: {
-                0: { cellWidth: labelColWidth },
-                1: { cellWidth: valueColWidth },
-                2: { cellWidth: labelColWidth },
-                3: { cellWidth: valueColWidth }
-            }
-        });
+        drawBox('Structure:', structName, margin, colW, y);
+        drawBox('Vessel:', vessel, margin + colW, colW, y);
+        drawBox('Job Pack:', jobPackName, margin, colW, y + rowH);
+        drawBox('Report No:', reportNo, margin + colW, colW, y + rowH);
+        
+        if (config.comparisonName) {
+            drawBox('Filter Type:', itemTypeFilter || 'ALL', margin, colW, y + (rowH * 2));
+            drawBox('Compared With:', config.comparisonName, margin + colW, colW, y + (rowH * 2));
+            return y + (rowH * 3) + 4;
+        } else {
+            drawBox('Filter Type:', itemTypeFilter || 'ALL', margin, colW, y + (rowH * 2));
+            drawBox('Inspection Date:', inspDate, margin + colW, colW, y + (rowH * 2));
+            return y + (rowH * 3) + 4;
+        }
     };
 
-    if (records.length === 0) {
+    // ── Handle Empty Records Case ────────────────────────────────────────────
+    if (records.length === 0 && compRecords.length === 0) {
         drawHeader(doc);
-        doc.setFontSize(12);
-        doc.setTextColor(0, 0, 0);
-        const emptyMsg = itemTypeFilter ? `${itemTypeFilter} records` : "records";
-        doc.text(`No ${emptyMsg} found for this seabed survey.`, pageWidth / 2, 80, { align: "center" });
+        drawSubHeader(doc, margin + headerH + 3);
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        const filterMsg = itemTypeFilter ? `matching filter '${itemTypeFilter}'` : "";
+        doc.text(`No seabed survey records found ${filterMsg}.`, pageWidth / 2, 90, { align: "center" });
+
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        const fileSuffix = itemTypeFilter ? itemTypeFilter.replace(/\s+/g,'_') : "General";
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`${config.reportNoPrefix}_Seabed_${fileSuffix}.pdf`);
+        doc.save(`${sowReportNo || 'Report'}_Seabed_Survey.pdf`);
         return;
     }
 
-    // ── Pagination by Distance ───────────────────────────────────────────────
-    // Group records into 21m chunks
-    const maxDist = Math.max(...records.map(r => r.distance || 0));
+    // ── Range Pagination (21m chunks) ────────────────────────────────────────
+    const maxDistCurrent = records.length > 0 ? Math.max(...records.map(r => r.distance || 0)) : 0;
+    const maxDistComp = compRecords.length > 0 ? Math.max(...compRecords.map(r => r.distance || 0)) : 0;
+    const maxDist = Math.max(maxDistCurrent, maxDistComp);
     const totalRanges = Math.max(1, Math.ceil((maxDist + 1) / 21));
 
-    let pageRanges: { pageIndex: number; items: any[]; minD: number; maxD: number }[] = [];
+    let pageRanges: { pageIndex: number; items: any[]; compItems: any[]; minD: number; maxD: number }[] = [];
     for (let i = 0; i < totalRanges; i++) {
-        const minDistance = i * 21;
-        const maxDistance = (i + 1) * 21;
-        const pageItems = records.filter(d => d.distance > minDistance && d.distance <= maxDistance);
-        if (pageItems.length > 0) {
-            // Re-number per page so flag labels on the map match table IDs below
-            const numbered = pageItems.map((item, idx) => ({ ...item, label: (idx + 1).toString() }));
-            pageRanges.push({ pageIndex: i, items: numbered, minD: minDistance, maxD: maxDistance });
+        const minD = i * 21;
+        const maxD = (i + 1) * 21;
+        const pageItems = records.filter(d => d.distance > minD && d.distance <= maxD);
+        const pageCompItems = compRecords.filter(d => d.distance > minD && d.distance <= maxD);
+
+        if (pageItems.length > 0 || pageCompItems.length > 0) {
+            const numberedCurrent = pageItems.map((item, idx) => ({ ...item, label: (idx + 1).toString() }));
+            const numberedComp = pageCompItems.map((item, idx) => ({ ...item, label: (idx + 1).toString() }));
+            pageRanges.push({ pageIndex: i, items: numberedCurrent, compItems: numberedComp, minD, maxD });
         }
     }
 
@@ -211,83 +205,64 @@ export const generateSeabedSurveyReport = async (
         if (r > 0) doc.addPage();
         
         drawHeader(doc);
-        drawSubHeader(doc);
-        
-        const currentY = (doc as any).lastAutoTable.finalY + 5;
-        const { pageIndex, items, minD, maxD } = pageRanges[r];
+        const startY = drawSubHeader(doc, margin + headerH + 3);
+        const { minD, maxD, items, compItems } = pageRanges[r];
 
-        doc.setFontSize(10);
+        // Map Graphics Dimensions (Landscape Layout)
+        const plotSize = 95; // 95x95 square map for landscape fit
+        const plotCenterX = margin + (plotSize / 2) + 5;
+        const plotCenterY = startY + 8 + (plotSize / 2);
+
+        doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        doc.text(`Graphical Map: Distance ${minD}m to ${maxD}m`, margin, currentY + 5);
-
-        // ── Draw Map Plot ────────────────────────────────────────────────────
-        const plotY = currentY + 10;
-        const plotSize = 140; // 140x140 square map
-        const plotCenterX = margin + (contentWidth / 2);
-        const plotCenterY = plotY + (plotSize / 2);
+        doc.setTextColor(...colors.text);
+        doc.text(`SEABED MAP GRAPHICS (Range: ${minD}m - ${maxD}m)`, margin + 2, startY + 4);
 
         // ── Map Legend ───────────────────────────────────────────────────────
-        // Only show relevant legends based on report type
-        const showDebrisLeg = itemTypeFilter.toLowerCase().includes('debris') || itemTypeFilter === '';
-        const showGasLeg = itemTypeFilter.toLowerCase().includes('gas') || itemTypeFilter === '';
-        const showCraterLeg = itemTypeFilter.toLowerCase().includes('crater') || itemTypeFilter === '';
-
-        const legY = plotY - 6; 
-        // Move starting position to the right to avoid overlap with "Graphical Map..." title
-        let currentLegX = plotCenterX; 
-        
+        const legY = startY + 4;
+        let legX = margin + 110;
         doc.setFontSize(7);
-        doc.setTextColor(80, 80, 80);
+        doc.setTextColor(80);
 
-        if (showDebrisLeg) {
-            // Metallic (Blue)
-            doc.setFillColor(29, 78, 216);
-            doc.circle(currentLegX + 2, legY - 1, 1, "F");
-            doc.text("METALLIC", currentLegX + 4.5, legY, { align: "left" });
-            currentLegX += 18;
+        // Legend: Current Survey (Solid)
+        doc.setFillColor(29, 78, 216); doc.circle(legX, legY - 1, 1.2, "F");
+        doc.text("Metallic", legX + 2.5, legY, { align: "left" }); legX += 17;
 
-            // Non-Metallic (Orange)
-            doc.setFillColor(234, 88, 12);
-            doc.circle(currentLegX + 2, legY - 1, 1, "F");
-            doc.text("NON-METALLIC", currentLegX + 4.5, legY, { align: "left" });
-            currentLegX += 26;
+        doc.setFillColor(234, 88, 12); doc.circle(legX, legY - 1, 1.2, "F");
+        doc.text("Non-Metallic", legX + 2.5, legY, { align: "left" }); legX += 22;
+
+        doc.setFillColor(34, 197, 94); doc.circle(legX, legY - 1, 1.2, "F");
+        doc.text("Seepage", legX + 2.5, legY, { align: "left" }); legX += 17;
+
+        doc.setFillColor(147, 51, 234); doc.circle(legX, legY - 1, 1.2, "F");
+        doc.text("Crater", legX + 2.5, legY, { align: "left" }); legX += 17;
+
+        if (compItems.length > 0) {
+            doc.setFillColor(245, 158, 11); doc.circle(legX, legY - 1, 1.2, "F");
+            doc.text("Previous Survey (Ref)", legX + 2.5, legY, { align: "left" });
         }
 
-        if (showGasLeg) {
-            // Seepage (Green)
-            doc.setFillColor(34, 197, 94);
-            doc.circle(currentLegX + 2, legY - 1, 1, "F");
-            doc.text("SEEPAGE", currentLegX + 4.5, legY, { align: "left" });
-            currentLegX += 18;
-        }
-
-        if (showCraterLeg) {
-            // Crater (Purple)
-            doc.setFillColor(147, 51, 234);
-            doc.circle(currentLegX + 2, legY - 1, 1, "F");
-            doc.text("CRATER", currentLegX + 4.5, legY, { align: "left" });
-        }
-        
+        // Draw Map Border
         if (isPrintFriendly) {
-            doc.setDrawColor(0, 0, 0);
-            doc.rect(plotCenterX - plotSize/2, plotY, plotSize, plotSize);
+            doc.setDrawColor(0);
+            doc.rect(plotCenterX - plotSize/2, plotCenterY - plotSize/2, plotSize, plotSize);
         } else {
-            doc.setFillColor(250, 252, 255); // very light blue
-            doc.rect(plotCenterX - plotSize/2, plotY, plotSize, plotSize, "F");
-            doc.setDrawColor(180, 180, 180); // Softer border
-            doc.rect(plotCenterX - plotSize/2, plotY, plotSize, plotSize, "S");
+            doc.setFillColor(250, 252, 255);
+            doc.rect(plotCenterX - plotSize/2, plotCenterY - plotSize/2, plotSize, plotSize, "F");
+            doc.setDrawColor(180);
+            doc.rect(plotCenterX - plotSize/2, plotCenterY - plotSize/2, plotSize, plotSize, "S");
         }
 
-        // Draw compass labels
-        doc.setFontSize(8);
-        doc.setTextColor(120, 120, 120);
-        doc.text("NORTH", plotCenterX, plotY + 4.5, { align: "center" });
-        doc.text("SOUTH", plotCenterX, plotY + plotSize - 2, { align: "center" });
-        doc.text("WEST", plotCenterX - plotSize/2 + 2, plotCenterY, { align: "left" });
-        doc.text("EAST", plotCenterX + plotSize/2 - 2, plotCenterY, { align: "right" });
+        // Draw Compass Labels
+        doc.setFontSize(7);
+        doc.setTextColor(120);
+        doc.text("NORTH", plotCenterX, plotCenterY - plotSize/2 + 3.5, { align: "center" });
+        doc.text("SOUTH", plotCenterX, plotCenterY + plotSize/2 - 1.5, { align: "center" });
+        doc.text("WEST", plotCenterX - plotSize/2 + 1.5, plotCenterY + 1, { align: "left" });
+        doc.text("EAST", plotCenterX + plotSize/2 - 1.5, plotCenterY + 1, { align: "right" });
 
-        // Platform Legs (Assume 4 legs) - RATIO UPDATED TO MATCH GUI (88/600 = 0.14666 from center)
-        const innerRatio = 0.14666; 
+        // Platform Legs (4 Legs - A1, A2, B1, B2)
+        const innerRatio = 0.14666;
         const dx = (plotSize * innerRatio);
         const dy = (plotSize * innerRatio);
         const legOffsets = [
@@ -297,8 +272,7 @@ export const generateSeabedSurveyReport = async (
             { x: dx,  y: dy,  n: "B2" },
         ];
 
-        doc.setDrawColor(150, 150, 150);
-        doc.setLineWidth(0.3);
+        doc.setDrawColor(150); doc.setLineWidth(0.3);
         doc.line(plotCenterX - dx, plotCenterY - dy, plotCenterX + dx, plotCenterY - dy);
         doc.line(plotCenterX - dx, plotCenterY + dy, plotCenterX + dx, plotCenterY + dy);
         doc.line(plotCenterX - dx, plotCenterY - dy, plotCenterX - dx, plotCenterY + dy);
@@ -306,145 +280,172 @@ export const generateSeabedSurveyReport = async (
 
         legOffsets.forEach(leg => {
             doc.setFillColor(255, 255, 255);
-            doc.setDrawColor(100, 100, 100);
-            doc.circle(plotCenterX + leg.x, plotCenterY + leg.y, 2.5, "DF");
-            doc.setFontSize(5);
-            doc.setTextColor(0, 0, 0);
-            doc.text(leg.n, plotCenterX + leg.x, plotCenterY + leg.y + 0.8, { align: "center" });
+            doc.setDrawColor(100);
+            doc.circle(plotCenterX + leg.x, plotCenterY + leg.y, 2.2, "DF");
+            doc.setFontSize(4.5);
+            doc.setTextColor(0);
+            doc.text(leg.n, plotCenterX + leg.x, plotCenterY + leg.y + 0.6, { align: "center" });
         });
 
-        // Calculate Pixel Per Meter scale based on max range (21m)
-        // Matching GUI logic: padding margin are subtracted from available radius
-        const marginPaddingRatio = 20 / 300; // GUI uses 20px padding on 300px radius
-        const safetyMargin = (plotSize / 2) * marginPaddingRatio;
-        const maxRangeOnPage = 21; 
+        // Grid Scale & Distance Rings (every 3m)
+        const safetyMargin = (plotSize / 2) * (20 / 300);
+        const maxRangeOnPage = 21;
         const scale = ((plotSize / 2) - dx - safetyMargin) / maxRangeOnPage;
 
-        // Draw distance grids (every 3m relative to current page)
-        doc.setDrawColor(220, 220, 220);
-        doc.setLineWidth(0.1);
+        doc.setDrawColor(220); doc.setLineWidth(0.1);
         for (let d = 3; d <= maxRangeOnPage; d += 3) {
             const actualDistance = minD + d;
             const rx = dx + (d * scale);
             const ry = dy + (d * scale);
             doc.rect(plotCenterX - rx, plotCenterY - ry, 2 * rx, 2 * ry, "S");
             
-            // Draw text corner labels
-            doc.setFontSize(5);
-            doc.setTextColor(180, 180, 180);
-            doc.text(`${actualDistance}m`, plotCenterX - rx + 0.5, plotCenterY - ry + 3);
-            doc.text(`${actualDistance}m`, plotCenterX + rx - 5.5, plotCenterY - ry + 3);
-            doc.text(`${actualDistance}m`, plotCenterX + rx - 5.5, plotCenterY + ry - 1);
-            doc.text(`${actualDistance}m`, plotCenterX - rx + 0.5, plotCenterY + ry - 1);
+            doc.setFontSize(4.5);
+            doc.setTextColor(180);
+            doc.text(`${actualDistance}m`, plotCenterX - rx + 0.5, plotCenterY - ry + 2.5);
+            doc.text(`${actualDistance}m`, plotCenterX + rx - 4.5, plotCenterY - ry + 2.5);
         }
 
-        // Draw Markers
-        items.forEach(item => {
-            // Coordinate mapping: Calculate relative distance from current page minD
+        // Draw Historical Comparison Markers first (Amber Dashed/Ring)
+        compItems.forEach(item => {
             const dRel = Math.max(0, item.distance - minD);
             const angle = Math.atan2(item.y - 50, item.x - 50);
-            
-            // Map the relative distance to screen radius
-            // We use the same scale as the rings
-            const r = dx + (dRel * scale);
-            
-            const screenX = plotCenterX + r * Math.cos(angle);
-            const screenY = plotCenterY + r * Math.sin(angle);
+            const rRad = dx + (dRel * scale);
+            const screenX = plotCenterX + rRad * Math.cos(angle);
+            const screenY = plotCenterY + rRad * Math.sin(angle);
+
+            doc.setFillColor(245, 158, 11);
+            doc.setDrawColor(217, 119, 6);
+            doc.setLineWidth(0.2);
+            doc.circle(screenX, screenY, 2.2, "DF");
+            doc.setTextColor(255);
+            doc.setFontSize(4.5);
+            doc.setFont("helvetica", "bold");
+            doc.text(`R${item.label}`, screenX, screenY + 0.7, { align: "center" });
+        });
+
+        // Draw Current Markers
+        items.forEach(item => {
+            const dRel = Math.max(0, item.distance - minD);
+            const angle = Math.atan2(item.y - 50, item.x - 50);
+            const rRad = dx + (dRel * scale);
+            const screenX = plotCenterX + rRad * Math.cos(angle);
+            const screenY = plotCenterY + rRad * Math.sin(angle);
 
             if (item.type.includes('Gas Seepage')) {
-                doc.setFillColor(34, 197, 94); // Green
+                doc.setFillColor(34, 197, 94);
             } else if (item.type.includes('Crater')) {
-                doc.setFillColor(147, 51, 234); // Purple
+                doc.setFillColor(147, 51, 234);
             } else if (item.isMetallic) {
-                doc.setFillColor(29, 78, 216); // Blue
+                doc.setFillColor(29, 78, 216);
             } else {
-                doc.setFillColor(234, 88, 12); // Orange
+                doc.setFillColor(234, 88, 12);
             }
 
             doc.setDrawColor(255, 255, 255);
             doc.setLineWidth(0.2);
-            doc.circle(screenX, screenY, 3, "DF");
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(6);
+            doc.circle(screenX, screenY, 2.5, "DF");
+            doc.setTextColor(255);
+            doc.setFontSize(5);
             doc.setFont("helvetica", "bold");
-            doc.text(item.label, screenX, screenY + 1, { align: "center" });
+            doc.text(item.label, screenX, screenY + 0.8, { align: "center" });
         });
 
-        // ── Details Table ────────────────────────────────────────────────────
-        const tableY = plotY + plotSize + 5;
-        const isCraterOrGas = itemTypeFilter.toLowerCase() === 'crater' || itemTypeFilter.toLowerCase() === 'gas seepage';
-        
-        const tableBody = items.map(item => {
-            const row = [
-                String(item.label),
-                item.qid,
-                item.face,
-                `${item.distance}m`,
-                String(item.northing),
-                String(item.easting),
-                item.description || '-'
-            ];
-            if (!isCraterOrGas) {
-                row.push(item.material);
-            }
-            row.push(item.size || '-');
-            return row;
-        });
+        // ── Details Table (Right Side of Map Graphics) ───────────────────────
+        const tableX = plotCenterX + (plotSize / 2) + 6;
+        const tableW = pageWidth - margin - tableX;
+        const tableY = startY + 8;
 
-        const tableHeaders = isCraterOrGas 
-            ? ["ID", "QID", "Face", "Dist.", "Northing", "Easting", "Description", "Dims"]
-            : ["ID", "QID", "Face", "Dist.", "Northing", "Easting", "Description", "Material", "Dims"];
+        const tableBody = items.map(item => [
+            String(item.label),
+            item.qid,
+            item.face,
+            `${item.distance}m`,
+            item.material,
+            item.size || '-',
+            item.description || '-'
+        ]);
 
         autoTable(doc, {
             startY: tableY,
-            head: [tableHeaders],
+            head: [["ID", "QID", "Face", "Dist.", "Material", "Dimensions", "Description"]],
             body: tableBody,
             theme: "grid",
             headStyles: {
                 fillColor: isPrintFriendly ? [229, 231, 235] : [31, 55, 93],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                 fontStyle: "bold",
-                fontSize: 8,
+                fontSize: 7.5,
                 lineWidth: 0.1,
                 lineColor: [0, 0, 0]
             },
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
-            margin: { left: margin, right: margin, top: margin + 28 + 6 },
-            didDrawPage: (data) => {
-                if (data.pageNumber > 1) drawHeader(doc);
-            }
+            styles: { fontSize: 7, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            margin: { left: tableX, right: margin, top: margin + headerH + 20 },
+            tableWidth: tableW
         });
+
+        // If Comparison Data exists, draw second table below for Reference items
+        if (compItems.length > 0) {
+            const compTableY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 4 : tableY + 50;
+            const compTableBody = compItems.map(item => [
+                `R${item.label}`,
+                item.qid || '-',
+                item.face || '-',
+                `${item.distance}m`,
+                item.material || '-',
+                item.description || '-'
+            ]);
+
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(217, 119, 6);
+            doc.text(`Previous Survey Items (${config.comparisonName || 'Reference'})`, tableX, compTableY - 1);
+
+            autoTable(doc, {
+                startY: compTableY,
+                head: [["Ref ID", "QID", "Face", "Dist.", "Material", "Description"]],
+                body: compTableBody,
+                theme: "grid",
+                headStyles: {
+                    fillColor: [245, 158, 11],
+                    textColor: [255, 255, 255],
+                    fontStyle: "bold",
+                    fontSize: 7,
+                    lineWidth: 0.1,
+                    lineColor: [0, 0, 0]
+                },
+                styles: { fontSize: 6.5, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+                margin: { left: tableX, right: margin, top: margin + headerH + 20 },
+                tableWidth: tableW
+            });
+        }
     }
 
+    // ── Signatures Section ───────────────────────────────────────────────────
     const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + headerH + 20);
     if (config.showSignatures !== false) {
-        let sigY = pageHeight - 38;
-        if (finalY > sigY - 10) {
+        let sigY = pageHeight - 32;
+        if (finalY > sigY - 5) {
             doc.addPage();
             drawHeader(doc);
-            sigY = pageHeight - 38;
+            sigY = pageHeight - 32;
         }
         const sigW = contentWidth / 3;
-        const colors = { 
-            navy: [31, 55, 93] as [number, number, number], 
-            text: [30, 41, 59] as [number, number, number] 
-        };
         const drawSig = (label: string, lx: number) => {
             doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
-            doc.rect(lx, sigY, sigW - 4, 18);
+            doc.rect(lx, sigY, sigW - 4, 16);
             if (!isPrintFriendly) {
                 doc.setFillColor(...colors.navy);
-                doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                doc.rect(lx, sigY, sigW - 4, 4, "F");
                 doc.setTextColor(255);
             } else {
                 doc.setTextColor(...colors.navy);
             }
-            doc.setFontSize(7); doc.setFont("helvetica", "bold");
-            doc.text(label, lx + 2, sigY + 3.5);
-            doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
-            doc.text("Name:", lx + 2, sigY + 10);
-            doc.text("Date:", lx + 2, sigY + 13.5);
-            doc.text("Signature:", lx + 2, sigY + 17);
+            doc.setFontSize(6.5); doc.setFont("helvetica", "bold");
+            doc.text(label, lx + 2, sigY + 3);
+            doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6);
+            doc.text("Name:", lx + 2, sigY + 8);
+            doc.text("Date:", lx + 2, sigY + 11.5);
+            doc.text("Signature:", lx + 2, sigY + 15);
         };
 
         drawSig('PREPARED BY', margin);
@@ -458,22 +459,23 @@ export const generateSeabedSurveyReport = async (
 
     for (let p = 1; p <= totalPages; p++) {
         doc.setPage(p);
-        const footerLineY = pageHeight - FOOTER_Y_OFFSET;
+        const footerLineY = pageHeight - 8;
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.3);
         doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
 
-        if (config.showPageNumbers) {
+        if (config.showPageNumbers !== false) {
             doc.setTextColor(100, 100, 100);
+            doc.setFontSize(7);
             doc.text(`Page ${p} of ${totalPages}`, pageWidth / 2, footerLineY + 4, { align: "center" });
         }
         doc.setTextColor(100, 100, 100);
+        doc.setFontSize(7);
         doc.text(printedDateStr, pageWidth - margin, footerLineY + 4, { align: "right" });
     }
 
     applyWatermarkAndSignaturesGlobal(doc, config);
     if (config.returnBlob) return doc.output("blob");
     const fileSuffix = itemTypeFilter ? itemTypeFilter.replace(/\s+/g,'_') : "General";
-    applyWatermarkAndSignaturesGlobal(doc, config);
-    doc.save(`${config.reportNoPrefix}_Seabed_${fileSuffix}.pdf`);
+    doc.save(`${sowReportNo || 'Report'}_Seabed_Survey_${fileSuffix}.pdf`);
 };

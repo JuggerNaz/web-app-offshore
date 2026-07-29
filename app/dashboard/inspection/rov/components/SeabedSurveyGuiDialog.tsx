@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Printer, Loader2 } from 'lucide-react';
 import { SeabedDebrisPlot } from '@/components/inspection/seabed-debris-plot';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
 import { Badge } from "@/components/ui/badge";
+import { generateSeabedSurveyReport } from '@/utils/report-generators/seabed-survey-report';
+import { getReportHeaderData } from '@/utils/company-settings';
 
 interface SeabedSurveyGuiDialogProps {
     open: boolean;
@@ -1122,6 +1124,60 @@ export function SeabedSurveyGuiInline({
         .filter(d => typeFilter === 'All' || d.type === typeFilter);
     const activeItem = existingDebris.find(d => d.id === activeId);
 
+    const [isPrinting, setIsPrinting] = useState(false);
+
+    const handlePrintReport = async () => {
+        try {
+            setIsPrinting(true);
+            toast.info("Generating Seabed Survey Sketch Report...");
+
+            const [compSettingsRes, jpRes, strRes] = await Promise.all([
+                supabase.from("company_settings").select("*").maybeSingle(),
+                jobpackId ? supabase.from("u_jobpacks").select("name, metadata").eq("id", Number(jobpackId)).maybeSingle() : Promise.resolve({ data: null }),
+                structureId ? supabase.from("u_structures").select("name, str_name, field_name").eq("id", Number(structureId)).maybeSingle() : Promise.resolve({ data: null })
+            ]);
+
+            const compSettings = compSettingsRes.data || {};
+            const jobpackData = jpRes.data || {};
+            const structData = strRes.data || {};
+
+            const headerData = {
+                platformName: structData.str_name || structData.name || structureName || "N/A",
+                jobpackName: jobpackData.name || "N/A",
+                vessel: rovJob?.raw?.vessel || rovJob?.vessel || "N/A",
+                sowReportNo: sowReportNo || "N/A",
+                date: new Date().toLocaleDateString("en-GB")
+            };
+
+            const currentComp = availableComparisons.find(c => c.key === selectedComparison);
+
+            await generateSeabedSurveyReport(
+                { id: jobpackId, name: headerData.jobpackName },
+                { id: structureId, name: headerData.platformName, str_name: headerData.platformName },
+                sowReportNo || headerData.sowReportNo || "",
+                compSettings,
+                {
+                    headerData,
+                    comparisonKey: selectedComparison !== "none" ? selectedComparison : undefined,
+                    comparisonName: currentComp ? currentComp.name : undefined,
+                    comparisonRecords: comparisonDebris,
+                    currentPage,
+                    printFriendly: false,
+                    showSignatures: true,
+                    showPageNumbers: true
+                },
+                typeFilter === "All" ? "" : typeFilter
+            );
+
+            toast.success("Seabed Survey Report generated successfully!");
+        } catch (err: any) {
+            console.error("Print report error:", err);
+            toast.error("Failed to generate report: " + (err.message || "Unknown error"));
+        } finally {
+            setIsPrinting(false);
+        }
+    };
+
     if (!open) return null;
 
     return (
@@ -1165,6 +1221,17 @@ export function SeabedSurveyGuiInline({
                         </div>
                         <Button variant="ghost" size="sm" className="dark:text-slate-300 dark:hover:bg-slate-700" onClick={() => setCurrentPage(p => p + 1)}>Next Range</Button>
                     </div>
+
+                    <Button 
+                        onClick={handlePrintReport} 
+                        disabled={isPrinting}
+                        className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 text-xs font-bold shadow-md"
+                        size="sm"
+                    >
+                        {isPrinting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                        Report
+                    </Button>
+
                     <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
                 </div>
             </div>
