@@ -56,6 +56,54 @@ export const generateSeabedSurveyReport = async (
             const allMapped = data.map((r: any) => {
                 const idraw = r.inspection_data || {};
                 const cat = idraw.category || idraw.type || (r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris');
+                
+                // Formulate category-specific info string or dimensions/material
+                let sizeDisplay = 'N/A';
+                let matDisplay = 'N/A';
+
+                if (cat === 'Gas Seepage') {
+                    matDisplay = 'N/A';
+                    const intensity = idraw.seepage_intensity || idraw.intensity || '';
+                    sizeDisplay = intensity ? `Intensity: ${intensity}` : 'N/A';
+                } else if (cat === 'Crater') {
+                    matDisplay = 'N/A';
+                    const cDia = idraw.crater_diameter || idraw.craterDiameter || '';
+                    const cDiaUnit = idraw.crater_diameter_unit || idraw.craterDiameterUnit || 'm';
+                    const cDep = idraw.crater_depth || idraw.craterDepth || '';
+                    const cDepUnit = idraw.crater_depth_unit || idraw.craterDepthUnit || 'm';
+                    if (cDia || cDep) {
+                        const parts = [];
+                        if (cDia) parts.push(`Dia: ${cDia}${cDiaUnit}`);
+                        if (cDep) parts.push(`Depth: ${cDep}${cDepUnit}`);
+                        sizeDisplay = parts.join(', ');
+                    } else {
+                        sizeDisplay = idraw.size_dimensions || idraw.dimension_1 || 'N/A';
+                    }
+                } else {
+                    // Debris
+                    matDisplay = idraw.material || idraw.debris_material || 'Unknown';
+                    const rawSize = idraw.size_dimensions || idraw.dimension_1;
+                    if (rawSize && rawSize !== 'm x m') {
+                        sizeDisplay = rawSize;
+                    } else {
+                        const l = idraw.size_length || idraw.length || '';
+                        const lu = idraw.size_length_unit || idraw.lengthUnit || 'm';
+                        const w = idraw.size_width || idraw.width || '';
+                        const wu = idraw.size_width_unit || idraw.widthUnit || 'm';
+                        const h = idraw.size_height || idraw.height || '';
+                        const hu = idraw.size_height_unit || idraw.heightUnit || 'm';
+                        const d = idraw.size_diameter || idraw.diameter || '';
+                        const du = idraw.size_diameter_unit || idraw.diameterUnit || 'm';
+                        
+                        const parts = [];
+                        if (l) parts.push(`L:${l}${lu}`);
+                        if (w) parts.push(`W:${w}${wu}`);
+                        if (h) parts.push(`H:${h}${hu}`);
+                        if (d) parts.push(`Dia:${d}${du}`);
+                        sizeDisplay = parts.length > 0 ? parts.join(' x ') : 'N/A';
+                    }
+                }
+
                 return {
                     id: r.insp_id,
                     x: parseFloat(idraw.x || '0'),
@@ -67,9 +115,9 @@ export const generateSeabedSurveyReport = async (
                     northing: idraw.northing || '',
                     easting: idraw.easting || '',
                     type: cat,
-                    description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/i, '') || '',
-                    size: idraw.size_dimensions || idraw.dimension_1 || `${idraw.size_length || ''}${idraw.size_length_unit || 'm'} x ${idraw.size_width || ''}${idraw.size_width_unit || 'm'}`,
-                    material: idraw.material || idraw.debris_material || 'Unknown',
+                    description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/i, '') || idraw.debris_desc || '-',
+                    size: sizeDisplay,
+                    material: matDisplay,
                     isMetallic: (idraw.material || idraw.debris_material) === 'Metallic'
                 };
             }).filter(r => !isNaN(r.x) && !isNaN(r.y) && (itemTypeFilter === '' || itemTypeFilter.toLowerCase() === 'all' || r.type.toLowerCase().includes(itemTypeFilter.toLowerCase())));
