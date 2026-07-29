@@ -350,6 +350,7 @@ interface WorkspaceDialogsProps {
         generateMPINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTWTKReport: () => void;
         generateUTWTKReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateJobPackSummaryReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -645,6 +646,7 @@ export function WorkspaceDialogs({
         generateMPINSReportBlob,
         generateUTWTKReport,
         generateUTWTKReportBlob,
+        generateJobPackSummaryReportBlob,
         generateSZONEReportBlob,
         generateCPCLBReportBlob,
         generateUTCLBReportBlob,
@@ -696,7 +698,14 @@ export function WorkspaceDialogs({
     // Wizard step and template state lifted up to control back-routing from preview dialogs
     const [wizardStep, setWizardStep] = React.useState(1);
     const [wizardSelectedTemplate, setWizardSelectedTemplate] = React.useState<any>(null);
+    const [platformSummaryPreviewOpen, setPlatformSummaryPreviewOpen] = React.useState(false);
     const isReturningFromPreview = React.useRef(false);
+
+    React.useEffect(() => {
+        const handleOpenSummary = () => setPlatformSummaryPreviewOpen(true);
+        window.addEventListener("open-platform-summary-report", handleOpenSummary);
+        return () => window.removeEventListener("open-platform-summary-report", handleOpenSummary);
+    }, []);
 
     React.useEffect(() => {
         if (isReportWizardOpen) {
@@ -2868,6 +2877,18 @@ export function WorkspaceDialogs({
                 title="Conductor Inspection Underwater Diving Report Preview" 
                 fileName={`Diving_Conductor_UW_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingDCONDUWReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => setPlatformSummaryPreviewOpen(false)}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={platformSummaryPreviewOpen} 
+                onOpenChange={setPlatformSummaryPreviewOpen} 
+                title="Platform Jobpack Inspection Summary Report Preview" 
+                fileName={`Platform_Summary_Report_${headerData.sowReportNo || 'SUMMARY'}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={handlers.generateJobPackSummaryReportBlob} 
             />
 
             <ReportPreviewDialog

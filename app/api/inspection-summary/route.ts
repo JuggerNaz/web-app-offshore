@@ -1078,24 +1078,74 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
+        // Fetch library descriptions for COMPGRP (Component Groups) to ensure full component names
+        const { data: compLibData } = await (supabase as any)
+            .from("u_lib_list")
+            .select("lib_desc, workunit, lib_code, lib_id")
+            .or("lib_code.eq.COMPGRP,lib_code.eq.COMP_TYP,lib_code.eq.COMPONENT_TYPE");
+
+        const libCodeNameMap: Record<string, string> = {};
+        if (compLibData && Array.isArray(compLibData)) {
+            compLibData.forEach((item: any) => {
+                if (item.workunit && item.lib_desc) {
+                    libCodeNameMap[String(item.workunit).toUpperCase().trim()] = item.lib_desc;
+                }
+                if (item.lib_code && item.lib_desc) {
+                    libCodeNameMap[String(item.lib_code).toUpperCase().trim()] = item.lib_desc;
+                }
+            });
+        }
+
         const COMPONENT_TYPE_NAMES: Record<string, string> = {
             "RS": "Riser",
             "CD": "Conductor",
             "CA": "Caisson",
             "RG": "Riser Guard",
             "BL": "Boat Landing",
+            "BO": "Boat Landing",
             "AN": "Anode",
             "SD": "Seabed Debris",
             "LG": "Leg",
+            "LEG": "Leg",
             "MB": "Member",
             "PL": "Pipeline",
             "SH": "Sheave",
             "CP": "Cathodic Protection",
-            "CL": "Clamp"
+            "CL": "Clamp",
+            "CS": "Conductor Support",
+            "CF": "Conductor Guide Frame",
+            "FD": "Fender",
+            "HD": "Horizontal Diagonal Member",
+            "HM": "Horizontal Member",
+            "VM": "Vertical Member",
+            "VD": "Vertical Diagonal Member",
+            "IT": "Item / Appurtenance",
+            "WN": "Weld Node",
+            "WP": "Support Weld",
+            "CU": "Conductor Guide",
+            "SG": "Safety Gate",
+            "BB": "Boat Bumper",
+            "BR": "Bracing",
+            "DK": "Deck",
+            "FW": "Fairlead",
+            "FWD": "Fairlead",
+            "JK": "Jacket",
+            "ST": "Stiffener",
+            "TR": "Truss",
+            "WB": "Wellhead",
+            "GR": "Guard Rail",
+            "ND": "Node",
+            "PA": "Pad Eye",
+            "PT": "Protection Structure",
+            "RL": "Railing",
+            "VS": "Vent Stack",
+            "WK": "Walkway",
+            "LA": "Ladder",
+            "PG": "Pile Guide"
         };
         const getComponentTypeName = (code: string) => {
             const uc = (code || "").toUpperCase().trim();
-            return COMPONENT_TYPE_NAMES[uc] || uc || "Other";
+            return COMPONENT_TYPE_NAMES[uc] || libCodeNameMap[uc] || uc || "Other";
         };
 
         const componentSummary: Record<string, Record<string, {
@@ -1108,11 +1158,20 @@ export const GET = withTenant(async (request, { companyId }) => {
             }>
         }>> = {};
 
-        // 1. Initialize from SOW items (to capture any pending items)
-        allSowItems.forEach((item: any) => {
-            const dbComp = compMap.get(item.component_id);
-            const compTypeRaw = item.component_type || dbComp?.code || "Other";
-            const compType = getComponentTypeName(compTypeRaw);
+        // 1. Initialize from SOW items for selected SOW Report (to capture pending items)
+        sowItemsToProcess.forEach((item: any) => {
+            const dbComp = compMap.get(item.component_id) || qidMap.get(String(item.component_qid || "").trim().toUpperCase());
+            
+            // Derive component code: dbComp.code -> item.component_type -> qid prefix (e.g. CGF -> CF)
+            let rawCode = dbComp?.code || item.component_type || "";
+            if (!rawCode && item.component_qid) {
+                const qidUpper = String(item.component_qid).trim().toUpperCase();
+                const prefix = qidUpper.split(/[\/\-_0-9]/)[0];
+                rawCode = prefix;
+            }
+            if (rawCode === "CGF") rawCode = "CF";
+
+            const compType = getComponentTypeName(rawCode || "Other");
             const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
             const inspCode = item.inspection_code || "UNKNOWN";
             
@@ -1139,12 +1198,19 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
-        // 2. Populate from actual inspection records
-        rawRecords.forEach((r: any) => {
+        // 2. Populate from actual inspection records for the current SOW Report
+        records.forEach((r: any) => {
             const comp = r.structure_components || {};
-            const compTypeRaw = r.component_type || comp.code || "Other";
-            const compType = getComponentTypeName(compTypeRaw);
+            let rawCode = comp.code || r.component_type || "";
             const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
+            if (!rawCode && qid) {
+                const qidUpper = String(qid).trim().toUpperCase();
+                const prefix = qidUpper.split(/[\/\-_0-9]/)[0];
+                rawCode = prefix;
+            }
+            if (rawCode === "CGF") rawCode = "CF";
+
+            const compType = getComponentTypeName(rawCode || "Other");
             const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
 
             if (!componentSummary[compType]) {

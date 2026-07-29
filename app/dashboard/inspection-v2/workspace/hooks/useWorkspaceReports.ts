@@ -2483,7 +2483,33 @@ export function useWorkspaceReports(
         generateMPINSReportBlob,
         generateUTWTKReport,
         generateUTWTKReportBlob,
-        utwtkPreviewOpen, setUtwtkPreviewOpen,
+        generateJobPackSummaryReportBlob: async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+
+            // Fetch live inspection summary data for this SOW report
+            const params = new URLSearchParams();
+            if (structureId) params.set("structure_id", structureId);
+            if (jobPackId) params.set("jobpack_id", jobPackId);
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A") params.set("sow_report_no", headerData.sowReportNo);
+
+            const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+            const json = await res.json();
+            const summaryData = json.data || {};
+
+            const { generatePlatformInspectionSummaryReport } = await import("@/utils/report-generators/platform-inspection-summary-report");
+            return await generatePlatformInspectionSummaryReport(
+                summaryData,
+                { ...headerData, contractorLogoUrl },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { returnBlob: true, printFriendly, sowReportNo: headerData.sowReportNo, showSignatures: showSignatures ?? reportConfig.showSignatures } as any
+            ) as Blob;
+        },
         generateSZONEReport,
         generateSZONEReportBlob,
         generateCPCLBReport,
