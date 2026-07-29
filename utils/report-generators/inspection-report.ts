@@ -22,20 +22,35 @@ export const generateInspectionReport = async (
     try {
         const supabase = createClient();
 
-        // 1. Fetch Inspection Data
-        const { data: inspection, error: inspError } = await supabase
-            .from('insp_records')
-            .select(`
-                *,
-                inspection_type ( code, name ),
-                structure_components ( q_id, name )
-            `)
-            .eq('insp_id', inspectionId)
-            .single();
+        let inspection: any = null;
+        if ((config as any)?.isBlankReport) {
+            inspection = {
+                insp_id: 0,
+                sow_report_no: config?.reportNoPrefix || "____________________",
+                created_at: new Date().toISOString(),
+                inspection_type: { code: "GVI", name: "General Visual Inspection" },
+                structure_components: { q_id: ". . . . . .", name: ". . . . . ." },
+                inspection_data: {},
+                description: "",
+                insp_anomalies: [],
+                attachment: []
+            };
+        } else {
+            const { data: fetchedInsp, error: inspError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type ( code, name ),
+                    structure_components ( q_id, name )
+                `)
+                .eq('insp_id', inspectionId)
+                .single();
 
-        if (inspError || !inspection) {
-            console.error("Error fetching inspection for report:", inspError);
-            throw new Error("Inspection not found");
+            if (inspError || !fetchedInsp) {
+                console.error("Error fetching inspection for report:", inspError);
+                throw new Error("Inspection not found");
+            }
+            inspection = fetchedInsp;
         }
 
         // 2. Fetch Anomalies

@@ -176,15 +176,29 @@ export const generateVideoLogReport = async (
     };
 
     if (tapes.length === 0) {
-        drawHeader(doc);
-        doc.setFontSize(12);
-        doc.setTextColor(0, 0, 0);
-        doc.text("No video log records found.", pageWidth / 2, 80, { align: "center" });
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`${config.reportNoPrefix}_VideoLog.pdf`);
-        return;
+        if ((config as any).isBlankReport) {
+            tapes = [{
+                tape_no: "__________",
+                tape_type: "Video Tape",
+                logs: Array.from({ length: 8 }, (_, i) => ({
+                    counter_no: "",
+                    dive_no: "",
+                    component_qid: "",
+                    elevation: "",
+                    description: ""
+                }))
+            }];
+        } else {
+            drawHeader(doc);
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.text("No video log records found.", pageWidth / 2, 80, { align: "center" });
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            if (config.returnBlob) return doc.output("blob");
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            doc.save(`${config.reportNoPrefix}_VideoLog.pdf`);
+            return;
+        }
     }
 
     // ── First Page ───────────────────────────────────────────────────────────

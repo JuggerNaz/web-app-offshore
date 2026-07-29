@@ -276,16 +276,38 @@ export const generateDefectAnomalyReport = async (
     };
 
     if (anomalies.length === 0) {
-        drawHeader(doc);
-        doc.setFontSize(12);
-        const noDataMsg = config.isFindingsReport ? "No findings found." : "No anomalies found.";
-        doc.text(noDataMsg, pageWidth / 2, 80, { align: "center" });
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        if (config.returnBlob) return doc.output("blob");
-        const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
-        return;
+        if ((config as any).isBlankReport) {
+            anomalies = [{
+                priority: "PRIORITY 2",
+                display_ref_no: "",
+                field_name: "",
+                structure_name: "",
+                sow_report_no: config.reportNoPrefix || "",
+                inspection_date: null,
+                tape_no: "",
+                video_ref: "",
+                diver_name: "",
+                rov_machine: "",
+                rov_name: "",
+                component_qid: "",
+                elevation: "",
+                description: "",
+                findings: "",
+                rectified_remarks: "",
+                rectified: false
+            }];
+        } else {
+            drawHeader(doc);
+            doc.setFontSize(12);
+            const noDataMsg = config.isFindingsReport ? "No findings found." : "No anomalies found.";
+            doc.text(noDataMsg, pageWidth / 2, 80, { align: "center" });
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            if (config.returnBlob) return doc.output("blob");
+            const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
+            return;
+        }
     }
 
     let globalPage = 1;

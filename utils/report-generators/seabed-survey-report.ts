@@ -216,17 +216,36 @@ export const generateSeabedSurveyReport = async (
 
     // ── Handle Empty Records Case ────────────────────────────────────────────
     if (records.length === 0 && compRecords.length === 0) {
-        drawHeader(doc);
-        drawSubHeader(doc, margin + headerH + 3);
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        const filterMsg = itemTypeFilter ? `matching filter '${itemTypeFilter}'` : "";
-        doc.text(`No seabed survey records found ${filterMsg}.`, pageWidth / 2, 90, { align: "center" });
+        if ((config as any).isBlankReport) {
+            records = Array.from({ length: 6 }, (_, i) => ({
+                id: i + 1,
+                x: 5,
+                y: 5 + (i * 3),
+                label: (i + 1).toString(),
+                qid: "__________",
+                face: "N",
+                distance: 5 + i,
+                northing: "__________",
+                easting: "__________",
+                type: itemTypeFilter || "Debris",
+                description: "",
+                size: "",
+                material: "",
+                isMetallic: false
+            }));
+        } else {
+            drawHeader(doc);
+            drawSubHeader(doc, margin + headerH + 3);
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            const filterMsg = itemTypeFilter ? `matching filter '${itemTypeFilter}'` : "";
+            doc.text(`No seabed survey records found ${filterMsg}.`, pageWidth / 2, 90, { align: "center" });
 
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        if (config.returnBlob) return doc.output("blob");
-        doc.save(`${sowReportNo || 'Report'}_Seabed_Survey.pdf`);
-        return;
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            if (config.returnBlob) return doc.output("blob");
+            doc.save(`${sowReportNo || 'Report'}_Seabed_Survey.pdf`);
+            return;
+        }
     }
 
     // ── Range Pagination (21m chunks) ────────────────────────────────────────

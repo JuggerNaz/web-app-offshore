@@ -85,6 +85,7 @@ interface SelectionState {
     planningId: string;
     procedureId: string;
     sowReportNo: string;
+    printBlankReport?: boolean;
 }
 
 // Report Templates Definition
@@ -122,8 +123,6 @@ export const REPORT_TEMPLATES = {
         { id: "rov-rseab-detail-report", name: "Seabed Survey Debris Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Debris inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rseab-gas-detail-report", name: "Seabed Survey Gas Seepage Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Gas Seepage inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Crater inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", icon: FileBarChart, description: "Marine Growth Graph Report (ROV) RMGI with Graph", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", icon: FileBarChart, description: "Marine Growth Inspection Report (ROV) RMGI Standard Table", requires: ["jobpack", "structure", "sow_report"] },
         { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", icon: FileBarChart, description: "Marine Growth Graph Report (ROV) RMGI with Graph", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", icon: FileBarChart, description: "Marine Growth Inspection Report (ROV) RMGI Standard Table", requires: ["jobpack", "structure", "sow_report"] },
         { id: "fmd-report", name: "FMD Survey Report (ROV)", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
@@ -310,6 +309,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         planningId: "",
         procedureId: "",
         sowReportNo: "",
+        printBlankReport: false,
     });
 
     const [selectedTemplates, setSelectedTemplates] = useState<string[]>(() => {
@@ -497,6 +497,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const isStepValid = () => {
         if (step === "template") return !!selections.templateId;
         if (step === "context") {
+            if (selections.printBlankReport) return true;
             const template = getCurrentTemplate();
             if (!template) return false;
 
@@ -803,7 +804,47 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     <p className="text-slate-500">Choose the specific items to include in your {template.name}</p>
                 </div>
 
-                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${cols} gap-6`}>
+                {/* Print Blank Report Option Banner */}
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-amber-500 text-white rounded-lg">
+                            <Printer className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <h4 className="font-semibold text-sm text-slate-900 dark:text-slate-100">Print Blank Inspection Report</h4>
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                                Generate a single blank page containing template fields & layout (no data required). Structure, Job Pack, and SOW Report selection will be bypassed.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Label htmlFor="print-blank-toggle" className="text-xs font-semibold cursor-pointer text-slate-700 dark:text-slate-300">
+                            {selections.printBlankReport ? "Blank Page Enabled" : "Print Blank"}
+                        </Label>
+                        <Switch
+                            id="print-blank-toggle"
+                            checked={selections.printBlankReport || false}
+                            onCheckedChange={(checked: boolean) => setSelections(prev => ({
+                                ...prev,
+                                printBlankReport: checked,
+                                ...(checked ? {
+                                    structureId: "",
+                                    jobPackId: "",
+                                    componentId: "",
+                                    sowReportNo: ""
+                                } : {})
+                            }))}
+                        />
+                    </div>
+                </div>
+
+                {selections.printBlankReport && (
+                    <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-center text-sm text-blue-700 dark:text-blue-300 font-medium">
+                        ✓ Blank report mode active. Click <strong>Next</strong> to customize report settings or preview the blank template.
+                    </div>
+                )}
+
+                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${cols} gap-6 ${selections.printBlankReport ? "opacity-40 pointer-events-none" : ""}`}>
 
                     {reqs.includes("structure") && (
                         <PanelContainer
@@ -1399,7 +1440,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         if (step === "preview") {
             const isDefectReport = selections.templateId === "defect-criteria-report";
             const isJobPackReport = selections.templateId === "jobpack-summary";
-            if (selections.structureId || isDefectReport || (isJobPackReport && selections.jobPackId)) {
+            if (selections.printBlankReport || selections.structureId || isDefectReport || (isJobPackReport && selections.jobPackId)) {
                 generatePreview();
             }
         }
@@ -1413,7 +1454,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         selections.jobPackId,
         selections.componentId,
         selections.planningId,
-        selections.procedureId
+        selections.procedureId,
+        selections.printBlankReport
     ]);
 
     const fetchStructureData = async () => {
@@ -1617,8 +1659,19 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const reportConfig = { 
             ...config, 
             returnBlob,
+            isBlankReport: selections.printBlankReport ?? false,
             ...(currentTemplateId === "final-inspection-datasheet" ? { showPageNumbers: false } : {})
         };
+
+        // Universal Blank Report Interceptor — guarantees ALL report templates produce an authentic blank report
+        if (selections.printBlankReport) {
+            const { generateBlankInspectionReport } = await import("@/utils/report-generators/blank-inspection-report");
+            const targetT = getCurrentTemplate() || TOC_SECTIONS.flatMap(s => s.templates).find(t => t.id === currentTemplateId);
+            const templateTitle = targetT?.name || currentTemplateId;
+            return await generateBlankInspectionReport(currentTemplateId, templateTitle, companySettings, reportConfig as any);
+        }
+
+
 
         // Final Inspection Datasheet Interceptor
         if (currentTemplateId === "final-inspection-datasheet") {
@@ -1748,51 +1801,51 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Summary Report / Findings Summary Report
         if (currentTemplateId === "defect-summary" || currentTemplateId === "findings-summary") {
-            const jobPack = await fetchJobPackData();
-            const structure = selections.structureId ? await fetchStructureData() : null;
-            if (!jobPack) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            if (!jobPack && !selections.printBlankReport) return null;
 
             const isFindingsReport = currentTemplateId === "findings-summary";
             const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
 
-            return await generateDefectSummaryReport(jobPack, structure, selections.sowReportNo, companySettings, extendedConfig as any);
+            return await generateDefectSummaryReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
         // Defect / Anomaly Report / Findings Report
         if (currentTemplateId === "defect-anomaly-report" || currentTemplateId === "findings-report") {
-            const jobPack = await fetchJobPackData();
-            const structure = await fetchStructureData();
-            if (!jobPack || !structure) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             const isFindingsReport = currentTemplateId === "findings-report";
             const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
 
-            return await generateDefectAnomalyReport(jobPack, structure, selections.sowReportNo, companySettings, extendedConfig as any);
+            return await generateDefectAnomalyReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
         // Diver Log Report
         if (currentTemplateId === "diver-log-report") {
-            const jobPack = await fetchJobPackData();
-            const structure = await fetchStructureData();
-            if (!jobPack || !structure) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
-            return await generateDiverLogReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+            return await generateDiverLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
         }
 
         // Video Log Report
         if (currentTemplateId === "video-log-report") {
-            const jobPack = await fetchJobPackData();
-            const structure = await fetchStructureData();
-            if (!jobPack || !structure) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
-            return await generateVideoLogReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+            return await generateVideoLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
         }
 
         // Seabed Survey Reports
         if (currentTemplateId === "rov-seabed-report" || currentTemplateId === "seabed-survey-debris" || currentTemplateId === "seabed-survey-gas" || currentTemplateId === "seabed-survey-crater") {
-            const jobPack = await fetchJobPackData();
-            const structure = await fetchStructureData();
-            if (!jobPack || !structure) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
             
             const filterMap: Record<string, string> = {
                 "rov-seabed-report": "",
@@ -1801,7 +1854,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 "seabed-survey-crater": "Crater"
             };
             
-            return await generateSeabedSurveyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig, filterMap[currentTemplateId]);
+            return await generateSeabedSurveyReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig, filterMap[currentTemplateId]);
         }
 
         // Detailed Seabed Survey Report
@@ -2623,55 +2676,66 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // ROV Anode Inspection Report (New)
         if (currentTemplateId === "rov-anode-report") {
-            const supabase = (await import("@/utils/supabase/client")).createClient();
-            const structure = await fetchStructureData();
-            const jobPack = await fetchJobPackData();
-            if (!structure || !jobPack) return null;
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack   = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
-            const structId = Number(selections.structureId);
-            if (isNaN(structId)) {
-                alert("Invalid Structure selection. Please ensure a structure is selected.");
-                return null;
-            }
+            let anodeRecords: any[] = [];
+            if (selections.printBlankReport) {
+                anodeRecords = Array.from({ length: 12 }, (_, i) => ({
+                    id: i + 1,
+                    elevation: "",
+                    inspection_data: { cp_rdg: "", depletion_pct: "", dim_l: "", dim_w: "", dim_h: "" },
+                    structure_components: { q_id: "" },
+                    description: "",
+                    insp_rov_jobs: { job_no: "" }
+                }));
+            } else {
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                const structId = Number(selections.structureId);
+                if (isNaN(structId)) {
+                    alert("Invalid Structure selection. Please ensure a structure is selected.");
+                    return null;
+                }
 
-            let { data: records, error: fetchError } = await supabase
-                .from('insp_records')
-                .select(`
-                    *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no),
-                    insp_anomalies(*)
-                `)
-                .eq('structure_id', structId);
+                let { data: records, error: fetchError } = await supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        inspection_type:inspection_type_id!left(id, code, name),
+                        structure_components:component_id!left(id, q_id, code, metadata),
+                        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                        insp_video_tapes:tape_id!left(tape_no),
+                        insp_anomalies(*)
+                    `)
+                    .eq('structure_id', structId);
 
-            if (fetchError) {
-                console.error("Fetch Error:", fetchError);
-                alert(`Database error: ${fetchError.message || 'Unknown fetching error'}`);
-                return null;
-            }
+                if (fetchError) {
+                    console.error("Fetch Error:", fetchError);
+                    alert(`Database error: ${fetchError.message || 'Unknown fetching error'}`);
+                    return null;
+                }
 
-            // FILTER: RGVI + Component Type AN (excluding RSANI)
-            const anodeRecords = records?.filter(r => {
-                const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
-                const isRGVI = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
-                const isAN = String(r.structure_components?.code || '').toUpperCase() === 'AN' || 
-                             String(r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
-                return sowMatches && jobPackMatches && isRGVI && isAN;
-            });
+                anodeRecords = (records || []).filter(r => {
+                    const sowMatches = !selections.sowReportNo || 
+                        String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                    const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                    const isRGVI = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
+                    const isAN = String(r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                                 String(r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+                    return sowMatches && jobPackMatches && isRGVI && isAN;
+                });
 
-            if (!anodeRecords || anodeRecords.length === 0) {
-                alert(`No ROV Anode records (RGVI + component_type: AN) found for structure "${structure.str_name}" in this SOW.`);
-                return null;
+                if (!anodeRecords || anodeRecords.length === 0) {
+                    alert(`No ROV Anode records (RGVI + component_type: AN) found for structure "${structure.str_name}" in this SOW.`);
+                    return null;
+                }
             }
 
             let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
+            if (jobPack?.metadata?.contrac) {
                 try {
                     const cRes = await fetch(`/api/library/CONTR_NAM`);
                     const cJson = await cRes.json();
@@ -2681,9 +2745,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             const headerData = {
-                jobpackName: jobPack.name || jobPack.title || "N/A",
-                sowReportNo: selections.sowReportNo || "N/A",
-                platformName: structure.str_name || structure.title || "N/A",
+                jobpackName: jobPack?.name || ". . . . . . . . . . . . . . . . . . . .",
+                sowReportNo: selections.sowReportNo || (selections.printBlankReport ? (config.reportNoPrefix || "____________________") : "N/A"),
+                platformName: structure?.str_name || ". . . . . . . . . . . . . . . . . . . .",
                 contractorLogoUrl,
                 vessel: resolveVessel(jobPack)
             };
@@ -3065,44 +3129,56 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // ROV GVI Report (RGVI)
         if (currentTemplateId === "rov-rgvi-report") {
-            const supabase = (await import("@/utils/supabase/client")).createClient();
-            const structure = await fetchStructureData();
-            const jobPack   = await fetchJobPackData();
-            if (!structure || !jobPack) return null;
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack   = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
-            const { data: records, error: fetchError } = await supabase
-                .from("insp_records")
-                .select(`
-                    *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(q_id, code),
-                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no),
-                    insp_anomalies(*)
-                `)
-                .eq("structure_id", Number(selections.structureId));
+            let rgviRecords: any[] = [];
+            if (selections.printBlankReport) {
+                rgviRecords = Array.from({ length: 12 }, (_, i) => ({
+                    id: i + 1,
+                    elevation: "",
+                    inspection_data: { cp_rdg: "", marine_growth: "", component_condition: "" },
+                    structure_components: { q_id: "" },
+                    description: "",
+                    insp_rov_jobs: { job_no: "" }
+                }));
+            } else {
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                const { data: records, error: fetchError } = await supabase
+                    .from("insp_records")
+                    .select(`
+                        *,
+                        inspection_type:inspection_type_id!left(id, code, name),
+                        structure_components:component_id!left(q_id, code),
+                        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                        insp_video_tapes:tape_id!left(tape_no),
+                        insp_anomalies(*)
+                    `)
+                    .eq("structure_id", Number(selections.structureId));
 
-            if (fetchError) {
-                alert(`Database error: ${fetchError.message}`);
-                return null;
-            }
+                if (fetchError) {
+                    alert(`Database error: ${fetchError.message}`);
+                    return null;
+                }
 
-            const rgviRecords = records?.filter((r: any) => {
-                const sowMatches = !selections.sowReportNo ||
-                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RGVI";
-                return sowMatches && jobPackMatches && isRGVI;
-            });
+                rgviRecords = (records || []).filter((r: any) => {
+                    const sowMatches = !selections.sowReportNo ||
+                        String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                    const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RGVI";
+                    return sowMatches && jobPackMatches && isRGVI;
+                });
 
-            if (!rgviRecords || rgviRecords.length === 0) {
-                alert(`No RGVI records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
+                if (!rgviRecords || rgviRecords.length === 0) {
+                    alert(`No RGVI records found for structure "${structure.str_name}" in this SOW.`);
+                    return null;
+                }
             }
 
             let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
+            if (jobPack?.metadata?.contrac) {
                 try {
                     const cRes  = await fetch(`/api/library/CONTR_NAM`);
                     const cJson = await cRes.json();
@@ -3112,31 +3188,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             const headerData = {
-                jobpackName:      jobPack.name || jobPack.title || "N/A",
-                sowReportNo:      selections.sowReportNo || "N/A",
-                platformName:     structure.str_name || structure.title || "N/A",
+                jobpackName:      jobPack?.name || ". . . . . . . . . . . . . . . . . . . .",
+                sowReportNo:      selections.sowReportNo || selections.printBlankReport ? (config.reportNoPrefix || "____________________") : "N/A",
+                platformName:     structure?.str_name || ". . . . . . . . . . . . . . . . . . . .",
                 contractorLogoUrl,
                 vessel: resolveVessel(jobPack),
             };
 
             try {
-                // Detect if any record belongs to a Riser Guard
-                const hasRG = rgviRecords.some((r: any) => {
-                    const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
-                    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                    return qid.startsWith("RG") || qid.startsWith("RISG") || compCode === "RG";
-                });
-
-                if (hasRG) {
-                    const { generateROVRiserGuardReport } = await import("@/utils/report-generators/rov-riser-guard-report");
-                    return await generateROVRiserGuardReport(
-                        rgviRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        headerData,
-                        companySettings,
-                        { ...reportConfig, returnBlob, structureId: Number(selections.structureId) } as any
-                    );
-                }
-
                 const { generateROVRGVIReport } = await import("@/utils/report-generators/rov-rgvi-report");
                 return await generateROVRGVIReport(
                     rgviRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
@@ -3152,44 +3211,56 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Diving General Visual Inspection (GVINS)
         if (currentTemplateId === "diving-gvins-report") {
-            const supabase = (await import("@/utils/supabase/client")).createClient();
-            const structure = await fetchStructureData();
-            const jobPack = await fetchJobPackData();
-            if (!structure || !jobPack) return null;
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack   = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
-            let { data: records, error: fetchError } = await supabase
-                .from('insp_records')
-                .select(`
-                    *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_anomalies(*)
-                `)
-                .eq('structure_id', Number(selections.structureId));
+            let gvinsRecords: any[] = [];
+            if (selections.printBlankReport) {
+                gvinsRecords = Array.from({ length: 12 }, (_, i) => ({
+                    id: i + 1,
+                    elevation: "",
+                    inspection_data: { cp_rdg: "", marine_growth: "", component_condition: "" },
+                    structure_components: { q_id: "" },
+                    description: "",
+                    insp_dive_jobs: { dive_no: "" }
+                }));
+            } else {
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                let { data: records, error: fetchError } = await supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        inspection_type:inspection_type_id!left(id, code, name),
+                        structure_components:component_id!left(id, q_id, code, metadata),
+                        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                        insp_anomalies(*)
+                    `)
+                    .eq('structure_id', Number(selections.structureId));
 
-            if (fetchError) {
-                console.error("Fetch Error:", fetchError);
-                alert(`Database error: ${fetchError.message}`);
-                return null;
-            }
+                if (fetchError) {
+                    console.error("Fetch Error:", fetchError);
+                    alert(`Database error: ${fetchError.message}`);
+                    return null;
+                }
 
-            const gvinsRecords = records?.filter(r => {
-                const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isGVINS = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'GVINS';
-                return sowMatches && jobPackMatches && isGVINS;
-            });
+                gvinsRecords = (records || []).filter(r => {
+                    const sowMatches = !selections.sowReportNo || 
+                        String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                    const isGVINS = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'GVINS';
+                    return sowMatches && jobPackMatches && isGVINS;
+                });
 
-            if (!gvinsRecords || gvinsRecords.length === 0) {
-                alert(`No Diving GVINS records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
+                if (!gvinsRecords || gvinsRecords.length === 0) {
+                    alert(`No Diving GVINS records found for structure "${structure.str_name}" in this SOW.`);
+                    return null;
+                }
             }
 
             let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
+            if (jobPack?.metadata?.contrac) {
                 try {
                     const cRes = await fetch(`/api/library/CONTR_NAM`);
                     const cJson = await cRes.json();
@@ -3199,9 +3270,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             const headerData = {
-                jobpackName: jobPack.name || jobPack.title || "N/A",
-                sowReportNo: selections.sowReportNo || "N/A",
-                platformName: structure.str_name || structure.title || "N/A",
+                jobpackName: jobPack?.name || ". . . . . . . . . . . . . . . . . . . .",
+                sowReportNo: selections.sowReportNo || (selections.printBlankReport ? (config.reportNoPrefix || "____________________") : "N/A"),
+                platformName: structure?.str_name || ". . . . . . . . . . . . . . . . . . . .",
                 contractorLogoUrl,
                 vessel: resolveVessel(jobPack)
             };

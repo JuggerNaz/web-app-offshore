@@ -103,6 +103,21 @@ export const generateDefectSummaryReport = async (
         console.error("[DefectSummary] Error fetching data:", e);
     }
 
+    if (anomalies.length === 0 && (config as any).isBlankReport) {
+        anomalies = Array.from({ length: 10 }, (_, i) => ({
+            id: i + 1,
+            anomaly_ref_no: "",
+            display_ref_no: "",
+            component_qid: "",
+            elevation: "",
+            description: "",
+            findings: "",
+            rectified_remarks: "",
+            rectified: false,
+            priority: ""
+        }));
+    }
+
     // Sort by priority
     anomalies = [...anomalies].sort(
         (a, b) => prioritySortKey(a.priority) - prioritySortKey(b.priority)

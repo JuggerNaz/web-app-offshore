@@ -185,15 +185,32 @@ export const generateDiverLogReport = async (
     };
 
     if (diveJobs.length === 0) {
-        drawHeader(doc);
-        doc.setFontSize(12);
-        doc.setTextColor(0, 0, 0);
-        doc.text("No diver log records found.", pageWidth / 2, 80, { align: "center" });
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`${config.reportNoPrefix}_DiverLog.pdf`);
-        return;
+        if ((config as any).isBlankReport) {
+            diveJobs = [{
+                dive_no: "__________",
+                diver_name: "____________________",
+                dive_supervisor: "____________________",
+                dive_date: null,
+                start_time: "",
+                dive_type: "Diving Inspection",
+                movements: Array.from({ length: 8 }, (_, i) => ({
+                    timecode: "",
+                    component_qid: "",
+                    elevation: "",
+                    observations: ""
+                }))
+            }];
+        } else {
+            drawHeader(doc);
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.text("No diver log records found.", pageWidth / 2, 80, { align: "center" });
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            if (config.returnBlob) return doc.output("blob");
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            doc.save(`${config.reportNoPrefix}_DiverLog.pdf`);
+            return;
+        }
     }
 
     // ── Page Tracking ────────────────────────────────────────────────────────

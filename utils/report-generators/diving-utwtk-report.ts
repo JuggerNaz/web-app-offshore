@@ -102,11 +102,33 @@ export const generateDivingUTWTKReport = async (
         };
 
         if (records.length === 0) {
-            drawPageHeader(doc, 1);
-            drawPageFooter(doc, 1);
-            doc.setFontSize(10);
-            doc.setTextColor(...colors.text);
-            doc.text("No records found for UTWTK.", margin, margin + HEADER_H + 20);
+            if ((config as any).isBlankReport) {
+                records = Array.from({ length: 12 }, (_, i) => ({
+                    id: i + 1,
+                    elevation: 0,
+                    inspection_data: {
+                        cp_rdg: "",
+                        ut_3_o_clock: "",
+                        ut_6_o_clock: "",
+                        ut_9_o_clock: "",
+                        ut_12_o_clock: "",
+                        nominal_thickness: ""
+                    },
+                    structure_components: { q_id: "" },
+                    description: "",
+                    insp_dive_jobs: { dive_no: "" }
+                }));
+            } else {
+                drawPageHeader(doc, 1);
+                drawPageFooter(doc, 1);
+                doc.setFontSize(10);
+                doc.setTextColor(...colors.text);
+                doc.text("No records found for UTWTK.", margin, margin + HEADER_H + 20);
+                applyWatermarkAndSignaturesGlobal(doc, config);
+                if (config.returnBlob) return doc.output("blob");
+                doc.save(`${config.reportNoPrefix}_UTWTK.pdf`);
+                return;
+            }
         } else {
             let pageNum = 1;
             drawPageHeader(doc, pageNum);
