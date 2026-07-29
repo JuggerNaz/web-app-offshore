@@ -1138,8 +1138,8 @@ export function SeabedSurveyGuiInline({
             ]);
 
             const compSettings = compSettingsRes.data || {};
-            const jobpackData = jpRes.data || {};
-            const structData = strRes.data || {};
+            const jobpackData: any = jpRes.data || {};
+            const structData: any = strRes.data || {};
 
             const headerData = {
                 platformName: structData.str_name || structData.name || structureName || "N/A",

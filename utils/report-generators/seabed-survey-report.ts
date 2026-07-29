@@ -4,7 +4,7 @@ import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
-export interface SeabedSurveyReportOptions extends ReportConfig {
+export interface SeabedSurveyReportOptions extends Partial<ReportConfig> {
     comparisonKey?: string;
     comparisonName?: string;
     comparisonRecords?: any[];
