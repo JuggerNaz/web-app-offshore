@@ -1839,21 +1839,39 @@ export function SeabedSurveyGuiInline({
             title="Seabed Survey Multi-Drop Sketch Report"
             fileName={`Seabed_Survey_Report_${sowReportNo || 'Draft'}`}
             generateReport={async (isPrintFriendly, showSignatures) => {
+                const numJpId = Number(jobpackId);
+                const numStrId = Number(structureId);
+
                 const [compSettingsRes, jpRes, strRes] = await Promise.all([
                     supabase.from("company_settings").select("*").maybeSingle(),
-                    jobpackId ? supabase.from("u_jobpacks").select("name, metadata").eq("id", Number(jobpackId)).maybeSingle() : Promise.resolve({ data: null }),
-                    structureId ? supabase.from("u_structures").select("name, str_name, field_name").eq("id", Number(structureId)).maybeSingle() : Promise.resolve({ data: null })
+                    !isNaN(numJpId) && numJpId > 0 ? supabase.from("jobpack").select("name, title, metadata").eq("id", numJpId).maybeSingle() : Promise.resolve({ data: null }),
+                    !isNaN(numStrId) && numStrId > 0 ? supabase.from("structure").select("str_name, title, str_title, field_name").eq("str_id", numStrId).maybeSingle() : Promise.resolve({ data: null })
                 ]);
 
                 const compSettings = compSettingsRes.data || {};
                 const jobpackData: any = jpRes.data || {};
                 const structData: any = strRes.data || {};
 
+                // Fetch contractor logo if present in jobpack metadata
+                let contractorLogoUrl = "";
+                if (jobpackData.metadata?.contrac) {
+                    try {
+                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobpackData.metadata.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.logo_url || '';
+                    } catch (_) {}
+                }
+
+                // Resolve Vessel Name
+                const vesselName = rovJob?.raw?.vessel || rovJob?.vessel || jobpackData.metadata?.vessel || jobpackData.metadata?.vessel_name || "N/A";
+                const resolvedPlatform = structData.str_name || structData.str_title || structData.title || structureName || (typeof structureId === 'string' ? structureId : "N/A");
+                const resolvedJobpack = jobpackData.name || jobpackData.title || (typeof jobpackId === 'string' ? jobpackId : "N/A");
+
                 const headerData = {
-                    platformName: structData.str_name || structData.name || structureName || "N/A",
-                    jobpackName: jobpackData.name || "N/A",
-                    vessel: rovJob?.raw?.vessel || rovJob?.vessel || "N/A",
+                    platformName: resolvedPlatform,
+                    jobpackName: resolvedJobpack,
+                    vessel: vesselName,
                     sowReportNo: sowReportNo || "N/A",
+                    contractorLogoUrl,
                     date: new Date().toLocaleDateString("en-GB")
                 };
 
