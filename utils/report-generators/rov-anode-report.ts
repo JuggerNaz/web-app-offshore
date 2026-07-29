@@ -99,7 +99,7 @@ export const generateROVAnodeReport = async (
             da.setFontSize(7); da.setFont("helvetica", "normal");
             da.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             da.setFontSize(14); da.setFont("helvetica", "bold");
-            da.text(`ROV Anode Inspection Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            da.text(`Anode Inspection Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
 
             da.setFontSize(8); da.setFont("helvetica", "normal");
             da.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
@@ -235,7 +235,7 @@ export const generateROVAnodeReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Anode Inspection Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Anode Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

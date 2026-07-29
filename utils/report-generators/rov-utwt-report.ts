@@ -98,7 +98,7 @@ export const generateROVUTWTReport = async (
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 9, { align: 'center' });
             
             d.setFontSize(13); d.setFont("helvetica", "bold");
-            d.text(`ROV UT Wall Thickness Report`, margin + (contentWidth/2), margin + 15, { align: 'center' });
+            d.text(`UT Wall Thickness Report (ROV)`, margin + (contentWidth/2), margin + 15, { align: 'center' });
             
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 19, { align: 'center' });
@@ -248,7 +248,7 @@ export const generateROVUTWTReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV UT Wall Thickness Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  UT Wall Thickness Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

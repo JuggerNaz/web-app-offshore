@@ -175,7 +175,7 @@ export const generateROVCondSketchReport = async (
             if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
             d.setFontSize(9); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
             d.setFontSize(7); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10, { align: 'center' });
-            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text("ROV Conductor Survey (Sketch) Report", margin + contentWidth/2, margin + 17, { align: 'center' });
+            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text("Conductor Survey (Sketch) Report (ROV)", margin + contentWidth/2, margin + 17, { align: 'center' });
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {

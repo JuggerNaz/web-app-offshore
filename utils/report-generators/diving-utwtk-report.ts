@@ -82,7 +82,7 @@ export const generateDivingUTWTKReport = async (
             d.setFontSize(7); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text("Diving UT Wall Thickness Inspection Report", margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("UT Wall Thickness Inspection Report (Diving)", margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -93,7 +93,7 @@ export const generateDivingUTWTKReport = async (
             d.setDrawColor(...colors.border); d.setLineWidth(0.2);
             d.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
             d.text(
-                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Diving UTWTK Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  UT Wall Thickness Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                 margin, pageHeight - 6
             );
             if (config.showPageNumbers !== false) {

@@ -90,7 +90,7 @@ export const generateROVCaissonGuardReport = async (
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("ROV Caisson Guard Inspection Report",                             margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("Caisson Guard Inspection Report (ROV)",                             margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -368,7 +368,7 @@ export const generateROVCaissonGuardReport = async (
                     doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                     doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                     doc.text(
-                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Caisson Guard Inspection Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Caisson Guard Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                         margin, pageHeight - 6
                     );
                     if (config.showPageNumbers !== false) {

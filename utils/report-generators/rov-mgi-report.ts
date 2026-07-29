@@ -113,7 +113,7 @@ export const generateROVMGIGraphReport = async (
             d.setFontSize(7); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`ROV MGI Survey Report`, margin + (contentWidth/2), margin + 18, { align: 'center' });
+            d.text(`Marine Growth Graph Report (ROV)`, margin + (contentWidth/2), margin + 18, { align: 'center' });
         };
 
         const drawPremiumContext = (d: jsPDF, y: number, qid: string) => {

@@ -88,7 +88,7 @@ export const generateDivingMGIReport = async (
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', textCenterX, margin + 13, { align: 'center' });
             d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`Diving Marine Growth Inspection Graph Report`, textCenterX, margin + 20, { align: 'center' });
+            d.text(`Marine Growth Inspection Graph Report (Diving)`, textCenterX, margin + 20, { align: 'center' });
         };
 
         const drawContextBox = (d: jsPDF, y: number) => {
@@ -445,7 +445,7 @@ export const generateDivingMGIReport = async (
                 
                 doc.setFont("helvetica", "normal");
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Diving Marine Growth Inspection Graph Report`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Marine Growth Inspection Graph Report (Diving)`,
                     margin, pageHeight - 8
                 );
                 if (config.showPageNumbers !== false) {

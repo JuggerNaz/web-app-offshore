@@ -96,7 +96,7 @@ export const generateDivingANMAINReport = async (
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(14);  d.setFont("helvetica", "bold");
-            d.text("Anode Maintenance Inspection Report",                  margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("Anode Maintenance Inspection Report (Diving)",                  margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,     margin + contentWidth / 2, margin + 22, { align: "center" });
         };
