@@ -1083,14 +1083,151 @@ export function Structural3DViewer({
         return Array.from(new Set(values.map(v => Number(v.toFixed(2))))).sort((a, b) => b - a);
     }, [elevations, componentLayouts]);
 
+    const getLegEndpoints = (layout: any) => {
+        const compObj = layout.component || layout.originalComp || layout.structure_components || {};
+        const md = compObj.metadata || layout.metadata || compObj || {};
+
+        let sLeg = (md.s_leg || compObj.s_leg || layout.s_leg || md.leg || compObj.leg || "").toString().toUpperCase().trim();
+        let fLeg = (md.f_leg || compObj.f_leg || layout.f_leg || "").toString().toUpperCase().trim();
+
+        // If sLeg/fLeg are missing, check s_node / f_node for leg patterns (e.g. "A1-N42" or "A1")
+        if (!sLeg) {
+            const sNode = (md.s_node || compObj.s_node || "").toString().toUpperCase().trim();
+            const m = sNode.match(/([A-Z]+\d+)/);
+            if (m) sLeg = m[1];
+        }
+        if (!fLeg) {
+            const fNode = (md.f_node || compObj.f_node || "").toString().toUpperCase().trim();
+            const m = fNode.match(/([A-Z]+\d+)/);
+            if (m) fLeg = m[1];
+        }
+
+        // Fallback: search q_id for leg tokens (e.g. A1, A2, B1, B2)
+        const qId = (layout.q_id || compObj.q_id || md.q_id || layout.id || "").toString().toUpperCase().trim();
+        if (!sLeg || !fLeg) {
+            const legsInQId = qId.match(/\b([A-Z]+\d+)\b/g);
+            if (legsInQId && legsInQId.length >= 1) {
+                if (!sLeg) sLeg = legsInQId[0];
+                if (!fLeg && legsInQId.length >= 2) fLeg = legsInQId[1];
+            }
+        }
+
+        const compFace = (md.face || compObj.face || layout.face || "").toString().toUpperCase().trim();
+
+        return { sLeg, fLeg, compFace, qId, compObj, md };
+    };
+
+    const isComponentOnFace = (layout: any, faceName: string) => {
+        const fUpper = faceName.toUpperCase().trim();
+        const cleanFace = fUpper.replace(/^ROW\s*|^FACE\s*/i, "").trim();
+
+        const { sLeg, fLeg, compFace, qId } = getLegEndpoints(layout);
+
+        // 1. Explicit Component Specifications FACE Field Check (if specified)
+        if (compFace) {
+            const cleanCompFace = compFace.replace(/^ROW\s*|^FACE\s*/i, "").trim();
+            const isDirectMatch =
+                compFace === fUpper ||
+                cleanCompFace === cleanFace ||
+                compFace.includes(cleanFace) ||
+                fUpper.includes(cleanCompFace);
+
+            if (isDirectMatch) {
+                return true;
+            } else {
+                // Explicitly assigned to a different face -> hide component
+                return false;
+            }
+        }
+
+        // 2. Strict Row Letter match (e.g. "ROW A", "FACE A", "A") for unassigned components
+        const rowMatch = fUpper.match(/^(?:ROW|FACE)\s*([A-Z]+)$/i) || fUpper.match(/^([A-Z]+)$/i);
+        if (rowMatch) {
+            const rowLetter = rowMatch[1].toUpperCase();
+
+            if (sLeg && fLeg && sLeg !== fLeg) {
+                if (sLeg.startsWith(rowLetter) && fLeg.startsWith(rowLetter)) return true;
+                if (sLeg.startsWith(rowLetter) || fLeg.startsWith(rowLetter)) return false;
+            } else if (sLeg || fLeg) {
+                const singleLeg = sLeg || fLeg;
+                if (singleLeg.startsWith(rowLetter)) return true;
+            }
+        }
+
+        // 3. Strict Column Number match (e.g. "ROW 1", "FACE 1", "1") for unassigned components
+        const colMatch = fUpper.match(/^(?:ROW|FACE)\s*(\d+)$/i) || fUpper.match(/^(\d+)$/i);
+        if (colMatch) {
+            const colNum = colMatch[1].toUpperCase();
+
+            if (sLeg && fLeg && sLeg !== fLeg) {
+                if (sLeg.endsWith(colNum) && fLeg.endsWith(colNum)) return true;
+                if (sLeg.endsWith(colNum) || fLeg.endsWith(colNum)) return false;
+            } else if (sLeg || fLeg) {
+                const singleLeg = sLeg || fLeg;
+                if (singleLeg.endsWith(colNum)) return true;
+            }
+        }
+
+        // 4. Check str_faces object definition from DB
+        const faceObj = faces.find(
+            (f) => (f.face || "").toUpperCase().trim() === fUpper || (f.face || "").toUpperCase().trim() === cleanFace
+        );
+        if (faceObj) {
+            const fromLeg = (faceObj.face_from || "").toUpperCase().trim();
+            const toLeg = (faceObj.face_to || "").toUpperCase().trim();
+
+            if (fromLeg && toLeg) {
+                const sMatch = sLeg === fromLeg || sLeg === toLeg;
+                const fMatch = fLeg === fromLeg || fLeg === toLeg;
+
+                if (sLeg && fLeg && sLeg !== fLeg) {
+                    if (sMatch && fMatch) return true;
+                } else {
+                    if (sMatch || fMatch) return true;
+                }
+            }
+        }
+
+        // 5. Composite leg pair face (e.g., "A1A3", "A1-A3", "A2B2")
+        const pairTokens = fUpper.split(/[\s\-]/).filter(Boolean);
+        if (pairTokens.length >= 2) {
+            if (sLeg && fLeg && sLeg !== fLeg) {
+                if (pairTokens.includes(sLeg) && pairTokens.includes(fLeg)) return true;
+            } else {
+                if (pairTokens.includes(sLeg) || pairTokens.includes(fLeg)) return true;
+            }
+        }
+
+        // 6. Foundation member label check (e.g. leg-A1, face-ROW A-0)
+        const labelUpper = (layout.label || layout.id || "").toUpperCase();
+        if (labelUpper.startsWith("LEG-")) {
+            const legName = labelUpper.replace("LEG-", "");
+            if (rowMatch && legName.startsWith(rowMatch[1].toUpperCase())) return true;
+            if (colMatch && legName.endsWith(colMatch[1].toUpperCase())) return true;
+        }
+
+        return false;
+    };
+
     const filteredFoundationMembers = useMemo(() => {
-        if (selectedElevations.length === 0) return foundationMembers;
-        return foundationMembers.filter((m: any) => {
-            const y1 = m.start ? m.start[1] : 0;
-            const y2 = m.end ? m.end[1] : 0;
-            return selectedElevations.some((elv) => Math.abs(y1 - elv) <= 1.2 && Math.abs(y2 - elv) <= 1.2);
-        });
-    }, [foundationMembers, selectedElevations]);
+        let members = foundationMembers;
+
+        if (selectedElevations.length > 0) {
+            members = members.filter((m: any) => {
+                const y1 = m.start ? m.start[1] : 0;
+                const y2 = m.end ? m.end[1] : 0;
+                return selectedElevations.some((elv) => Math.abs(y1 - elv) <= 1.2 && Math.abs(y2 - elv) <= 1.2);
+            });
+        }
+
+        if (selectedFaces.length > 0) {
+            members = members.filter((m: any) => {
+                return selectedFaces.some((face) => isComponentOnFace(m, face));
+            });
+        }
+
+        return members;
+    }, [foundationMembers, selectedElevations, selectedFaces, faces]);
 
     const filteredComponentLayouts = useMemo(() => {
         return componentLayouts.filter((layout: any) => {
@@ -1103,22 +1240,18 @@ export function Structural3DViewer({
                     const isHorizontal = Math.abs(startY - endY) < 1.0;
                     const isPointObject = Math.abs(startY - endY) < 0.05;
 
-                    // 1. Horizontal framing member lying on this elevation level (both ends within 1.2m of elevation height)
                     if (isHorizontal && Math.abs(startY - elv) <= 1.2 && Math.abs(endY - elv) <= 1.2) {
                         return true;
                     }
-                    // 2. Point objects (Nodes, Clamps, Anodes, Welds) positioned directly at this elevation level
                     if (isPointObject && Math.abs(startY - elv) <= 1.2) {
                         return true;
                     }
-                    // 3. Short stub leg joint node at this elevation level
                     const code = (layout.code || "").toUpperCase();
                     const qId = (layout.q_id || "").toUpperCase();
                     if (code.includes("NODE") || qId.includes("NODE") || code === "ND") {
                         if (Math.abs(startY - elv) <= 1.2 || Math.abs(endY - elv) <= 1.2) return true;
                     }
 
-                    // 4. Explicit metadata match
                     const compElv = layout.component?.metadata?.elv || layout.originalComp?.metadata?.elv;
                     if (compElv !== undefined && Math.abs(sanitizeElevation(compElv) - elv) < 0.1) return true;
 
@@ -1130,28 +1263,13 @@ export function Structural3DViewer({
 
             // 2. Face Filter
             if (selectedFaces.length > 0) {
-                const compCode = (layout.code || "").toUpperCase();
-                const qId = (layout.q_id || "").toUpperCase();
-                const md = layout.component?.metadata || layout.originalComp?.metadata || {};
-                const sLeg = (md.s_leg || md.s_node || "").toUpperCase();
-                const fLeg = (md.f_leg || md.f_node || "").toUpperCase();
-
-                const matchesFace = selectedFaces.some((face) => {
-                    const fUpper = face.toUpperCase();
-                    return qId.includes(`FACE ${fUpper}`) ||
-                           qId.includes(`-${fUpper}-`) ||
-                           qId.endsWith(`-${fUpper}`) ||
-                           qId.startsWith(`${fUpper}-`) ||
-                           compCode.includes(fUpper) ||
-                           sLeg.includes(fUpper) ||
-                           fLeg.includes(fUpper);
-                });
+                const matchesFace = selectedFaces.some((face) => isComponentOnFace(layout, face));
                 if (!matchesFace) return false;
             }
 
             return true;
         });
-    }, [componentLayouts, selectedElevations, selectedFaces]);
+    }, [componentLayouts, selectedElevations, selectedFaces, faces]);
 
     const fallbackComponents = useMemo(() => {
         if (!useWincairsMode) return [];

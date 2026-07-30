@@ -114,38 +114,31 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 legRowCol[name.toUpperCase()] = { row: index, col: index };
             });
         } else {
-            const rowLetters = Array.from(new Set(allLegNames.map((n) => n.match(/([A-Z]+)/)?.[1] || "")))
-                .filter(Boolean)
-                .sort();
-            const colNumbers = Array.from(new Set(allLegNames.map((n) => n.match(/(\d+)/)?.[1] || "")))
-                .filter(Boolean)
-                .sort((a, b) => parseInt(a) - parseInt(b));
-
-            const centerRow = (rowLetters.length - 1) / 2;
-            const centerCol = (colNumbers.length - 1) / 2;
-
-            allLegNames.forEach((name) => {
-                const match = name.match(/([A-Z]+)(\d+)/);
-                if (match) {
-                    const letter = match[1];
-                    const num = match[2];
-                    const rowIndex = rowLetters.indexOf(letter);
-                    const colIndex = colNumbers.indexOf(num);
-
-                    legMap[name.toUpperCase()] = {
-                        x: (colIndex - centerCol) * SPACING,
-                        z: -(rowIndex - centerRow) * SPACING,
-                    };
-                    legRowCol[name.toUpperCase()] = { row: rowIndex, col: colIndex };
-                } else {
-                    const index = allLegNames.indexOf(name);
-                    const angle = (index / Math.max(allLegNames.length, 1)) * Math.PI * 2;
-                    legMap[name.toUpperCase()] = {
-                        x: 10.0 * Math.cos(angle),
-                        z: 10.0 * Math.sin(angle),
-                    };
-                    legRowCol[name.toUpperCase()] = { row: index, col: index };
+            // Group legs by row, preserving entry order from Platform Specs (leg_t1..leg_t20)
+            const rowMap = new Map<string, string[]>();
+            allLegNames.forEach((n) => {
+                const match = n.match(/([A-Z]+)(\d+)/i) || n.match(/(\d+)([A-Z]+)/i);
+                const rowKey = match ? match[1].toUpperCase() : "ROW0";
+                if (!rowMap.has(rowKey)) {
+                    rowMap.set(rowKey, []);
                 }
+                rowMap.get(rowKey)!.push(n.toUpperCase());
+            });
+
+            const rowKeys = Array.from(rowMap.keys());
+            const centerRow = (rowKeys.length - 1) / 2;
+
+            rowKeys.forEach((rowKey, rowIndex) => {
+                const legsInRow = rowMap.get(rowKey)!;
+                const centerCol = (legsInRow.length - 1) / 2;
+
+                legsInRow.forEach((name, colIndex) => {
+                    legMap[name] = {
+                        x: (colIndex - centerCol) * SPACING,
+                        z: (rowIndex - centerRow) * SPACING,
+                    };
+                    legRowCol[name] = { row: rowIndex, col: colIndex };
+                });
             });
         }
 
