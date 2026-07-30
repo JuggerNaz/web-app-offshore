@@ -1582,8 +1582,24 @@ export function InspectionSummaryPanel({
               <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl p-4 space-y-3">
                 {Object.entries(data.componentSummary).map(([compType, qids]) => {
                   const isCompExpanded = !!expandedCompTypes[compType];
-                  const qidCount = Object.keys(qids).length;
+
+                  // Gather all unique inspection types present across QIDs for this component group
+                  const allInspTypes = Array.from(new Set(
+                    Object.values(qids).flatMap(q => Object.keys(q.inspectionTypes))
+                  )).filter(it => isPipelineMode || (it.toUpperCase() !== "PL_CO" && it.toUpperCase() !== "PLCO")).sort();
+
+                  // Filter QIDs to only include those with active/valid inspection tasks for displayed columns
+                  const visibleQidEntries = Object.entries(qids).filter(([_, qidData]) => {
+                    return allInspTypes.some(it => {
+                      const counts = qidData.inspectionTypes[it];
+                      return counts && (counts.completed > 0 || counts.incomplete > 0 || counts.anomaly > 0 || counts.pending > 0);
+                    });
+                  });
+
+                  const qidCount = visibleQidEntries.length;
                   const totalInspectionsForType = Object.values(qids).reduce((acc, q) => acc + q.totalRecords, 0);
+
+                  if (qidCount === 0 && totalInspectionsForType === 0) return null;
 
                   return (
                     <div key={compType} className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
@@ -1607,13 +1623,7 @@ export function InspectionSummaryPanel({
                       </button>
 
                       {/* Pivot Table Format for Component QIDs */}
-                      {isCompExpanded && (() => {
-                        // Gather all unique inspection types present across QIDs for this component group
-                        const allInspTypes = Array.from(new Set(
-                          Object.values(qids).flatMap(q => Object.keys(q.inspectionTypes))
-                        )).sort();
-
-                        return (
+                      {isCompExpanded && (
                           <div className="border-t border-slate-800/80 bg-slate-950/60 overflow-x-auto p-3">
                             <table className="w-full text-left text-xs border-collapse min-w-[600px]">
                               <thead>
@@ -1632,7 +1642,7 @@ export function InspectionSummaryPanel({
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-800/40">
-                                {Object.entries(qids).map(([qid, qidData]) => {
+                                {visibleQidEntries.map(([qid, qidData]) => {
                                   const totalCompl = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.completed, 0);
                                   const totalIncompl = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.incomplete, 0);
                                   const totalAnom = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.anomaly, 0);
@@ -1721,8 +1731,7 @@ export function InspectionSummaryPanel({
                               </tbody>
                             </table>
                           </div>
-                        );
-                      })()}
+                      )}
                     </div>
                   );
                 })}

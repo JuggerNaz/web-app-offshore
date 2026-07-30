@@ -1,0 +1,84 @@
+2026-07-29 17:53:20 | f1f1d6e | - Correction on the ROV inspection screen format header, removing of the ROV word prefix from the inspection names - Rename all the ROV inspection name ROV word prefix from the backedn table too - QAQC module - Jobpack list was not populated with all the jopbacks , corrected, - QAQC module , change the searching order list, first structure, then jobpack and then sow report no.
+2026-07-29 17:16:08 | 3f2dda6 | - provided an option to print blank inspection report
+2026-07-29 13:00:19 | b0c1fd1 | - Renamed all the inspection report template removed the prefix ROV and append as (ROV), similar for Diving too - Rename the ROV inspection name in the inspection table , ie remove the postfix ROV - Rename the template names from the final datasheet too - Even renamed the  report header too
+2026-07-29 12:22:07 | c45f221 | - Corrected the Platform inspection summary data - Added new pltfrom inspection summary report and its preview
+2026-07-29 09:58:33 | 99e1a2f | Added option to peview and print report of the seabed map
+2026-07-29 09:29:58 | d9a1dd0 | fix(seabed-survey): format structure and jobpack names instead of raw IDs, and resolve vessel name from history or ROV deployments
+2026-07-29 09:25:46 | 9447bf6 | fix(seabed-survey): resolve database table names (jobpack, structure) for accurate metadata fetching
+2026-07-29 09:18:44 | b8df51a | feat(seabed-survey): integrate standard ReportPreviewDialog window on report button click
+2026-07-29 09:11:44 | bc60d15 | fix(seabed-survey): display type-specific information (gas seepage intensity, crater diameter/depth) and place N/A for non-relevant columns
+2026-07-29 09:03:26 | e6dbed5 | fix(seabed-survey): resolve typescript interface types in report options
+2026-07-29 08:57:42 | c003256 | feat(seabed-survey): add Landscape PDF report generation with map graphics, comparison overlay, filter options, header/subheader and footer
+2026-07-28 22:49:27 | 9382ed5 | feat(rov-setup): auto carry over ROV Type and ROV Model/Name from previous dive
+2026-07-28 22:43:14 | df9a6cd | fix(workspace): replace full window reload on dive creation with smooth state re-fetching
+2026-07-28 22:23:57 | 899d41f | feat(inspection): auto-stop video log on diver/ROV recovery and carry over tape_no across dives
+2026-07-28 22:09:57 | 28f0bdc | fix(search-report-generator): correct function signatures for MGI and Seabed generators
+2026-07-28 22:06:19 | afd882d | fix(search-report-generator): pass required supabase argument to generateDivingSZONEReport
+2026-07-28 15:03:56 | ce23da5 | fix(global-search, migration, reports, sow): global search report printing, migration endpoint URL encoding, structure subheader and SOW rename cascade fix
+2026-07-28 01:27:27 | ee793aa | -Provided an option to edit or modify the SOW Report No., once modify will update the inspection table, rov ,dive, video log tables
+2026-07-28 00:56:36 | 58e6eb2 | - rename the label at inspection screen Suggestion to AI Suggestion
+2026-07-28 00:47:48 | 66cc58f | - Correction on the floating docker winodws when move to extended screen, show blank
+2026-07-28 00:37:56 | 0146576 | - Final and Preliminary Doc report, remove the page number from the inspection report tempalte while printing and paste the image in the doc
+2026-07-28 00:20:40 | 1e467b9 |  - New report template created combination of Caisson Above and underwater - New report template created combination of Conductor above and underwater - Added the inspection summary for the Anode Maintennce replacement count
+2026-07-27 23:32:54 | e3a6894 | - Report Template title and header change for the CAisson and Conductor topside to Above Water - Report Template SOW report no. label change to Report No. for all the inspection report tempalates - Corrected the wrong tempaltes printed for the Diving Conductor Report tempaltes
+2026-07-27 18:08:37 | 5aee032 | - Change the label correction inclinometer - Added free filter option multiple or single search at capture event list - Added close option for the docker windows - change the docker label Live preview to Photo / Video Grab - Verified Depth/ Eelvation lable change to Elevation
+2026-07-27 17:14:18 | 3938cca | - New pipeline inspection screen - added new Menu Event buttons - Added inspection summary - Provide report template for the summary - Added 2D pipleine drawing and event flagging etc.
+2026-07-23 17:30:08 | fcc7eb3 | - added more option in pipeline inspectopn - added 2d diagram in pipeline inspection screen. _ corrected the saving of pipeline inspection - corrected the video log in pipeline inspection . - added the inspection flow and direction in pipeline inspection
+2026-07-22 17:45:33 | 327a880 | - added new inspection screen for pipeline. - new rov dive log and video log for pipleine inspection screen - new spec for navig - new event buttons
+2026-07-20 17:51:16 | ed94fd7 |  - Correction on the Manager Overview on CP chart
+2026-07-20 17:00:24 | dfdedda | corrected the tape log list counter no - corrected the tape log list header - corrected the tape log list sort order and group by chapter
+2026-07-20 12:51:13 | d8a00c5 | - Added more SOW details and anomaly status under intro of prelim doc template.. -- corrected the prelim doc template
+2026-07-18 01:57:48 | e85865e | - addedd the Prelim outstanding task list - corrected the prelim doc report template - corrected the prelim toccontent and added the paragraph no for the summaries - corrected the duplicate components while doing the migrtion, due to the limited fetch of 1000 records only
+2026-07-16 18:17:36 | 488bd9c | - Data migration of Executive summary to postgres table - Correction on the Final Doc - Added more tags in the final doc - Added preliminary doc report template. - added color coding tag for the anomlaies
+2026-07-16 10:51:14 | e207e0a | - corrected the migration of component which del value 1 is not migrated as true - corrected the default fetching of records more than 1000 records
+2026-07-15 18:07:07 | 6d5937a | -correction on final docx - added new tag for the doc - added tag option for the report template - added new tag for short clinet name, inspection year - added new tag for the structure report - added new tag for the structure visuals - data migration mapping was not saved to the database, now corrected
+2026-06-27 19:25:16 | df891bd | - added few more general variables for the Final doc -- corrected the executive summary default findis add on options with conditions - added few mote info withe variables based on the new variables
+2026-06-24 22:51:08 | 78c2f9c | corrected the SOW screen - allow the elevation breakup for QID - corrected the check box color line and beutification too
+2026-06-24 18:42:58 | d11fe2b | - Added new details and sketch report for Seabed Debris survey -- Added two new report tempates for crater sketch and detail report -- Added two new report template for Gas seepage sketch and detail reports
+2026-06-24 15:11:52 | 49fc479 | - Added new report template for seabed detail report - Rename the old seabe report template as sketch report
+2026-06-24 13:31:46 | 8994433 | - Added new report template for Riser data report ROV - Added new repprt template for J-Tube data report ROV - Added new report template for I-Tube data report ROV - Renamed the old Riser, J-Tube and I-Tube report to Sketch reports
+2026-06-24 12:22:47 | 95d6d90 | Added new tabpage inspection for the platform spec
+2026-06-23 10:52:43 | f3524d6 | -inspection screen diver or rov log make the block small. -and same fror the video log too
+2026-06-23 01:37:39 | 80adce9 | -Coorected on the Defect criteria rule cant modify - Added findings field in the Defect Criteria page - copy the defect criteria findings will be copied to inspection records findings too. -- Correction on the User management device restrction saving error
+2026-06-16 17:12:36 | c5d41b4 | Added more option login time schedule -Added option to register the user devices. -- Aded option to use that device for certain users to login and access
+2026-06-16 10:01:00 | 716bf37 | - Report Module- at filter parameter part, change the order from first seelction of the jobpack to Structure selection and then the jobpack
+2026-06-16 02:05:27 | 549db66 | Added a new Database Backup module for the data under the Utilities section
+2026-06-15 18:25:46 | 8216c6d |  - Added new report tempalte for Caisson Under and topside for Diving -- Added two new report template for the Condutor inspection ofr under water and topside diving inspection
+2026-06-15 16:35:08 | 40969df | - added a new MGI data report tempalte - Provide an option to open the inspection screen from the jobpack action menu - Report module - added two mode of view , card or list view and provided the search by name
+2026-06-15 13:09:46 | 7b8b0c3 | - Correction of the inspection summary - Correction on creating new inspection reocrd and update of the company_id - correction of the ROV scour report tempalte - Correction of the componenct spec give clock position error - Component spect while open for acrchived , should display that info - correction of the water detph and signator part for scour reports
+2026-06-15 02:02:25 | 1cf1834 | Renameof ACFMC to ACFM
+2026-06-14 22:40:15 | d570a4d | update
+2026-06-13 03:08:13 | 1136d71 | - Added drill down option for the Component count, Inspection type Count, CP Count, Anomlay counts - Added new report template inclinometer - Added new report tempalte for Anode maintenace -- Added the reprot template list duplication names
+2026-06-11 18:27:20 | e8ac7d1 | -Correction of the DAta migration added the company_id - Added the inspection incomplet data in the routine -- Moved the Back button of thr inspection module headet to the left most of the screen -- Added the Incomplete table details in the data migration reprot and summary -- Data migration correction on the components, ass additionalinfo levelneed to be added on
+2026-06-11 12:31:11 | 830b8c1 | Changes on the navig page of inspection module, -the parameter order was changed -added few summary based on the selection at the inspection navig page -Corrected the Report module at inspection screen. some report template was not displayed, corrected that, -Reprot module proivde the correct records filtered and printed -provided the otpion of water mark and signatory options -corrected the lagging of opening the inspection module
+2026-06-09 15:50:09 | 85f42ea | Added new spec for Inclinomenter ROV job
+2026-06-08 15:59:18 | 3408c7a | correct the order of the inspection type in SOW, ie First dislay the ROV then the Diving
+2026-06-08 13:05:05 | 74b89c4 | corrected the Seabed map., unit type list --corrected the multi tnenat option and updated the tables with the company_id column and default to one of the company.
+2026-06-06 02:02:05 | 4f71446 | Added new report template for Diving inspection type for PL_CO, ACFMC and ROV Water Depth inspection reports -- corrected the Suggestion option
+2026-06-05 21:20:40 | d13221a | Added new inspection types. Rov Water Depth, ACFMC, and Coating Damage inspection screen.
+2026-06-05 15:09:34 | a71864b | Inspection screen - change in the logic, when new dive log added, maintain the same tape no. but change the Chapter, if new tape no require create new. - Added new report temalte for ROV SANI. - Correction on Anode GVI report exclude the sani inspection data. just RGVI and AN only - Added ADD CP data in the SANI reprot template. - Inspection scree - captured event list removed the Dive no filter as default , default will display the latest 25 inspection records and sort order by the inspection date and time -- Correct the SOW auto correction, and the SOW status of the component list which had some bug while updating.
+2026-06-05 14:28:45 | b2787c7 | feat: update ROV Selected Anode Report (SANI) title, CP format and prepended findings
+2026-06-05 02:30:07 | d30ef92 | Corrected the migration report, component description added the MGI profile in the migration -Corrected the MGI profile page
+2026-06-04 15:06:02 | 8d7c20b | Correction on library migration correction on tape log migration count correctiion on componnets deleted and doesnt have any inspection filtered out -Speed up opening of insection screen. --Correction on Data migration reprot template , added oracle table and postgres tableanmes. group totals etc..
+2026-06-03 17:05:36 | 241ee91 | correction on migration assoc and library, added more details in the migration summary reprot.. --correction of migration if doesnt have sow report prefix n=umber.
+2026-06-02 12:38:39 | 82a5c0d | Correcton on ROV selected Node inspection, New report template for Selected Node inspection  migration routine - added libraryitems --correct the anomaly migration.
+2026-06-01 20:39:46 | 4d9b40f | Corrected Diving GVINS, CP and UT additional reading , Anomalies
+2026-05-31 03:42:37 | b73014f | Data migration correction MGROW,CLEAN,PL_AN, SZONE
+2026-05-29 19:14:32 | 319ef88 | Corrected migration of ROV Riser inspection Correct the Riser Clamp library list code
+2026-05-29 15:28:05 | c4890e3 | corrected the migration routine. - ROv FMD - ROV GVI Anode - ROV MGI - ROV SCOUR - Correction or added the cascade deletion of the structue -- corrected the component clock positon - afte migrarion cant see the clock pos value. -- Mireation , avoid duplication, if component exists, oly update the component, if redo.
+2026-05-29 00:39:58 | d1a0c8b | Data migration module updates -Structure ,components, associates, attachments, jobpak, sow rov inspction and diving inspection data are migrated..
+2026-05-22 23:47:11 | a12f359 | Correct the role enables Corrected the enable of Modules corrected the activation and deactivation Included all the modules in the access list after deactivate, cant allow to login
+2026-05-22 15:47:36 | ae2d5d4 | added new user admin user authentication changes user role assignements new user management module
+2026-05-21 17:49:14 | 0c4df7e | Migration Structure and Component copied successfully, now added the jobpack and inspection mapper., report tempalte are corrected, printing to pdf is corrected
+2026-05-20 16:29:05 | 69e3910 | Neutralize intermediate Radix Dialog portal wrapper positions to fix multi-page content repetition in print mode
+2026-05-20 16:23:30 | e43a5a3 | Cancel dialog transforms and unconstrain widths to prevent PDF layout displacement and text wrapping
+2026-05-20 16:14:13 | 2045c96 | Fix PDF truncation issue by unconstraining Dialog parent height and overflow limits in print mode
+2026-05-20 16:07:15 | e399a19 | Fix React hook order and integrate enriched full component names with auto-print to PDF
+2026-05-20 15:45:27 | c8aa03d | Update few changes on Migration tool
+2026-05-19 18:05:51 | ad56f1c | Added new module for Data migrastion from oracle database -provided a part for data mapping - Structure and its spec 2 successfully copied -- some of the component types. attachment, comments and associate are successfully copied
+2026-05-18 14:35:57 | d578c40 | corrected the placement of the fields in  diving UTWTK spec
+2026-05-18 12:51:57 | df7ecb9 | Added new reprot template Diving Clean Added new report template Diving Close visual Added new reprot tempalte Diving UT Wall thickness
+2026-05-18 02:02:43 | bfd1052 | Added new report template for Diving BSINS and its inspection screen Added new report Template for diving MPINS and its inspection screen did some correction on executive summary module
+2026-05-16 14:24:48 | 5f7c5ff | Added the Seabed Debris dimension of length, width, height and diameter -- added debris description field -- added an option to open either diving or ROV page while selecting the jobpack -- corrected the seabed map page to have the new dimension fields -- Take out the Action button form the captured event panel, -- corrected the smart search of the captured event panel -- correct the selection of the component, will open the first inspection type -- provide a wild card search for the captured event panel
+2026-05-16 02:45:40 | 7f41e80 | correction on the inspection screen docker panel -- enable the anomlay reference no to edit -- corrected the display, access and add additonal inpspection type after selecting the component -- when you select the inspection record for edit, and then sort the colum of the capterued event list , then make the record focus again
+2026-05-15 17:46:01 | d14dddb | new docking panel layout for the inspection screen

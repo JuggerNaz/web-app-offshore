@@ -1042,6 +1042,9 @@ export const GET = withTenant(async (request, { companyId }) => {
         const inspTypeBreakdown: Record<string, { name: string; count: number; rov: number; dive: number; anomaly: number; finding: number }> = {};
         records.forEach((r: any) => {
             const code = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+            if (!isPipelineStructure && (code.toUpperCase() === "PL_CO" || code.toUpperCase() === "PLCO")) {
+                return;
+            }
             const name = formatInspectionTypeName(r.inspection_type?.name) || code;
             if (!inspTypeBreakdown[code]) {
                 inspTypeBreakdown[code] = { name, count: 0, rov: 0, dive: 0, anomaly: 0, finding: 0 };
@@ -1175,6 +1178,11 @@ export const GET = withTenant(async (request, { companyId }) => {
             const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
             const inspCode = item.inspection_code || "UNKNOWN";
             
+            // Skip pipeline-only inspection types on platform structure
+            if (!isPipelineStructure && (inspCode.toUpperCase() === "PL_CO" || inspCode.toUpperCase() === "PLCO")) {
+                return;
+            }
+
             if (!componentSummary[compType]) {
                 componentSummary[compType] = {};
             }
@@ -1212,6 +1220,11 @@ export const GET = withTenant(async (request, { companyId }) => {
 
             const compType = getComponentTypeName(rawCode || "Other");
             const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+
+            // Ignore pipeline-only inspection types on platform structures
+            if (!isPipelineStructure && (inspCode.toUpperCase() === "PL_CO" || inspCode.toUpperCase() === "PLCO")) {
+                return;
+            }
 
             if (!componentSummary[compType]) {
                 componentSummary[compType] = {};

@@ -273,19 +273,29 @@ export const generatePlatformInspectionSummaryReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.1);
                 doc.rect(margin, currentY, contentWidth, 5.5, "S");
                 doc.setTextColor(...colors.navy); doc.setFontSize(8); doc.setFont("helvetica", "bold");
-                const qidCount = Object.keys(qids).length;
-                doc.text(`CATEGORY: ${compGroup.toUpperCase()} (${qidCount} QID${qidCount > 1 ? 's' : ''})`, margin + 3, currentY + 4);
-                currentY += 6.5;
-
                 // Gather unique inspection type columns for this component group
                 const allInspTypes = Array.from(new Set(
                     Object.values(qids).flatMap((q: any) => Object.keys(q.inspectionTypes || {}))
-                )).sort();
+                )).filter(it => it.toUpperCase() !== "PL_CO" && it.toUpperCase() !== "PLCO").sort();
+
+                // Filter QIDs to only include those with active/valid tasks for displayed columns
+                const validQidEntries = Object.entries(qids).filter(([_, qidData]: [string, any]) => {
+                    return allInspTypes.some(it => {
+                        const counts = qidData.inspectionTypes?.[it];
+                        return counts && ((counts.completed || 0) > 0 || (counts.incomplete || 0) > 0 || (counts.anomaly || 0) > 0 || (counts.pending || 0) > 0);
+                    });
+                });
+
+                const qidCount = validQidEntries.length;
+                if (qidCount === 0) return;
+
+                doc.text(`CATEGORY: ${compGroup.toUpperCase()} (${qidCount} QID${qidCount > 1 ? 's' : ''})`, margin + 3, currentY + 4);
+                currentY += 6.5;
 
                 const headers = ["Component QID", ...allInspTypes, "Total Status"];
                 const groupRows: any[] = [];
 
-                Object.entries(qids).forEach(([qid, qidData]: [string, any]) => {
+                validQidEntries.forEach(([qid, qidData]: [string, any]) => {
                     const row: any[] = [qid];
 
                     let totalCompl = 0;

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -144,7 +144,7 @@ export const generateROVFMDReport = async (
             startY: startY,
             margin: { left: margin, right: margin, top: margin + 22 + 6 },
             head: [
-                ['Component QID', 'Elevation (m)', 'Dive No.', 'Tape No.', 'Status', 'Findings']
+                ['Component QID', 'Elevation (m)', 'Dive No.', 'Tape No.', 'Status', 'Density Value', 'Findings']
             ],
             body: sortedRecords.map(r => {
                 const depth = parseFloat(r.elevation);
@@ -160,13 +160,78 @@ export const generateROVFMDReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
 
-                // Construct findings from record description
-                let findingsParts = [];
-                if (r.description) findingsParts.push(r.description);
+                const data = r.inspection_data || {};
+
+                // 1. Primary Density & Location extraction
+                const primaryDensityRaw = data.density_value ?? data.density ?? data.density_val ?? data.count_rate ?? data.count_value ?? data.reading ?? null;
+                const primaryUnit = data.density_value_unit ?? data.density_unit ?? data.unit ?? (primaryDensityRaw != null && !isNaN(parseFloat(primaryDensityRaw)) ? 'g/cm³' : '');
+                const primaryLocation = data.test_point_location ?? data.test_point ?? data.location ?? data.position ?? data.test_location ?? null;
+
+                let primaryDensityStr = '';
+                if (primaryDensityRaw != null && String(primaryDensityRaw).trim() !== '' && String(primaryDensityRaw).trim().toUpperCase() !== 'N/A') {
+                    const valStr = String(primaryDensityRaw).trim();
+                    primaryDensityStr = primaryUnit && !valStr.toLowerCase().includes(primaryUnit.toLowerCase()) 
+                        ? `${valStr} ${primaryUnit}` 
+                        : valStr;
+                }
+
+                // 2. Additional Density Readings Array
+                const additionalArr = (
+                    (Array.isArray(data.fmd_density_rdg_additional) && data.fmd_density_rdg_additional) ||
+                    (Array.isArray(data.fmd_additional) && data.fmd_additional) ||
+                    (Array.isArray(data.density_additional) && data.density_additional) ||
+                    (Array.isArray(data.additional_readings) && data.additional_readings) ||
+                    (Array.isArray(data.additional_density) && data.additional_density) ||
+                    (Array.isArray(data.fmd_density_additional) && data.fmd_density_additional) ||
+                    []
+                );
+
+                const densityColumnList: string[] = [];
+                const locationDetailList: string[] = [];
+
+                if (primaryDensityStr) {
+                    densityColumnList.push(primaryDensityStr);
+                    if (primaryLocation && String(primaryLocation).trim() !== '' && String(primaryLocation).trim().toUpperCase() !== 'N/A') {
+                        locationDetailList.push(`• ${String(primaryLocation).trim()}: ${primaryDensityStr}`);
+                    }
+                }
+
+                additionalArr.forEach((item: any) => {
+                    if (!item) return;
+                    const addDensityRaw = item.density_value ?? item.density ?? item.reading ?? item.value ?? item.count_value ?? null;
+                    const addUnit = item.density_value_unit ?? item.unit ?? primaryUnit ?? '';
+                    const addLocation = item.test_point_location ?? item.test_point ?? item.location ?? item.position ?? item.pos ?? null;
+
+                    if (addDensityRaw != null && String(addDensityRaw).trim() !== '' && String(addDensityRaw).trim().toUpperCase() !== 'N/A') {
+                        const valStr = String(addDensityRaw).trim();
+                        const fullAddDensity = addUnit && !valStr.toLowerCase().includes(addUnit.toLowerCase())
+                            ? `${valStr} ${addUnit}`
+                            : valStr;
+
+                        densityColumnList.push(fullAddDensity);
+
+                        if (addLocation && String(addLocation).trim() !== '' && String(addLocation).trim().toUpperCase() !== 'N/A') {
+                            locationDetailList.push(`• ${String(addLocation).trim()}: ${fullAddDensity}`);
+                        } else {
+                            locationDetailList.push(`• Reading: ${fullAddDensity}`);
+                        }
+                    }
+                });
+
+                const densityColValue = densityColumnList.length > 0 ? densityColumnList.join('\n') : '-';
+
+                // Construct findings from record description and density location details
+                let findingsParts: string[] = [];
+                if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
+                    findingsParts.push(String(r.description).trim());
+                }
+
+                if (locationDetailList.length > 0) {
+                    findingsParts.push(`Location & Density Details:\n${locationDetailList.join('\n')}`);
+                }
+
                 if (isAnomaly && anomRef) findingsParts.push(`[Reference: ${anomRef}]`);
                 if (isRectified) findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
-
-                const data = r.inspection_data || {};
 
                 return [
                     qid,
@@ -174,6 +239,7 @@ export const generateROVFMDReport = async (
                     diveNo,
                     tapeNo,
                     data.member_status || 'N/A',
+                    densityColValue,
                     findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A'
                 ];
             }),
@@ -197,7 +263,13 @@ export const generateROVFMDReport = async (
                 }
             },
             columnStyles: {
-                5: { cellWidth: 'auto' }
+                0: { cellWidth: 26, fontStyle: 'bold', halign: 'left' },
+                1: { cellWidth: 20, halign: 'center' },
+                2: { cellWidth: 18, halign: 'center' },
+                3: { cellWidth: 28, halign: 'left' },
+                4: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
+                5: { cellWidth: 24, halign: 'center' },
+                6: { cellWidth: 'auto', halign: 'left' }
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawHeader(doc);
