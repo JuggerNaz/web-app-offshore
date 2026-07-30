@@ -36,8 +36,7 @@ const TOC_SECTIONS = [
       { id: "component-spec", name: "Component Data Sheet", mode: "General" }
   ]},
   { id: 2, name: "General Visual Inspection", templates: [
-      { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
-      { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
+      { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
       { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },

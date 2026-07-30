@@ -108,7 +108,6 @@ export const REPORT_TEMPLATES = {
         { id: "planning-overview", name: "Planning Overview", icon: FileText, description: "Complete planning documentation", requires: ["planning"] },
     ],
     inspection: [
-        { id: "inspection-report", name: "Inspection Report", icon: CheckSquare, description: "Detailed inspection findings and results", requires: ["jobpack"] },
         { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-summary", name: "Findings Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all findings with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
@@ -198,8 +197,7 @@ const TOC_SECTIONS = [
       { id: "diving-plco-report", name: "Coating Damage Inspection (Diving)", mode: "Diving" },
       { id: "diving-anmain-report", name: "Anode Maintenance Inspection Report (Diving)", mode: "Diving" },
       { id: "rov-rwdi-report", name: "Water Depth Inspection Report (ROV)", mode: "ROV" },
-      { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" },
-      { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
+      { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }
   ]},
 
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
@@ -612,12 +610,15 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     // Render Steps
     const renderTemplateSelection = () => {
         const filterTemplates = (templates: any[]) => {
-            if (!templateSearch.trim()) return templates;
-            const term = templateSearch.toLowerCase();
-            return templates.filter(t => 
-                (t.name || "").toLowerCase().includes(term) || 
-                (t.description || "").toLowerCase().includes(term)
-            );
+            let list = templates || [];
+            if (templateSearch.trim()) {
+                const term = templateSearch.toLowerCase();
+                list = list.filter(t => 
+                    (t.name || "").toLowerCase().includes(term) || 
+                    (t.description || "").toLowerCase().includes(term)
+                );
+            }
+            return [...list].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
         };
 
         const categories = {
@@ -5563,8 +5564,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 return await generateComponentSpecReport(data, component, companySettings, typeMap, reportConfig);
 
             default:
-                // Fallback to structure report
-                return await generateStructureReport(data, companySettings, reportConfig);
+                return null;
         }
     } finally {
         // selections.templateId = originalTemplateId;
