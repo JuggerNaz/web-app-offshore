@@ -72,6 +72,81 @@ import { SOWDialog } from "@/components/jobpack/sow-dialog";
 
 type JobpackValues = z.infer<typeof JobpackSchema>;
 
+const isInspectionInScope = (insp: any, isTopsideActive: boolean, isSubseaActive: boolean) => {
+  // Exclude inactive inspection types
+  if (insp.is_active === false || insp.is_active === 0 || insp.is_active === "false" || insp.is_active === "0") {
+    return false;
+  }
+
+  // If both are selected (or neither is selected), show all inspection types
+  if ((isTopsideActive && isSubseaActive) || (!isTopsideActive && !isSubseaActive)) {
+    return true;
+  }
+
+  const meta = insp.metadata || {};
+  const code = (insp.code || "").toUpperCase();
+  const name = (insp.name || "").toLowerCase();
+
+  // 1. Check explicit metadata properties
+  const metaTopside = meta.topside === 1 || meta.topside === "1" || meta.topside === true;
+  const metaSubsea = meta.subsea === 1 || meta.subsea === "1" || meta.subsea === true;
+
+  if (metaTopside && !metaSubsea) {
+    return isTopsideActive;
+  }
+  if (metaSubsea && !metaTopside) {
+    return isSubseaActive;
+  }
+  if (metaTopside && metaSubsea) {
+    return true;
+  }
+
+  // 2. Check scope or location string in metadata
+  const scopeStr = String(meta.scope || meta.location || "").toLowerCase();
+  if (scopeStr.includes("topside") || scopeStr.includes("above_water") || scopeStr.includes("above water")) {
+    return isTopsideActive;
+  }
+  if (scopeStr.includes("subsea") || scopeStr.includes("underwater") || scopeStr.includes("below water")) {
+    return isSubseaActive;
+  }
+
+  // 3. Explicit naming & code heuristics for Topside
+  const isExplicitTopside = 
+    name.includes("above water") || 
+    name.includes("topside") || 
+    code.endsWith("-TS") || 
+    code === "HSTAT" || 
+    code === "EDDYC" || 
+    code === "FLOOD";
+
+  if (isExplicitTopside) {
+    return isTopsideActive;
+  }
+
+  // 4. Default heuristics for Subsea (ROV, Diving, subsea, underwater, seabed, etc.)
+  const isROV = meta.rov === 1 || meta.rov === "1" || meta.rov === true;
+  const isDiving = meta.diving === 1 || meta.diving === "1" || meta.diving === true;
+
+  const isSubseaByDefault = 
+    isROV || 
+    isDiving || 
+    code.startsWith("R") || 
+    code.startsWith("D") || 
+    name.includes("subsea") || 
+    name.includes("underwater") || 
+    name.includes("seabed") || 
+    name.includes("scour") || 
+    name.includes("anode") || 
+    name.includes("fmd") || 
+    name.includes("riser");
+
+  if (isSubseaByDefault) {
+    return isSubseaActive;
+  }
+
+  return true;
+};
+
 export default function JobpackForm({ id: propId }: { id?: string }) {
   const params = useParams();
   const pathname = usePathname();
@@ -1235,72 +1310,80 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                     onChange={(e) => setInspectionSearch(e.target.value)}
                                   />
                                 </div>
-                                {inspectionSearch && (
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {inspectionTypes?.data?.filter((insp: any) => {
-                                      // Diving filter
-                                      const isDiving = insp.metadata?.diving === 1 || insp.metadata?.diving === "1" || insp.metadata?.diving === true;
-                                      if (!isDiving) return false;
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {inspectionTypes?.data?.filter((insp: any) => {
+                                    // Diving filter
+                                    const isDiving = insp.metadata?.diving === 1 || insp.metadata?.diving === "1" || insp.metadata?.diving === true;
+                                    if (!isDiving) return false;
 
-                                      // Text Filter
-                                      if (inspectionSearch) {
-                                        const search = inspectionSearch.toLowerCase();
-                                        const matches = (insp.name?.toLowerCase().includes(search)) ||
-                                          (insp.code?.toLowerCase().includes(search));
-                                        if (!matches) return false;
+                                    // Project Scope (Topside / Subsea) Filter
+                                    const topsideVal = form.watch("topside");
+                                    const subseaVal = form.watch("subsea");
+                                    const isTopsideActive = Boolean(topsideVal);
+                                    const isSubseaActive = Boolean(subseaVal);
+
+                                    if (!isInspectionInScope(insp, isTopsideActive, isSubseaActive)) {
+                                      return false;
+                                    }
+
+                                    // Text Filter
+                                    if (inspectionSearch) {
+                                      const search = inspectionSearch.toLowerCase();
+                                      const matches = (insp.name?.toLowerCase().includes(search)) ||
+                                        (insp.code?.toLowerCase().includes(search));
+                                      if (!matches) return false;
+                                    }
+                                    // Structure Type Filter
+                                    if (activeStructKey) {
+                                      if (activeStructKey.startsWith("PLATFORM")) {
+                                        const val = insp.metadata?.platform;
+                                        return val === 1 || val === "1" || val === true;
                                       }
-                                      // Structure Type Filter
-                                      if (activeStructKey) {
-                                        if (activeStructKey.startsWith("PLATFORM")) {
-                                          const val = insp.metadata?.platform;
-                                          return val === 1 || val === "1" || val === true;
-                                        }
-                                        if (activeStructKey.startsWith("PIPELINE")) {
-                                          const val = insp.metadata?.pipeline;
-                                          return val === 1 || val === "1" || val === true;
-                                        }
+                                      if (activeStructKey.startsWith("PIPELINE")) {
+                                        const val = insp.metadata?.pipeline;
+                                        return val === 1 || val === "1" || val === true;
                                       }
-                                      return true;
-                                    }).map((insp: any) => {
-                                      const structId = activeStructKey.split('-')[1];
-                                      const structSOW = allSOWs?.data?.find((sow: any) => String(sow.structure_id) === String(structId));
-                                      const extraIds = structSOW?.metadata?.extra_inspection_ids || [];
-                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id) || extraIds.includes(insp.id);
-                                      const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
-                                      return (
-                                        <div
-                                          key={insp.id}
-                                          className={cn(
-                                            "flex items-start gap-3 p-3 rounded-xl border transition-all",
-                                            isLocked ? "opacity-60 cursor-not-allowed" : "",
-                                            isSelected
-                                              ? "bg-amber-50 dark:bg-amber-500/10 border-amber-500 shadow-lg shadow-amber-500/10"
-                                              : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700"
-                                          )}
-                                        >
-                                          <div className="flex flex-col flex-1 min-w-0">
-                                            <span className={cn("font-bold text-xs truncate", isSelected ? "text-amber-900 dark:text-amber-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
-                                            <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
-                                          </div>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className={cn(
-                                              "h-6 text-[10px] uppercase font-bold shrink-0",
-                                              isSelected
-                                                ? "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/20"
-                                                : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                            )}
-                                            onClick={() => !isLocked && toggleInspection(insp)}
-                                            disabled={isLocked}
-                                          >
-                                            {isSelected ? "Added" : "Add"}
-                                          </Button>
+                                    }
+                                    return true;
+                                  }).map((insp: any) => {
+                                    const structId = activeStructKey.split('-')[1];
+                                    const structSOW = allSOWs?.data?.find((sow: any) => String(sow.structure_id) === String(structId));
+                                    const extraIds = structSOW?.metadata?.extra_inspection_ids || [];
+                                    const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id) || extraIds.includes(insp.id);
+                                    const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
+                                    return (
+                                      <div
+                                        key={insp.id}
+                                        className={cn(
+                                          "flex items-start gap-3 p-3 rounded-xl border transition-all",
+                                          isLocked ? "opacity-60 cursor-not-allowed" : "",
+                                          isSelected
+                                            ? "bg-amber-50 dark:bg-amber-500/10 border-amber-500 shadow-lg shadow-amber-500/10"
+                                            : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700"
+                                        )}
+                                      >
+                                        <div className="flex flex-col flex-1 min-w-0">
+                                          <span className={cn("font-bold text-xs truncate", isSelected ? "text-amber-900 dark:text-amber-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
+                                          <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
                                         </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className={cn(
+                                            "h-6 text-[10px] uppercase font-bold shrink-0",
+                                            isSelected
+                                              ? "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/20"
+                                              : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                          )}
+                                          onClick={() => !isLocked && toggleInspection(insp)}
+                                          disabled={isLocked}
+                                        >
+                                          {isSelected ? "Added" : "Add"}
+                                        </Button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </TabsContent>
 
                               <TabsContent value="rov" className="space-y-4">
@@ -1313,72 +1396,80 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                     onChange={(e) => setInspectionSearch(e.target.value)}
                                   />
                                 </div>
-                                {inspectionSearch && (
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {inspectionTypes?.data?.filter((insp: any) => {
-                                      // ROV filter
-                                      const isROV = insp.metadata?.rov === 1 || insp.metadata?.rov === "1" || insp.metadata?.rov === true;
-                                      if (!isROV) return false;
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {inspectionTypes?.data?.filter((insp: any) => {
+                                    // ROV filter
+                                    const isROV = insp.metadata?.rov === 1 || insp.metadata?.rov === "1" || insp.metadata?.rov === true;
+                                    if (!isROV) return false;
 
-                                      // Text Filter
-                                      if (inspectionSearch) {
-                                        const search = inspectionSearch.toLowerCase();
-                                        const matches = (insp.name?.toLowerCase().includes(search)) ||
-                                          (insp.code?.toLowerCase().includes(search));
-                                        if (!matches) return false;
+                                    // Project Scope (Topside / Subsea) Filter
+                                    const topsideVal = form.watch("topside");
+                                    const subseaVal = form.watch("subsea");
+                                    const isTopsideActive = Boolean(topsideVal);
+                                    const isSubseaActive = Boolean(subseaVal);
+
+                                    if (!isInspectionInScope(insp, isTopsideActive, isSubseaActive)) {
+                                      return false;
+                                    }
+
+                                    // Text Filter
+                                    if (inspectionSearch) {
+                                      const search = inspectionSearch.toLowerCase();
+                                      const matches = (insp.name?.toLowerCase().includes(search)) ||
+                                        (insp.code?.toLowerCase().includes(search));
+                                      if (!matches) return false;
+                                    }
+                                    // Structure Type Filter
+                                    if (activeStructKey) {
+                                      if (activeStructKey.startsWith("PLATFORM")) {
+                                        const val = insp.metadata?.platform;
+                                        return val === 1 || val === "1" || val === true;
                                       }
-                                      // Structure Type Filter
-                                      if (activeStructKey) {
-                                        if (activeStructKey.startsWith("PLATFORM")) {
-                                          const val = insp.metadata?.platform;
-                                          return val === 1 || val === "1" || val === true;
-                                        }
-                                        if (activeStructKey.startsWith("PIPELINE")) {
-                                          const val = insp.metadata?.pipeline;
-                                          return val === 1 || val === "1" || val === true;
-                                        }
+                                      if (activeStructKey.startsWith("PIPELINE")) {
+                                        const val = insp.metadata?.pipeline;
+                                        return val === 1 || val === "1" || val === true;
                                       }
-                                      return true;
-                                    }).map((insp: any) => {
-                                      const structId = activeStructKey.split('-')[1];
-                                      const structSOW = allSOWs?.data?.find((sow: any) => String(sow.structure_id) === String(structId));
-                                      const extraIds = structSOW?.metadata?.extra_inspection_ids || [];
-                                      const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id) || extraIds.includes(insp.id);
-                                      const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
-                                      return (
-                                        <div
-                                          key={insp.id}
-                                          className={cn(
-                                            "flex items-start gap-3 p-3 rounded-xl border transition-all",
-                                            isLocked ? "opacity-60 cursor-not-allowed" : "",
-                                            isSelected
-                                              ? "bg-sky-50 dark:bg-sky-500/10 border-sky-500 shadow-lg shadow-sky-500/10"
-                                              : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700"
-                                          )}
-                                        >
-                                          <div className="flex flex-col flex-1 min-w-0">
-                                            <span className={cn("font-bold text-xs truncate", isSelected ? "text-sky-900 dark:text-sky-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
-                                            <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
-                                          </div>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className={cn(
-                                              "h-6 text-[10px] uppercase font-bold shrink-0",
-                                              isSelected
-                                                ? "text-sky-600 dark:text-sky-400 bg-sky-100 dark:bg-sky-500/20"
-                                                : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                            )}
-                                            onClick={() => !isLocked && toggleInspection(insp)}
-                                            disabled={isLocked}
-                                          >
-                                            {isSelected ? "Added" : "Add"}
-                                          </Button>
+                                    }
+                                    return true;
+                                  }).map((insp: any) => {
+                                    const structId = activeStructKey.split('-')[1];
+                                    const structSOW = allSOWs?.data?.find((sow: any) => String(sow.structure_id) === String(structId));
+                                    const extraIds = structSOW?.metadata?.extra_inspection_ids || [];
+                                    const isSelected = inspectionsByStruct[activeStructKey]?.some((sel: any) => sel.id === insp.id) || extraIds.includes(insp.id);
+                                    const isLocked = isClosed || structureStatus[activeStructKey]?.status === "CLOSED";
+                                    return (
+                                      <div
+                                        key={insp.id}
+                                        className={cn(
+                                          "flex items-start gap-3 p-3 rounded-xl border transition-all",
+                                          isLocked ? "opacity-60 cursor-not-allowed" : "",
+                                          isSelected
+                                            ? "bg-sky-50 dark:bg-sky-500/10 border-sky-500 shadow-lg shadow-sky-500/10"
+                                            : "bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-700"
+                                        )}
+                                      >
+                                        <div className="flex flex-col flex-1 min-w-0">
+                                          <span className={cn("font-bold text-xs truncate", isSelected ? "text-sky-900 dark:text-sky-100" : "text-slate-700 dark:text-slate-200")}>{insp.name}</span>
+                                          <span className="text-[10px] font-mono text-slate-400 mt-0.5">{insp.code}</span>
                                         </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className={cn(
+                                            "h-6 text-[10px] uppercase font-bold shrink-0",
+                                            isSelected
+                                              ? "text-sky-600 dark:text-sky-400 bg-sky-100 dark:bg-sky-500/20"
+                                              : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                          )}
+                                          onClick={() => !isLocked && toggleInspection(insp)}
+                                          disabled={isLocked}
+                                        >
+                                          {isSelected ? "Added" : "Add"}
+                                        </Button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </TabsContent>
                             </Tabs>
                           </div>

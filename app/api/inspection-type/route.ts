@@ -22,7 +22,11 @@ export const GET = withTenant(async (request) => {
     }
 
     const paginationParams = getPaginationParams(request);
+    const includeInactive = searchParams.get("include_inactive") === "true";
     let query = supabase.from("inspection_type").select("*", { count: "exact" });
+    if (!includeInactive) {
+        query = query.or("is_active.eq.true,is_active.is.null");
+    }
     query = applyPagination(query, paginationParams);
 
     const { data, error, count } = await query;

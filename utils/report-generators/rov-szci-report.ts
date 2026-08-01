@@ -33,7 +33,7 @@ export const generateROVSZCIReport = async (
     config: ReportConfig
 ) => {
     try {
-        const doc = new jsPDF({ orientation: "landscape" }); // Landscape for better width with clock positions
+        const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 12;
@@ -173,23 +173,34 @@ export const generateROVSZCIReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
 
+                // Construct CP Display (Primary + Additional CP)
+                const primaryCP = d.cp_rdg || d.cp || '';
+                const addCP = d.cp_rdg_additional || d.cp_additional || d.cp_readings || [];
+                const additionalCPs = Array.isArray(addCP)
+                    ? addCP.map((cr: any) => cr.reading ?? cr.cp_rdg ?? '').filter((v: any) => v !== undefined && v !== null && v !== '')
+                    : [];
+                const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
+                const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+
                 // Construct findings
                 let findingsParts: string[] = [];
-                if (r.description) findingsParts.push(r.description);
+                if (r.description && r.description.trim()) findingsParts.push(r.description.trim());
                 
-                // Add Additional CP
-                const addCP = d.cp_rdg_additional || d.cp_additional || [];
+                // Add Additional CP details
                 if (Array.isArray(addCP)) {
                     addCP.forEach((item: any) => {
-                        if (item.reading) findingsParts.push(`Add. CP: ${item.reading}mV${item.location ? ` (${item.location})` : ''}`);
+                        const val = item.reading ?? item.cp_rdg ?? '';
+                        if (val !== '' || item.location) {
+                            findingsParts.push(`Add. CP${item.location ? ` @ ${item.location}` : ''}: ${val} mV`);
+                        }
                     });
                 }
 
-                // Add Additional UT
+                // Add Additional UT details
                 const addUT = d.ut_readings_additional || d.ut_additional || [];
                 if (Array.isArray(addUT)) {
                     addUT.forEach((item: any) => {
-                        if (item.reading) findingsParts.push(`Add. UT: ${item.reading}mm${item.location ? ` (${item.location})` : ''}`);
+                        if (item.reading) findingsParts.push(`Add. UT${item.location ? ` @ ${item.location}` : ''}: ${item.reading} mm`);
                     });
                 }
 
@@ -205,7 +216,7 @@ export const generateROVSZCIReport = async (
                 return [
                     idx + 1,
                     qid,
-                    d.cp_rdg || d.cp || '-',
+                    cpDisplay,
                     d.ut_12_o_clock || '-',
                     d.ut_3_o_clock || '-',
                     d.ut_6_o_clock || '-',

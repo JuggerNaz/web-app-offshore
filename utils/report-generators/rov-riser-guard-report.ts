@@ -232,7 +232,7 @@ export const generateROVRiserGuardReport = async (
         compRegistry.forEach(c => {
             const qid = (c.q_id || "").toUpperCase();
             const typeCode = (c.code || c.metadata?.type || "").toUpperCase();
-            const isRG = qid.startsWith("RG") || qid.startsWith("RISG") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD";
+            const isRG = qid.startsWith("RG") || qid.startsWith("RISG") || qid.startsWith("RISER_GUARD") || qid.startsWith("RISER-GUARD") || typeCode === "RG" || typeCode === "RGVI" || typeCode === "RISG" || typeCode === "RISERGUARD" || (c.code || "").toUpperCase() === "RG" || (c.comp_name || c.name || "").toUpperCase().includes("RISER GUARD");
             const meta = c.metadata || {};
             const pId = meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id;
             
@@ -306,11 +306,24 @@ export const generateROVRiserGuardReport = async (
             const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const cpDisplay  = primaryCP !== "" && primaryCP !== null && primaryCP !== undefined
-                ? `${primaryCP} mV`
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            const additionalCPs = additionals
+                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+            const cpDisplay = cpList.length > 0
+                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
             const findingsParts: string[] = [];
+
+            // 1. Findings / Description
+            if (r.description && r.description.trim()) {
+                findingsParts.push(r.description.trim());
+            } else if (d.findings && d.findings.trim()) {
+                findingsParts.push(d.findings.trim());
+            }
 
             const mg = d.marine_growth ?? [
                 d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
@@ -330,24 +343,17 @@ export const generateROVRiserGuardReport = async (
                 findingsParts.push(`Debris: ${debris}${mat}`);
             }
 
-            // CP Additional
-            const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
+            // 2. CP Additional
             additionals.forEach((a: any) => {
                 const val = a.reading ?? a.cp_rdg ?? "";
-                if (val !== "" && val !== null && val !== undefined) {
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
                     const loc = a.location ? ` @ ${a.location}` : "";
-                    findingsParts.push(`Add. CP${loc}: ${val} mV`);
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
                 }
             });
 
-            // Findings / Description
-            if (r.description && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            } else if (d.findings && d.findings.trim()) {
-                findingsParts.push(d.findings.trim());
-            }
-
-            // Anomaly Reference
+            // 3. Anomaly Reference
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);

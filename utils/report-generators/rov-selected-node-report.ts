@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
     company_name?: string;
@@ -15,20 +16,17 @@ interface ReportConfig {
     jobPackId?: number;
     structureId?: number;
     sowReportNo?: string;
-    preparedBy?: { name: string; date: string 
-    approvedBy?: { name: string; date: string };
-    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
+    preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
+    approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
-    showPageNumbers?: boolean;
     showSignatures?: boolean;
+    showPageNumbers?: boolean;
 }
 
 /**
- * ROV Selected Node Report (Portrait)
- * Columns: Item No. | QID | Elevation (m) | Dive No. | CP (mV) | Component Condition | Coating Condition | Findings
- *
- * Anomaly reference number and rectification comments are appended to Findings when present.
+ * ROV Selected Node Inspection Summary Report (Portrait)
+ * Columns: Item No. | QID | Elevation | Dive No. | CP | Component Condition | Coating Condition | Findings
  */
 export const generateROVSelectedNodeReport = async (
     records: any[],
@@ -72,7 +70,7 @@ export const generateROVSelectedNodeReport = async (
 
         const HEADER_H = 24;
 
-        // ── Pre-load logos (async, once) ────────────────────────────────────────
+        // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
         if (companySettings.logo_url) {
@@ -82,7 +80,7 @@ export const generateROVSelectedNodeReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        // ── Synchronous page header ─────────────────────────────────────────────
+        // ── Page Header ─────────────────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
             if (isPF) {
@@ -104,14 +102,13 @@ export const generateROVSelectedNodeReport = async (
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("Selected Node Report (ROV)",                              margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("Selected Node Inspection Summary Report (ROV)",             margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
         };
 
-        // ── Context info boxes ─────────────────────────────────────────────────
+        // ── Context Info Row ────────────────────────────────────────────────────
         const ROW_H = 7;
-
         const drawContextRow = (d: jsPDF, startY: number) => {
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
@@ -132,7 +129,7 @@ export const generateROVSelectedNodeReport = async (
             return startY + ROW_H * 2 + 4;
         };
 
-        // ── Sort records by elevation (top → bottom) ───────────────────────────
+        // ── Sort records by elevation ───────────────────────────────────────────
         const sorted = [...records].sort((a, b) => {
             const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
             const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
@@ -156,8 +153,14 @@ export const generateROVSelectedNodeReport = async (
                 r.rov_job_id || r.dive_job_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const cpDisplay  = primaryCP !== "" && primaryCP !== null && primaryCP !== undefined
-                ? `${primaryCP} mV`
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            const additionalCPs = additionals
+                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+            const cpDisplay = cpList.length > 0
+                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
             const compCond = d.component_condition || r.component_condition || "—";
@@ -165,10 +168,22 @@ export const generateROVSelectedNodeReport = async (
 
             const findingsParts: string[] = [];
 
+            // 1. Findings / Description
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
             }
 
+            // 2. CP Additional details
+            additionals.forEach((a: any) => {
+                const val = a.reading ?? a.cp_rdg ?? "";
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                    const loc = a.location ? ` @ ${a.location}` : "";
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                }
+            });
+
+            // 3. Anomaly & Rectification
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
@@ -198,7 +213,7 @@ export const generateROVSelectedNodeReport = async (
         // ── Main table ─────────────────────────────────────────────────────────
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin, top: margin + HEADER_H + 4 },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
                 { content: "Item\nNo.",       styles: { halign: "center", valign: "middle" } },
                 { content: "QID",             styles: { halign: "center", valign: "middle" } },
@@ -228,13 +243,13 @@ export const generateROVSelectedNodeReport = async (
                 overflow: "linebreak",
             },
             columnStyles: {
-                0: { cellWidth: 10,   halign: "center" },
-                1: { cellWidth: 26 },
-                2: { cellWidth: 18,   halign: "center" },
-                3: { cellWidth: 18,   halign: "center" },
-                4: { cellWidth: 18,   halign: "center" },
-                5: { cellWidth: 26,   halign: "center" },
-                6: { cellWidth: 26,   halign: "center" },
+                0: { cellWidth: 8,   halign: "center" },
+                1: { cellWidth: 18 },
+                2: { cellWidth: 14,   halign: "center" },
+                3: { cellWidth: 14,   halign: "center" },
+                4: { cellWidth: 14,   halign: "center" },
+                5: { cellWidth: 18 },
+                6: { cellWidth: 18 },
                 7: { cellWidth: "auto" },
             },
             didParseCell: (data) => {
@@ -257,11 +272,13 @@ export const generateROVSelectedNodeReport = async (
                     data.cell.styles.fontStyle  = "bold";
                 }
             },
+            didDrawCell: (data) => {
+            },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) {
                     drawPageHeader(doc);
                 }
-                // Footer
+                // Footer Bottom Text
                 doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.text);
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
@@ -276,23 +293,19 @@ export const generateROVSelectedNodeReport = async (
             },
         });
 
-        const finalY = (doc as any).lastAutoTable.finalY || startY;
+        const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
             let sigY = pageHeight - 38;
-            
-            // If the table ended too low, push signatures to a new page
             if (finalY > sigY - 10) {
                 doc.addPage();
                 drawPageHeader(doc);
                 sigY = pageHeight - 38;
             }
-            
-            const sigW   = contentWidth / 3;
-
-            const drawSig = (label: string, lx: number) => {
+            const sigW = contentWidth / 3;
+            const drawSigFooter = (label: string, lx: number) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
-                if (!isPF) {
+                if (!config.printFriendly) {
                     doc.setFillColor(...colors.navy);
                     doc.rect(lx, sigY, sigW - 4, 4.5, "F");
                     doc.setTextColor(255);
@@ -301,15 +314,14 @@ export const generateROVSelectedNodeReport = async (
                 }
                 doc.setFontSize(7); doc.setFont("helvetica", "bold");
                 doc.text(label, lx + 2, sigY + 3.5);
-                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                 doc.text("Name:", lx + 2, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
-
-            drawSig("PREPARED BY",  margin);
-            drawSig("REVIEWED BY",  margin + sigW);
-            drawSig("APPROVED BY",  margin + sigW * 2);
+            drawSigFooter("PREPARED BY", margin);
+            drawSigFooter("REVIEWED BY", margin + sigW);
+            drawSigFooter("APPROVED BY", margin + sigW * 2);
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);

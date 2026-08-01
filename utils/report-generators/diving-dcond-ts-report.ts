@@ -221,8 +221,25 @@ export const generateDivingDCONDTSReport = async (
         }
 
         const formatFindings = (r: any) => {
+            const d = r.inspection_data || {};
             const parts: string[] = [];
-            if (r.description?.trim()) parts.push(r.description.trim());
+            if (r.description?.trim()) {
+                parts.push(r.description.trim());
+            } else if (d.findings?.trim()) {
+                parts.push(d.findings.trim());
+            }
+
+            // CP Additional
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            additionals.forEach((a: any) => {
+                const val = a.reading ?? a.cp_rdg ?? "";
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                    const loc = a.location ? ` @ ${a.location}` : "";
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    parts.push(`Add. CP${loc}: ${val}${unit}`);
+                }
+            });
+
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) parts.push(`Ref: ${anomRef}`);
@@ -472,8 +489,16 @@ export const generateDivingDCONDTSReport = async (
                     const qid = r.structure_components?.q_id || r.component?.q_id || "—";
                     const elev = r.elevation ?? d.elevation ?? "—";
                     const diveNo = r.insp_dive_jobs?.job_no || r.dive_job_id || "—";
-                    const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-                    const cpDisplay = cpVal !== "" ? `${cpVal} mV` : "—";
+                    const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
+                    const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+                    const additionalCPs = additionals
+                        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+                    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+                    const cpDisplay = cpList.length > 0
+                        ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
+                        : "—";
                     const anodeCond = d.anode_condition ?? d.component_condition ?? "—";
                     const mg = (d.marine_growth ?? [
                         d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',

@@ -387,14 +387,38 @@ export const generateROVCasnSketchReport = async (
                     const anoms = r.insp_anomalies || [];
                     const isAnom = r.has_anomaly || anoms.length > 0;
                     const c = r.structure_components || {};
-                    let findings = r.description || 'No significant findings';
+
+                    const primaryCP = rd.cp_rdg ?? rd.cp_reading_mv ?? rd.cp ?? "";
+                    const additionals: any[] = Array.isArray(rd.cp_rdg_additional) ? rd.cp_rdg_additional : (Array.isArray(rd.cp_readings) ? rd.cp_readings : []);
+                    const additionalCPs = additionals
+                        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+                    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+                    const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+
+                    let findingsParts: string[] = [];
+                    if (r.description && r.description.trim()) findingsParts.push(r.description.trim());
+
+                    additionals.forEach((a: any) => {
+                        const val = a.reading ?? a.cp_rdg ?? "";
+                        if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                            const loc = a.location ? ` @ ${a.location}` : "";
+                            const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                            findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                        }
+                    });
+
                     if (isAnom && anoms.length > 0) {
-                        findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`).join('\n');
+                        findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`));
                     }
-                    if (r.insp_rov_jobs?.job_no) findings += `\n[Dive: ${r.insp_rov_jobs.job_no}]`;
+                    if (r.insp_rov_jobs?.job_no) findingsParts.push(`[Dive: ${r.insp_rov_jobs.job_no}]`);
+
+                    const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
+
                     return [
                         { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold' } },
-                        { content: rd.cp_rdg ?? rd.cp ?? '-', styles: { halign: 'center' } },
+                        { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
                 }),

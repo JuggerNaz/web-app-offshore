@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -25,7 +25,7 @@ interface ReportConfig {
 }
 
 /**
- * ROV Boatlanding Survey Report (Portrait)
+ * ROV Boatlanding Inspection Report (Portrait)
  * Columns: Item No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
  *
  * Data is grouped by Boatlanding (BL). Each BL group starts on a new page.
@@ -90,7 +90,7 @@ export const generateROVBoatlandingReport = async (
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("Boatlanding Survey Report (ROV)",                                margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("Boatlanding Inspection Report (ROV)",                             margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -142,7 +142,7 @@ export const generateROVBoatlandingReport = async (
             const compName = c.comp_name || c.name || "Boatlanding";
 
             // Group by Boatlanding (BL)
-            const isBL = qid.startsWith("BL") || typeCode === "BL" || typeCode === "BOATLANDING";
+            const isBL = qid.startsWith("BL") || qid.startsWith("BOAT") || typeCode === "BL" || typeCode === "BOATLANDING" || (c.code || "").toUpperCase() === "BL" || compName.toUpperCase().includes("BOATLANDING") || compName.toUpperCase().includes("BOAT LANDING");
             
             idToComp[c.id] = {
                 q_id: c.q_id || `ID: ${c.id}`,
@@ -229,30 +229,36 @@ export const generateROVBoatlandingReport = async (
             const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const cpDisplay  = primaryCP !== "" && primaryCP !== null && primaryCP !== undefined
-                ? `${primaryCP} mV`
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            const additionalCPs = additionals
+                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+            const cpDisplay = cpList.length > 0
+                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
             const findingsParts: string[] = [];
 
-            // CP Additional
-            const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if (val !== "" && val !== null && val !== undefined) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    findingsParts.push(`Add. CP${loc}: ${val} mV`);
-                }
-            });
-
-            // Findings / Description
+            // 1. Findings / Description
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
             } else if (d.findings && d.findings.trim()) {
                 findingsParts.push(d.findings.trim());
             }
 
-            // Anomaly Reference
+            // 2. CP Additional
+            additionals.forEach((a: any) => {
+                const val = a.reading ?? a.cp_rdg ?? "";
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                    const loc = a.location ? ` @ ${a.location}` : "";
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                }
+            });
+
+            // 3. Anomaly Reference
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
@@ -368,7 +374,7 @@ export const generateROVBoatlandingReport = async (
                     doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                     doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                     doc.text(
-                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Boatlanding Survey Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Boatlanding Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                         margin, pageHeight - 6
                     );
                     if (config.showPageNumbers !== false) {
@@ -412,7 +418,7 @@ export const generateROVBoatlandingReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_Boatlanding_Survey_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`ROV_Boatlanding_Inspection_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ROV Boatlanding Report] Error:", err);
         throw err;

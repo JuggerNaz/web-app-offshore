@@ -224,8 +224,14 @@ export const generateROVCondReport = async (
                 r.rov_job_id || r.dive_job_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const cpDisplay  = primaryCP !== "" && primaryCP !== null && primaryCP !== undefined
-                ? `${primaryCP} mV`
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            const additionalCPs = additionals
+                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+            const cpDisplay = cpList.length > 0
+                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
             const compCond = d.component_condition || r.component_condition || "—";
@@ -233,29 +239,29 @@ export const generateROVCondReport = async (
 
             const findingsParts: string[] = [];
 
-            // CP Additional
-            const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if (val !== "" && val !== null && val !== undefined) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    findingsParts.push(`Add. CP${loc}: ${val} mV`);
-                }
-            });
-
-            // Findings / Description
+            // 1. Findings / Description
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
             } else if (d.findings && d.findings.trim()) {
                 findingsParts.push(d.findings.trim());
             }
 
-            // Anomaly Reference
+            // 2. CP Additional
+            additionals.forEach((a: any) => {
+                const val = a.reading ?? a.cp_rdg ?? "";
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                    const loc = a.location ? ` @ ${a.location}` : "";
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                }
+            });
+
+            // 3. Anomaly Reference
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
 
-            // Rectification
+            // 4. Rectification
             const isRectified = linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED';
             if (isRectified) {
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";

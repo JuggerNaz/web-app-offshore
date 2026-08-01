@@ -18,13 +18,14 @@ interface ReportConfig {
     preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
 
 /**
- * Diving Selected Anode Inspection Report (PL_AN) — Landscape
+ * Diving Selected Anode Inspection Summary Report (Landscape)
  */
 export const generateDivingAnodeReport = async (
     records: any[],
@@ -37,7 +38,7 @@ export const generateDivingAnodeReport = async (
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin       = 12;
+        const margin = 10;
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
@@ -58,7 +59,10 @@ export const generateDivingAnodeReport = async (
             const dates = records
                 .map(r => new Date(r.cr_date || r.created_at))
                 .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = min(dates); endDate = max(dates); }
+            if (dates.length > 0) {
+                startDate = min(dates);
+                endDate   = max(dates);
+            }
         }
         const dateRangeStr = startDate && endDate
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
@@ -76,11 +80,12 @@ export const generateDivingAnodeReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        // ── Synchronous page header ─────────────────────────────────────────────
+        // ── Page Header ─────────────────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
             if (isPF) {
-                d.setDrawColor(...colors.navy); d.setLineWidth(0.5);
+                d.setDrawColor(...colors.navy);
+                d.setLineWidth(0.5);
                 d.rect(margin, margin, contentWidth, HEADER_H, "S");
                 d.setTextColor(...colors.navy);
             } else {
@@ -96,7 +101,7 @@ export const generateDivingAnodeReport = async (
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(14);  d.setFont("helvetica", "bold");
+            d.setFontSize(13);  d.setFont("helvetica", "bold");
             d.text("Selected Anode Inspection Report (Diving)",               margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,     margin + contentWidth / 2, margin + 22, { align: "center" });
@@ -144,7 +149,7 @@ export const generateDivingAnodeReport = async (
             const isSecured = d.anode_secured_to_structure ?? d.anode_secured ?? d.secured;
             const secured = (isSecured === true || isSecured === "Yes") ? "Yes" : "No";
             const anodeType = d.anode_type || "—";
-            
+
             const wLen = d.anode_length ?? d.wastage_length ?? "—";
             const wC1 = d.circumference_c1 ?? d.wastage_c1 ?? "—";
             const wC2 = d.circumference_c2 ?? d.wastage_c2 ?? "—";
@@ -170,8 +175,20 @@ export const generateDivingAnodeReport = async (
             const anomalyRef = linkedAnomaly?.anomaly_ref_no || r.anomaly_ref_no || r.ref_no || r.anomaly_no || d._meta_ref_no || "";
             const rectifiedComments = linkedAnomaly?.rectified_remarks || r.rectified_comments || "";
 
+            const rawAddCPs = d.cp_rdg_additional || d.cp_readings || [];
             const findingsLines: string[] = [];
-            if (r.description) findingsLines.push(r.description);
+            if (r.description && r.description.trim()) findingsLines.push(r.description.trim());
+
+            if (Array.isArray(rawAddCPs) && rawAddCPs.length > 0) {
+                rawAddCPs.forEach((cr: any) => {
+                    const val = cr.reading ?? cr.cp_rdg ?? '';
+                    if ((val !== '' && val !== null && val !== undefined) || cr.location) {
+                        const unit = String(val).toLowerCase().includes('mv') || !val ? '' : ' mV';
+                        findingsLines.push(`Add. CP${cr.location ? ` @ ${cr.location}` : ''}: ${val}${unit}`);
+                    }
+                });
+            }
+
             if ((isAnomaly || isDefect) && anomalyRef) {
                 findingsLines.push(`[Ref: ${anomalyRef}]`);
             }
@@ -229,81 +246,81 @@ export const generateDivingAnodeReport = async (
 
         const isPF = config.printFriendly;
 
-        // ── Draw ────────────────────────────────────────────────────────────────
+        // ── Draw first page ─────────────────────────────────────────────────────
         drawPageHeader(doc);
         const startY = drawContextRow(doc, margin + HEADER_H + 2);
 
+        // ── Main table ─────────────────────────────────────────────────────────
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [topHeader, bottomHeader],
             body: sortedRecords.map(buildRow),
             theme: "grid",
             headStyles: {
                 fillColor: isPF ? [255, 255, 255] : colors.navy,
                 textColor: isPF ? colors.navy : [255, 255, 255],
-                fontSize: 6,
+                fontSize: 6.5,
                 fontStyle: "bold",
-                halign: "center" as const,
-                valign: "middle" as const,
-                lineColor: colors.border,
-                lineWidth: 0.1,
+                halign: "center",
+                valign: "middle",
             },
             styles: {
-                fontSize: 6,
+                fontSize: 6.5,
                 cellPadding: 1.5,
                 textColor: colors.text,
                 lineColor: colors.border,
-                lineWidth: 0.1,
                 overflow: "linebreak",
-                halign: "center" as const,
-                valign: "middle" as const
             },
             columnStyles: {
-                0: { cellWidth: 8 },  // Item
-                1: { cellWidth: 22 }, // QID
-                2: { cellWidth: 10 }, // Elev
-                3: { cellWidth: 12 }, // Dive
-                4: { cellWidth: 12 }, // Secured
-                5: { cellWidth: 18 }, // Type
-                // Wastage
-                6: { cellWidth: 11 }, // Len
-                7: { cellWidth: 10 }, // C1
-                8: { cellWidth: 10 }, // C2
-                9: { cellWidth: 10 }, // C3
-                10: { cellWidth: 13 }, // Depletion
-                // Pitting
-                11: { cellWidth: 11 }, // Depth Avg
-                12: { cellWidth: 11 }, // Depth Max
-                13: { cellWidth: 11 }, // Diam Avg
-                14: { cellWidth: 11 }, // Diam Max
-                // CP
-                15: { cellWidth: 11 }, // Anode
-                16: { cellWidth: 13 }, // Member
-                17: { cellWidth: 12 }, // Top
-                18: { cellWidth: 13 }, // Bottom
-                19: { cellWidth: "auto", halign: "left" as const } // Findings
+                0:  { cellWidth: 8,   halign: "center" }, // Item No
+                1:  { cellWidth: 16 },                    // Comp QID
+                2:  { cellWidth: 10,  halign: "center" }, // Elev
+                3:  { cellWidth: 12,  halign: "center" }, // Dive No
+                4:  { cellWidth: 11,  halign: "center" }, // Secured
+                5:  { cellWidth: 14 },                    // Anode Type
+                6:  { cellWidth: 10,  halign: "center" }, // Length
+                7:  { cellWidth: 10,  halign: "center" }, // C1
+                8:  { cellWidth: 10,  halign: "center" }, // C2
+                9:  { cellWidth: 10,  halign: "center" }, // C3
+                10: { cellWidth: 12,  halign: "center" }, // Depletion
+                11: { cellWidth: 10,  halign: "center" }, // Pit Depth Avg
+                12: { cellWidth: 10,  halign: "center" }, // Pit Depth Max
+                13: { cellWidth: 10,  halign: "center" }, // Pit Diam Avg
+                14: { cellWidth: 10,  halign: "center" }, // Pit Diam Max
+                15: { cellWidth: 11,  halign: "center" }, // Anode CP
+                16: { cellWidth: 11,  halign: "center" }, // Member Stub CP
+                17: { cellWidth: 11,  halign: "center" }, // Top Stub CP
+                18: { cellWidth: 11,  halign: "center" }, // Bottom Stub CP
+                19: { cellWidth: "auto" },                // Findings
             },
             didParseCell: (data) => {
-                if (data.section === "body") {
-                    const r = sortedRecords[data.row.index];
-                    const linkedAnomaly = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    const isAnomaly = r.has_anomaly === true || r.is_anomaly === true || r.component_condition === "Anomalous" || (r.description && r.description.toLowerCase().includes("anomaly")) || !!linkedAnomaly;
-                    const isDefect = r.has_defect === true || r.is_defect === true || (r.description && r.description.toLowerCase().includes("defect"));
-                    const isRectified = linkedAnomaly ? linkedAnomaly.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes("rectified")));
-                    
-                    if (isAnomaly || isDefect) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (isRectified) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = "bold";
-                    }
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                const linkedAnom = r.insp_anomalies?.[0] ?? null;
+                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
+                const isFinding  = metaStatus === "finding";
+                const isAnom     = r.has_anomaly && !isFinding;
+                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
+
+                if (isFinding) {
+                    data.cell.styles.textColor = colors.finding;
+                    data.cell.styles.fontStyle  = "bold";
+                } else if (isAnom) {
+                    data.cell.styles.textColor = colors.anomaly;
+                    data.cell.styles.fontStyle  = "bold";
+                } else if (isRect) {
+                    data.cell.styles.textColor = colors.rectified;
+                    data.cell.styles.fontStyle  = "bold";
                 }
             },
+            didDrawCell: (data) => {
+            },
             didDrawPage: (data) => {
-                if (data.pageNumber > 1) drawPageHeader(doc);
-
+                if (data.pageNumber > 1) {
+                    drawPageHeader(doc);
+                }
+                // Footer
                 doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.text);
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
@@ -318,98 +335,15 @@ export const generateDivingAnodeReport = async (
             },
         });
 
-        // ── CP Calibration Block (CPCLB) ───────────────────────────────────────
-        let calibRecords: any[] = [];
-        if (supabase && config.structureId) {
-            const { data, error } = await supabase
-                .from('insp_records')
-                .select(`
-                    insp_id, 
-                    dive_job_id, 
-                    inspection_type_code, 
-                    inspection_data,
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name)
-                `)
-                .eq('inspection_type_code', 'CPCLB')
-                .eq('structure_id', Number(config.structureId));
-            
-            if (!error) calibRecords = data || [];
-        }
-
-        const getDiveNo = (record: any) => record.insp_dive_jobs?.job_no || record.insp_dive_jobs?.dive_no || record.dive_no || null;
-        const involvedDiveNos = new Set(records.map(r => getDiveNo(r)).filter(Boolean));
-
-        const calibRows: any[] = [];
-        involvedDiveNos.forEach(dno => {
-            const cpCalib = calibRecords.find(cr => getDiveNo(cr) === dno);
-            if (cpCalib) {
-                const cd = cpCalib.inspection_data || {};
-                calibRows.push([
-                    dno,
-                    cd.calib_block || "—",
-                    cd.serial_number || "—",
-                    cd.pre_dive_cp_rdg || "—",
-                    cd.post_dive_cp_rdg || "—"
-                ]);
-            }
-        });
-
-        if (calibRows.length > 0) {
-            autoTable(doc, {
-                startY: (doc as any).lastAutoTable.finalY + 10,
-                margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
-                head: [
-                    [
-                        { content: "CP CALIBRATION DATA (-mV)", colSpan: 5, styles: { halign: "center" as const, fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255] } }
-                    ],
-                    [
-                        "Dive No.", "Calib. Block", "Equip. Serial No.", "Pre-Dive", "Post-Dive"
-                    ]
-                ],
-                body: calibRows,
-                theme: "grid",
-                headStyles: {
-                    fillColor: isPF ? [255,255,255] : colors.navy,
-                    textColor: isPF ? colors.navy : [255,255,255],
-                    fontSize: 7,
-                    fontStyle: "bold",
-                    halign: "center" as const,
-                    valign: "middle" as const,
-                    lineColor: colors.border,
-                    lineWidth: 0.1,
-                },
-                styles: {
-                    fontSize: 7,
-                    cellPadding: 2,
-                    halign: "center" as const,
-                    lineColor: colors.border,
-                    lineWidth: 0.1,
-                },
-                columnStyles: {
-                    0: { cellWidth: "auto" },
-                    1: { cellWidth: "auto" },
-                    2: { cellWidth: "auto" },
-                    3: { cellWidth: "auto" },
-                    4: { cellWidth: "auto" }
-                },
-                didDrawPage: (data) => {
-                    if (data.pageNumber > 1) drawPageHeader(doc);
-                }
-            });
-        }
-
+        const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
-            const sigH   = 20;
-            const sigW   = contentWidth / 3;
-            let finalY   = (doc as any).lastAutoTable?.finalY ?? (margin + HEADER_H + 20);
-            
-            if (finalY + sigH + 15 > pageHeight) {
+            let sigY = pageHeight - 38;
+            if (finalY > sigY - 10) {
                 doc.addPage();
                 drawPageHeader(doc);
+                sigY = pageHeight - 38;
             }
-
-            const sigY = pageHeight - 35; // Fixed position near bottom
-
+            const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
@@ -436,7 +370,7 @@ export const generateDivingAnodeReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`Diving_Anode_Inspection_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`Diving_Anode_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving Anode Report] Error:", err);
         throw err;

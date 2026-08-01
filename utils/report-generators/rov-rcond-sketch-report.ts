@@ -334,21 +334,45 @@ export const generateROVCondSketchReport = async (
                     const anoms = r.insp_anomalies || [];
                     const isAnom = r.has_anomaly || anoms.length > 0;
                     const c = r.structure_components || r.component || {};
-                    let findings = r.description || rd.findings || 'No significant findings';
-                    
-                    const anomParts: string[] = [];
+
+                    const primaryCP = rd.cp_rdg ?? rd.cp_reading_mv ?? rd.cp ?? "";
+                    const additionals: any[] = Array.isArray(rd.cp_rdg_additional) ? rd.cp_rdg_additional : (Array.isArray(rd.cp_readings) ? rd.cp_readings : []);
+                    const additionalCPs = additionals
+                        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+                    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+                    const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+
+                    let findingsParts: string[] = [];
+                    if (r.description && r.description.trim()) {
+                        findingsParts.push(r.description.trim());
+                    } else if (rd.findings && rd.findings.trim()) {
+                        findingsParts.push(rd.findings.trim());
+                    }
+
+                    additionals.forEach((a: any) => {
+                        const val = a.reading ?? a.cp_rdg ?? "";
+                        if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                            const loc = a.location ? ` @ ${a.location}` : "";
+                            const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                            findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                        }
+                    });
+
                     if (isAnom && anoms.length > 0) {
                         anoms.forEach((a: any) => {
-                            anomParts.push(`[Anom Ref: ${a.anomaly_ref_no || a.ref_no || 'N/A'}]${a.is_rectified ? ` (Rectified: ${a.rectified_remarks || a.rect_comments || ''})` : ''}`);
+                            findingsParts.push(`[Anom Ref: ${a.anomaly_ref_no || a.ref_no || 'N/A'}]${a.is_rectified ? ` (Rectified: ${a.rectified_remarks || a.rect_comments || ''})` : ''}`);
                         });
                     }
-                    if (anomParts.length > 0) findings += `\n` + anomParts.join('\n');
-                    
-                    if (r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name) findings += `\n[Dive: ${r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name}]`;
-                    
+
+                    if (r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name) findingsParts.push(`[Dive: ${r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name}]`);
+
+                    const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
+
                     return [
                         { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold' } },
-                        { content: rd.cp_rdg ?? rd.cp ?? rd.cp_reading_mv ?? '-', styles: { halign: 'center' } },
+                        { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
                 }),

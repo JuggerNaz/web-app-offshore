@@ -598,8 +598,10 @@ export function useWorkspaceReports(
 
     const generateRGReport = async () => {
         const rgRecords = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return typeCode === "RGVI";
+            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return typeCode === "RGVI" || qid.startsWith("RG") || qid.startsWith("RISG") || qid.startsWith("RISER_GUARD") || qid.startsWith("RISER-GUARD") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD" || compCode === "RG" || compCode === "RISG";
         });
         if (rgRecords.length === 0) {
             toast.error("No Riser Guard records found to generate report");
@@ -610,8 +612,10 @@ export function useWorkspaceReports(
 
     const generateRGReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const rgRecords = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return typeCode === "RGVI";
+            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+            return typeCode === "RGVI" || qid.startsWith("RG") || qid.startsWith("RISG") || qid.startsWith("RISER_GUARD") || qid.startsWith("RISER-GUARD") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD" || compCode === "RG" || compCode === "RISG";
         });
         if (rgRecords.length === 0) return;
 
@@ -649,7 +653,8 @@ export function useWorkspaceReports(
             const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("SG") || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG";
+            const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
+            return qid.startsWith("SG") || qid.startsWith("CS_GUARD") || qid.startsWith("CS-GUARD") || (qid.includes("GUARD") && qid.includes("CS")) || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG" || compCode === "CS_GUARD" || compName.includes("CAISSON GUARD");
         });
         if (sgRecords.length === 0) {
             toast.error("No Caisson Guard records found to generate report");
@@ -663,7 +668,8 @@ export function useWorkspaceReports(
             const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("SG") || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG";
+            const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
+            return qid.startsWith("SG") || qid.startsWith("CS_GUARD") || qid.startsWith("CS-GUARD") || (qid.includes("GUARD") && qid.includes("CS")) || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG" || compCode === "CS_GUARD" || compName.includes("CAISSON GUARD");
         });
         if (sgRecords.length === 0) return;
 
@@ -701,7 +707,8 @@ export function useWorkspaceReports(
             const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("CU") || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU";
+            const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
+            return qid.startsWith("CU") || qid.startsWith("CD_GUARD") || qid.startsWith("CD-GUARD") || (qid.includes("GUARD") && (qid.includes("CD") || qid.includes("COND"))) || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU" || compCode === "CD_GUARD" || compName.includes("CONDUCTOR GUARD");
         });
         if (cuRecords.length === 0) {
             toast.error("No Conductor Guard records found to generate report");
@@ -715,7 +722,8 @@ export function useWorkspaceReports(
             const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("CU") || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU";
+            const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
+            return qid.startsWith("CU") || qid.startsWith("CD_GUARD") || qid.startsWith("CD-GUARD") || (qid.includes("GUARD") && (qid.includes("CD") || qid.includes("COND"))) || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU" || compCode === "CD_GUARD" || compName.includes("CONDUCTOR GUARD");
         });
         if (cuRecords.length === 0) return;
 

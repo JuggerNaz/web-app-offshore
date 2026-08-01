@@ -16,10 +16,10 @@ interface ReportConfig {
     jobPackId?: number;
     structureId?: number;
     sowReportNo?: string;
-    preparedBy?: { name: string; date: string 
-    approvedBy?: { name: string; date: string };
-    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
+    preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
+    approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
@@ -28,10 +28,6 @@ interface ReportConfig {
 /**
  * ROV CP Survey Report (Portrait)
  * Columns: Item No. | Component QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
- *
- * CP column shows primary CP reading; additional CP readings are appended to Findings
- * together with their location labels.
- * Anomaly reference number and rectification comments are appended to Findings when present.
  */
 export const generateROVCPReport = async (
     records: any[],
@@ -77,7 +73,7 @@ export const generateROVCPReport = async (
 
         const HEADER_H = 24;
 
-        // ── Pre-load logos (async, once) ────────────────────────────────────────
+        // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
         if (companySettings.logo_url) {
@@ -159,25 +155,34 @@ export const generateROVCPReport = async (
             const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const cpDisplay  = primaryCP !== "" && primaryCP !== null && primaryCP !== undefined
-                ? `${primaryCP} mV`
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            const additionalCPs = additionals
+                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+            const cpDisplay = cpList.length > 0
+                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
             const findingsParts: string[] = [];
 
-            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if (val !== "" && val !== null && val !== undefined) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    findingsParts.push(`Add. CP${loc}: ${val} mV`);
-                }
-            });
-
+            // 1. Description / Findings
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
             }
 
+            // 2. Additional CP details
+            additionals.forEach((a: any) => {
+                const val = a.reading ?? a.cp_rdg ?? "";
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                    const loc = a.location ? ` @ ${a.location}` : "";
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                }
+            });
+
+            // 3. Anomaly & Rectified details
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
