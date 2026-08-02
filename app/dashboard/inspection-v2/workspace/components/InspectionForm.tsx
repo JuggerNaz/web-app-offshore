@@ -28,6 +28,8 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
 import { FindingsSuggestionEngine } from "./FindingsSuggestionEngine";
+import { createClient } from "@/utils/supabase/client";
+import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 import inspectionSpecs from "@/utils/types/inspection-types.json";
 
 interface InspectionFormProps {
@@ -274,61 +276,45 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     const [lastFlaggedThreshold, setLastFlaggedThreshold] = React.useState<number | null>(null);
 
+    const getFormDepth = React.useCallback(() => {
+        const rawVal = dynamicProps?.elevation ?? dynamicProps?.depth ?? dynamicProps?.verification_depth ?? dynamicProps?.verified_depth;
+        if (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '') {
+            return String(rawVal);
+        }
+        if (selectedComp) {
+            if (selectedComp.lowestElev && selectedComp.lowestElev !== '-') return selectedComp.lowestElev;
+            if (selectedComp.depth && selectedComp.depth !== '-') return selectedComp.depth;
+        }
+        return '0';
+    }, [dynamicProps, selectedComp]);
+
+    const resolveWaterDepth = React.useCallback(() => {
+        let wDepth = Math.abs(headerData?.waterDepth || 0);
+        if (wDepth === 0 && selectedComp) {
+            const lElev = Math.abs(parseFloat(String(selectedComp.lowestElev || selectedComp.depth || '0').replace(/[^\d.-]/g, '')));
+            if (!isNaN(lElev) && lElev > 0) wDepth = lElev;
+        }
+        return wDepth;
+    }, [headerData, selectedComp]);
+
     const getInterpolatedThreshold = (vDepth: any, vUnit: string, wDepth: number, thresholds: any[]) => {
-        if (!thresholds || thresholds.length === 0) return null;
-        const vDepthStr = String(vDepth).replace(/[^\d.-]/g, '');
-        let currentDepth = Math.abs(parseFloat(vDepthStr) || 0);
-        let waterDepth = Math.abs(wDepth || 0);
-        if (waterDepth === 0 && selectedComp) {
-            const type = (selectedComp.raw?.type || String(selectedComp.name || '')).toUpperCase();
-            if (type.includes('LEG')) {
-                const lElev = parseFloat(String(selectedComp.lowestElev || '0').replace(/[^\d.-]/g, ''));
-                if (!isNaN(lElev)) waterDepth = Math.abs(lElev);
-            }
-        }
-        if (vUnit === 'ft') currentDepth *= 0.3048;
-        else if (vUnit === 'in') currentDepth *= 0.0254;
-        else if (vUnit === 'mm') currentDepth /= 1000;
-        else if (vUnit === 'cm') currentDepth /= 100;
-
-        const resolved = thresholds.map(t => {
-            let d = 0;
-            const from = String(t.from_elevation).toUpperCase().trim();
-            if (from === 'MSL') d = 0;
-            else if (from === 'MUDLINE') d = waterDepth;
-            else if (from.includes('WD')) {
-                const m = from.match(/(\d+)\/(\d+)\s*WD/i);
-                if (m && parseInt(m[2]) !== 0) d = (parseInt(m[1]) / parseInt(m[2])) * waterDepth;
-                else d = waterDepth;
-            } else d = Math.abs(parseFloat(from) || 0);
-            return { depth: d, max: t.max_thickness };
-        }).sort((a, b) => a.depth - b.depth);
-
-        if (currentDepth <= resolved[0].depth) return resolved[0].max;
-        if (currentDepth >= resolved[resolved.length - 1].depth) return resolved[resolved.length - 1].max;
-
-        for (let i = 0; i < resolved.length - 1; i++) {
-            const p1 = resolved[i];
-            const p2 = resolved[i+1];
-            if (currentDepth >= p1.depth && currentDepth <= p2.depth) {
-                const ratio = (currentDepth - p1.depth) / (p2.depth - p1.depth);
-                return p1.max + (p2.max - p1.max) * ratio;
-            }
-        }
-        return resolved[resolved.length - 1].max;
+        return calculateInterpolatedMgiThreshold(vDepth, wDepth, thresholds, vUnit);
     };
 
     React.useEffect(() => {
         if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
         if (!activeSpec || (activeSpec.toUpperCase() !== 'MGI' && activeSpec.toUpperCase() !== 'RMGI')) return;
-        const vDepthRaw = dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+        const vDepthRaw = getFormDepth();
         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
-        const waterDepth = Math.abs(headerData.waterDepth || 0);
-        const applicableMax = getInterpolatedThreshold(vDepthRaw, vDepthUnit, waterDepth, activeMGIProfile.thresholds);
+        const waterDepth = resolveWaterDepth();
+        const applicableMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
         if (applicableMax === null) return;
         const formattedThreshold = `${applicableMax.toFixed(1)}mm`;
         if (dynamicProps?.mgi_profile !== formattedThreshold && handleDynamicPropChange) {
             handleDynamicPropChange('mgi_profile', formattedThreshold);
+        }
+        if (activeMGIProfile?.id && dynamicProps?._mgi_profile_id !== activeMGIProfile.id && handleDynamicPropChange) {
+            handleDynamicPropChange('_mgi_profile_id', activeMGIProfile.id);
         }
         const thicknessFields = ['mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9'];
         const currentMaxT = Math.max(...thicknessFields.map(f => parseFloat(dynamicProps?.[f]) || 0));
@@ -534,13 +520,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     </div>
                     <div className="flex items-center gap-1">
                         {onPrintReport && (findingType === 'Anomaly' || findingType === 'Finding') && (
-                            <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Print Report"><Printer className="w-3.5 h-3.5" /></button>
+                            <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Print Report"><Printer className="w-3.5 h-3.5" /></button>
                         )}
                         {isEditing && onDeleteRecord && (
                             <button onClick={onDeleteRecord} className="p-1 hover:bg-red-500/20 bg-black/10 rounded transition text-red-200 hover:text-red-100" title="Delete Record"><Trash2 className="w-3.5 h-3.5" /></button>
                         )}
-                        <button onClick={() => setCompSpecDialogOpen(true)} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications"><Info className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => resetForm()} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Cancel/Close"><X className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setCompSpecDialogOpen(true)} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Component Specifications"><Info className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => resetForm()} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Cancel/Close"><X className="w-3.5 h-3.5" /></button>
                     </div>
                 </div>
             </div>
@@ -744,10 +730,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     const softFields = mgiFields.filter((p: any) => p && p.groupRow === 'soft');
                                     const profileField = mgiFields.find((p: any) => p && p.type === 'mgi_profile_display');
                                     const resolveApplicableMax = () => {
-                                        const vDepthRaw = dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+                                        const vDepthRaw = getFormDepth();
                                         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
-                                        const waterDepth = Math.abs(headerData.waterDepth || 0);
-                                        return getInterpolatedThreshold(vDepthRaw, vDepthUnit, waterDepth, activeMGIProfile?.thresholds);
+                                        const waterDepth = resolveWaterDepth();
+                                        return calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile?.thresholds, vDepthUnit);
                                     };
 
                                     return (

@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
     company_name?: string;
@@ -185,15 +186,16 @@ export const generateROVMGIGraphReport = async (
                 const elev = resolveDepth(r.elevation);
                 const d = r.inspection_data || {};
                 let limit = 0;
-                if (d.mgi_profile) {
+                if (thresholdList && thresholdList.length > 0) {
+                    const absElev = Math.abs(elev);
+                    const wDepth = Math.abs(headerData.waterDepth || 0);
+                    const interpolated = calculateInterpolatedMgiThreshold(absElev, wDepth, thresholdList);
+                    if (interpolated !== null) {
+                        limit = parseFloat(interpolated.toFixed(1));
+                    }
+                }
+                if (limit === 0 && d.mgi_profile) {
                     limit = parseFloat(String(d.mgi_profile).replace(/[^\d.]/g, '')) || 0;
-                } else {
-                    const t = thresholdList.find((th: any) => {
-                        const from = resolveDepth(th.from_elevation);
-                        const to = resolveDepth(th.to_elevation);
-                        return Math.abs(elev) >= Math.min(Math.abs(from), Math.abs(to)) && Math.abs(elev) <= Math.max(Math.abs(from), Math.abs(to));
-                    });
-                    limit = t ? parseFloat(t.max_thickness) : 0;
                 }
                 const hList = ['mgi_hard_thickness_at_12','mgi_hard_thickness_at_3','mgi_hard_thickness_at_6','mgi_hard_thickness_at_9'];
                 const sList = ['mgi_soft_thickness_at_12','mgi_soft_thickness_at_3','mgi_soft_thickness_at_6','mgi_soft_thickness_at_9'];
@@ -263,26 +265,15 @@ export const generateROVMGIGraphReport = async (
                 body: tableData.map(row => {
                     const isAnomaly = row.maxInRow > row.limit && row.limit > 0;
                     
-                    const formatReading = (v: any, isHard: boolean) => {
-                        const numeric = parseFloat(v);
-                        if (!isNaN(numeric) && numeric > 0) {
-                            if (isAnomaly && isHard && numeric === row.maxHard) {
-                                return { content: `${v}`, styles: { fontStyle: 'bold', textColor: colors.anomaly } };
-                            }
-                            if (numeric === row.maxInRow) {
-                                return { content: `${v}`, styles: { fontStyle: 'bold', textColor: colors.teal } };
-                            }
-                        }
-                        return v;
-                    };
+                    const formatReading = (v: any) => String(v ?? '-');
 
                     return [
                         `${row.depth.toFixed(1)}m`,
                         '',
                         `${row.hCov}% / ${row.sCov}%`,
-                        ...row.h.map(v => formatReading(v, true)),
-                        ...row.s.map(v => formatReading(v, false)),
-                        { content: `${row.limit}mm`, styles: { fontStyle: 'bold', textColor: colors.limit } },
+                        ...row.h.map(v => formatReading(v)),
+                        ...row.s.map(v => formatReading(v)),
+                        `${row.limit}mm`,
                         row.findings
                     ];
                 }),
@@ -293,12 +284,39 @@ export const generateROVMGIGraphReport = async (
                     if (data.section === 'body') {
                         const row = tableData[data.row.index];
                         if (row) {
-                            if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
-                                data.cell.styles.textColor = colors.anomaly;
+                            const colIdx = data.column.index;
+                            const rawCell = data.cell.raw as any;
+                            const cellText = String(rawCell?.content ?? rawCell ?? '').trim();
+                            const numericVal = parseFloat(cellText);
+
+                            // MGI Clock Position Reading Columns (Columns 3 to 10)
+                            if (colIdx >= 3 && colIdx <= 10) {
+                                if (!isNaN(numericVal) && numericVal > 0 && numericVal === row.maxInRow) {
+                                    // Highlight the exact reading used for the Teal graph line!
+                                    data.cell.styles.fillColor = [204, 251, 241]; // Light Teal Mint background
+                                    data.cell.styles.textColor = [15, 118, 110];   // Dark Teal text
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else {
+                                    data.cell.styles.textColor = colors.text;
+                                    data.cell.styles.fontStyle = 'normal';
+                                }
+                            }
+                            // Max Allowable Column (Column 11)
+                            else if (colIdx === 11) {
+                                // Match the Maroon Max Allowable graph line!
+                                data.cell.styles.fillColor = [254, 242, 242]; // Light Maroon/Red background
+                                data.cell.styles.textColor = [153, 27, 27];   // Dark Maroon text
                                 data.cell.styles.fontStyle = 'bold';
-                            } else if (row.isRectified) {
-                                data.cell.styles.textColor = colors.rectified;
-                                data.cell.styles.fontStyle = 'bold';
+                            }
+                            // Other Columns: Depth (0), Coverage (2), Findings (12)
+                            else {
+                                if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
+                                    data.cell.styles.textColor = colors.anomaly;
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else if (row.isRectified) {
+                                    data.cell.styles.textColor = colors.rectified;
+                                    data.cell.styles.fontStyle = 'bold';
+                                }
                             }
                         }
                     }

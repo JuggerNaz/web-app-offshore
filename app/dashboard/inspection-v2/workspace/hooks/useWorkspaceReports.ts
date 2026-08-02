@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getReportHeaderData } from "@/utils/company-settings";
+import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
 import { generateROVRMGIReport } from "@/utils/report-generators/rov-rmgi-report";
@@ -431,12 +432,8 @@ export function useWorkspaceReports(
 
         const settings = await getReportHeaderData();
         
-        let profile = null;
-        const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
-        if (profileId) {
-            const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
-            profile = data;
-        }
+        const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
+        const profile = await getMGIProfileForJobpack(supabase, jobPackId, profileId);
 
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
         let contractorLogoUrl = '';

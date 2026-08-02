@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -2120,13 +2121,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // Fetch MGI Profile
-            let profile = null;
-            const recordData = mgiRecords[0]?.inspection_data || mgiRecords[0]?.inspection_dat;
-            const profileId = recordData?._mgi_profile_id;
-            if (profileId) {
-                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
-                profile = data;
-            }
+            const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id || r.inspection_dat?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
+            const profile = await getMGIProfileForJobpack(supabase, selections.jobPackId, profileId);
 
             // Fetch Contractor Logo if available
             let contractorLogoUrl = "";

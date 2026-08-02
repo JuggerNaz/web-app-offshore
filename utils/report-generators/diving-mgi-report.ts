@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
     company_name?: string;
@@ -187,41 +188,15 @@ export const generateDivingMGIReport = async (
 
             // Max Allowable Calculation with Interpolation
             let limit = 0;
-            if (mgiProfile && thresholdList.length > 0) {
+            if (thresholdList && thresholdList.length > 0) {
                 const absElev = Math.abs(elev);
                 const wDepth = Math.abs(headerData.waterDepth || 0);
-                
-                const resolved = thresholdList.map((t: any) => {
-                    let d = 0;
-                    const from = String(t.from_elevation).toUpperCase().trim();
-                    if (from === 'MSL' || from === '0') d = 0;
-                    else if (from === 'MUDLINE') d = wDepth;
-                    else if (from.includes('WD')) {
-                        const m = from.match(/(\d+)\/(\d+)\s*WD/i);
-                        if (m && parseInt(m[2]) !== 0) d = (parseInt(m[1]) / parseInt(m[2])) * wDepth;
-                        else d = wDepth;
-                    } else d = Math.abs(parseFloat(from) || 0);
-                    return { depth: d, max: parseFloat(t.max_thickness) || 0 };
-                }).sort((a: any, b: any) => a.depth - b.depth);
-
-                if (resolved.length > 0) {
-                    if (absElev <= resolved[0].depth) {
-                        limit = resolved[0].max;
-                    } else if (absElev >= resolved[resolved.length - 1].depth) {
-                        limit = resolved[resolved.length - 1].max;
-                    } else {
-                        for (let i = 0; i < resolved.length - 1; i++) {
-                            const p1 = resolved[i];
-                            const p2 = resolved[i+1];
-                            if (absElev >= p1.depth && absElev <= p2.depth) {
-                                const ratio = (absElev - p1.depth) / (p2.depth - p1.depth);
-                                limit = p1.max + (p2.max - p1.max) * ratio;
-                                break;
-                            }
-                        }
-                    }
+                const interpolated = calculateInterpolatedMgiThreshold(absElev, wDepth, thresholdList);
+                if (interpolated !== null) {
+                    limit = parseFloat(interpolated.toFixed(1));
                 }
-            } else if (d.mgi_profile) {
+            }
+            if (limit === 0 && d.mgi_profile) {
                 limit = parseFloat(String(d.mgi_profile).replace(/[^\d.]/g, '')) || 0;
             }
 
@@ -336,12 +311,14 @@ export const generateDivingMGIReport = async (
                         // Default font style
                         data.cell.styles.fontStyle = "normal";
 
-                        // Color columns strictly as per user request
+                        // Color columns strictly to match graph lines
                         if (data.column.index === 9) { // ET
-                            data.cell.styles.textColor = colors.etLine;
+                            data.cell.styles.fillColor = [204, 251, 241]; // Light Teal Mint background
+                            data.cell.styles.textColor = [15, 118, 110];   // Dark Teal text
                             data.cell.styles.fontStyle = "bold";
                         } else if (data.column.index === 10) { // Max Allow
-                            data.cell.styles.textColor = colors.limit;
+                            data.cell.styles.fillColor = [254, 242, 242]; // Light Maroon/Red background
+                            data.cell.styles.textColor = [153, 27, 27];   // Dark Maroon text
                             data.cell.styles.fontStyle = "bold";
                         }
 

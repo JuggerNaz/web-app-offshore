@@ -8,6 +8,7 @@
 
 import { createClient } from "@/utils/supabase/client";
 import { getReportHeaderData } from "@/utils/company-settings";
+import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 
 // ── Report Template Option ─────────────────────────────────────────────────────
 
@@ -417,8 +418,10 @@ async function routeToGenerator(
     case "diving-mgi": {
       const recs = filterByCode(["DMGI", "MGROW"]);
       if (!recs.length) return;
+      const profileId = recs.find((r: any) => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
+      const mgiProfile = await getMGIProfileForJobpack(supabase, opts.jobPackId, profileId);
       const { generateDivingMGIReport } = await import("@/utils/report-generators/diving-mgi-report");
-      return await generateDivingMGIReport(recs, null, headerData, companyInfo, opts, supabase) as Blob;
+      return await generateDivingMGIReport(recs, mgiProfile, headerData, companyInfo, opts, supabase) as Blob;
     }
     // Caisson Diving variants
     case "diving-dcasn-report": {
@@ -644,8 +647,10 @@ async function routeToGenerator(
     case "rmgi-graph": {
       const recs = filterByCode(["RMGI", "MGROW"]);
       if (!recs.length) return;
+      const profileId = recs.find((r: any) => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
+      const mgiProfile = await getMGIProfileForJobpack(supabase, opts.jobPackId, profileId);
       const { generateROVMGIGraphReport } = await import("@/utils/report-generators/rov-mgi-report");
-      return await generateROVMGIGraphReport(recs, null, headerData, companyInfo, opts) as Blob;
+      return await generateROVMGIGraphReport(recs, mgiProfile, headerData, companyInfo, opts) as Blob;
     }
     case "rmgi-table": {
       const recs = filterByCode(["RMGI"]);
