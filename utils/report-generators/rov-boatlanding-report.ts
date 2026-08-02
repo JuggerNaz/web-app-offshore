@@ -133,23 +133,75 @@ export const generateROVBoatlandingReport = async (
         };
 
         // ── Grouping Logic ──────────────────────────────────────────────────────
-        const idToComp: Record<number, { q_id: string, name: string, parent_id: number | null, is_bl: boolean }> = {};
+        const idToComp: Record<number, { q_id: string, name: string, code: string, parent_id: number | null, is_bl: boolean, is_main_parent: boolean }> = {};
+        const qidToCompId: Record<string, number> = {};
+
+        const isBoatlandingOrFenderComp = (c: any): boolean => {
+            if (!c) return false;
+            const qid = String(c.q_id || c.qid || "").toUpperCase();
+            const typeCode = String(c.code || c.type || c.metadata?.comp_type || c.metadata?.type || "").toUpperCase();
+            const compName = String(c.comp_name || c.name || "").toUpperCase();
+
+            // 1. Explicit Exclusions for non-Boatlanding components (Conductor Shield, Riser Guard, etc.)
+            const excludedPrefixes = ["CS_", "CS-", "RG_", "RG-", "CU_", "CU-", "SG_", "SG-", "CD_", "CD-", "LEG_", "LEG-", "MB_", "MB-", "R_"];
+            const excludedCodes = ["CS", "RG", "CU", "SG", "CD", "CON", "LEG", "MB", "RS", "JT"];
+            if (excludedCodes.includes(typeCode)) return false;
+            if (excludedPrefixes.some(p => qid.startsWith(p))) return false;
+
+            // 2. Inclusion check for Boatlanding or Boat Fender (historical data)
+            const isBLCode = ["BL", "BLTG", "BOATLANDING"].includes(typeCode);
+            const isBFCode = ["BF", "BOATFENDER", "FENDER"].includes(typeCode);
+            if (isBLCode || isBFCode) return true;
+
+            const isBLQid = qid.startsWith("BL") || qid.startsWith("BOATLANDING") || qid.startsWith("BOAT_LANDING");
+            const isBFQid = qid.startsWith("BF") || qid.startsWith("BOATFENDER") || qid.startsWith("BOAT_FENDER") || qid.startsWith("FENDER");
+            if (isBLQid || isBFQid) return true;
+
+            if (compName.includes("BOATLANDING") || compName.includes("BOAT LANDING") || compName.includes("BOAT FENDER") || compName.includes("BOATFENDER") || compName.includes("FENDER")) {
+                return true;
+            }
+
+            return false;
+        };
+
+        const isMainBoatlandingParentComp = (c: any): boolean => {
+            if (!c || !isBoatlandingOrFenderComp(c)) return false;
+            const qid = String(c.q_id || c.qid || "").toUpperCase().trim();
+            const compName = String(c.comp_name || c.name || "").toUpperCase().trim();
+
+            // Sub-component indicators in QID or component name (e.g. BL-supp-10, BL001_AN01)
+            const subKeywords = ["SUPP", "SUPPORT", "ANODE", "BRACKET", "CLAMP", "RUBBER", "BUMPER", "MEMBER", "STRUT", "BEAM", "TUBE", "LEG"];
+            if (subKeywords.some(kw => qid.includes(kw) || compName.includes(kw))) {
+                return false;
+            }
+
+            // Pattern check for sub-component QID suffixes like BL-supp-10, BL_supp_5, BL-an-01
+            if (/^[A-Z0-9]+[-_](SUPP|AN|BR|CL|RUBBER|MEMB|M|SUB|D|V|\d{2,})/i.test(qid) && !/^(BL|BF|BOAT)[-_]?\d{1,3}$/i.test(qid)) {
+                return false;
+            }
+
+            return true;
+        };
         
         const addCompToMap = (c: any) => {
             if (!c || !c.id) return;
-            const qid = (c.q_id || "").toUpperCase();
-            const typeCode = (c.code || c.metadata?.type || "").toUpperCase();
             const compName = c.comp_name || c.name || "Boatlanding";
-
-            // Group by Boatlanding (BL)
-            const isBL = qid.startsWith("BL") || qid.startsWith("BOAT") || typeCode === "BL" || typeCode === "BOATLANDING" || (c.code || "").toUpperCase() === "BL" || compName.toUpperCase().includes("BOATLANDING") || compName.toUpperCase().includes("BOAT LANDING");
+            const isBL = isBoatlandingOrFenderComp(c);
+            const isMainParent = isMainBoatlandingParentComp(c);
+            const qidStr = String(c.q_id || "").trim();
             
-            idToComp[c.id] = {
-                q_id: c.q_id || `ID: ${c.id}`,
+            idToComp[Number(c.id)] = {
+                q_id: qidStr || `ID: ${c.id}`,
                 name: compName,
+                code: String(c.code || "").toUpperCase(),
                 parent_id: c.metadata?.parent_id || c.metadata?.comp_id_parent || c.metadata?.parent_comp_id || c.metadata?.associated_comp_id || null,
-                is_bl: isBL
+                is_bl: isBL,
+                is_main_parent: isMainParent
             };
+
+            if (qidStr) {
+                qidToCompId[qidStr.toUpperCase()] = Number(c.id);
+            }
         };
 
         // 1. Build initial map from records
@@ -178,7 +230,7 @@ export const generateROVBoatlandingReport = async (
             const aid = metadata.associated_comp_qid || metadata.associated_comp_id || metadata.parent_id || 
                         metadata.comp_id_parent || metadata.parent_comp_id || 
                         metadata.associated_id;
-            if (aid && !idToComp[Number(aid)]) missingIds.add(Number(aid));
+            if (aid && !isNaN(Number(aid)) && !idToComp[Number(aid)]) missingIds.add(Number(aid));
         });
 
         if (missingIds.size > 0) {
@@ -191,19 +243,67 @@ export const generateROVBoatlandingReport = async (
             } catch (e) {}
         }
 
-        // 4. Grouping Logic
+        // 4. Grouping Logic - Group all sub-components (like BL-supp-10) under the main parent Boatlanding (like BL001)
         const blGroups: Record<number, any[]> = {};
         records.forEach(r => {
             const comp = r.structure_components || r.component || {};
+            if (!comp || !comp.id) return;
             const metadata = comp.metadata || {};
             
-            // Get the Parent ID (using associated_comp_qid fallback to its own id)
-            const parentIdVal = metadata.associated_comp_qid || metadata.associated_comp_id || metadata.parent_id || comp.id;
-            const groupId = Number(parentIdVal);
+            // Check if record component is a main parent or a sub-component
+            let parentCompId: number | null = null;
 
-            // ONLY include if the resolved group belongs to a BL component type
-            const parentInfo = idToComp[groupId];
-            if (groupId && parentInfo?.is_bl) {
+            if (isMainBoatlandingParentComp(comp)) {
+                parentCompId = Number(comp.id);
+            } else {
+                // 1. Resolve explicit metadata parent reference
+                const rawRef = metadata.associated_comp_id || metadata.associated_comp_qid || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
+                if (rawRef) {
+                    if (typeof rawRef === "number" && idToComp[rawRef]) {
+                        parentCompId = rawRef;
+                    } else {
+                        const refStr = String(rawRef).toUpperCase().trim();
+                        if (qidToCompId[refStr]) {
+                            parentCompId = qidToCompId[refStr];
+                        } else if (!isNaN(Number(refStr)) && idToComp[Number(refStr)]) {
+                            parentCompId = Number(refStr);
+                        }
+                    }
+                }
+
+                // 2. Fallback: QID prefix matching (e.g. BL-supp-10 -> BL001 / BL01 / BL)
+                if (!parentCompId) {
+                    const qidStr = String(comp.q_id || comp.qid || "").toUpperCase().trim();
+                    const match = qidStr.match(/^(BL|BF|BOATLANDING|BOATFENDER|FENDER)[-_]?(\d{1,3})?/i);
+                    if (match) {
+                        const prefixPattern = match[0].toUpperCase();
+                        for (const key of Object.keys(qidToCompId)) {
+                            if (key === prefixPattern || key.startsWith(prefixPattern) || prefixPattern.startsWith(key)) {
+                                const cId = qidToCompId[key];
+                                if (cId && idToComp[cId] && idToComp[cId].is_main_parent) {
+                                    parentCompId = cId;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Fallback: First main parent Boatlanding/Fender found in structure
+                if (!parentCompId) {
+                    const firstMainParentId = Object.keys(idToComp).map(Number).find(id => idToComp[id]?.is_main_parent);
+                    if (firstMainParentId) {
+                        parentCompId = firstMainParentId;
+                    } else {
+                        parentCompId = Number(comp.id);
+                    }
+                }
+            }
+
+            const parentInfo = parentCompId ? idToComp[parentCompId] : null;
+            const groupId = (parentCompId && (parentInfo?.is_bl || parentInfo?.is_main_parent)) ? parentCompId : Number(comp.id);
+
+            if (groupId) {
                 if (!blGroups[groupId]) blGroups[groupId] = [];
                 blGroups[groupId].push(r);
             }
@@ -294,7 +394,12 @@ export const generateROVBoatlandingReport = async (
             const parentComp = idToComp[parentId];
             const rawParentQid = parentComp?.q_id || `ID: ${parentId}`;
             const displayQid = rawParentQid.replace(/[.\s,;]+$/, "").trim();
-            const parentName = parentComp?.name || "Boatlanding";
+            const parentNameRaw = parentComp?.name || "";
+            const parentCode = parentComp?.code || "";
+
+            // Format title: "BOAT FENDER" for Fender historical types, "BOATLANDING" for Boatlanding types
+            const isFender = parentCode === "BF" || parentCode === "FENDER" || parentCode === "BOATFENDER" || parentNameRaw.toUpperCase().includes("FENDER");
+            const groupTypeTitle = isFender ? "BOAT FENDER" : "BOATLANDING";
 
             drawPageHeader(doc);
             const startY = drawContextRow(doc, margin + HEADER_H + 2, groupRecords);
@@ -306,7 +411,7 @@ export const generateROVBoatlandingReport = async (
             doc.rect(margin, subY, contentWidth, subH, "F");
             doc.setTextColor(255);
             doc.setFontSize(8); doc.setFont("helvetica", "bold");
-            const labelText = `${parentName.toUpperCase()} (${displayQid})`;
+            const labelText = `${groupTypeTitle} (${displayQid})`;
             doc.text(labelText, margin + 4, subY + 4.2);
             
             (doc as any)._tableStartY = subY + subH + 2;

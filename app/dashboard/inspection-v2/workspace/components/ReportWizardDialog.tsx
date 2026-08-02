@@ -75,11 +75,33 @@ export const isRGRecord = (r: any) => {
 };
 
 export const isBLRecord = (r: any) => {
-    const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
-    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-    const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
-    return qid.startsWith("BL") || qid.startsWith("BOAT") || typeCode === "BL" || typeCode === "BOATLANDING" || compCode === "BL" || compName.includes("BOATLANDING") || compName.includes("BOAT LANDING");
+    if (!r) return false;
+    const comp = r.structure_components || r.component || {};
+    const qid = String(comp.q_id || comp.qid || "").toUpperCase();
+    const typeCode = String(r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+    const compCode = String(comp.code || comp.metadata?.comp_type || "").toUpperCase();
+    const compName = String(comp.comp_name || comp.name || "").toUpperCase();
+
+    // 1. Explicit Exclusions for non-Boatlanding components (Conductor Shield, Riser Guard, etc.)
+    const excludedPrefixes = ["CS_", "CS-", "RG_", "RG-", "CU_", "CU-", "SG_", "SG-", "CD_", "CD-", "LEG_", "LEG-", "MB_", "MB-", "R_"];
+    const excludedCodes = ["CS", "RG", "CU", "SG", "CD", "CON", "LEG", "MB", "RS", "JT"];
+    if (excludedCodes.includes(compCode)) return false;
+    if (excludedPrefixes.some(p => qid.startsWith(p))) return false;
+
+    // 2. Check Boatlanding or Boat Fender code / QID / name
+    const isBLCode = ["BL", "BLTG", "BOATLANDING"].includes(compCode) || ["BL", "BLTG", "BOATLANDING", "RBLTG", "DBLTG"].includes(typeCode);
+    const isBFCode = ["BF", "BOATFENDER", "FENDER"].includes(compCode);
+    if (isBLCode || isBFCode) return true;
+
+    const isBLQid = qid.startsWith("BL") || qid.startsWith("BOATLANDING") || qid.startsWith("BOAT_LANDING");
+    const isBFQid = qid.startsWith("BF") || qid.startsWith("BOATFENDER") || qid.startsWith("BOAT_FENDER") || qid.startsWith("FENDER");
+    if (isBLQid || isBFQid) return true;
+
+    if (compName.includes("BOATLANDING") || compName.includes("BOAT LANDING") || compName.includes("BOAT FENDER") || compName.includes("BOATFENDER") || compName.includes("FENDER")) {
+        return true;
+    }
+
+    return false;
 };
 
 export function getMatchingRecordsForTemplate(templateOrId: any, records: any[]): any[] {

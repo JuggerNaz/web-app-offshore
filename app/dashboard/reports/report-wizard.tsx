@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
+import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -4837,7 +4838,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                return sowMatches && jobPackMatches;
+                const isBL = isBLRecord(r);
+                return sowMatches && jobPackMatches && isBL;
             });
 
             if (!blRecords || blRecords.length === 0) {

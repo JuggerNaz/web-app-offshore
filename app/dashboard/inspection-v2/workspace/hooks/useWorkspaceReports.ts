@@ -28,6 +28,7 @@ import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn
 import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
+import { isBLRecord } from "../components/ReportWizardDialog";
 import { generateROVRiserGuardReport } from "@/utils/report-generators/rov-riser-guard-report";
 import { generateROVCaissonGuardReport } from "@/utils/report-generators/rov-caisson-guard-report";
 import { generateROVConductorGuardReport } from "@/utils/report-generators/rov-conductor-guard-report";
@@ -754,11 +755,7 @@ export function useWorkspaceReports(
     };
 
     const generateBLReport = async () => {
-        const blRecords = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return typeCode === "BL" || compCode === "BL" || typeCode === "BOATLANDING";
-        });
+        const blRecords = currentRecords.filter(r => isBLRecord(r));
         if (blRecords.length === 0) {
             toast.error("No Boatlanding records found to generate report");
             return;
@@ -767,11 +764,7 @@ export function useWorkspaceReports(
     };
 
     const generateBLReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
-        const blRecords = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return typeCode === "BL" || compCode === "BL" || typeCode === "BOATLANDING";
-        });
+        const blRecords = currentRecords.filter(r => isBLRecord(r));
         if (blRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
