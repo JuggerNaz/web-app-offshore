@@ -620,13 +620,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                               }} placeholder="Enter Heading" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
                                                           )}
                                                       </div>
-                                                     {flowField && (
+                                                     {flowField && headerData?.structureType === 'pipeline' && (
                                                          <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
                                                              <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Inspection Flow</span>
                                                              {renderInspectionField(flowField, 'primary')}
                                                          </div>
                                                      )}
-                                                     {modeField && (
+                                                     {modeField && headerData?.structureType === 'pipeline' && (
                                                          <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
                                                              <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Inspection On</span>
                                                              {renderInspectionField(modeField, 'primary')}

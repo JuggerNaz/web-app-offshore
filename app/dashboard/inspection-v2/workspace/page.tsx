@@ -1115,33 +1115,57 @@ function V10PreviewLayout() {
   });
   const [prevRefNo, setPrevRefNo] = useState("");
 
-  const validateAnomalyRef = async (newRef: string) => {
-    if (!newRef || newRef === prevRefNo) return true;
+  const extractBaseSeq = (refStr: string) => {
+    if (!refStr) return "";
+    const clean = refStr.trim();
+    const match = clean.match(/^(.+?\/\s*[AF]-\d{3})/i);
+    if (match) return match[1].trim().toUpperCase();
+    return clean.replace(/[A-Z0-9_-]+$/, "").trim().toUpperCase();
+  };
 
-    // Strip postfixes for fuzzy matching
-    const baseNew = newRef.replace(/[AR]$/, "").trim();
+  const validateAnomalyRef = async (newRef: string) => {
+    if (!newRef || newRef.trim() === "" || newRef.trim() === prevRefNo.trim()) return true;
+
+    const trimmedNew = newRef.trim();
+    const targetBaseSeq = extractBaseSeq(trimmedNew);
+    const currentRecordBaseSeq = extractBaseSeq(prevRefNo);
 
     try {
       const { data: allAnoms } = await supabase
         .from("insp_anomalies")
-        .select("anomaly_id, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
+        .select("anomaly_id, anomaly_ref_no, inspection_id, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
         .eq("insp_records.structure_id", parseInt(structureId || "0"))
         .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"))
         .eq("insp_records.sow_report_no", headerData.sowReportNo);
 
       if (allAnoms) {
-        // Find if any existing anomaly (other than one we might be editing) shares the same base ref
-        const isDuplicate = allAnoms.some(a => {
-           // We ignore the match if it's the exact same string AND we are in an edit session
-           // (Though strictly speaking, we check against prevRefNo above)
-           const baseExisting = (a.anomaly_ref_no || "").replace(/[AR]$/, "").trim();
-           return baseExisting === baseNew;
-        });
+        for (const a of allAnoms) {
+          if (editingRecordId && a.inspection_id === editingRecordId) continue;
 
-        if (isDuplicate) {
-          toast.error(`Duplicate Reference No: "${newRef}" conflicts with an existing sequence. Rolling back.`);
-          setAnomalyData(prev => ({ ...prev, referenceNo: prevRefNo }));
-          return false;
+          const existingRef = (a.anomaly_ref_no || "").trim();
+          const existingBaseSeq = extractBaseSeq(existingRef);
+
+          // 1. Check exact full reference string duplicate match
+          if (existingRef.toLowerCase() === trimmedNew.toLowerCase()) {
+            toast.error(`Duplicate Reference No: "${newRef}" already exists on another record.`);
+            setAnomalyData((prev) => ({ ...prev, referenceNo: prevRefNo }));
+            return false;
+          }
+
+          // 2. Check base sequence conflict:
+          // A-003, A-003A, and A-003R share the same base sequence (A-003).
+          // If sequence A-003 belongs to another existing record, block reassigning it to this record.
+          if (
+            targetBaseSeq &&
+            existingBaseSeq &&
+            targetBaseSeq === existingBaseSeq &&
+            targetBaseSeq !== currentRecordBaseSeq
+          ) {
+            const shortBase = targetBaseSeq.split("/").pop()?.trim() || targetBaseSeq;
+            toast.error(`Reference sequence "${shortBase}" already belongs to an existing record (${existingRef}). You cannot reassign sequence numbers that belong to other records.`);
+            setAnomalyData((prev) => ({ ...prev, referenceNo: prevRefNo }));
+            return false;
+          }
         }
       }
       return true;
@@ -1539,9 +1563,9 @@ function V10PreviewLayout() {
     }
   }, [isPipeline, headerData, selectedComp, componentsSow, allInspectionTypes, activeSpec]);
 
-  // AUTO-GENERATE ANOMALY REFERENCE NO WHEN TYPE CHANGES
+  // AUTO-GENERATE ANOMALY REFERENCE NO FOR NEW RECORDS WHEN TYPE CHANGES
   useEffect(() => {
-    if ((findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo && structureId && headerData?.sowReportNo) {
+    if (!editingRecordId && (findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo && structureId && headerData?.sowReportNo) {
       const isAnomaly = findingType === "Anomaly";
       const category = isAnomaly ? "ANOMALY" : "FINDING";
       const prefix = isAnomaly ? "A" : "F";
@@ -2404,37 +2428,6 @@ function V10PreviewLayout() {
     }
     fetchHeaderInfo();
   }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam, router]);
-
-  useEffect(() => {
-    if ((findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo) {
-      const fetchPreviewRef = async () => {
-        const category = findingType === "Anomaly" ? "ANOMALY" : "FINDING";
-        const prefix = findingType === "Anomaly" ? "A" : "F";
-
-        const { data: sequenceData } = await supabase.rpc("get_next_record_sequence", {
-          p_structure_id: parseInt(structureId || "0"),
-          p_jobpack_id: parseInt(jobPackId || "0"),
-          p_report_no: headerData.sowReportNo,
-          p_category: category,
-        });
-
-        const seq = sequenceData || 1;
-        let baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, "0")}`;
-        if (anomalyData.rectify) baseRef += "R";
-        setAnomalyData((prev) => ({ ...prev, referenceNo: baseRef }));
-      };
-      fetchPreviewRef();
-    }
-  }, [
-    findingType,
-    anomalyData.rectify,
-    editingRecordId,
-    structureId,
-    jobPackId,
-    headerData.platformName,
-    headerData.sowReportNo,
-    supabase,
-  ]);
 
   const parseDbDate = useCallback((dateString?: string | null): Date => {
     if (!dateString) return new Date();
@@ -5778,14 +5771,17 @@ function V10PreviewLayout() {
         });
       }
 
+      const isPipe = isPipeline || headerData.structureType === "pipeline";
       const activeProps: Record<string, any> = {
         ...dynamicProps,
         ...currentDataAcq,
-        flow_direction: dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection,
-        insp_mode: dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation,
-        inspection_direction: dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection,
-        inspection_location: dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation,
       };
+      if (isPipe) {
+        activeProps.flow_direction = dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection;
+        activeProps.insp_mode = dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation;
+        activeProps.inspection_direction = dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection;
+        activeProps.inspection_location = dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation;
+      }
 
       // Apply synchronous auto-calculations to guarantee computed fields are saved 
       // even if the user clicks 'Save' before the React useEffect finishes its cycle.
@@ -5961,8 +5957,6 @@ function V10PreviewLayout() {
           : (selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null),
         jobpack_id: jobPackId ? parseInt(jobPackId) : null,
         sow_report_no: headerData.sowReportNo || null,
-        flow_direction: activeProps.flow_direction || inspectionDirection,
-        insp_mode: activeProps.insp_mode || inspectionLocation,
         inspection_type_id: (isPipeline || headerData.structureType === "pipeline" || (activeSpec || "").toUpperCase() === "NAVIG")
           ? (it?.id && it.id !== 1 ? it.id : 30)
           : (it?.id || null),
@@ -6227,8 +6221,8 @@ function V10PreviewLayout() {
           finalSeq = seq;
 
           // If user manually edited the reference, use it. Otherwise generate default.
-          if (anomalyData.referenceNo) {
-            autoRefNo = anomalyData.referenceNo;
+          if (anomalyData.referenceNo && anomalyData.referenceNo.trim() !== "") {
+            autoRefNo = anomalyData.referenceNo.trim();
           } else {
             const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, "0")}`;
             if (anomalyData.rectify) {
@@ -6238,12 +6232,16 @@ function V10PreviewLayout() {
             }
           }
         } else {
-          // Postfix logic for amendment/rectification
-          let baseRef = (existingAnomaly.anomaly_ref_no || "").replace(/[AR]$/, "");
-          if (anomalyData.rectify) {
-            autoRefNo = baseRef + "R";
+          // Honor user manual edit if present; otherwise fallback to postfix logic
+          if (anomalyData.referenceNo && anomalyData.referenceNo.trim() !== "") {
+            autoRefNo = anomalyData.referenceNo.trim();
           } else {
-            autoRefNo = baseRef + "A";
+            let baseRef = (existingAnomaly.anomaly_ref_no || "").replace(/[AR]$/, "");
+            if (anomalyData.rectify) {
+              autoRefNo = baseRef + "R";
+            } else {
+              autoRefNo = baseRef + "A";
+            }
           }
         }
 
@@ -6353,10 +6351,17 @@ function V10PreviewLayout() {
         })
       );
 
-      resetForm();
+      const isEditSession = Boolean(editingRecordId);
 
-      // Notification for record save
-      toast.success(editingRecordId ? "Record updated" : "Record committed");
+      if (isEditSession) {
+        toast.success("Inspection record updated successfully!");
+        setAnomalyData((prev: any) => ({ ...prev, referenceNo: finalAutoRefNo }));
+        setPrevRefNo(finalAutoRefNo);
+        setIsCommitting(false);
+      } else {
+        toast.success("Inspection record saved successfully!");
+        resetForm();
+      }
 
       // Define background process
       const processAttachments = async () => {
@@ -7530,8 +7535,6 @@ function V10PreviewLayout() {
                     component_type: validCompType,
                     jobpack_id: jobPackId ? parseInt(jobPackId) : null,
                     sow_report_no: headerData.sowReportNo || null,
-                    flow_direction: inspectionDirection,
-                    insp_mode: inspectionLocation,
                     inspection_type_id: specId,
                     inspection_type_code: specCode,
                     inspection_date: formattedDate,
