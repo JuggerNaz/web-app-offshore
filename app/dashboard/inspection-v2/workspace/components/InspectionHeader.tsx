@@ -19,7 +19,8 @@ import {
     ArrowRightLeft,
     LayoutGrid,
     RotateCcw,
-    Edit2
+    Edit2,
+    Globe
 } from "lucide-react";
 import Link from 'next/link';
 import {
@@ -98,6 +99,7 @@ interface InspectionHeaderProps {
     closedPanels?: Array<{ id: string; name: string }>;
     onRestorePanel?: (id: string) => void;
     onUpdateSowReportNo?: (newReportNo: string) => void;
+    onOpenGeodetic?: () => void;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -154,7 +156,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     onResetLayout,
     closedPanels,
     onRestorePanel,
-    onUpdateSowReportNo
+    onUpdateSowReportNo,
+    onOpenGeodetic
 }) => {
     const isPipeline = headerData?.structureType === "pipeline" || headerData?.isPipeline;
 
@@ -417,6 +420,18 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
             </Dialog>
 
             <div className="flex gap-2">
+                {onOpenGeodetic && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-blue-950/60 border-blue-700/60 text-blue-300 hover:bg-blue-900/70 hover:text-white h-8 font-bold shadow-md"
+                        onClick={onOpenGeodetic}
+                        title="Geodetic Parameters (Global Positioning & Survey Reference)"
+                    >
+                        <Globe className="w-4 h-4 mr-1.5 text-blue-400" /> Geodetic
+                    </Button>
+                )}
+
                 <Button
                     variant="outline"
                     size="sm"

@@ -181,6 +181,7 @@ import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
 import { InspectionSummaryPanel } from "./components/InspectionSummaryPanel";
+import { GeodeticParametersDialog } from "../pipeline-workspace/components/GeodeticParametersDialog";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
@@ -269,6 +270,7 @@ function V10PreviewLayout() {
   const [isPipelineMapOpen, setIsPipelineMapOpen] = useState(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [isReportWizardOpen, setIsReportWizardOpen] = useState(false);
+  const [isGeodeticDialogOpen, setIsGeodeticDialogOpen] = useState(false);
 
   // Pipeline Preset Settings (Direction & Location Scope)
   const [inspectionDirection, setInspectionDirection] = useState<"Increase KP" | "Reverse KP">(() => {
@@ -7808,13 +7810,23 @@ function V10PreviewLayout() {
         jobPackId={jobPackId}
         structureId={structureId}
         onSummaryOpen={() => setIsSummaryOpen(true)}
+        onOpenGeodetic={() => setIsGeodeticDialogOpen(true)}
         setIsReportWizardOpen={setIsReportWizardOpen}
         onResetLayout={handleResetLayout}
         closedPanels={closedPanels}
         onRestorePanel={handleRestorePanel}
       />
 
-      {/* ── INSPECTION SUMMARY PANEL ───────────────────────────────────────── */}
+      {/* -- GEODETIC PARAMETERS DIALOG -------------------------------------- */}
+      <GeodeticParametersDialog
+        open={isGeodeticDialogOpen}
+        onOpenChange={setIsGeodeticDialogOpen}
+        jobpackId={jobPackId}
+        structureId={structureId}
+        jobpackName={headerData?.jobpackName || headerData?.platformName}
+      />
+
+      {/* -- INSPECTION SUMMARY PANEL ----------------------------------------- */}
       <InspectionSummaryPanel
         open={isSummaryOpen}
         onClose={() => setIsSummaryOpen(false)}

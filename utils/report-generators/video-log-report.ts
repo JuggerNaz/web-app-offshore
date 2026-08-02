@@ -201,10 +201,112 @@ export const generateVideoLogReport = async (
         }
     }
 
+    // Fetch Geodetic Parameters if Pipeline or jobpack has geodetic data
+    let geodeticData: any = jobPack?.metadata?.geodetic_parameters || null;
+    if (!geodeticData && structure?.id) {
+        try {
+            const cleanStrId = typeof structure.id === "string" && structure.id.includes("-")
+                ? structure.id.split("-")[1]
+                : String(structure.id);
+            const sId = Number(cleanStrId);
+            if (!isNaN(sId)) {
+                const { data: pipeGeo } = await supabase
+                    .from("u_pipegeo")
+                    .select("*")
+                    .eq("str_id", sId)
+                    .maybeSingle();
+
+                if (pipeGeo) {
+                    geodeticData = {
+                        geo_proj_nam: pipeGeo.geo_proj_nam,
+                        geo_units: pipeGeo.geo_units,
+                        geo_datum: pipeGeo.geo_datum,
+                        geo_elli_sph: pipeGeo.geo_elli_sph,
+                        geo_dir: pipeGeo.geo_dir,
+                        geo_dx: pipeGeo.geo_dx,
+                        geo_dy: pipeGeo.geo_dy,
+                        geo_dz: pipeGeo.geo_dz,
+                    };
+                }
+            }
+        } catch (e) {
+            console.error("Error fetching geodetic data for report", e);
+        }
+    }
+
+    const drawGeodeticHeaderBlock = (d: jsPDF, startYPos: number) => {
+        if (!geodeticData) return startYPos;
+
+        const projName = geodeticData.geo_proj_nam || geodeticData.projection_name || "N/A";
+        const units = geodeticData.geo_units || geodeticData.units || "N/A";
+        const datum = geodeticData.geo_datum || geodeticData.datum || "N/A";
+        const ellipsoid = geodeticData.geo_elli_sph || geodeticData.ellipsoid || geodeticData.spheroid || "N/A";
+        const datumShift = geodeticData.geo_dir || geodeticData.datum_shift || "N/A";
+        const dx = geodeticData.geo_dx ?? geodeticData.dx ?? "0";
+        const dy = geodeticData.geo_dy ?? geodeticData.dy ?? "0";
+        const dz = geodeticData.geo_dz ?? geodeticData.dz ?? "0";
+
+        const headStyle = isPrintFriendly
+            ? { fillColor: [255, 255, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] }
+            : { fillColor: [224, 231, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] };
+
+        const colW1 = 25;
+        const colW2 = (contentWidth - colW1 * 3) / 3;
+
+        autoTable(d, {
+            startY: startYPos,
+            head: [
+                [
+                    { content: "GEODETIC PARAMETERS (GLOBAL POSITIONING & SURVEY REFERENCE)", colSpan: 6, styles: { fillColor: isPrintFriendly ? [240, 240, 240] : [31, 55, 93], textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontStyle: "bold", halign: "center", fontSize: 8.5 } }
+                ]
+            ],
+            body: [
+                [
+                    { content: "Projection:", styles: headStyle },
+                    { content: projName },
+                    { content: "Datum:", styles: headStyle },
+                    { content: datum },
+                    { content: "Dx (m):", styles: headStyle },
+                    { content: String(dx) }
+                ],
+                [
+                    { content: "Units:", styles: headStyle },
+                    { content: units },
+                    { content: "Ellipsoid:", styles: headStyle },
+                    { content: ellipsoid },
+                    { content: "Dy (m):", styles: headStyle },
+                    { content: String(dy) }
+                ],
+                [
+                    { content: "Datum Shift:", styles: headStyle },
+                    { content: datumShift },
+                    { content: "", styles: headStyle },
+                    { content: "" },
+                    { content: "Dz (m):", styles: headStyle },
+                    { content: String(dz) }
+                ]
+            ] as any,
+            theme: "grid",
+            styles: { fontSize: 7.5, cellPadding: 1.8, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            columnStyles: {
+                0: { cellWidth: colW1 },
+                1: { cellWidth: colW2 },
+                2: { cellWidth: colW1 },
+                3: { cellWidth: colW2 },
+                4: { cellWidth: colW1 },
+                5: { cellWidth: colW2 }
+            },
+            margin: { left: margin, right: margin }
+        });
+
+        return (d as any).lastAutoTable?.finalY ?? startYPos + 22;
+    };
+
     // ── First Page ───────────────────────────────────────────────────────────
     drawHeader(doc);
     drawSubHeader(doc);
-    let currentY = (doc as any).lastAutoTable?.finalY + 8 ?? margin + headerH + 50;
+    let subHeaderFinalY = (doc as any).lastAutoTable?.finalY + 4 ?? margin + headerH + 35;
+    let currentY = drawGeodeticHeaderBlock(doc, subHeaderFinalY) + 6;
     let isFirstPage = true;
 
     // ── Per-Tape Groups ──────────────────────────────────────────────────────

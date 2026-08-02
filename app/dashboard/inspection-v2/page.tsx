@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ClipboardCheck, LifeBuoy, Bot, ChevronRight, Building2, Search, ChevronDown, Check, AlertTriangle, CheckCircle2, AlertCircle, HelpCircle } from "lucide-react";
+import { ClipboardCheck, LifeBuoy, Bot, ChevronRight, Building2, Search, ChevronDown, Check, AlertTriangle, CheckCircle2, AlertCircle, HelpCircle, Activity } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
@@ -287,23 +287,33 @@ export default function InspectionLanding() {
             (item) => item.status === "pending" || !item.status
         );
 
-        // Map items to methods using registry
+        // Map items to methods using registry & feature categories
         let rovDone = 0;
         let diveDone = 0;
+        let fieldJoints = 0;
+        let anodes = 0;
+        let spansCrossings = 0;
+        let cpReadings = 0;
 
         completedItems.forEach((item) => {
-            const code = item.inspection_code;
+            const code = String(item.inspection_code || "").toUpperCase();
+            const desc = String(item.scope_description || "").toUpperCase();
             const registryEntry = (inspectionRegistry as any)?.inspectionTypes?.find(
                 (t: any) => t.code === code
             );
             const methods = registryEntry?.methods || [];
             
-            if (methods.includes("ROV")) {
+            if (methods.includes("ROV") || code.startsWith("R")) {
                 rovDone++;
             }
-            if (methods.includes("DIVING")) {
+            if (methods.includes("DIVING") || code.startsWith("D")) {
                 diveDone++;
             }
+
+            if (code.includes("FJ") || desc.includes("JOINT")) fieldJoints++;
+            if (code.includes("AN") || desc.includes("ANODE")) anodes++;
+            if (code.includes("SPAN") || desc.includes("SPAN") || code.includes("CROSS") || desc.includes("CROSSING")) spansCrossings++;
+            if (code.includes("CP") || desc.includes("CP") || code.includes("STAB")) cpReadings++;
         });
 
         const completionPercentage = Math.round((completedItems.length / total) * 100);
@@ -315,6 +325,10 @@ export default function InspectionLanding() {
             pending: pendingItems.length,
             rovDone,
             diveDone,
+            fieldJoints,
+            anodes,
+            spansCrossings,
+            cpReadings,
             completionPercentage,
         };
     }, [selectedSOWData, rawSowItems]);
@@ -1021,9 +1035,16 @@ export default function InspectionLanding() {
                         {sowReportStats ? (
                             <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-805 bg-white dark:bg-slate-950 shadow-md space-y-4 transition-all duration-300 animate-in fade-in slide-in-from-top-2">
                                 <div className="flex items-center justify-between">
-                                    <h3 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
-                                        Inspection Progress Summary
-                                    </h3>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
+                                            {selectedStructureData?.type === "pipeline" ? "Pipeline Progress Summary" : "Inspection Progress Summary"}
+                                        </h3>
+                                        {selectedStructureData?.type === "pipeline" && (
+                                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                                                PIPELINE
+                                            </span>
+                                        )}
+                                    </div>
                                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                                         {selectedSOWData?.report_number}
                                     </span>
@@ -1050,7 +1071,7 @@ export default function InspectionLanding() {
                                     <div className="p-3 rounded-xl bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                                            Completed
+                                            {selectedStructureData?.type === "pipeline" ? "Pipeline Scope Done" : "Completed"}
                                         </span>
                                         <div className="mt-1">
                                             <span className="text-xl font-black text-slate-900 dark:text-white">
@@ -1075,7 +1096,7 @@ export default function InspectionLanding() {
                                     <div className="p-3 rounded-xl bg-slate-55/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <AlertTriangle className="h-3 w-3 text-amber-500" />
-                                            Anomalies
+                                            {selectedStructureData?.type === "pipeline" ? "Pipeline Anomalies" : "Anomalies"}
                                         </span>
                                         <div className="mt-1">
                                             <span className={`text-xl font-black ${anomalyCount > 0 ? "text-amber-500" : "text-slate-900 dark:text-white"}`}>
@@ -1083,9 +1104,36 @@ export default function InspectionLanding() {
                                             </span>
                                         </div>
                                         <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium mt-1">
-                                            Reported findings
+                                            {selectedStructureData?.type === "pipeline" ? "Pipeline findings & defects" : "Reported findings"}
                                         </span>
                                     </div>
+
+                                    {selectedStructureData?.type === "pipeline" && (
+                                        <div className="col-span-2 p-3 rounded-xl bg-cyan-50/40 dark:bg-cyan-950/20 border border-cyan-100 dark:border-cyan-900/40 shadow-sm">
+                                            <span className="text-[11px] font-bold text-cyan-900 dark:text-cyan-300 flex items-center gap-1 mb-2">
+                                                <Activity className="h-3.5 w-3.5 text-cyan-500" />
+                                                Pipeline Inspection Features Breakdown
+                                            </span>
+                                            <div className="grid grid-cols-4 gap-2 text-center">
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium">Field Joints</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.fieldJoints}</p>
+                                                </div>
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium">Anodes</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.anodes}</p>
+                                                </div>
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium">Spans & Cross</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.spansCrossings}</p>
+                                                </div>
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 font-medium">CP Readings</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.cpReadings}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="p-3 rounded-xl bg-slate-55/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
