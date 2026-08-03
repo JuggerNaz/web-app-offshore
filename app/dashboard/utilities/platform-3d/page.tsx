@@ -124,6 +124,7 @@ export default function Platform3DPage() {
             if (res.ok) {
                 toast.success("3D cache resynchronized successfully!");
                 await mutateComponents();
+                if (mutateWebapp3d) await mutateWebapp3d();
             } else {
                 toast.error("Failed to resynchronize 3D cache.");
             }
@@ -135,7 +136,7 @@ export default function Platform3DPage() {
     };
     const components: Component[] = useMemo(() => {
         const all = componentsData?.data || [];
-        const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+        const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
         return all
             .filter((c: any) => {
                 if (c.is_deleted) return false;
@@ -184,10 +185,16 @@ export default function Platform3DPage() {
     );
     const platformDetails = platformDetailData?.data;
 
-    // Fetch WebApp 3D Coordinates
-    const { data: webapp3dResponse, isLoading: isWebapp3dLoading } = useSWR(
+    // Fetch WebApp 3D Coordinates (Only revalidate when user explicitly clicks Re-sync 3D Cache)
+    const { data: webapp3dResponse, isLoading: isWebapp3dLoading, mutate: mutateWebapp3d } = useSWR(
         selectedPlatform ? `/api/platform/webapp-3d/${selectedPlatform.plat_id}` : null,
-        fetcher
+        fetcher,
+        {
+            revalidateOnFocus: false,
+            revalidateOnReconnect: false,
+            revalidateIfStale: false,
+            refreshInterval: 0,
+        }
     );
     const webapp3dData = webapp3dResponse?.data;
 
@@ -374,11 +381,11 @@ export default function Platform3DPage() {
                             variant="outline"
                             size="sm"
                             onClick={handleResync3DCache}
-                            disabled={isResyncing3D || isComponentsValidating}
+                            disabled={isResyncing3D}
                             className="h-9 px-3 gap-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all shadow-xs"
                             title="Re-sync 3D positioning cache for all platform components"
                         >
-                            <RefreshCw className={cn("h-3.5 w-3.5", (isResyncing3D || isComponentsValidating) && "animate-spin")} />
+                            <RefreshCw className={cn("h-3.5 w-3.5", isResyncing3D && "animate-spin")} />
                             <span>{isResyncing3D ? "Resynchronizing..." : "Re-sync 3D Cache"}</span>
                         </Button>
                     </div>

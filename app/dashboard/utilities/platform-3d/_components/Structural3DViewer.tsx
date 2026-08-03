@@ -1,7 +1,7 @@
-import * as THREE from 'three';
 "use client";
 
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import * as THREE from 'three';
+import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Fender } from "./Fender";
 import { RiserGuard } from "./RiserGuard";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight} from "lucide-react";
+import { getEffectiveClockAngle } from "@/utils/platform-3d-math";
 
 interface Component3D {
     id: number;
@@ -177,7 +178,7 @@ const ComponentMesh = ({
         clockPos = parseFloat(rawClockPos || "12");
         if (isNaN(clockPos)) clockPos = 12;
     }
-    const angle = (clockPos / 12) * Math.PI * 2;
+    const angle = getEffectiveClockAngle(clockPos);
     const memberRadius = baseThickness < 0.2 ? 0.25 : baseThickness;
     const offsetDistance = memberRadius + 0.15;
 
@@ -278,7 +279,7 @@ const ComponentMesh = ({
         const md = component.metadata || {};
         let clockPos = parseFloat(md.clk_pos || "12");
         if (isNaN(clockPos)) clockPos = 12;
-        const yawAngle = (clockPos / 12) * Math.PI * 2;
+        const yawAngle = getEffectiveClockAngle(clockPos);
 
         const fenderDepth = 1.0;
         // Increase horizontal offset distance by adding a 1.2m buffer (makes default 2.4m)
@@ -564,7 +565,6 @@ const ComponentMesh = ({
                 position={offsetPos as [number, number, number]}
                 rotation={isAnode ? [0, anodeRotY, 0] : [0, 0, 0]}
             >
-                { }
                 <mesh castShadow receiveShadow>
                     {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
                         <sphereGeometry args={[Math.max(thickness * 1.5, 0.01), 16, 16]} />
@@ -720,6 +720,7 @@ const FoundationMember = ({
     label,
     showLabel = true,
     renderMesh = true,
+    activeElevations = [],
 }: {
     start: [number, number, number];
     end: [number, number, number];
@@ -728,6 +729,7 @@ const FoundationMember = ({
     label?: string;
     showLabel?: boolean;
     renderMesh?: boolean;
+    activeElevations?: number[];
 }) => {
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
@@ -749,21 +751,60 @@ const FoundationMember = ({
     }
     const euler = new THREE.Euler().setFromQuaternion(quaternion);
 
+    // Calculate leg corner node coordinates for ALL active selected elevations
+    const tagCornerPositions = useMemo(() => {
+        if (!showLabel || !label || activeElevations.length === 0 || Math.abs(endVec.y - startVec.y) <= 0.01) {
+            return [];
+        }
+        return activeElevations.map((elv) => {
+            const t = (elv - startVec.y) / (endVec.y - startVec.y);
+            const legX = startVec.x + (endVec.x - startVec.x) * t;
+            const legZ = startVec.z + (endVec.z - startVec.z) * t;
+
+            // Offset outward from platform center so tag sits cleanly outside the structure
+            const outwardDir = new THREE.Vector2(legX, legZ);
+            if (outwardDir.lengthSq() > 0.01) {
+                outwardDir.normalize().multiplyScalar(3.5);
+            }
+            const tagX = legX + outwardDir.x;
+            const tagZ = legZ + outwardDir.y;
+
+            return { elv, pos: [tagX, elv, tagZ] as [number, number, number] };
+        });
+    }, [showLabel, label, activeElevations, startVec, endVec]);
+
     return (
-        <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
-            {renderMesh && (
-                <mesh castShadow receiveShadow>
-                    <cylinderGeometry args={[thickness, thickness, safeLength, 8]} />
-                    <meshStandardMaterial color={color} metalness={0.7} roughness={0.3} />
-                </mesh>
-            )}
-            {showLabel && label && (
-                <Html distanceFactor={20} position={[0, safeLength / 2 + 1, 0]} center>
-                    <div className="px-3 py-1 bg-white/10 backdrop-blur-md text-[14px] font-black text-slate-900 dark:text-white rounded-full border border-white/20 shadow-2xl pointer-events-none uppercase tracking-[0.2em]">
+        <group>
+            <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
+                {renderMesh && (
+                    <mesh castShadow receiveShadow>
+                        <cylinderGeometry args={[thickness, thickness, safeLength, 8]} />
+                        <meshStandardMaterial color={color} metalness={0.7} roughness={0.3} />
+                    </mesh>
+                )}
+                {showLabel && label && tagCornerPositions.length === 0 && (
+                    <Html distanceFactor={35} position={[0, safeLength / 2 + 1.5, 0]} center>
+                        <div
+                            className="px-5 py-2 bg-slate-900/25 dark:bg-slate-900/30 text-white text-xl font-black rounded-full border border-white/40 dark:border-white/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.25)] pointer-events-none uppercase tracking-[0.25em] whitespace-nowrap backdrop-blur-xl transition-all"
+                            style={{ backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+                        >
+                            {label}
+                        </div>
+                    </Html>
+                )}
+            </group>
+
+            {/* Anchor leg tags directly on leg corner nodes for ALL active selected elevations */}
+            {tagCornerPositions.map(({ elv, pos }) => (
+                <Html key={`tag-${label}-${elv}`} distanceFactor={35} position={pos} center>
+                    <div
+                        className="px-5 py-2 bg-slate-900/25 dark:bg-slate-900/30 text-white text-xl font-black rounded-full border border-white/40 dark:border-white/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.25)] pointer-events-none uppercase tracking-[0.25em] whitespace-nowrap backdrop-blur-xl transition-all"
+                        style={{ backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
+                    >
                         {label}
                     </div>
                 </Html>
-            )}
+            ))}
         </group>
     );
 };
@@ -813,13 +854,10 @@ const ElevationLevelPlane = ({
     );
 };
 
-// Component to handle auto-framing
+// Component wrapper for bounds grouping
 function SelectToZoom({ children }: { children: React.ReactNode }) {
-    const api = useBounds();
     return (
-        <group
-            onClick={(e) => (e.stopPropagation(), e.delta <= 2 && api.refresh(e.object).fit())}
-        >
+        <group>
             {children}
         </group>
     );
@@ -860,11 +898,15 @@ function ResetViewHandler({ trigger }: { trigger: number }) {
 
 
 
-function CameraRig({ selectedPos, isActivated }: { selectedPos: THREE.Vector3 | null; isActivated: boolean }) {
+function CameraRig({ selectedPos, isActivated, isDirectClickRef }: { selectedPos: THREE.Vector3 | null; isActivated: boolean; isDirectClickRef: React.MutableRefObject<boolean> }) {
     const { camera, controls } = useThree();
     
     useEffect(() => {
         if (!isActivated) return;
+        if (isDirectClickRef.current) {
+            isDirectClickRef.current = false;
+            return;
+        }
         if (selectedPos && controls) {
             const target = new THREE.Vector3(selectedPos.x, selectedPos.y, selectedPos.z);
             const offset = new THREE.Vector3(15, 10, 15);
@@ -876,9 +918,399 @@ function CameraRig({ selectedPos, isActivated }: { selectedPos: THREE.Vector3 | 
                 (controls as any).update();
             }
         }
-    }, [selectedPos, camera, controls, isActivated]);
+    }, [selectedPos, camera, controls, isActivated, isDirectClickRef]);
 
     return null;
+}
+
+function InstancedComponentViewer({
+    layouts,
+    selectedCompId,
+    onSelectComponent,
+    isDirectClickRef,
+    showWeldNumbering,
+    isInspectionMode,
+    selectedInspectionFilters,
+}: {
+    layouts: any[];
+    selectedCompId?: number;
+    onSelectComponent?: (comp: any) => void;
+    isDirectClickRef: React.MutableRefObject<boolean>;
+    showWeldNumbering?: boolean;
+    isInspectionMode?: boolean;
+    selectedInspectionFilters: string[];
+}) {
+    const weldRef = useRef<THREE.InstancedMesh>(null);
+    const cylinderRef = useRef<THREE.InstancedMesh>(null);
+    const sphereRef = useRef<THREE.InstancedMesh>(null);
+    const boxRef = useRef<THREE.InstancedMesh>(null);
+
+    const [hoveredComp, setHoveredComp] = useState<any | null>(null);
+
+    // Group layouts into cylinders, welds, spheres, boxes, and custom procedural components (Fenders & Riser Guards)
+    const { cylinders, welds, spheres, boxes, customLayouts } = useMemo(() => {
+        const cyl: any[] = [];
+        const wld: any[] = [];
+        const sph: any[] = [];
+        const box: any[] = [];
+        const custom: any[] = [];
+
+        layouts.forEach((layout) => {
+            const comp = layout.component || layout.originalComp || { id: layout.id, q_id: layout.q_id, code: layout.code };
+            const code = (comp?.code || "").toUpperCase();
+            const qIdUpper = (comp?.q_id || "").toUpperCase();
+
+            const isFender = code === "FD" || code.includes("FEND");
+            const isRiserGuard = code === "RG" || code.includes("RGUARD") || code.includes("RISG");
+
+            if (isFender || isRiserGuard) {
+                custom.push({ ...layout, comp, code });
+                return;
+            }
+
+            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+            const isNode = code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND";
+            const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL";
+            const isClamp = code === "CL" || code.includes("CLAM") || isRiserSupport;
+
+            const item = { ...layout, comp, code, qIdUpper };
+
+            if (isWeld) {
+                wld.push(item);
+            } else if (isNode) {
+                sph.push(item);
+            } else if (isClamp) {
+                box.push(item);
+            } else {
+                cyl.push(item);
+            }
+        });
+
+        return { cylinders: cyl, welds: wld, spheres: sph, boxes: box, customLayouts: custom };
+    }, [layouts]);
+
+    // Apply matrices and colors for Cylinders
+    useLayoutEffect(() => {
+        if (!cylinderRef.current) return;
+        const mesh = cylinderRef.current;
+        const matrix = new THREE.Matrix4();
+        const color = new THREE.Color();
+
+        cylinders.forEach((item, i) => {
+            const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
+            const end = new THREE.Vector3(...(item.end || item.position || [0, 0, 0]));
+            const len = Math.max(start.distanceTo(end), 0.01);
+            const pos = start.clone().add(end).multiplyScalar(0.5);
+            const dir = end.clone().sub(start).normalize();
+
+            let thickness = item.thickness || 0.3;
+            const code = item.code;
+            const isAnode = code === "AN" || code.includes("ANOD");
+            if (isAnode) thickness = 0.15;
+            const meshLen = isAnode ? 0.8 : len;
+
+            const quat = new THREE.Quaternion();
+            if (len > 0.001) {
+                quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+            }
+
+            matrix.compose(pos, quat, new THREE.Vector3(thickness, meshLen, thickness));
+            mesh.setMatrixAt(i, matrix);
+
+            const compId = item.comp?.id || item.id;
+            const isSelected = selectedCompId === compId;
+            const isConductor = code === "CD" || code === "CS" || code.includes("COND") || code === "CO";
+            const isRiser = code === "RS" || code.includes("RISER") || code.includes("RISR");
+
+            const defaultColor = isSelected
+                ? "#f97316"
+                : isAnode
+                ? "#F8FAFC"
+                : isRiser
+                ? "#334155"
+                : isConductor
+                ? "#475569"
+                : "#cbd5e1";
+
+            color.set(defaultColor);
+            mesh.setColorAt(i, color);
+        });
+
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }, [cylinders, selectedCompId]);
+
+    // Apply matrices and colors for Welds (Vertical Purple Cylinder Collars - Pic 2)
+    useLayoutEffect(() => {
+        if (!weldRef.current) return;
+        const mesh = weldRef.current;
+        const matrix = new THREE.Matrix4();
+        const color = new THREE.Color();
+
+        welds.forEach((item, i) => {
+            const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
+            const end = new THREE.Vector3(...(item.end || item.position || [0, 0, 0]));
+            const dir = end.clone().sub(start).normalize();
+            const len = start.distanceTo(end);
+
+            // Collar height: 0.5m; Collar radius: leg radius + 0.03m (slightly larger than member radius)
+            const collarRadius = (item.thickness || 0.3) + 0.03;
+            const collarHeight = 0.5;
+
+            const pos = start.clone().add(end).multiplyScalar(0.5);
+            const quat = new THREE.Quaternion();
+            if (len > 0.001) {
+                quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+            }
+
+            matrix.compose(pos, quat, new THREE.Vector3(collarRadius, collarHeight, collarRadius));
+            mesh.setMatrixAt(i, matrix);
+
+            const compId = item.comp?.id || item.id;
+            const isSelected = selectedCompId === compId;
+            color.set(isSelected ? "#f97316" : "#d946ef");
+            mesh.setColorAt(i, color);
+        });
+
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }, [welds, selectedCompId]);
+
+    // Apply matrices and colors for Spheres (Structural Nodes ND)
+    useLayoutEffect(() => {
+        if (!sphereRef.current) return;
+        const mesh = sphereRef.current;
+        const matrix = new THREE.Matrix4();
+        const color = new THREE.Color();
+
+        spheres.forEach((item, i) => {
+            const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
+            const thickness = (item.thickness || 0.3) + 0.08;
+
+            matrix.compose(start, new THREE.Quaternion(), new THREE.Vector3(thickness, thickness, thickness));
+            mesh.setMatrixAt(i, matrix);
+
+            const compId = item.comp?.id || item.id;
+            const isSelected = selectedCompId === compId;
+            color.set(isSelected ? "#f97316" : "#94a3b8");
+            mesh.setColorAt(i, color);
+        });
+
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }, [spheres, selectedCompId]);
+
+    // Apply matrices and colors for Boxes (Clamps)
+    useLayoutEffect(() => {
+        if (!boxRef.current) return;
+        const mesh = boxRef.current;
+        const matrix = new THREE.Matrix4();
+        const color = new THREE.Color();
+
+        boxes.forEach((item, i) => {
+            const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
+            const thickness = (item.thickness || 0.3) * 1.8;
+
+            matrix.compose(start, new THREE.Quaternion(), new THREE.Vector3(thickness, thickness * 1.5, thickness));
+            mesh.setMatrixAt(i, matrix);
+
+            const compId = item.comp?.id || item.id;
+            const isSelected = selectedCompId === compId;
+            color.set(isSelected ? "#f97316" : "#d97706");
+            mesh.setColorAt(i, color);
+        });
+
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }, [boxes, selectedCompId]);
+
+    // Find layout of selected component for overlay label and highlight mesh
+    const selectedLayout = useMemo(() => {
+        if (!selectedCompId) return null;
+        return layouts.find((l) => {
+            const compId = l.component?.id || l.originalComp?.id || l.id;
+            return compId === selectedCompId || String(compId) === String(selectedCompId);
+        });
+    }, [layouts, selectedCompId]);
+
+    const selectedPos = useMemo(() => {
+        if (!selectedLayout) return null;
+        const s = selectedLayout.start || selectedLayout.position || [0, 0, 0];
+        const e = selectedLayout.end || selectedLayout.position || s;
+        return [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2 + 0.5, (s[2] + e[2]) / 2] as [number, number, number];
+    }, [selectedLayout]);
+
+    return (
+        <group>
+            {/* Cylinder Instanced Buffer */}
+            {cylinders.length > 0 && (
+                <instancedMesh
+                    ref={cylinderRef}
+                    args={[undefined, undefined, cylinders.length]}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && cylinders[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            if (onSelectComponent) onSelectComponent(cylinders[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOver={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && cylinders[e.instanceId]) {
+                            setHoveredComp(cylinders[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOut={() => setHoveredComp(null)}
+                >
+                    <cylinderGeometry args={[0.5, 0.5, 1, 12]} />
+                    <meshStandardMaterial metalness={0.4} roughness={0.3} />
+                </instancedMesh>
+            )}
+
+            {/* Weld Cylinder Collar Instanced Buffer (Pic 2) */}
+            {welds.length > 0 && (
+                <instancedMesh
+                    ref={weldRef}
+                    args={[undefined, undefined, welds.length]}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && welds[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            if (onSelectComponent) onSelectComponent(welds[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOver={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && welds[e.instanceId]) {
+                            setHoveredComp(welds[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOut={() => setHoveredComp(null)}
+                >
+                    <cylinderGeometry args={[0.5, 0.5, 1, 32]} />
+                    <meshStandardMaterial metalness={0.3} roughness={0.4} emissive="#a21caf" emissiveIntensity={0.3} />
+                </instancedMesh>
+            )}
+
+            {/* Always Display Node Weld Numbers (Toggled via Node Numbers checkbox) */}
+            {showWeldNumbering && welds.map((w, idx) => {
+                const s = w.start || w.position || [0, 0, 0];
+                const e = w.end || w.position || s;
+                const pos = [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2 + 0.3, (s[2] + e[2]) / 2] as [number, number, number];
+                const labelText = w.comp?.q_id || w.q_id || `WN${idx + 1}`;
+                const compId = w.comp?.id || w.id;
+                const isSelected = selectedCompId === compId;
+
+                return (
+                    <Html key={`weld-tag-${w.id || idx}`} position={pos} center distanceFactor={18}>
+                        <div
+                            onClick={(evt) => {
+                                evt.stopPropagation();
+                                isDirectClickRef.current = true;
+                                if (onSelectComponent) onSelectComponent(w.comp);
+                            }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border cursor-pointer transition-all shadow-md ${
+                                isSelected
+                                    ? "bg-orange-600 text-white border-orange-400 scale-110 opacity-100 z-20 shadow-[0_0_12px_rgba(249,115,22,0.6)]"
+                                    : "bg-orange-950/80 text-orange-200 border-orange-500/50 backdrop-blur-sm opacity-90 hover:opacity-100 hover:scale-105"
+                            }`}
+                        >
+                            {labelText}
+                        </div>
+                    </Html>
+                );
+            })}
+
+            {/* Sphere Instanced Buffer */}
+            {spheres.length > 0 && (
+                <instancedMesh
+                    ref={sphereRef}
+                    args={[undefined, undefined, spheres.length]}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && spheres[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            if (onSelectComponent) onSelectComponent(spheres[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOver={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && spheres[e.instanceId]) {
+                            setHoveredComp(spheres[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOut={() => setHoveredComp(null)}
+                >
+                    <sphereGeometry args={[0.5, 16, 16]} />
+                    <meshStandardMaterial metalness={0.5} roughness={0.2} emissive="#a21caf" emissiveIntensity={0.3} />
+                </instancedMesh>
+            )}
+
+            {/* Box Instanced Buffer */}
+            {boxes.length > 0 && (
+                <instancedMesh
+                    ref={boxRef}
+                    args={[undefined, undefined, boxes.length]}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && boxes[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            if (onSelectComponent) onSelectComponent(boxes[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOver={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && boxes[e.instanceId]) {
+                            setHoveredComp(boxes[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOut={() => setHoveredComp(null)}
+                >
+                    <boxGeometry args={[1, 1, 1]} />
+                    <meshStandardMaterial metalness={0.3} roughness={0.4} />
+                </instancedMesh>
+            )}
+
+
+
+            {/* Selected Component Highlight Mesh Overlay */}
+            {selectedLayout && (
+                <ComponentMesh
+                    component={selectedLayout.component || selectedLayout.originalComp || selectedLayout}
+                    isSelected={true}
+                    onClick={() => {}}
+                    start={selectedLayout.start || selectedLayout.position}
+                    end={selectedLayout.end || selectedLayout.position}
+                    thickness={selectedLayout.thickness}
+                    showWeldNumbering={showWeldNumbering}
+                    isInspectionMode={isInspectionMode}
+                    inspectionStatus={selectedLayout.inspectionStatus}
+                    isStatusChecked={true}
+                    inspectionColor={selectedLayout.color}
+                />
+            )}
+            {/* Procedural Components (Fenders & Riser Guards) */}
+            {customLayouts.map((layout, idx) => (
+                <ComponentMesh
+                    key={`custom-${layout.id || layout.comp?.id || idx}`}
+                    component={layout.comp}
+                    isSelected={selectedCompId === (layout.comp?.id || layout.id)}
+                    onClick={() => {
+                        isDirectClickRef.current = true;
+                        if (onSelectComponent) onSelectComponent(layout.comp);
+                    }}
+                    start={layout.start || layout.position}
+                    end={layout.end || layout.position}
+                    thickness={layout.thickness}
+                    showWeldNumbering={showWeldNumbering}
+                    isInspectionMode={isInspectionMode}
+                    inspectionStatus={layout.inspectionStatus || "NOT_INSPECTED"}
+                    isStatusChecked={selectedInspectionFilters.includes(layout.inspectionStatus || "NOT_INSPECTED")}
+                    inspectionColor={layout.color}
+                />
+            ))}
+        </group>
+    );
 }
 
 export function Structural3DViewer({
@@ -908,7 +1340,7 @@ export function Structural3DViewer({
     }, [wincairsParams]);
 
     const components = useMemo(() => {
-        const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+        const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
         return rawComponents.filter((c) => {
             const code = (c.code || "").trim().toUpperCase();
             const qIdUpper = (c.q_id || "").toUpperCase();
@@ -942,6 +1374,7 @@ export function Structural3DViewer({
         });
     }, [rawComponents]);
 
+    const isDirectClickRef = useRef(false);
     const [showGrid, setShowGrid] = useState(true);
     const [isInspectionMode, setIsInspectionMode] = useState(false);
     const [resetTrigger, setResetTrigger] = useState(0);
@@ -1214,14 +1647,19 @@ export function Structural3DViewer({
 
         if (selectedElevations.length > 0) {
             members = members.filter((m: any) => {
+                const isLeg = Boolean(m.label) || String(m.id || "").startsWith("leg-");
+                if (isLeg) return true; // Leg indicators ALWAYS stay visible for ALL elevations when filtered!
+
                 const y1 = m.start ? m.start[1] : 0;
                 const y2 = m.end ? m.end[1] : 0;
-                return selectedElevations.some((elv) => Math.abs(y1 - elv) <= 1.2 && Math.abs(y2 - elv) <= 1.2);
+                return selectedElevations.some((elv) => Math.abs(y1 - elv) <= 1.2 || Math.abs(y2 - elv) <= 1.2);
             });
         }
 
         if (selectedFaces.length > 0) {
             members = members.filter((m: any) => {
+                const isLeg = Boolean(m.label) || String(m.id || "").startsWith("leg-");
+                if (isLeg) return true; // Leg indicators ALWAYS stay visible even when filtering by face!
                 return selectedFaces.some((face) => isComponentOnFace(m, face));
             });
         }
@@ -1468,7 +1906,7 @@ export function Structural3DViewer({
                 <color attach="background" args={["#ffffff"]} />
                 <fog attach="fog" args={["#ffffff", 40, 220]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
-                <CameraRig selectedPos={selectedPos} isActivated={isActivated} />
+                <CameraRig selectedPos={selectedPos} isActivated={isActivated} isDirectClickRef={isDirectClickRef} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
 
                 <ambientLight intensity={0.35} />
@@ -1525,33 +1963,20 @@ export function Structural3DViewer({
                                 label={m.label}
                                 showLabel={m.start[1] !== m.end[1]}
                                 renderMesh={m.renderMesh}
+                                activeElevations={selectedElevations}
                             />
                         ))}
 
-                        {/* Existing Components */}
-                        {filteredComponentLayouts.map((layout: any, idx: number) => {
-                            const comp = layout.component || layout.originalComp || { id: layout.id, q_id: layout.q_id, code: layout.code };
-                            const compId = comp?.id || layout.id;
-                            const status = layout.inspectionStatus || "NOT_INSPECTED";
-                            const isChecked = selectedInspectionFilters.includes(status);
-
-                            return (
-                                <ComponentMesh
-                                    key={`comp-${layout.id || compId || "item"}-${idx}`}
-                                    component={comp}
-                                    isSelected={selectedCompId === compId}
-                                    onClick={() => onSelectComponent && onSelectComponent(comp)}
-                                    start={layout.start || layout.position}
-                                    end={layout.end || layout.position}
-                                    thickness={layout.thickness}
-                                    showWeldNumbering={showWeldNumbering}
-                                    isInspectionMode={isInspectionMode}
-                                    inspectionStatus={status}
-                                    isStatusChecked={isChecked}
-                                    inspectionColor={layout.color}
-                                />
-                            );
-                        })}
+                        {/* High-Performance Instanced GPU Component Renderer */}
+                        <InstancedComponentViewer
+                            layouts={filteredComponentLayouts}
+                            selectedCompId={selectedCompId}
+                            onSelectComponent={onSelectComponent}
+                            isDirectClickRef={isDirectClickRef}
+                            showWeldNumbering={showWeldNumbering}
+                            isInspectionMode={isInspectionMode}
+                            selectedInspectionFilters={selectedInspectionFilters}
+                        />
                     </SelectToZoom>
                 </Bounds>
 

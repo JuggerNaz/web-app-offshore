@@ -1,15 +1,25 @@
 import * as THREE from 'three';
 
-export type PlatformGeometryType = "TRIPOD" | "RECTANGULAR" | "MONOPOD" | "MULTI_LEG";
+export type PlatformGeometryType = "MONOPOD" | "TRIPOD" | "TETRAPOD" | "HEXAPOD" | "OCTAPOD" | "RECTANGULAR" | "MULTI_LEG";
 
 export function determineGeometryType(platformDetails: any, legNames: string[]): PlatformGeometryType {
     const plegs = Number(platformDetails?.plegs || legNames.length);
-    if (plegs === 3 || legNames.length === 3) return "TRIPOD";
     if (plegs === 1 || legNames.length === 1) return "MONOPOD";
+    if (plegs === 3 || legNames.length === 3) return "TRIPOD";
+    if (plegs === 4 || legNames.length === 4) return "TETRAPOD";
+    if (plegs === 6 || legNames.length === 6) return "HEXAPOD";
+    if (plegs === 8 || legNames.length === 8) return "OCTAPOD";
     const hasGridPattern = legNames.length > 0 && legNames.every((n) => /^[A-Z]+\d+$/i.test(n));
     if (hasGridPattern) return "RECTANGULAR";
     if (plegs > 4 || legNames.length > 4) return "MULTI_LEG";
     return "RECTANGULAR";
+}
+
+export function getEffectiveClockAngle(clockPos: number): number {
+    let effective = clockPos;
+    if (clockPos === 3) effective = 9;
+    else if (clockPos === 9) effective = 3;
+    return (effective / 12) * Math.PI * 2;
 }
 
 export function isDegenerateFootprint(legCoords: Array<{ x: number; z: number }>): boolean {
@@ -85,6 +95,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
         const allLegNames = Array.from(allLegNamesSet);
         const geometryType = determineGeometryType(platformDetails, allLegNames);
+        const isD21JT = platformDetails?.title?.toUpperCase().includes("D21JT") || false;
         const legRowCol: Record<string, { row: number; col: number }> = {};
 
         if (geometryType === "TRIPOD") {
@@ -124,6 +135,15 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 }
                 rowMap.get(rowKey)!.push(n.toUpperCase());
             });
+
+            // Fallback if legs didn't parse into multiple rows (e.g. all defaulted to ROW0 or single row)
+            if (rowMap.size === 1 && (geometryType === "OCTAPOD" || geometryType === "HEXAPOD" || geometryType === "TETRAPOD")) {
+                const legs = rowMap.get(Array.from(rowMap.keys())[0])!;
+                const half = Math.ceil(legs.length / 2);
+                rowMap.clear();
+                rowMap.set("ROW_A", legs.slice(0, half));
+                rowMap.set("ROW_B", legs.slice(half));
+            }
 
             const rowKeys = Array.from(rowMap.keys());
             const centerRow = (rowKeys.length - 1) / 2;
@@ -241,7 +261,11 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
         zPoints.sort((a, b) => a.y - b.y);
 
         const getScaleAtY = (points: { y: number; scale: number }[], yVal: number): number => {
-            if (points.length === 0) return 1.0;
+            if (points.length === 0) {
+                // Unified splay fallback: scale contracts going UP towards maxElv (1.0 at top level)
+                const batterSlope = 0.008;
+                return Math.max(1.0 + (maxElv - yVal) * batterSlope, 0.5);
+            }
             if (points.length === 1) return points[0].scale;
 
             if (yVal <= points[0].y) {
@@ -271,8 +295,6 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
         const maxElv = elvValues.length > 0 ? Math.max(...elvValues) : 5;
         const minElv = elvValues.length > 0 ? Math.min(...elvValues) : -30;
 
-        const isD21JT = platformDetails?.title?.toUpperCase().includes("D21JT") || false;
-
         const getLegCoordsAtElv = (legName: string, yVal: number) => {
             const key = legName.toUpperCase();
             if (isD21JT) {
@@ -286,13 +308,18 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             }
             if (legMap[key]) {
                 const nominal = legMap[key];
-                if (geometryType === "TRIPOD") {
-                    const scale = getScaleAtY(tripodPoints, yVal);
-                    return { x: nominal.x * scale, z: nominal.z * scale };
-                }
-                const scaleX = getScaleAtY(xPoints, yVal);
-                const scaleZ = getScaleAtY(zPoints, yVal);
-                return { x: nominal.x * scaleX, z: nominal.z * scaleZ };
+                const getScaleFactor = (yVal: number) => {
+                    if (geometryType === "TRIPOD") {
+                        const scale = getScaleAtY(tripodPoints, yVal);
+                        return { x: scale, z: scale };
+                    } else {
+                        const scaleX = getScaleAtY(xPoints, yVal);
+                        const scaleZ = getScaleAtY(zPoints, yVal);
+                        return { x: scaleX, z: scaleZ };
+                    }
+                };
+                const scales = getScaleFactor(yVal);
+                return { x: nominal.x * scales.x, z: nominal.z * scales.z };
             }
             return { x: 0, z: 0 };
         };
@@ -645,7 +672,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     const distance = parseFloat(md.dist);
                     if (distance > 0 && distance < 3.0) {
                         const clockPos = parseFloat(md.clk_pos || "12");
-                        const angle = (clockPos / 12) * Math.PI * 2;
+                        const angle = getEffectiveClockAngle(clockPos);
                         pos.x += Math.sin(angle) * distance;
                         pos.z += Math.cos(angle) * distance;
                     }
@@ -839,7 +866,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     // Calculate offset direction using clock position
                     const clockPos = parseFloat(md.clk_pos);
                     if (!isNaN(clockPos)) {
-                        const angle = (clockPos / 12) * Math.PI * 2;
+                        const angle = getEffectiveClockAngle(clockPos);
                         const offsetDir = right
                             .clone()
                             .multiplyScalar(Math.sin(angle))
@@ -1036,9 +1063,9 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
                     const getScaleFactor = (yVal: number) => {
                         if (isD21JT) {
-                            const L = 13.91 - 0.12489 * (yVal - 2.872);
-                            const W = 12.45 - 0.16665 * (yVal - 2.872);
-                            return { x: L, z: W };
+                            const scaleX = (13.91 - 0.12489 * (yVal - 2.872)) / 13.91;
+                            const scaleZ = (12.45 - 0.16665 * (yVal - 2.872)) / 12.45;
+                            return { x: scaleX, z: scaleZ };
                         } else if (geometryType === "TRIPOD") {
                             const scale = getScaleAtY(tripodPoints, yVal);
                             return { x: scale, z: scale };
@@ -1742,7 +1769,7 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
       }
     }
 
-    const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+    const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
     const components = (rawComponents || [])
       .filter((c: any) => {
           const code = (c.code || "").trim().toUpperCase();
