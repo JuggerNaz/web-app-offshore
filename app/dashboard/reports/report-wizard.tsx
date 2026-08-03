@@ -172,6 +172,8 @@ export const REPORT_TEMPLATES = {
         { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater (Diving)", icon: FileBarChart, description: "Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water (Diving)", icon: FileBarChart, description: "Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-dcond-report", name: "Conductor Inspection (Diving)", icon: FileBarChart, description: "Portrait combined Conductor inspection report (Above & Underwater) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-fmd-report", name: "Flooded Member Inspection Report (Diving)", icon: FileText, description: "Portrait Flooded Member Inspection report (Diving) — QID, Elevation, Dive No., Flooded, Grouted, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-measu-report", name: "Measurement Dimensional Survey Report (Diving)", icon: FileText, description: "Portrait Measurement Dimensional Survey report (Diving) — QID, Elevation, Dive No., Type, Unit, Result, and findings.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -1638,6 +1640,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateDivingDCONDUWReport } = await import("@/utils/report-generators/diving-dcond-uw-report");
             const { generateDivingDCONDTSReport } = await import("@/utils/report-generators/diving-dcond-ts-report");
             const { generateDivingDCONDReport } = await import("@/utils/report-generators/diving-dcond-report");
+            const { generateDivingFMDReport } = await import("@/utils/report-generators/diving-fmd-report");
+            const { generateDivingMEASUReport } = await import("@/utils/report-generators/diving-measu-report");
 
 
             // Fetch real company settings from API
@@ -2328,6 +2332,148 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("FMD Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving FMD Survey Report
+        if (currentTemplateId === "diving-fmd-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const fmdRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const codeUpper = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isDFMD = ['FLOOD', 'FMD', 'DFMD'].includes(codeUpper);
+                return sowMatches && jobPackMatches && isDFMD;
+            });
+
+            if (!fmdRecords || fmdRecords.length === 0) {
+                alert(`No Diving FMD records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingFMDReport(
+                    fmdRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("Diving FMD Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving MEASU Survey Report
+        if (currentTemplateId === "diving-measu-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const measuRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const codeUpper = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isMEASU = ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'].includes(codeUpper);
+                return sowMatches && jobPackMatches && isMEASU;
+            });
+
+            if (!measuRecords || measuRecords.length === 0) {
+                alert(`No Diving Measurement Dimensional records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingMEASUReport(
+                    measuRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("Diving MEASU Generator Error:", error);
                 throw error;
             }
         }

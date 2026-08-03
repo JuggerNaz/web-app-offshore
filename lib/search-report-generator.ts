@@ -493,6 +493,20 @@ async function routeToGenerator(
       const { generateROVFMDReport } = await import("@/utils/report-generators/rov-fmd-report");
       return await generateROVFMDReport(recs, headerData, companyInfo, opts) as Blob;
     }
+    case "dfmd":
+    case "diving-fmd-report": {
+      const recs = filterByCode(["FLOOD", "FMD", "DFMD"]);
+      if (!recs.length) return;
+      const { generateDivingFMDReport } = await import("@/utils/report-generators/diving-fmd-report");
+      return await generateDivingFMDReport(recs, headerData, companyInfo, opts) as Blob;
+    }
+    case "measu":
+    case "diving-measu-report": {
+      const recs = filterByCode(["MEASU", "DMSR", "MEASUREMENT", "DMEAS"]);
+      if (!recs.length) return;
+      const { generateDivingMEASUReport } = await import("@/utils/report-generators/diving-measu-report");
+      return await generateDivingMEASUReport(recs, headerData, companyInfo, opts) as Blob;
+    }
     case "rutwt": {
       const recs = filterByCode(["RUTWT"]);
       if (!recs.length) return;

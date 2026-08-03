@@ -171,6 +171,8 @@ export const mapInspectionDataForDocx = async (
         'rov-rseab-crater-detail-report': ['RSEAB'],
         'rov-cp-report': ['CP', 'RSANI'],
         'rov-fmd-report': ['RFMD'],
+        'diving-fmd-report': ['FLOOD', 'FMD', 'DFMD'],
+        'diving-measu-report': ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'],
         'rov-riser-report': ['RRISI'],
         'rrisi-report': ['RRISI'],
         'rrisi-detail-report': ['RRISI'],
@@ -335,6 +337,12 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'rov-fmd-report' || templateId === 'fmd-report') {
                 const { generateROVFMDReport } = await import("./rov-fmd-report");
                 pdfBlob = await generateROVFMDReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RFMD" || (r.inspection_type?.code || "").toUpperCase() === "FMD"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (templateId === 'diving-fmd-report' || templateId === 'fmd-diving-report') {
+                const { generateDivingFMDReport } = await import("./diving-fmd-report");
+                pdfBlob = await generateDivingFMDReport(records.filter(r => ["FLOOD", "FMD", "DFMD"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (templateId === 'diving-measu-report' || templateId === 'measu-report') {
+                const { generateDivingMEASUReport } = await import("./diving-measu-report");
+                pdfBlob = await generateDivingMEASUReport(records.filter(r => ["MEASU", "DMSR", "MEASUREMENT", "DMEAS"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rcond-report') {
                 const { generateROVCondReport } = await import("./rov-rcond-report");
                 pdfBlob = await generateROVCondReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);

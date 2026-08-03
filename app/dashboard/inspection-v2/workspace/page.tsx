@@ -99,6 +99,7 @@ import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-an
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
 import { generateROVMGIGraphReport } from "@/utils/report-generators/rov-mgi-report";
 import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
+import { generateDivingFMDReport } from "@/utils/report-generators/diving-fmd-report";
 import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
 import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
@@ -1698,8 +1699,16 @@ function V10PreviewLayout() {
     generateRMGIReportBlob,
     rmgiPreviewOpen,
     setRmgiPreviewOpen,
+    divingFmdPreviewOpen,
+    setDivingFmdPreviewOpen,
+    divingMeasuPreviewOpen,
+    setDivingMeasuPreviewOpen,
     generateFMDReport,
     generateFMDReportBlob,
+    generateDivingFMDReport,
+    generateDivingFMDReportBlob,
+    generateDivingMEASUReport,
+    generateDivingMEASUReportBlob,
     generateSZCIReport,
     generateSZCIReportBlob,
     generateUTWTReport,
@@ -7303,6 +7312,7 @@ function V10PreviewLayout() {
       case "form":
         return (
           <InspectionFormPanel
+            inspMethod={inspMethod}
             selectedComp={selectedComp}
             editingRecordId={editingRecordId}
             activeSpec={activeSpec}
@@ -8310,6 +8320,8 @@ function V10PreviewLayout() {
           mPreviewOpen,
           rmgiPreviewOpen,
           fmdPreviewOpen,
+          divingFmdPreviewOpen,
+          divingMeasuPreviewOpen,
           utwtPreviewOpen,
           szciPreviewOpen,
           isGalleryOpen,
@@ -8412,6 +8424,8 @@ function V10PreviewLayout() {
           setMPreviewOpen,
           setRmgiPreviewOpen,
           setFmdPreviewOpen,
+          setDivingFmdPreviewOpen,
+          setDivingMeasuPreviewOpen,
           setUtwtPreviewOpen,
           setSzciPreviewOpen,
           setIsGalleryOpen,
@@ -8493,6 +8507,10 @@ function V10PreviewLayout() {
           generateMGIReportBlob,
           generateRMGIReportBlob,
           generateFMDReportBlob,
+          generateDivingFMDReport,
+          generateDivingFMDReportBlob,
+          generateDivingMEASUReport,
+          generateDivingMEASUReportBlob,
           generateUTWTReportBlob,
           generateSZCIReportBlob,
           generateRGReportBlob,

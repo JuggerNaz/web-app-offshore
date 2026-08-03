@@ -481,6 +481,14 @@ export const generateBlankInspectionReport = async (
                 const { generateROVFMDReport } = await import("./rov-fmd-report");
                 return await generateROVFMDReport(blankRecords, headerData, companySettings, generatorConfig as any);
             }
+            case "diving-fmd-report": {
+                const { generateDivingFMDReport } = await import("./diving-fmd-report");
+                return await generateDivingFMDReport(blankRecords, headerData, companySettings, generatorConfig as any);
+            }
+            case "diving-measu-report": {
+                const { generateDivingMEASUReport } = await import("./diving-measu-report");
+                return await generateDivingMEASUReport(blankRecords, headerData, companySettings, generatorConfig as any);
+            }
             case "mgi-report": {
                 const { generateROVMGIGraphReport } = await import("./rov-mgi-report");
                 return await generateROVMGIGraphReport(blankRecords, null, headerData, companySettings, generatorConfig as any);

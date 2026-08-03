@@ -33,6 +33,7 @@ import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 import inspectionSpecs from "@/utils/types/inspection-types.json";
 
 interface InspectionFormProps {
+    inspMethod?: 'DIVING' | 'ROV';
     selectedComp: any;
     activeSpec: string | null;
     allInspectionTypes: any[];
@@ -88,6 +89,7 @@ interface InspectionFormProps {
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
+    inspMethod,
     selectedComp,
     activeSpec,
     allInspectionTypes,
@@ -181,6 +183,42 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     const currentDisplayCount = getCounterAsSeconds(savedTapeCount);
 
+    const activeSpecClean = String(activeSpec || '').toUpperCase().trim();
+    const activeIt = React.useMemo(() => {
+        return (allInspectionTypes || []).find((t: any) => 
+            (t.code || '').toUpperCase().trim() === activeSpecClean || 
+            (t.name || '').toUpperCase().trim() === activeSpecClean
+        );
+    }, [allInspectionTypes, activeSpecClean]);
+
+    const isRov = React.useMemo(() => {
+        const effectiveMethod = String(
+            inspMethod || 
+            headerData?.inspMethod || 
+            headerData?.jobType || 
+            (headerData?.mode === "ROV" ? "ROV" : "") ||
+            ""
+        ).toUpperCase();
+
+        if (effectiveMethod.includes("DIVING") || effectiveMethod.includes("DIVE")) {
+            return false;
+        }
+
+        if (effectiveMethod.includes("ROV")) {
+            return true;
+        }
+
+        const rovKeywords = ["ROV", "RUTWT", "RGVI", "RMG", "RSCOR", "RICMI", "RWDI"];
+        const specName = (activeIt?.name || '').toUpperCase();
+        
+        return (
+            rovKeywords.some(kw => activeSpecClean.includes(kw) || specName.includes(kw)) ||
+            activeIt?.metadata?.rov == 1 ||
+            activeIt?.metadata?.rov === "1" ||
+            activeIt?.metadata?.rov === true
+        );
+    }, [inspMethod, headerData, activeSpecClean, activeIt]);
+
     const resolvedRseabFields = React.useMemo(() => {
         if (activeSpec?.toUpperCase() !== 'RSEAB') return [];
         const localRseab = inspectionSpecs.inspectionTypes.find(t => t.code === 'RSEAB');
@@ -234,7 +272,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         });
 
         const excludedFields = [
-            'northing', 'easting', 'depth', 'cp_fg_rdg', 'rov_heading', 'flow_direction', 'insp_mode',
+            ...(isRov ? ['northing', 'easting', 'depth', 'cp_fg_rdg', 'rov_heading', 'flow_direction', 'insp_mode'] : ['northing', 'easting', 'rov_heading']),
             'verified_depth', 'verification_depth', 
             'location_northing', 'location_easting', 'inspection_date', 
             'inspection_time', 'tape_count_no', 'finding_type',
@@ -243,7 +281,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         ];
         const fieldsResult = jsonFields.length > 0 ? jsonFields : activeFormProps;
         return (fieldsResult || []).filter((p: any) => p && shouldShowField(p) && !excludedFields.includes(p.name));
-    }, [activeSpec, activeFormProps, dynamicProps, selectedComp]);
+    }, [activeSpec, activeFormProps, dynamicProps, selectedComp, isRov]);
 
     const fieldGroups = React.useMemo(() => {
         if (!resolvedFields) return null;
@@ -569,8 +607,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                  <div className="h-8 px-1.5 flex items-center text-[10px] font-bold bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50 rounded-md text-slate-500 dark:text-slate-400 truncate">{selectedComp.startElev}→{selectedComp.endElev}</div>
                                              </div>
                                         )}
-                                         {(() => {
-                                             const findField = (name: string) => activeFormProps?.find((p: any) => p && p.name === name);
+                                        {isRov && (() => {
+                                             const findField = (name: string) => 
+                                                activeFormProps?.find((p: any) => p && p.name === name);
                                              const northingField = findField('northing');
                                              const eastingField = findField('easting');
                                              const depthField = findField('depth');

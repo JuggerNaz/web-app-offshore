@@ -9,6 +9,7 @@ import inspectionSpecs from "@/utils/types/inspection-types.json";
 import { InspectionForm } from "../../components/InspectionForm";
 
 interface InspectionFormPanelProps {
+  inspMethod?: "DIVING" | "ROV";
   selectedComp: any;
   editingRecordId: number | null;
   activeSpec: string | null;
@@ -67,6 +68,7 @@ interface InspectionFormPanelProps {
 }
 
 export function InspectionFormPanel({
+  inspMethod,
   selectedComp,
   editingRecordId,
   activeSpec,
@@ -233,6 +235,7 @@ export function InspectionFormPanel({
               </div>
             ) : (
               <InspectionForm
+                inspMethod={inspMethod}
                 activeMGIProfile={activeMGIProfile}
                 selectedComp={selectedComp}
                 activeSpec={activeSpec}

@@ -41,6 +41,8 @@ import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpcl
 import { generateDivingUTCLBReport } from "@/utils/report-generators/diving-utclb-report";
 import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anode-report";
 import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
+import { generateDivingFMDReport } from "@/utils/report-generators/diving-fmd-report";
+import { generateDivingMEASUReport } from "@/utils/report-generators/diving-measu-report";
 import { generateDivingACFMCReport as generateDivingACFMCReportTemplate } from "@/utils/report-generators/diving-acfmc-report";
 import { generateDivingPLCOReport as generateDivingPLCOReportTemplate } from "@/utils/report-generators/diving-plco-report";
 import { generateROVRWDIReport as generateROVRWDIReportTemplate } from "@/utils/report-generators/rov-rwdi-report";
@@ -130,6 +132,8 @@ export function useWorkspaceReports(
     const [divingDcasnTsPreviewOpen, setDivingDcasnTsPreviewOpen] = useState(false);
     const [divingDcondUwPreviewOpen, setDivingDcondUwPreviewOpen] = useState(false);
     const [divingDcondTsPreviewOpen, setDivingDcondTsPreviewOpen] = useState(false);
+    const [divingFmdPreviewOpen, setDivingFmdPreviewOpen] = useState(false);
+    const [divingMeasuPreviewOpen, setDivingMeasuPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -2460,6 +2464,56 @@ export function useWorkspaceReports(
             }
             return await generateDivingDCONDReportTemplate(
                 currentRecords,
+                { ...headerData, contractorLogoUrl },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any
+            ) as Blob;
+        },
+        divingFmdPreviewOpen, setDivingFmdPreviewOpen,
+        generateDivingFMDReport: async () => {
+            const fmdRecords = currentRecords.filter(r => ['FLOOD', 'FMD', 'DFMD'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
+            if (fmdRecords.length === 0) {
+                toast.error("No Flooded Member (Diving) records found to generate report");
+                return;
+            }
+            setDivingFmdPreviewOpen(true);
+        },
+        generateDivingFMDReportBlob: async (printFriendly?: boolean) => {
+            const fmdRecords = currentRecords.filter(r => ['FLOOD', 'FMD', 'DFMD'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            return await generateDivingFMDReport(
+                fmdRecords,
+                { ...headerData, contractorLogoUrl },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any
+            ) as Blob;
+        },
+        divingMeasuPreviewOpen, setDivingMeasuPreviewOpen,
+        generateDivingMEASUReport: async () => {
+            const measuRecords = currentRecords.filter(r => ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
+            if (measuRecords.length === 0) {
+                toast.error("No Measurement Dimensional (Diving) records found to generate report");
+                return;
+            }
+            setDivingMeasuPreviewOpen(true);
+        },
+        generateDivingMEASUReportBlob: async (printFriendly?: boolean) => {
+            const measuRecords = currentRecords.filter(r => ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+            return await generateDivingMEASUReport(
+                measuRecords,
                 { ...headerData, contractorLogoUrl },
                 { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                 { ...reportConfig, printFriendly, returnBlob: true, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any

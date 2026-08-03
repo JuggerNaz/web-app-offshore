@@ -108,6 +108,8 @@ interface WorkspaceDialogsProps {
         mPreviewOpen: boolean;
         rmgiPreviewOpen: boolean;
         fmdPreviewOpen: boolean;
+        divingFmdPreviewOpen?: boolean;
+        divingMeasuPreviewOpen?: boolean;
         utwtPreviewOpen: boolean;
         szciPreviewOpen: boolean;
         isGalleryOpen: boolean;
@@ -215,6 +217,8 @@ interface WorkspaceDialogsProps {
         setMPreviewOpen: (open: boolean) => void;
         setRmgiPreviewOpen: (open: boolean) => void;
         setFmdPreviewOpen: (open: boolean) => void;
+        setDivingFmdPreviewOpen?: (open: boolean) => void;
+        setDivingMeasuPreviewOpen?: (open: boolean) => void;
         setUtwtPreviewOpen: (open: boolean) => void;
         setSzciPreviewOpen: (open: boolean) => void;
         setIsGalleryOpen: (open: boolean) => void;
@@ -303,6 +307,10 @@ interface WorkspaceDialogsProps {
         generateMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateFMDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingFMDReport?: () => void;
+        generateDivingFMDReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingMEASUReport?: () => void;
+        generateDivingMEASUReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTWTReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZCIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRGReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -421,6 +429,8 @@ export function WorkspaceDialogs({
         previewRecord,
         mPreviewOpen,
         fmdPreviewOpen,
+        divingFmdPreviewOpen,
+        divingMeasuPreviewOpen,
         utwtPreviewOpen,
         szciPreviewOpen,
         isGalleryOpen,
@@ -522,6 +532,8 @@ export function WorkspaceDialogs({
         setMPreviewOpen,
         setRmgiPreviewOpen,
         setFmdPreviewOpen,
+        setDivingFmdPreviewOpen,
+        setDivingMeasuPreviewOpen,
         setUtwtPreviewOpen,
         setSzciPreviewOpen,
         setIsGalleryOpen,
@@ -2362,6 +2374,28 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingFmdPreviewOpen} 
+                onOpenChange={setDivingFmdPreviewOpen || setFmdPreviewOpen} 
+                title="Flooded Member Inspection Report (Diving) Preview" 
+                fileName={`Diving_FMD_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingFMDReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingMeasuPreviewOpen} 
+                onOpenChange={setDivingMeasuPreviewOpen || setFmdPreviewOpen} 
+                title="Measurement Dimensional Survey Report (Diving) Preview" 
+                fileName={`Diving_MEASU_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingMEASUReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={utwtPreviewOpen} 
                 onOpenChange={setUtwtPreviewOpen} 
                 title="ROV UTWT Survey Report Preview" 
@@ -3078,6 +3112,8 @@ export function WorkspaceDialogs({
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
                     generateFMDReport: () => setters.setFmdPreviewOpen(true),
+                    generateDivingFMDReport: () => setters.setDivingFmdPreviewOpen ? setters.setDivingFmdPreviewOpen(true) : setters.setFmdPreviewOpen(true),
+                    generateDivingMEASUReport: () => setters.setDivingMeasuPreviewOpen ? setters.setDivingMeasuPreviewOpen(true) : setters.setFmdPreviewOpen(true),
                     generateUTWTReport: () => setters.setUtwtPreviewOpen(true),
                     generateMGIReport: () => setters.setMPreviewOpen(true),
                     generateRMGIReport: () => setters.setRmgiPreviewOpen(true),
@@ -3140,7 +3176,19 @@ export function WorkspaceDialogs({
                             case 'RWDI': setters.setRovRwdiPreviewOpen(true); break;
                             case 'PHOTO': setters.setPhotographyPreviewOpen(true); break;
                             case 'PLOG': setters.setPhotographyLogPreviewOpen(true); break;
-                            case 'FMD': setters.setFmdPreviewOpen(true); break;
+                            case 'DFMD':
+                            case 'FLOOD': setters.setDivingFmdPreviewOpen ? setters.setDivingFmdPreviewOpen(true) : setters.setFmdPreviewOpen(true); break;
+                            case 'MEASU':
+                            case 'DMSR':
+                            case 'MEASUREMENT':
+                            case 'DMEAS': setters.setDivingMeasuPreviewOpen ? setters.setDivingMeasuPreviewOpen(true) : setters.setFmdPreviewOpen(true); break;
+                            case 'FMD': 
+                                if (inspMethod === 'DIVING' && setters.setDivingFmdPreviewOpen) {
+                                    setters.setDivingFmdPreviewOpen(true);
+                                } else {
+                                    setters.setFmdPreviewOpen(true);
+                                }
+                                break;
                             case 'UTWT': setters.setUtwtPreviewOpen(true); break;
                             case 'MGI': setters.setMPreviewOpen(true); break;
                             case 'RMGI': setters.setRmgiPreviewOpen(true); break;

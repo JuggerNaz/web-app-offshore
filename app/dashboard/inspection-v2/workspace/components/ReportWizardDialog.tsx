@@ -372,6 +372,8 @@ interface ReportWizardDialogProps {
         generateROVRWDIReport: () => void;
         generatePhotographyLogReport: () => void;
         generateFMDReport: () => void;
+        generateDivingFMDReport?: () => void;
+        generateDivingMEASUReport?: () => void;
         generateUTWTReport: () => void;
         generateMGIReport: () => void;
         generateRMGIReport: () => void;
@@ -579,6 +581,8 @@ export function ReportWizardDialog({
             { id: 'plco', code: 'PL_CO', name: 'Coating Damage Inspection (Diving)', description: 'Landscape Diving Coating Damage Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingPLCOReport, available: hasRecords(['PL_CO']) },
             { id: 'cp_div', code: 'CP', name: 'CP Survey Report (Diving)', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
             { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration Report (Diving)', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
+            { id: 'fmd_div', code: 'DFMD', name: 'Flooded Member Inspection Report (Diving)', description: 'Flooded Member Inspection report (Diving) with QID, Elevation, Dive No., Flooded, Grouted, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingFMDReport || handlers.generateFMDReport, available: hasRecords(['DFMD', 'FLOOD', 'FMD']) },
+            { id: 'measu_div', code: 'MEASU', name: 'Measurement Dimensional Survey Report (Diving)', description: 'Measurement Dimensional Survey report (Diving) with QID, Elevation, Dive No., Type, Unit, Result, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMEASUReport || handlers.generateFullInspectionReport, available: hasRecords(['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS']) },
             { id: 'mgi_div', code: 'DMGI', name: 'Marine Growth Inspection (Diving)', description: 'Diving Marine Growth Inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMGIReport, available: hasRecords(['DMGI', 'MGROW']) },
             { id: 'diving_anmain_report', code: 'ANMAIN', name: 'Anode Maintenance Inspection Report (Diving)', description: 'Landscape Anode Maintenance Inspection Report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingANMAINReport, available: hasRecords(['ANMAIN']) },
             { id: 'diving-dcasn-uw-report', code: 'DCASN-UW', name: 'Caisson Inspection Underwater (Diving)', description: 'Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNUWReport, available: currentRecords.some(r => {
