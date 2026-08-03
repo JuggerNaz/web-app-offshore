@@ -176,6 +176,12 @@ export const mapInspectionDataForDocx = async (
         'rov-riser-report': ['RRISI'],
         'rrisi-report': ['RRISI'],
         'rrisi-detail-report': ['RRISI'],
+        'diving-rrisi-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI'],
+        'diving-rrisi-detail-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI'],
+        'diving-jtisi-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'JTISI'],
+        'diving-jtisi-detail-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'JTISI'],
+        'diving-itisi-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'ITISI'],
+        'diving-itisi-detail-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'ITISI'],
         'rov-jtisi-detail-report': ['RRISI'],
         'rov-itisi-detail-report': ['RRISI'],
         'rov-scour-report': ['RSCOR'],
@@ -370,9 +376,21 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'rrisi-report') {
                 const { generateROVRRISIReport } = await import("./rov-rrisi-report");
                 pdfBlob = await generateROVRRISIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (['diving-rrisi-report', 'drrisi-report', 'diving-jtisi-report', 'diving-itisi-report'].includes(templateId)) {
+                const { generateDivingRRISIReport } = await import("./diving-rrisi-report");
+                let reportType: 'R' | 'J' | 'I' = 'R';
+                if (templateId === 'diving-jtisi-report') reportType = 'J';
+                if (templateId === 'diving-itisi-report') reportType = 'I';
+                pdfBlob = await generateDivingRRISIReport(records, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false, structureId: structure?.id, reportType } as any);
             } else if (templateId === 'rrisi-detail-report') {
                 const { generateROVRRISIDetailReport } = await import("./rov-rrisi-detail-report");
                 pdfBlob = await generateROVRRISIDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (['diving-rrisi-detail-report', 'drrisi-detail-report', 'diving-jtisi-detail-report', 'diving-itisi-detail-report'].includes(templateId)) {
+                const { generateDivingRRISIDetailReport } = await import("./diving-rrisi-detail-report");
+                let reportType: 'R' | 'J' | 'I' = 'R';
+                if (templateId === 'diving-jtisi-detail-report') reportType = 'J';
+                if (templateId === 'diving-itisi-detail-report') reportType = 'I';
+                pdfBlob = await generateDivingRRISIDetailReport(records, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false, structureId: structure?.id, reportType } as any);
             } else if (templateId === 'rov-jtisi-detail-report') {
                 const { generateROVRRISIJTubeDetailReport } = await import("./rov-jtisi-detail-report");
                 pdfBlob = await generateROVRRISIJTubeDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);

@@ -374,6 +374,8 @@ interface ReportWizardDialogProps {
         generateFMDReport: () => void;
         generateDivingFMDReport?: () => void;
         generateDivingMEASUReport?: () => void;
+        generateDivingRRISIReport?: () => void;
+        generateDivingRRISIDetailReport?: () => void;
         generateUTWTReport: () => void;
         generateMGIReport: () => void;
         generateRMGIReport: () => void;
@@ -387,6 +389,10 @@ interface ReportWizardDialogProps {
         generateJTISIDetailReport: () => void;
         generateITISIReport: () => void;
         generateITISIDetailReport: () => void;
+        generateDivingJTISIReport?: () => void;
+        generateDivingJTISIDetailReport?: () => void;
+        generateDivingITISIReport?: () => void;
+        generateDivingITISIDetailReport?: () => void;
         generateRCASNReport: () => void;
         generateRCASNSketchReport: () => void;
         generateRCONDReport: () => void;
@@ -583,6 +589,36 @@ export function ReportWizardDialog({
             { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration Report (Diving)', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
             { id: 'fmd_div', code: 'DFMD', name: 'Flooded Member Inspection Report (Diving)', description: 'Flooded Member Inspection report (Diving) with QID, Elevation, Dive No., Flooded, Grouted, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingFMDReport || handlers.generateFMDReport, available: hasRecords(['DFMD', 'FLOOD', 'FMD']) },
             { id: 'measu_div', code: 'MEASU', name: 'Measurement Dimensional Survey Report (Diving)', description: 'Measurement Dimensional Survey report (Diving) with QID, Elevation, Dive No., Type, Unit, Result, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMEASUReport || handlers.generateFullInspectionReport, available: hasRecords(['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS']) },
+            { id: 'rrisi_div', code: 'DRRISI', name: 'Riser Inspection Report with Sketch (Diving)', description: 'Riser Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingRRISIReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'RRISI'].includes(code) || (qid.startsWith('R') && !qid.startsWith('RISG'));
+            }) },
+            { id: 'rrisi_detail_div', code: 'DRRISI-DET', name: 'Riser Inspection Summary Report without Sketch (Diving)', description: 'Riser Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingRRISIDetailReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'RRISI'].includes(code) || (qid.startsWith('R') && !qid.startsWith('RISG'));
+            }) },
+            { id: 'jtisi_div', code: 'DJTISI', name: 'J-Tube Inspection Report with Sketch (Diving)', description: 'J-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingJTISIReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DJTISI', 'JTISI'].includes(code) || qid.startsWith('J');
+            }) },
+            { id: 'jtisi_detail_div', code: 'DJTISI-DET', name: 'J-Tube Inspection Summary Report without Sketch (Diving)', description: 'J-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingJTISIDetailReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DJTISI', 'JTISI'].includes(code) || qid.startsWith('J');
+            }) },
+            { id: 'itisi_div', code: 'DITISI', name: 'I-Tube Inspection Report with Sketch (Diving)', description: 'I-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingITISIReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DITISI', 'ITISI'].includes(code) || qid.startsWith('I');
+            }) },
+            { id: 'itisi_detail_div', code: 'DITISI-DET', name: 'I-Tube Inspection Summary Report without Sketch (Diving)', description: 'I-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingITISIDetailReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DITISI', 'ITISI'].includes(code) || qid.startsWith('I');
+            }) },
             { id: 'mgi_div', code: 'DMGI', name: 'Marine Growth Inspection (Diving)', description: 'Diving Marine Growth Inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMGIReport, available: hasRecords(['DMGI', 'MGROW']) },
             { id: 'diving_anmain_report', code: 'ANMAIN', name: 'Anode Maintenance Inspection Report (Diving)', description: 'Landscape Anode Maintenance Inspection Report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingANMAINReport, available: hasRecords(['ANMAIN']) },
             { id: 'diving-dcasn-uw-report', code: 'DCASN-UW', name: 'Caisson Inspection Underwater (Diving)', description: 'Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNUWReport, available: currentRecords.some(r => {

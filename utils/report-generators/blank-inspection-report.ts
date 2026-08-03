@@ -501,6 +501,26 @@ export const generateBlankInspectionReport = async (
                 const { generateDivingMGIReport } = await import("./diving-mgi-report");
                 return await generateDivingMGIReport(blankRecords, null, headerData, companySettings, generatorConfig as any);
             }
+            case "diving-rrisi-report":
+            case "drrisi-report":
+            case "diving-jtisi-report":
+            case "diving-itisi-report": {
+                const { generateDivingRRISIReport } = await import("./diving-rrisi-report");
+                let reportType: 'R' | 'J' | 'I' = 'R';
+                if (templateId === "diving-jtisi-report") reportType = 'J';
+                if (templateId === "diving-itisi-report") reportType = 'I';
+                return await generateDivingRRISIReport(blankRecords, headerData, companySettings, { ...generatorConfig, reportType } as any);
+            }
+            case "diving-rrisi-detail-report":
+            case "drrisi-detail-report":
+            case "diving-jtisi-detail-report":
+            case "diving-itisi-detail-report": {
+                const { generateDivingRRISIDetailReport } = await import("./diving-rrisi-detail-report");
+                let reportType: 'R' | 'J' | 'I' = 'R';
+                if (templateId === "diving-jtisi-detail-report") reportType = 'J';
+                if (templateId === "diving-itisi-detail-report") reportType = 'I';
+                return await generateDivingRRISIDetailReport(blankRecords, headerData, companySettings, { ...generatorConfig, reportType } as any);
+            }
             case "rrisi-report":
             case "rov-jtisi-report":
             case "rov-itisi-report": {

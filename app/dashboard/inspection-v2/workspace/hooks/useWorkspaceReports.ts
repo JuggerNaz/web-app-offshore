@@ -43,6 +43,8 @@ import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anod
 import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
 import { generateDivingFMDReport } from "@/utils/report-generators/diving-fmd-report";
 import { generateDivingMEASUReport } from "@/utils/report-generators/diving-measu-report";
+import { generateDivingRRISIReport as generateDivingRRISIReportGenerator } from "@/utils/report-generators/diving-rrisi-report";
+import { generateDivingRRISIDetailReport as generateDivingRRISIDetailReportGenerator } from "@/utils/report-generators/diving-rrisi-detail-report";
 import { generateDivingACFMCReport as generateDivingACFMCReportTemplate } from "@/utils/report-generators/diving-acfmc-report";
 import { generateDivingPLCOReport as generateDivingPLCOReportTemplate } from "@/utils/report-generators/diving-plco-report";
 import { generateROVRWDIReport as generateROVRWDIReportTemplate } from "@/utils/report-generators/rov-rwdi-report";
@@ -134,6 +136,12 @@ export function useWorkspaceReports(
     const [divingDcondTsPreviewOpen, setDivingDcondTsPreviewOpen] = useState(false);
     const [divingFmdPreviewOpen, setDivingFmdPreviewOpen] = useState(false);
     const [divingMeasuPreviewOpen, setDivingMeasuPreviewOpen] = useState(false);
+    const [divingRrisiPreviewOpen, setDivingRrisiPreviewOpen] = useState(false);
+    const [divingRrisiDetailPreviewOpen, setDivingRrisiDetailPreviewOpen] = useState(false);
+    const [divingJtisiPreviewOpen, setDivingJtisiPreviewOpen] = useState(false);
+    const [divingJtisiDetailPreviewOpen, setDivingJtisiDetailPreviewOpen] = useState(false);
+    const [divingItisiPreviewOpen, setDivingItisiPreviewOpen] = useState(false);
+    const [divingItisiDetailPreviewOpen, setDivingItisiDetailPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -1402,6 +1410,150 @@ export function useWorkspaceReports(
         return await generateDivingDCONDTSReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
     };
 
+    const generateDivingRRISIReport = async () => {
+        setDivingRrisiPreviewOpen(true);
+    };
+
+    const generateDivingRRISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+            return qid.startsWith('R') && !qid.startsWith('RISG');
+        });
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingRRISIReportGenerator(
+            records,
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'R' }
+        ) as Blob;
+    };
+
+    const generateDivingRRISIDetailReport = async () => {
+        setDivingRrisiDetailPreviewOpen(true);
+    };
+
+    const generateDivingRRISIDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+            return qid.startsWith('R') && !qid.startsWith('RISG');
+        });
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingRRISIDetailReportGenerator(
+            records,
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'R' }
+        ) as Blob;
+    };
+
+    const generateDivingJTISIReport = async () => {
+        setDivingJtisiPreviewOpen(true);
+    };
+
+    const generateDivingJTISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+            return qid.startsWith('J');
+        });
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingRRISIReportGenerator(
+            records,
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'J' }
+        ) as Blob;
+    };
+
+    const generateDivingJTISIDetailReport = async () => {
+        setDivingJtisiDetailPreviewOpen(true);
+    };
+
+    const generateDivingJTISIDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+            return qid.startsWith('J');
+        });
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingRRISIDetailReportGenerator(
+            records,
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'J' }
+        ) as Blob;
+    };
+
+    const generateDivingITISIReport = async () => {
+        setDivingItisiPreviewOpen(true);
+    };
+
+    const generateDivingITISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+            return qid.startsWith('I');
+        });
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingRRISIReportGenerator(
+            records,
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'I' }
+        ) as Blob;
+    };
+
+    const generateDivingITISIDetailReport = async () => {
+        setDivingItisiDetailPreviewOpen(true);
+    };
+
+    const generateDivingITISIDetailReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(r => {
+            const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+            return qid.startsWith('I');
+        });
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingRRISIDetailReportGenerator(
+            records,
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), reportType: 'I' }
+        ) as Blob;
+    };
+
     const generateDivingACFMCReport = async () => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'ACFMC');
         if (records.length === 0) {
@@ -2257,6 +2409,12 @@ export function useWorkspaceReports(
         divingDcasnTsPreviewOpen, setDivingDcasnTsPreviewOpen,
         divingDcondUwPreviewOpen, setDivingDcondUwPreviewOpen,
         divingDcondTsPreviewOpen, setDivingDcondTsPreviewOpen,
+        divingRrisiPreviewOpen, setDivingRrisiPreviewOpen,
+        divingRrisiDetailPreviewOpen, setDivingRrisiDetailPreviewOpen,
+        divingJtisiPreviewOpen, setDivingJtisiPreviewOpen,
+        divingJtisiDetailPreviewOpen, setDivingJtisiDetailPreviewOpen,
+        divingItisiPreviewOpen, setDivingItisiPreviewOpen,
+        divingItisiDetailPreviewOpen, setDivingItisiDetailPreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -2296,6 +2454,18 @@ export function useWorkspaceReports(
         generateITISIReportBlob,
         generateITISIDetailReport,
         generateITISIDetailReportBlob,
+        generateDivingRRISIReport,
+        generateDivingRRISIReportBlob,
+        generateDivingRRISIDetailReport,
+        generateDivingRRISIDetailReportBlob,
+        generateDivingJTISIReport,
+        generateDivingJTISIReportBlob,
+        generateDivingJTISIDetailReport,
+        generateDivingJTISIDetailReportBlob,
+        generateDivingITISIReport,
+        generateDivingITISIReportBlob,
+        generateDivingITISIDetailReport,
+        generateDivingITISIDetailReportBlob,
         generateAnodeReport,
         generateAnodeReportBlob,
         generateAnodeRsaniReport,

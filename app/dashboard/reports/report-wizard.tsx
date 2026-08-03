@@ -174,6 +174,12 @@ export const REPORT_TEMPLATES = {
         { id: "diving-dcond-report", name: "Conductor Inspection (Diving)", icon: FileBarChart, description: "Portrait combined Conductor inspection report (Above & Underwater) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-fmd-report", name: "Flooded Member Inspection Report (Diving)", icon: FileText, description: "Portrait Flooded Member Inspection report (Diving) — QID, Elevation, Dive No., Flooded, Grouted, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-measu-report", name: "Measurement Dimensional Survey Report (Diving)", icon: FileText, description: "Portrait Measurement Dimensional Survey report (Diving) — QID, Elevation, Dive No., Type, Unit, Result, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-rrisi-report", name: "Riser Inspection Report with Sketch (Diving)", icon: FileText, description: "Portrait Riser Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-rrisi-detail-report", name: "Riser Inspection Summary Report without Sketch (Diving)", icon: FileText, description: "Portrait Riser Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-jtisi-report", name: "J-Tube Inspection Report with Sketch (Diving)", icon: FileText, description: "Portrait J-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-jtisi-detail-report", name: "J-Tube Inspection Summary Report without Sketch (Diving)", icon: FileText, description: "Portrait J-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-itisi-report", name: "I-Tube Inspection Report with Sketch (Diving)", icon: FileText, description: "Portrait I-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-itisi-detail-report", name: "I-Tube Inspection Summary Report without Sketch (Diving)", icon: FileText, description: "Portrait I-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -1642,6 +1648,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateDivingDCONDReport } = await import("@/utils/report-generators/diving-dcond-report");
             const { generateDivingFMDReport } = await import("@/utils/report-generators/diving-fmd-report");
             const { generateDivingMEASUReport } = await import("@/utils/report-generators/diving-measu-report");
+            const { generateDivingRRISIReport } = await import("@/utils/report-generators/diving-rrisi-report");
+            const { generateDivingRRISIDetailReport } = await import("@/utils/report-generators/diving-rrisi-detail-report");
 
 
             // Fetch real company settings from API
@@ -2474,6 +2482,170 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("Diving MEASU Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Riser / J-Tube / I-Tube Survey Report with Sketch
+        if (["diving-rrisi-report", "diving-jtisi-report", "diving-itisi-report"].includes(currentTemplateId)) {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let reportType: 'R' | 'J' | 'I' = 'R';
+            if (currentTemplateId === "diving-jtisi-report") reportType = 'J';
+            if (currentTemplateId === "diving-itisi-report") reportType = 'I';
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const prefixChar = reportType;
+            const rrisiRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const qid = (r.structure_components?.q_id || r.q_id || '').toUpperCase();
+                const codeUpper = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const compCode = (r.structure_components?.code || '').toUpperCase();
+                const isTypeMatch = ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'RRISI', 'JTISI', 'ITISI'].includes(codeUpper);
+                const isQidPrefix = qid.startsWith(prefixChar);
+                const isCompMatch = ['RS', 'CL', 'WELD', 'FLANGE'].includes(compCode) || compCode === '' || !compCode;
+
+                return sowMatches && jobPackMatches && (isQidPrefix || isTypeMatch || isCompMatch);
+            });
+
+            if (!rrisiRecords || rrisiRecords.length === 0) {
+                const label = reportType === 'J' ? 'J-Tube' : (reportType === 'I' ? 'I-Tube' : 'Riser');
+                alert(`No Diving ${label} Survey records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingRRISIReport(
+                    rrisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), reportType } as any
+                );
+            } catch (error) {
+                console.error("Diving Riser/J-Tube/I-Tube Sketch Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Riser / J-Tube / I-Tube Survey Summary Report without Sketch
+        if (["diving-rrisi-detail-report", "diving-jtisi-detail-report", "diving-itisi-detail-report"].includes(currentTemplateId)) {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let reportType: 'R' | 'J' | 'I' = 'R';
+            if (currentTemplateId === "diving-jtisi-detail-report") reportType = 'J';
+            if (currentTemplateId === "diving-itisi-detail-report") reportType = 'I';
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const prefixChar = reportType;
+            const rrisiRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const qid = (r.structure_components?.q_id || r.q_id || '').toUpperCase();
+                const codeUpper = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const compCode = (r.structure_components?.code || '').toUpperCase();
+                const isTypeMatch = ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'RRISI', 'JTISI', 'ITISI'].includes(codeUpper);
+                const isQidPrefix = qid.startsWith(prefixChar);
+                const isCompMatch = ['RS', 'CL', 'WELD', 'FLANGE'].includes(compCode) || compCode === '' || !compCode;
+
+                return sowMatches && jobPackMatches && (isQidPrefix || isTypeMatch || isCompMatch);
+            });
+
+            if (!rrisiRecords || rrisiRecords.length === 0) {
+                const label = reportType === 'J' ? 'J-Tube' : (reportType === 'I' ? 'I-Tube' : 'Riser');
+                alert(`No Diving ${label} Survey records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingRRISIDetailReport(
+                    rrisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), reportType } as any
+                );
+            } catch (error) {
+                console.error("Diving Riser/J-Tube/I-Tube Detail Generator Error:", error);
                 throw error;
             }
         }

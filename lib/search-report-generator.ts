@@ -507,6 +507,44 @@ async function routeToGenerator(
       const { generateDivingMEASUReport } = await import("@/utils/report-generators/diving-measu-report");
       return await generateDivingMEASUReport(recs, headerData, companyInfo, opts) as Blob;
     }
+    case "drrisi":
+    case "diving-rrisi-report": {
+      const recs = filterByCode(["DRRISI", "DRISI", "RSURV", "RISER", "DRSER", "DRSI", "RRISI", "JTISI", "ITISI"]);
+      if (!recs.length) return;
+      const { generateDivingRRISIReport } = await import("@/utils/report-generators/diving-rrisi-report");
+      return await generateDivingRRISIReport(recs, headerData, companyInfo, { ...opts, reportType: 'R' }) as Blob;
+    }
+    case "diving-jtisi-report": {
+      const recs = filterByCode(["DRRISI", "DRISI", "RSURV", "RISER", "DRSER", "DRSI", "RRISI", "JTISI", "ITISI"]);
+      if (!recs.length) return;
+      const { generateDivingRRISIReport } = await import("@/utils/report-generators/diving-rrisi-report");
+      return await generateDivingRRISIReport(recs, headerData, companyInfo, { ...opts, reportType: 'J' }) as Blob;
+    }
+    case "diving-itisi-report": {
+      const recs = filterByCode(["DRRISI", "DRISI", "RSURV", "RISER", "DRSER", "DRSI", "RRISI", "JTISI", "ITISI"]);
+      if (!recs.length) return;
+      const { generateDivingRRISIReport } = await import("@/utils/report-generators/diving-rrisi-report");
+      return await generateDivingRRISIReport(recs, headerData, companyInfo, { ...opts, reportType: 'I' }) as Blob;
+    }
+    case "drrisi-detail":
+    case "diving-rrisi-detail-report": {
+      const recs = filterByCode(["DRRISI", "DRISI", "RSURV", "RISER", "DRSER", "DRSI", "RRISI", "JTISI", "ITISI"]);
+      if (!recs.length) return;
+      const { generateDivingRRISIDetailReport } = await import("@/utils/report-generators/diving-rrisi-detail-report");
+      return await generateDivingRRISIDetailReport(recs, headerData, companyInfo, { ...opts, reportType: 'R' }) as Blob;
+    }
+    case "diving-jtisi-detail-report": {
+      const recs = filterByCode(["DRRISI", "DRISI", "RSURV", "RISER", "DRSER", "DRSI", "RRISI", "JTISI", "ITISI"]);
+      if (!recs.length) return;
+      const { generateDivingRRISIDetailReport } = await import("@/utils/report-generators/diving-rrisi-detail-report");
+      return await generateDivingRRISIDetailReport(recs, headerData, companyInfo, { ...opts, reportType: 'J' }) as Blob;
+    }
+    case "diving-itisi-detail-report": {
+      const recs = filterByCode(["DRRISI", "DRISI", "RSURV", "RISER", "DRSER", "DRSI", "RRISI", "JTISI", "ITISI"]);
+      if (!recs.length) return;
+      const { generateDivingRRISIDetailReport } = await import("@/utils/report-generators/diving-rrisi-detail-report");
+      return await generateDivingRRISIDetailReport(recs, headerData, companyInfo, { ...opts, reportType: 'I' }) as Blob;
+    }
     case "rutwt": {
       const recs = filterByCode(["RUTWT"]);
       if (!recs.length) return;

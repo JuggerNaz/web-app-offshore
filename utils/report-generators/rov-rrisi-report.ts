@@ -245,25 +245,71 @@ export const generateROVRRISIReport = async (
                 doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(220, 230, 240); 
                 const o = -rWidth * 0.15; if (isV) doc.line(x1 + o, y1, x2 + o, y2); else doc.line(x1, y1 + o, x2, y2 + o);
             };
-            drawP(cX, eToY(designStart), cX, bY, true);
-            const endX = cX + bRadius; 
-            if (!isStraight) {
-                const drawC = (color: [number, number, number], width: number, off: number) => {
-                    const segs = 20; let lx = cX + off; let ly = bY;
-                    const cx = cX + off; const cy = bY; const ex = endX; const ey = pipeY + off;
-                    doc.setDrawColor(...color); doc.setLineWidth(width);
-                    for (let j = 1; j <= segs; j++) {
-                        const t = j / segs;
-                        const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * cx + Math.pow(t, 2) * ex;
-                        const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * ey + Math.pow(t, 2) * ey;
-                        doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
+            if (rType === 'I') {
+                let itubeEndElev = designEnd;
+                let foundElv2: number | null = null;
+                recordsInGroup.forEach(r => {
+                    const meta = r.structure_components?.metadata || r.component?.metadata || {};
+                    const inspData = r.inspection_data || {};
+                    const val = meta.elv_2 ?? meta.ELV_2 ?? meta.end_elevation ?? r.structure_components?.elv_2 ?? r.structure_components?.end_elevation ?? inspData.elv_2 ?? inspData.end_elevation;
+                    if (val != null && !isNaN(parseFloat(String(val)))) {
+                        foundElv2 = parseFloat(String(val));
                     }
-                };
-                drawC([120, 130, 150], rWidth, 0); drawC([160, 175, 195], rWidth * 0.7, 0); drawC([220, 230, 240], rWidth * 0.2, -rWidth * 0.15);
-            }
-            if (rType !== 'J' && rType !== 'I') {
-                drawP(endX, pipeY, gX + gW - 5, pipeY, false);
-                doc.setFontSize(6); doc.setTextColor(120, 130, 150); doc.text("PIPELINE", endX + 10, pipeY + 8);
+                });
+                if (foundElv2 != null) itubeEndElev = foundElv2;
+
+                const pipeTopY = eToY(designStart);
+                const pipeBottomY = eToY(itubeEndElev);
+                drawP(cX, pipeTopY, cX, pipeBottomY, true);
+
+                const rx = rWidth / 2;
+                const ry = 2.5;
+
+                // Oval Base Fill
+                doc.setFillColor(180, 195, 210);
+                doc.ellipse(cX, pipeBottomY, rx, ry, 'F');
+
+                // Grill Mesh Bars
+                doc.setDrawColor(...colors.navy);
+                doc.setLineWidth(0.35);
+                doc.line(cX - 2, pipeBottomY - 1.8, cX - 2, pipeBottomY + 1.8);
+                doc.line(cX, pipeBottomY - 2.5, cX, pipeBottomY + 2.5);
+                doc.line(cX + 2, pipeBottomY - 1.8, cX + 2, pipeBottomY + 1.8);
+                doc.line(cX - 3.8, pipeBottomY, cX + 3.8, pipeBottomY);
+
+                // Oval Rim Border
+                doc.setDrawColor(...colors.navy);
+                doc.setLineWidth(0.6);
+                doc.ellipse(cX, pipeBottomY, rx, ry, 'S');
+
+                // Leader line and Callout
+                doc.setDrawColor(...colors.navy);
+                doc.setLineWidth(0.3);
+                doc.line(cX + rx + 1, pipeBottomY, cX + rx + 6, pipeBottomY);
+
+                doc.setFontSize(5.5); doc.setTextColor(...colors.navy); doc.setFont("helvetica", "bold");
+                doc.text(`TERMINATOR GRILL (${itubeEndElev.toFixed(1)}m)`, cX + rx + 7, pipeBottomY + 1.5);
+            } else {
+                drawP(cX, eToY(designStart), cX, bY, true);
+                const endX = cX + bRadius; 
+                if (!isStraight) {
+                    const drawC = (color: [number, number, number], width: number, off: number) => {
+                        const segs = 20; let lx = cX + off; let ly = bY;
+                        const cx = cX + off; const cy = bY; const ex = endX; const ey = pipeY + off;
+                        doc.setDrawColor(...color); doc.setLineWidth(width);
+                        for (let j = 1; j <= segs; j++) {
+                            const t = j / segs;
+                            const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * cx + Math.pow(t, 2) * ex;
+                            const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * ey + Math.pow(t, 2) * ey;
+                            doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
+                        }
+                    };
+                    drawC([120, 130, 150], rWidth, 0); drawC([160, 175, 195], rWidth * 0.7, 0); drawC([220, 230, 240], rWidth * 0.2, -rWidth * 0.15);
+                }
+                if ((rType as string) !== 'J' && (rType as string) !== 'I') {
+                    drawP(endX, pipeY, gX + gW - 5, pipeY, false);
+                    doc.setFontSize(6); doc.setTextColor(120, 130, 150); doc.text("PIPELINE", endX + 10, pipeY + 8);
+                }
             }
 
             // Scale
