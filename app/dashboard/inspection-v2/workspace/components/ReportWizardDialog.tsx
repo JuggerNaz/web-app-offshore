@@ -150,7 +150,8 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
     // 2. Generic/All-Records templates
     const allRecordsTemplates = [
         'findings', 'photo', 'video_log', 'diver_log', 'compliance', 
-        'jp_summary', 'sow_report', 'struct_over', 'exec_sum', 'insp_report'
+        'jp_summary', 'sow_report', 'struct_over', 'exec_sum', 'insp_report',
+        'pipeline_event_sketch_report', 'pipe-evt-s', 'pipe_evt_s', 'pipeline_event_sketch'
     ];
     if (allRecordsTemplates.includes(idLower) || allRecordsTemplates.includes(templateCodeStr.toLowerCase())) {
         return records;
@@ -397,6 +398,7 @@ interface ReportWizardDialogProps {
         generateRCASNSketchReport: () => void;
         generateRCONDReport: () => void;
         generateRCONDSketchReport: () => void;
+        generatePipelineEventSketchReport?: () => void;
         generateBLReport: () => void;
         generateRGReport: () => void;
         generateSGReport: () => void;
@@ -569,6 +571,7 @@ export function ReportWizardDialog({
             { id: 'rcasn_sketch_rov', code: 'RCASN-S', name: 'Caisson Sketch Report (ROV)', description: 'ROV Caisson Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNSketchReport, available: hasRecords(['RCASN']) },
             { id: 'rcond_rov', code: 'RCOND', name: 'Conductor Inspection Report (ROV)', description: 'ROV Conductor Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDReport, available: hasRecords(['RCOND', 'RCON']) },
             { id: 'rcond_sketch_rov', code: 'RCOND-S', name: 'Conductor Sketch Report (ROV)', description: 'ROV Conductor Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDSketchReport, available: hasRecords(['RCOND', 'RCON']) },
+            { id: 'pipeline_event_sketch_report', code: 'PIPE-EVT-S', name: 'Pipeline Event List Sketch Report', description: 'Landscape Pipeline Navigation event list sketch report with graphical KP pipeline elevation profile, span/burial profiles, geodetic header, and matched event table.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePipelineEventSketchReport || (() => {}), available: true },
             { id: 'bl_rov', code: 'BL', name: 'Boatlanding Inspection Report (ROV)', description: 'ROV Boatlanding Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateBLReport, available: currentRecords.some(r => isBLRecord(r)) },
             { id: 'rg_rov', code: 'RG', name: 'Riser Guard Inspection Report (ROV)', description: 'ROV Riser Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGReport, available: currentRecords.some(r => isRGRecord(r)) },
             { id: 'sg_rov', code: 'SG', name: 'Caisson Guard Inspection Report (ROV)', description: 'ROV Caisson Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSGReport, available: currentRecords.some(r => isSGRecord(r)) },

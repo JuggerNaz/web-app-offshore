@@ -205,6 +205,8 @@ import { EventsTablePanel } from "./_components/panels/EventsTablePanel";
 import { ComponentListPanel } from "./_components/panels/ComponentListPanel";
 import { PipelineEventMenuPanel } from "./_components/panels/PipelineEventMenuPanel";
 import { HistoryDataPanel } from "./_components/panels/HistoryDataPanel";
+import { PipelineInspectionInfoPanel } from "./_components/panels/PipelineInspectionInfoPanel";
+import { QuickShortcutsPanel } from "./_components/panels/QuickShortcutsPanel";
 
 
 export default function WorkspaceV2Page() {
@@ -493,21 +495,31 @@ function V10PreviewLayout() {
             children: [
               {
                 type: "tabset",
-                weight: 30,
+                weight: 25,
                 children: [
                   { type: "tab", name: "Captured Events", component: "events" },
                 ],
               },
               {
                 type: "tabset",
-                weight: 35,
+                weight: 30,
                 children: [
-                  { type: "tab", name: "Event Menu", component: "components" },
+                  { type: "tab", name: isPipeline ? "Event Menu" : "Component List", component: "components" },
                 ],
               },
+              ...(isPipeline ? [
+                {
+                  type: "tabset" as const,
+                  weight: 22,
+                  children: [
+                    { type: "tab" as const, name: "Inspection Info", component: "inspectionInfo" },
+                    { type: "tab" as const, name: "Quick Log", component: "quickShortcuts" },
+                  ],
+                }
+              ] : []),
               {
                 type: "tabset",
-                weight: 35,
+                weight: 23,
                 children: [
                   { type: "tab", name: "History Data", component: "history" },
                 ],
@@ -533,15 +545,22 @@ function V10PreviewLayout() {
   }, []);
 
   // Track closed floating panels so user can reopen individually
-  const allWorkspacePanels = useMemo(() => [
-    { id: "opsLog", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log" },
-    { id: "videoLog", name: "Video Log" },
-    { id: "videoPreview", name: "Photo / Video Grab" },
-    { id: "form", name: "Inspection Form" },
-    { id: "events", name: "Captured Events" },
-    { id: "components", name: isPipeline ? "Event Menu" : "Component List" },
-    { id: "history", name: "History Data" },
-  ], [inspMethod, isPipeline]);
+  const allWorkspacePanels = useMemo(() => {
+    const list = [
+      { id: "opsLog", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log" },
+      { id: "videoLog", name: "Video Log" },
+      { id: "videoPreview", name: "Photo / Video Grab" },
+      { id: "form", name: "Inspection Form" },
+      { id: "events", name: "Captured Events" },
+      { id: "components", name: isPipeline ? "Event Menu" : "Component List" },
+      { id: "history", name: "History Data" },
+    ];
+    if (isPipeline) {
+      list.push({ id: "inspectionInfo", name: "Inspection Info" });
+      list.push({ id: "quickShortcuts", name: "Quick Log" });
+    }
+    return list;
+  }, [inspMethod, isPipeline]);
 
   const closedPanels = useMemo(() => {
     if (!layoutModel) return [];
@@ -1783,6 +1802,10 @@ function V10PreviewLayout() {
     generateRCONDReportBlob,
     generateRCONDSketchReport,
     generateRCONDSketchReportBlob,
+    generatePipelineEventSketchReport,
+    generatePipelineEventSketchReportBlob,
+    pipelineEventSketchPreviewOpen,
+    setPipelineEventSketchPreviewOpen,
     generateSeabedReport,
     generateSeabedReportBlob,
     generateSeabedDetailReport,
@@ -7196,6 +7219,149 @@ function V10PreviewLayout() {
     }
   };
 
+  // Shared pipeline event select handler – used by both PipelineEventMenuPanel and QuickShortcutsPanel
+  const handlePipelineEventSelect = useCallback(async (evtData: {
+    eventName: string; eventType: string; eventPosition?: string; actionName?: string;
+    eventCategory: string; description: string; eventDescription?: string; findingType?: string;
+    findings?: string; kp?: string | number; kpSource?: "ROV_DATA_STRING" | "CALCULATED";
+    northing?: string; easting?: string; depth?: string; cp_fg?: string; cp_fg_rdg?: string;
+    heading?: string; rov_heading?: string;
+  }) => {
+    if (!manualOverride) {
+      if (!activeDep?.id || activeDep?.id === "AWAITING") {
+        toast.error("Cannot capture event: Active Dive No. / ROV Job is required in Live Mode.");
+        return;
+      }
+      if (!tapeId || !tapeNo || vidState !== "RECORDING") {
+        toast.error("Cannot capture event: Active Video Tape and active Video Log recording are required in Live Mode.");
+        return;
+      }
+    }
+
+    const currentCounter = formatTime(vidTimer);
+    const navigSpec = allInspectionTypes.find(
+      (t: any) => t.id === 30 || (t.code && (t.code === "NAVIG" || t.code === "RNAVIG")) || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
+    );
+    const specCode = navigSpec?.code || "NAVIG";
+    const specId = (navigSpec?.id && navigSpec.id !== 1) ? navigSpec.id : 30;
+    setActiveSpec(specCode);
+
+    let targetComp = selectedComp;
+    if (!targetComp) {
+      targetComp = (componentsSow && componentsSow.length > 0) ? componentsSow[0] : null;
+    }
+
+    if (!targetComp && (isPipeline || headerData.structureType === "pipeline") && structureId) {
+      try {
+        const parsedStructId = parseInt(structureId);
+        const { data: existingComps } = await supabase
+          .from("structure_components")
+          .select("id, q_id, name, type")
+          .eq("structure_id", parsedStructId)
+          .limit(1);
+
+        if (existingComps && existingComps.length > 0) {
+          targetComp = { id: existingComps[0].id, q_id: existingComps[0].q_id || headerData.structureName || "PIPELINE-01", name: existingComps[0].name || headerData.structureName || "Pipeline Main Line", type: existingComps[0].type || "PIPELINE" };
+          setSelectedComp(targetComp);
+        } else {
+          const { data: createdComp, error: createErr } = await supabase
+            .from("structure_components")
+            .insert({ structure_id: parsedStructId, q_id: headerData.structureName || "PIPELINE-01", name: headerData.structureName || "Pipeline Main Line", type: "PIPELINE" })
+            .select("id, q_id, name, type").single();
+          if (!createErr && createdComp) { targetComp = createdComp; setSelectedComp(targetComp); }
+        }
+      } catch (compErr) {
+        console.warn("[handlePipelineEventSelect] Auto-creating Pipeline component warning:", compErr);
+      }
+    }
+
+    if (!targetComp?.id || targetComp.id === 999999) {
+      toast.error("Cannot save inspection event: A registered Component is required.");
+      return;
+    }
+
+    const validCompId = targetComp.id;
+    const validCompType = (isPipeline || headerData.structureType === "pipeline")
+      ? "PP"
+      : (targetComp?.raw?.code || targetComp?.raw?.metadata?.comp_type || targetComp?.type || "PP");
+
+    const now = new Date();
+    const formattedDate = now.toISOString().split("T")[0];
+    const formattedTime = now.toTimeString().split(" ")[0];
+
+    const eventProps = {
+      event_name: evtData.eventName, event_type: evtData.eventType,
+      event_position: evtData.eventPosition || evtData.actionName || evtData.eventCategory,
+      event_description: evtData.eventDescription || evtData.description,
+      findings: evtData.findings || "",
+      inspection_date: formattedDate, inspection_time: formattedTime,
+      flow_direction: inspectionDirection, insp_mode: inspectionLocation,
+      inspection_direction: inspectionDirection, inspection_location: inspectionLocation,
+      kp: evtData.kp || headerData.kp || "0.0000",
+      fp_kp: evtData.kp || headerData.kp || "0.0000",
+      northing: evtData.northing || "", easting: evtData.easting || "",
+      depth: evtData.depth || "", verification_depth: evtData.depth || "",
+      cp_fg_rdg: evtData.cp_fg_rdg || evtData.cp_fg || "",
+      cp_fg: evtData.cp_fg_rdg || evtData.cp_fg || "",
+      rov_heading: evtData.rov_heading || evtData.heading || "",
+      heading: evtData.rov_heading || evtData.heading || "",
+      tape_count_no: currentCounter, counter: currentCounter, _meta_timecode: currentCounter,
+    };
+
+    setDynamicProps((prev: any) => ({ ...prev, ...eventProps }));
+
+    try {
+      const userRes = await supabase.auth.getUser();
+      const user = userRes?.data?.user;
+      const evAny = evtData as any;
+      const isAnomaly = Boolean(evAny?.isAnomaly || evAny?.hasAnomaly || String(evAny?.status || "").toUpperCase() === "ANOMALY");
+
+      const recordPayload: Record<string, any> = {
+        company_id: activeCompanyId,
+        [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep?.id ? Number(activeDep.id) : null,
+        structure_id: structureId ? parseInt(structureId) : null,
+        component_id: validCompId,
+        component_type: validCompType,
+        jobpack_id: jobPackId ? parseInt(jobPackId) : null,
+        sow_report_no: headerData.sowReportNo || null,
+        inspection_type_id: specId,
+        inspection_type_code: specCode,
+        inspection_date: formattedDate, inspection_time: formattedTime,
+        status: isAnomaly ? "Anomaly" : "COMPLETED",
+        has_anomaly: isAnomaly,
+        tape_id: tapeId || null, tape_count_no: vidTimer,
+        elevation: eventProps.depth || null,
+        fp_kp: parseFloat(String(eventProps.kp)) || 0,
+        cr_user: user?.id || "system",
+        cr_date: now.toISOString(),
+        inspection_data: eventProps,
+      };
+
+      const { data: newRecord, error: insErr } = await supabase
+        .from("insp_records").insert(recordPayload).select("insp_id").single();
+
+      if (insErr) {
+        console.error("[handlePipelineEventSelect] Error inserting insp_records row:", insErr);
+        toast.error(`Event captured, but database insert failed: ${insErr.message}`);
+      } else if (newRecord) {
+        setEditingRecordId(newRecord.insp_id);
+        syncDeploymentState();
+        queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
+        queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+        toast.success(`Event captured & record #${newRecord.insp_id} created: ${evtData.eventName} > ${evtData.eventType}`);
+      }
+    } catch (err: any) {
+      console.error("[handlePipelineEventSelect] Unexpected error:", err);
+      toast.error(`Event captured locally: ${evtData.eventName}`);
+    }
+  }, [
+    manualOverride, activeDep, tapeId, tapeNo, vidState, vidTimer, formatTime,
+    allInspectionTypes, selectedComp, componentsSow, isPipeline, headerData, structureId,
+    supabase, inspectionDirection, inspectionLocation, activeCompanyId, inspMethod,
+    jobPackId, setDynamicProps, setActiveSpec, setSelectedComp, setEditingRecordId,
+    syncDeploymentState, queryClient,
+  ]);
+
 
   const layoutFactory = useCallback((node: TabNode) => {
     const component = node.getComponent();
@@ -7645,6 +7811,24 @@ function V10PreviewLayout() {
             handleEditRecord={handleEditRecord}
           />
         );
+      case "inspectionInfo":
+        return (
+          <PipelineInspectionInfoPanel
+            currentKp={headerData?.kp || "0.000"}
+            inspectionDirection={inspectionDirection}
+            inspectionLocation={inspectionLocation}
+            totalPipelineLength={selectedComp?.raw?.metadata?.length || selectedComp?.raw?.length || (headerData as any)?.totalLength || 0}
+            unitSystem={unitSystem}
+          />
+        );
+      case "quickShortcuts":
+        return (
+          <QuickShortcutsPanel
+            onSelectEvent={handlePipelineEventSelect}
+            currentKp={headerData?.kp || "0.000"}
+            inspMethod={inspMethod}
+          />
+        );
       default:
         return <div className="p-4 text-slate-500">Panel {name} under construction</div>;
     }
@@ -7755,6 +7939,9 @@ function V10PreviewLayout() {
     handleComponentSelection,
     structureId,
     unitSystem,
+    inspectionDirection,
+    inspectionLocation,
+    selectedComp,
   ]);
 
   // --- AUTO-EDIT FROM URL PARAMETERS ---
@@ -7834,6 +8021,7 @@ function V10PreviewLayout() {
         generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
         generateRCONDReport={() => setRcondPreviewOpen(true)}
         generateRCONDSketchReport={() => setRcondSketchPreviewOpen(true)}
+        generatePipelineEventSketchReport={() => setPipelineEventSketchPreviewOpen(true)}
         generateBLReport={() => setBlPreviewOpen(true)}
         generateRGReport={generateRGReport}
         generateSGReport={generateSGReport}
@@ -8367,6 +8555,7 @@ function V10PreviewLayout() {
           divingAnmainPreviewOpen,
           rgviPreviewOpen,
           rcondSketchPreviewOpen,
+          pipelineEventSketchPreviewOpen,
           showRemovalConfirm,
           editingRecordId,
           pendingReclass,
@@ -8499,6 +8688,7 @@ function V10PreviewLayout() {
           setRcondPreviewOpen,
           setRcasnPreviewOpen,
           setRcasnSketchPreviewOpen,
+          setPipelineEventSketchPreviewOpen,
           setRrisiPreviewOpen,
           setRrisiDetailPreviewOpen,
           setJtisiPreviewOpen,
@@ -8587,6 +8777,7 @@ function V10PreviewLayout() {
           generateRCASNSketchReportBlob,
           generateRCONDReportBlob,
           generateRCONDSketchReportBlob,
+          generatePipelineEventSketchReportBlob,
           generateSeabedReport,
           generateSeabedReportBlob,
           generateSeabedDetailReportBlob,

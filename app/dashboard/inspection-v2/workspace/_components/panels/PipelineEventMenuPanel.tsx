@@ -862,7 +862,7 @@ export const TOGGLE_PAIRS: Array<{ startId: string; endId: string; groupKey: str
 ];
 
 // Default Initial Most Frequent Shortcuts (Only Start events or standalone events)
-const INITIAL_SHORTCUT_IDS = [
+export const INITIAL_SHORTCUT_IDS = [
   "span_start",
   "anode_bracelet_0_25",
   "cp_stab_anode",
@@ -1986,59 +1986,6 @@ export function PipelineEventMenuPanel({
         <Badge variant="outline" className="text-[9px] font-semibold bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700/60 px-2 py-0.5 shadow-sm">
           {inspectionInfoSummary.posPrefix} {inspectionInfoSummary.curPosFormatted}
         </Badge>
-      </div>
-
-      {/* INSPECTION INFO Summary Card (Matching Reference Design) */}
-      <div className="bg-[#0b1626] border-b border-slate-800 px-3.5 py-2.5 shrink-0 text-slate-100 font-mono text-[11px] space-y-1 shadow-inner">
-        <div className="flex items-center justify-between pb-1 border-b border-slate-800/80 mb-1.5">
-          <span className="text-[11px] font-bold text-sky-400 tracking-wide font-sans">
-            INSPECTION INFO
-          </span>
-          <span className="w-3.5 h-3.5 rounded-full border border-sky-400/60 text-sky-400 flex items-center justify-center text-[9px] font-serif font-bold">
-            i
-          </span>
-        </div>
-
-        <div className="grid grid-cols-[115px_10px_1fr] items-center gap-y-1">
-          <span className="text-slate-300 font-sans">Current {inspectionInfoSummary.posPrefix}</span>
-          <span className="text-slate-400">:</span>
-          <span className="text-lime-400 font-bold">
-            {inspectionInfoSummary.completionText}
-          </span>
-
-          <span className="text-slate-300 font-sans">Inspection Flow</span>
-          <span className="text-slate-400">:</span>
-          <span className="text-lime-400 font-semibold">
-            {inspectionInfoSummary.flowLabel}
-          </span>
-
-          <span className="text-slate-300 font-sans">Next Field Joint</span>
-          <span className="text-slate-400">:</span>
-          <span className="text-lime-400">
-            {inspectionInfoSummary.nextFj.kpStr}{" "}
-            <span className="text-lime-300/80 text-[10px] font-normal">
-              {inspectionInfoSummary.nextFj.distStr}
-            </span>
-          </span>
-
-          <span className="text-slate-300 font-sans">Next Anode</span>
-          <span className="text-slate-400">:</span>
-          <span className="text-lime-400">
-            {inspectionInfoSummary.nextAnode.kpStr}{" "}
-            <span className="text-lime-300/80 text-[10px] font-normal">
-              {inspectionInfoSummary.nextAnode.distStr}
-            </span>
-          </span>
-
-          <span className="text-slate-300 font-sans">Next Crossing</span>
-          <span className="text-slate-400">:</span>
-          <span className="text-lime-400">
-            {inspectionInfoSummary.nextCrossing.kpStr}{" "}
-            <span className="text-lime-300/80 text-[10px] font-normal">
-              {inspectionInfoSummary.nextCrossing.distStr}
-            </span>
-          </span>
-        </div>
       </div>
 
       {/* Active Events Quick Stop Pill Buttons (All side-by-side in 1 Row) */}

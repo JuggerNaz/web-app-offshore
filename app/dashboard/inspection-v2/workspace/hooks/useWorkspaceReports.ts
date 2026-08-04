@@ -55,6 +55,7 @@ import { generateDivingDCASNReport as generateDivingDCASNReportTemplate } from "
 import { generateDivingDCONDUWReport as generateDivingDCONDUWReportTemplate } from "@/utils/report-generators/diving-dcond-uw-report";
 import { generateDivingDCONDTSReport as generateDivingDCONDTSReportTemplate } from "@/utils/report-generators/diving-dcond-ts-report";
 import { generateDivingDCONDReport as generateDivingDCONDReportTemplate } from "@/utils/report-generators/diving-dcond-report";
+import { generatePipelineEventSketchReport } from "@/utils/report-generators/pipeline-event-sketch-report";
 
 import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
 
@@ -124,6 +125,7 @@ export function useWorkspaceReports(
     const [szonePreviewOpen, setSzonePreviewOpen] = useState(false);
     const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
     const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
+    const [pipelineEventSketchPreviewOpen, setPipelineEventSketchPreviewOpen] = useState(false);
     const [divingAnodePreviewOpen, setDivingAnodePreviewOpen] = useState(false);
     const [divingAnmainPreviewOpen, setDivingAnmainPreviewOpen] = useState(false);
     const [divingMgiPreviewOpen, setDivingMgiPreviewOpen] = useState(false);
@@ -2109,6 +2111,41 @@ export function useWorkspaceReports(
         return await generateROVCondSketchReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId) }) as Blob;
     };
 
+    const generatePipelineEventSketchReportHandler = async () => {
+        setPipelineEventSketchPreviewOpen(true);
+    };
+
+    const generatePipelineEventSketchReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const settings = await getReportHeaderData();
+        const { data: jobPackData } = await supabase.from('jobpack').select('*, metadata').eq('id', Number(jobPackId)).maybeSingle();
+        let contractorLogoUrl = '';
+        if (jobPackData?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPackData?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        const { data: structData } = await supabase.from('structure').select('*').eq('id', Number(structureId)).maybeSingle();
+
+        return await generatePipelineEventSketchReport(
+            jobPackData || { id: Number(jobPackId) },
+            structData || { id: Number(structureId), str_name: headerData?.platformName },
+            headerData?.sowReportNo || 'N/A',
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                returnBlob: true,
+                printFriendly,
+                showSignatures: showSignatures ?? reportConfig.showSignatures,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId),
+                sowReportNo: headerData?.sowReportNo,
+                headerData: { ...headerData, contractorLogoUrl },
+                preparedBy: reportConfig.preparedBy,
+                reviewedBy: reportConfig.reviewedBy,
+                approvedBy: reportConfig.approvedBy
+            },
+            currentRecords
+        ) as Blob;
+    };
+
 
 
     const generatePhotographyReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
@@ -2797,6 +2834,46 @@ export function useWorkspaceReports(
                 { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), returnBlob: true },
                 supabase
             );
+        },
+        pipelineEventSketchPreviewOpen,
+        setPipelineEventSketchPreviewOpen,
+        generatePipelineEventSketchReport: async () => {
+            setPipelineEventSketchPreviewOpen(true);
+        },
+        generatePipelineEventSketchReportBlob: async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata, name').eq('id', Number(jobPackId)).maybeSingle();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+
+            const { data: structData } = await supabase.from('u_pipegeo').select('*').eq('structure_id', Number(structureId)).maybeSingle();
+
+            return await generatePipelineEventSketchReport(
+                jobPack || { name: headerData.jobpackName },
+                structData || { str_name: headerData.platformName },
+                headerData.sowReportNo,
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                {
+                    ...reportConfig,
+                    printFriendly: printFriendly || false,
+                    showSignatures: showSignatures ?? reportConfig.showSignatures,
+                    returnBlob: true,
+                    structureId: Number(structureId),
+                    sowReportNo: headerData.sowReportNo,
+                    headerData: {
+                        date: new Date().toLocaleDateString('en-GB'),
+                        jobpackName: headerData.jobpackName,
+                        sowReportNo: headerData.sowReportNo,
+                        platformName: headerData.platformName,
+                        contractorLogoUrl,
+                        vessel: headerData.vessel
+                    }
+                },
+                currentRecords
+            ) as Blob;
         },
         generateInspectionReportByType,
         generateFullInspectionReport,

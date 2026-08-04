@@ -84,6 +84,7 @@ interface InspectionHeaderProps {
     generateRCASNSketchReport: () => void;
     generateRCONDReport: () => void;
     generateRCONDSketchReport: () => void;
+    generatePipelineEventSketchReport?: () => void;
     generateBLReport: () => void;
     generateRGReport: () => void;
     generateSGReport: () => void;
@@ -142,6 +143,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateRCASNSketchReport,
     generateRCONDReport,
     generateRCONDSketchReport,
+    generatePipelineEventSketchReport,
     generateBLReport,
     generateRGReport,
     generateSGReport,
@@ -248,8 +250,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800">
             <div className="flex items-center gap-3 flex-wrap">
                 <Link href="/dashboard/inspection-v2">
-                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8">
-                        <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                        <ArrowLeft className="w-4 h-4" /> <span>Back</span>
                     </Button>
                 </Link>
                 <div className="h-5 w-px bg-slate-700"></div>
@@ -259,7 +261,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                 </h1>
                 <div className="h-5 w-px bg-slate-700"></div>
 
-                <div className="flex bg-slate-800 rounded p-1">
+                <div className="flex bg-slate-800 rounded-md p-0.5 border border-slate-700 h-8 items-center">
                     <button
                         onClick={() => {
                             setInspMethod("DIVING");
@@ -267,7 +269,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             params.set("mode", "DIVING");
                             router.replace(`?${params.toString()}`);
                         }}
-                        className={`px-3 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        className={`px-3 py-1 h-7 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
                     >
                         DIVING
                     </button>
@@ -278,7 +280,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             params.set("mode", "ROV");
                             router.replace(`?${params.toString()}`);
                         }}
-                        className={`px-3 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        className={`px-3 py-1 h-7 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
                     >
                         ROV
                     </button>
@@ -286,12 +288,12 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
 
                 {/* Pipeline Inspection Preset Dropdowns */}
                 {isPipeline && (
-                    <div className="flex items-center gap-2 bg-slate-950/60 p-1 rounded-md border border-slate-800">
+                    <div className="flex items-center gap-2 bg-slate-950/60 p-0.5 rounded-md border border-slate-800 h-8">
                         {/* Inspection Direction Selector */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-                                    <ArrowRightLeft className="w-3 h-3 text-emerald-400" />
+                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm rounded">
+                                    <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-400" />
                                     <span>DIR: <strong className="text-emerald-300 ml-0.5">{inspectionDirection}</strong></span>
                                     <ChevronDown className="w-3 h-3 text-slate-400" />
                                 </Button>
@@ -311,8 +313,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         {/* Inspection Location / Target Selector */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-                                    <Layers className="w-3 h-3 text-cyan-400" />
+                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm rounded">
+                                    <Layers className="w-3.5 h-3.5 text-cyan-400" />
                                     <span>LOC: <strong className="text-cyan-300 ml-0.5">{inspectionLocation}</strong></span>
                                     <ChevronDown className="w-3 h-3 text-slate-400" />
                                 </Button>
@@ -419,45 +421,69 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                 </DialogContent>
             </Dialog>
 
-            <div className="flex gap-2">
-                {onOpenGeodetic && (
+            <div className="flex gap-2 items-center">
+                {onOpenGeodetic && isPipeline && (
                     <Button
                         variant="outline"
                         size="sm"
-                        className="bg-blue-950/60 border-blue-700/60 text-blue-300 hover:bg-blue-900/70 hover:text-white h-8 font-bold shadow-md"
+                        className="bg-blue-950/60 border-blue-700/60 text-blue-300 hover:bg-blue-900/70 hover:text-white h-8 w-8 p-0 rounded-md font-bold shadow-md flex items-center justify-center shrink-0"
                         onClick={onOpenGeodetic}
                         title="Geodetic Parameters (Global Positioning & Survey Reference)"
                     >
-                        <Globe className="w-4 h-4 mr-1.5 text-blue-400" /> Geodetic
+                        <Globe className="w-4 h-4 text-blue-400" />
                     </Button>
                 )}
 
                 <Button
                     variant="outline"
                     size="sm"
-                    className="bg-gradient-to-r from-cyan-600 to-teal-600 border-cyan-500 text-white hover:from-cyan-500 hover:to-teal-500 hover:text-white h-8 font-bold shadow-md shadow-cyan-900/30"
+                    className="bg-gradient-to-r from-cyan-600 to-teal-600 border-cyan-500 text-white hover:from-cyan-500 hover:to-teal-500 hover:text-white h-8 px-2.5 rounded-md font-bold shadow-md shadow-cyan-900/30 flex items-center gap-1.5 text-[11px]"
                     onClick={onSummaryOpen}
+                    title="Inspection Summary Dashboard"
                 >
-                    <BarChart3 className="w-4 h-4 mr-2" /> Inspection Summary
+                    <BarChart3 className="w-4 h-4" /> <span>Inspection Summary</span>
                 </Button>
 
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"
-                    onClick={() => setIsReportWizardOpen(true)}
-                >
-                    <Printer className="w-4 h-4 mr-2" /> Reports
-                </Button>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8 px-2.5 rounded-md flex items-center gap-1.5 text-[11px] font-bold"
+                            title="Reports Wizard & Report Templates"
+                        >
+                            <Printer className="w-4 h-4 text-cyan-400" /> <span>Reports</span> <ChevronDown className="w-3 h-3 text-slate-400" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64 bg-slate-900 border-slate-700 text-slate-200 shadow-xl">
+                        <DropdownMenuItem 
+                            onClick={() => setIsReportWizardOpen(true)}
+                            className="text-xs font-bold hover:bg-slate-800 cursor-pointer py-2 text-cyan-400 flex items-center gap-2"
+                        >
+                            <Printer className="w-4 h-4 text-cyan-400" /> Open Report Wizard...
+                        </DropdownMenuItem>
+                        {generatePipelineEventSketchReport && (
+                            <>
+                                <div className="my-1 border-t border-slate-800" />
+                                <DropdownMenuItem 
+                                    onClick={generatePipelineEventSketchReport}
+                                    className="text-xs font-medium hover:bg-slate-800 cursor-pointer py-2 text-slate-200 flex items-center gap-2"
+                                >
+                                    <Compass className="w-4 h-4 text-teal-400" /> Pipeline Event Sketch Report
+                                </DropdownMenuItem>
+                            </>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
  
                 {jobPackId && structureId ? (
-                    <div className="flex bg-slate-800 rounded p-0.5 border border-slate-700">
+                    <div className="flex items-center bg-slate-800 rounded-md p-0.5 border border-slate-700 h-8">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button 
                                     variant="ghost" 
                                     size="sm" 
-                                    className="text-slate-300 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 hover:bg-slate-700/50"
+                                    className="text-slate-300 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 hover:bg-slate-700/50 rounded"
                                     title="Dock station window settings and layout control"
                                 >
                                     <LayoutGrid className="w-3.5 h-3.5 text-blue-400" />
@@ -507,7 +533,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         <Button 
                             variant="ghost" 
                             size="sm" 
-                            className="bg-blue-600/90 text-white hover:bg-blue-600 h-7 px-3 text-[10px] font-black uppercase tracking-widest"
+                            className="bg-blue-600/90 text-white hover:bg-blue-600 h-7 px-2.5 text-[10px] font-black uppercase tracking-widest rounded"
                             onClick={() => {
                                 const structType = headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM';
                                 const currentUrl = window.location.href;
@@ -515,11 +541,11 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 router.push(`/dashboard/jobpack/${jobPackId}?tab=sow&structure=${structType}-${structureId}&returnTo=${returnTo}`);
                             }}
                         >
-                            <Grid3X3 className="w-3.5 h-3.5 mr-1.5" /> Workspace
+                            <Grid3X3 className="w-3.5 h-3.5 mr-1" /> Workspace
                         </Button>
                     </div>
                 ) : (
-                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-400 h-8 cursor-not-allowed opacity-50" disabled>
+                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-400 h-8 cursor-not-allowed opacity-50 rounded-md" disabled>
                         <Grid3X3 className="w-4 h-4 mr-2" /> Workspace
                     </Button>
                 )}

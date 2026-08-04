@@ -135,6 +135,7 @@ interface WorkspaceDialogsProps {
         divingAnmainPreviewOpen: boolean;
         rgviPreviewOpen: boolean;
         rcondSketchPreviewOpen: boolean;
+        pipelineEventSketchPreviewOpen?: boolean;
         showRemovalConfirm: boolean;
         editingRecordId: number | null;
         pendingReclass: any;
@@ -247,6 +248,7 @@ interface WorkspaceDialogsProps {
         setDivingAnmainPreviewOpen: (open: boolean) => void;
         setRgviPreviewOpen: (open: boolean) => void;
         setRcondSketchPreviewOpen: (open: boolean) => void;
+        setPipelineEventSketchPreviewOpen?: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
         setPendingReclass: (val: any) => void;
         setShowTaskSelector: (open: boolean) => void;
@@ -303,6 +305,7 @@ interface WorkspaceDialogsProps {
     
     // Handlers
     handlers: {
+        generatePipelineEventSketchReport?: () => void;
         handleEditEventSave: (time: string, action: string, eventTime: string) => void;
         handleSaveTapeEdit: () => void;
         handleRegisterAnomaly: () => void;
@@ -355,6 +358,7 @@ interface WorkspaceDialogsProps {
         generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generatePipelineEventSketchReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSeabedReport: (templateId?: string) => Promise<void>;
         generateSeabedReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSeabedDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -480,6 +484,7 @@ export function WorkspaceDialogs({
         divingAnmainPreviewOpen,
         rgviPreviewOpen,
         rcondSketchPreviewOpen,
+        pipelineEventSketchPreviewOpen,
         showRemovalConfirm,
         editingRecordId,
         pendingReclass,
@@ -582,6 +587,7 @@ export function WorkspaceDialogs({
         setDivingAnmainPreviewOpen,
         setRgviPreviewOpen,
         setRcondSketchPreviewOpen,
+        setPipelineEventSketchPreviewOpen,
         setShowRemovalConfirm,
         setPendingReclass,
         setShowTaskSelector,
@@ -671,6 +677,7 @@ export function WorkspaceDialogs({
         generateRCASNSketchReportBlob,
         generateRCONDReportBlob,
         generateRCONDSketchReportBlob,
+        generatePipelineEventSketchReportBlob,
         generateSeabedReport,
         generateSeabedReportBlob,
         generateSeabedDetailReportBlob,
@@ -2747,6 +2754,17 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={pipelineEventSketchPreviewOpen || false} 
+                onOpenChange={setPipelineEventSketchPreviewOpen || (() => {})} 
+                title="Pipeline Navigation Event Sketch Report Preview" 
+                fileName={`Pipeline_Event_Sketch_Report_${headerData.sowReportNo}`} 
+                generateReport={generatePipelineEventSketchReportBlob || (async () => {})} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={seabedPreviewOpen}
                 onOpenChange={setSeabedPreviewOpen}
                 title={(() => {
@@ -3235,6 +3253,7 @@ export function WorkspaceDialogs({
                     generateRCASNSketchReport: () => setters.setRcasnSketchPreviewOpen(true),
                     generateRCONDReport: () => setters.setRcondPreviewOpen(true),
                     generateRCONDSketchReport: () => setters.setRcondSketchPreviewOpen(true),
+                    generatePipelineEventSketchReport: () => setters.setPipelineEventSketchPreviewOpen ? setters.setPipelineEventSketchPreviewOpen(true) : handlers.generatePipelineEventSketchReport?.(),
                     generateBLReport: () => setters.setBlPreviewOpen(true),
                     generateRGReport: () => setters.setRgPreviewOpen(true),
                     generateSGReport: () => setters.setSgPreviewOpen(true),
@@ -3315,8 +3334,28 @@ export function WorkspaceDialogs({
                             case 'RG': setters.setRgPreviewOpen(true); break;
                             case 'SG': setters.setSgPreviewOpen(true); break;
                             case 'CU': setters.setCuPreviewOpen(true); break;
+                            case 'PIPE-EVT-S':
+                            case 'PIPE_EVT_S':
+                            case 'PIPELINE_EVENT_SKETCH': setters.setPipelineEventSketchPreviewOpen?.(true); break;
                             default: toast.error("No preview available for type " + code);
                         }
+                    }
+                }}
+            />
+
+            {/* ── PIPELINE EVENT LIST SKETCH REPORT PREVIEW DIALOG ────────────── */}
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={pipelineEventSketchPreviewOpen || false}
+                onOpenChange={(open) => setPipelineEventSketchPreviewOpen?.(open)}
+                title="Pipeline Event List Sketch Report Preview"
+                fileName={`Pipeline_Event_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                generateReport={async (pf, ss) => {
+                    if (generatePipelineEventSketchReportBlob) {
+                        return await generatePipelineEventSketchReportBlob(pf, ss);
                     }
                 }}
             />

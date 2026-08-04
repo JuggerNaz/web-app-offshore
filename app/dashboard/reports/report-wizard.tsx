@@ -24,8 +24,10 @@ import {
     Search,
     X,
     LayoutGrid,
-    List
+    List,
+    Compass
 } from "lucide-react";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
@@ -146,6 +148,7 @@ export const REPORT_TEMPLATES = {
         { id: "rov-rcond-report", name: "Conductor Survey Report (ROV)",  icon: FileBarChart, description: "Portrait Conductor Survey report — grouped by Conductor (CD) with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcasn-sketch-report", name: "Caisson Survey (Sketch) Report (ROV)", icon: FileBarChart, description: "Detailed ROV Caisson inspection with graphical elevation profiles and terminator sketch", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcond-sketch-report", name: "Conductor Survey (Sketch) Report (ROV)", icon: FileBarChart, description: "Detailed ROV Conductor inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "pipeline-event-sketch-report", name: "Pipeline Event List Sketch Report", icon: Compass, description: "Landscape Pipeline Navigation event list sketch report with graphical KP pipeline elevation profile, span/burial profiles, geodetic header, and matched event table", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-bl-report", name: "Boatlanding Survey Report (ROV)", icon: FileBarChart, description: "Portrait Boatlanding Survey report — grouped by Boatlanding (BL) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rg-report", name: "Riser Guard Survey Report (ROV)", icon: FileBarChart, description: "Portrait Riser Guard Survey report — grouped by Riser Guard (RG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-sg-report", name: "Caisson Guard Survey Report (ROV)", icon: FileBarChart, description: "Portrait Caisson Guard Survey report — grouped by Caisson Guard (SG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
@@ -258,7 +261,8 @@ const TOC_SECTIONS = [
   { id: 10, name: "Base Level Survey (Scour Survey)", templates: [
       { id: "rov-scour-report", name: "Scour Survey Report (ROV)", mode: "ROV" }
   ]},
-  { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
+  { id: 11, name: "Pipeline Navigation & Seabed Event Survey", templates: [
+      { id: "pipeline-event-sketch-report", name: "Pipeline Event List Sketch Report", mode: "General" },
       { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
       { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", mode: "General" },
       { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", mode: "General" },
@@ -1627,6 +1631,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
             const { generateROVCondReport }  = await import("@/utils/report-generators/rov-rcond-report");
             const { generateROVCondSketchReport } = await import("@/utils/report-generators/rov-rcond-sketch-report");
+            const { generatePipelineEventSketchReport } = await import("@/utils/report-generators/pipeline-event-sketch-report");
             const { generateROVBoatlandingReport } = await import("@/utils/report-generators/rov-boatlanding-report");
             const { generateROVRiserGuardReport } = await import("@/utils/report-generators/rov-riser-guard-report");
             const { generateROVCaissonGuardReport } = await import("@/utils/report-generators/rov-caisson-guard-report");
@@ -1854,6 +1859,77 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             return await generateVideoLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
+        }
+
+        // Pipeline Event List Sketch Report
+        if (currentTemplateId === "pipeline-event-sketch-report" || currentTemplateId === "pipeline_event_sketch_report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
+
+            let records: any[] = [];
+            if (!selections.printBlankReport && selections.structureId) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    const structId = Number(selections.structureId);
+                    let q = supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            structure_components:component_id(id, q_id, code, metadata)
+                        `)
+                        .eq('structure_id', structId)
+                        .order('insp_id', { ascending: true });
+
+                    if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                        q = q.eq('sow_report_no', selections.sowReportNo);
+                    }
+
+                    const { data } = await q;
+                    if (data && data.length > 0) {
+                        records = data;
+                    } else {
+                        // Fallback query without sow_report_no filter
+                        const { data: allStrRecords } = await supabase
+                            .from('insp_records')
+                            .select(`
+                                *,
+                                structure_components:component_id(id, q_id, code, metadata)
+                            `)
+                            .eq('structure_id', structId)
+                            .order('insp_id', { ascending: true });
+                        if (allStrRecords) records = allStrRecords;
+                    }
+                } catch (err) {
+                    console.error("Error fetching records for pipeline event sketch report", err);
+                }
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack.metadata.contrac).maybeSingle();
+                    contractorLogoUrl = contrData?.logo_url || "";
+                } catch (e) {}
+            }
+            const headerData = {
+                date: format(new Date(), "dd/MM/yyyy"),
+                jobpackName: jobPack?.name || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure?.str_name || structure?.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generatePipelineEventSketchReport(
+                jobPack || {},
+                structure || {},
+                selections.sowReportNo || "N/A",
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: Number(selections.structureId), sowReportNo: selections.sowReportNo, headerData } as any,
+                records
+            );
         }
 
         // Seabed Survey Reports
