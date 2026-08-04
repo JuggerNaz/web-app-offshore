@@ -15,7 +15,8 @@ import {
     Waves,
     RefreshCw,
     X,
-    AlertTriangle
+    AlertTriangle,
+    Printer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ const Structural3DViewer = dynamic(
 );
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { WincairsFallbackDialog } from "@/components/dialogs/wincairs-fallback-dialog";
+import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 
@@ -76,6 +78,7 @@ export default function Platform3DPage() {
     const [useWincairsMode, setUseWincairsMode] = useState(false);
     const [fallbackComponents, setFallbackComponents] = useState<any[]>([]);
     const [isFallbackDialogOpen, setIsFallbackDialogOpen] = useState(false);
+    const [isPrintFaceDialogOpen, setIsPrintFaceDialogOpen] = useState(false);
     const [isResyncing3D, setIsResyncing3D] = useState(false);
 
     const [, setGlobalUrlId] = useAtom(urlId);
@@ -335,21 +338,16 @@ export default function Platform3DPage() {
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
-                        {/* WINCAIRS Mode Toggle Button */}
+                        {/* Print Face Button */}
                         <Button
-                            variant={useWincairsMode ? "default" : "outline"}
+                            variant="outline"
                             size="sm"
-                            onClick={() => setUseWincairsMode(!useWincairsMode)}
-                            className={cn(
-                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all shadow-sm",
-                                useWincairsMode
-                                    ? "bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)]"
-                                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                            )}
-                            title="Toggle WINCAIRS 3D Vector Rendering Mode"
+                            onClick={() => setIsPrintFaceDialogOpen(true)}
+                            className="h-9 px-3 gap-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)] transition-all"
+                            title="Print 2D CAD Structural Elevation Sketch for Selected Platform Face"
                         >
-                            <Layers className="h-3.5 w-3.5" />
-                            <span>WINCAIRS Mode: {useWincairsMode ? "ON" : "OFF"}</span>
+                            <Printer className="h-3.5 w-3.5" />
+                            <span>Print Face</span>
                         </Button>
 
                         {/* Fallback Warning Badge */}
@@ -452,6 +450,17 @@ export default function Platform3DPage() {
                     fallbackComponents={fallbackComponents}
                     platformTitle={selectedPlatform.title}
                     onSelectComponent={handleSelectComponent}
+                />
+
+                {/* Print Face Selection Dialog */}
+                <PrintFaceDialog
+                    isOpen={isPrintFaceDialogOpen}
+                    onClose={() => setIsPrintFaceDialogOpen(false)}
+                    platformTitle={selectedPlatform.title}
+                    faces={faces}
+                    componentLayouts={webapp3dData?.components && webapp3dData.components.length > 0 ? webapp3dData.components : (components || [])}
+                    foundationMembers={webapp3dData?.foundationMembers || []}
+                    elevations={elevations}
                 />
             </div>
         );

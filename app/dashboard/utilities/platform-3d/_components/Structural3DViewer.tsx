@@ -47,6 +47,33 @@ interface Structural3DViewerProps {
     onFallbackComponentsChange?: (fallbackComps: Component3D[]) => void;
 }
 
+function parseRiserClampInfo(qId: string) {
+    if (!qId) return null;
+    const clean = qId.toUpperCase().trim();
+
+    // Matches formats like: RIS-7-SUPP-20M, RIS-2-SUPP 3M, RIS-2-SUPP-35M, RIS-2-SUPP-+3M, RIS-2-CLP-20M
+    const match = clean.match(/RIS[-_]?(\d+)[-_]?(?:SUPP|CLP|CLAMP)[-_ ]*(\+|-)?\s*(\d+(?:\.\d+)?)M?/i);
+    if (!match) return null;
+
+    const riserNum = match[1];
+    const explicitSign = match[2];
+    const rawElv = parseFloat(match[3]);
+
+    if (isNaN(rawElv)) return null;
+
+    let targetY = rawElv;
+    if (explicitSign === "+") {
+        targetY = rawElv;
+    } else if (explicitSign === "-") {
+        targetY = -rawElv;
+    } else {
+        const isSpacePositive = /SUPP\s+\d+/i.test(clean) || /CLP\s+\d+/i.test(clean);
+        targetY = isSpacePositive ? rawElv : -rawElv;
+    }
+
+    return { riserNum, targetY };
+}
+
 const ComponentMesh = ({
     component,
     isSelected,
@@ -59,6 +86,7 @@ const ComponentMesh = ({
     inspectionStatus = "NOT_INSPECTED",
     isStatusChecked = true,
     inspectionColor,
+    allLayouts = [],
 }: {
     component: Component3D;
     isSelected: boolean;
@@ -71,6 +99,7 @@ const ComponentMesh = ({
     inspectionStatus?: "NOT_INSPECTED" | "NO_ANOMALY" | "HAS_ANOMALY";
     isStatusChecked?: boolean;
     inspectionColor?: string;
+    allLayouts?: any[];
 }) => {
     const [hovered, setHovered] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
@@ -86,8 +115,9 @@ const ComponentMesh = ({
     const isRiser = !isAnode && !isRiserSupport && !isCaisson && (
         code === "RS" ||
         code.includes("RISER") || code.includes("RISR") ||
+        qIdUpper.includes("RISER") || qIdUpper.includes("RISR") ||
         /^R\d+[-_]/i.test(qIdUpper) ||
-        (qIdUpper.startsWith("R") && !qIdUpper.startsWith("RIS-"))
+        (qIdUpper.startsWith("R") && !qIdUpper.startsWith("RIS-") && !qIdUpper.startsWith("ROW"))
     );
     const isConductor = code === "CD" || isCaisson || code.includes("COND") || code === "CO";
 
@@ -96,7 +126,7 @@ const ComponentMesh = ({
         : isWeld
             ? "#d946ef"
             : isClamp
-                ? "#d97706"
+                ? "#f97316"
                 : isRiser
                     ? "#334155"
                     : isConductor
@@ -123,7 +153,9 @@ const ComponentMesh = ({
             ? "#ef4444"
             : isWeld
                 ? "#a21caf"
-                : "#000000";
+                : isClamp
+                    ? "#ea580c"
+                    : "#000000";
 
     const emissiveInt = isSelected
         ? 0.6
@@ -131,7 +163,9 @@ const ComponentMesh = ({
             ? 0.5
             : isWeld
                 ? 0.4
-                : 0;
+                : isClamp
+                    ? 0.3
+                    : 0;
 
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
@@ -141,9 +175,41 @@ const ComponentMesh = ({
         baseThickness = 0.3;
     }
 
-    const length = startVec.distanceTo(endVec);
-    const position = startVec.clone().add(endVec).multiplyScalar(0.5);
-    const direction = endVec.clone().sub(startVec).normalize();
+    let length = startVec.distanceTo(endVec);
+    let position = startVec.clone().add(endVec).multiplyScalar(0.5);
+    let direction = endVec.clone().sub(startVec).normalize();
+
+    if (isRiser) {
+        const isStartTop = startVec.y >= endVec.y;
+        const topVec = isStartTop ? startVec : endVec;
+        const bottomVec = isStartTop ? endVec : startVec;
+
+        const dX = Math.abs(bottomVec.x - topVec.x);
+        const dZ = Math.abs(bottomVec.z - topVec.z);
+
+        let offsetStart: THREE.Vector3;
+        let offsetEnd: THREE.Vector3;
+
+        if (dZ >= dX) {
+            // Front / Back Face (Row 1 / Row 2) - Batter along Z plane
+            const signZ = Math.sign(topVec.z) || 1;
+            const outwardDir = new THREE.Vector3(0, 0, signZ);
+
+            offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+            offsetEnd = new THREE.Vector3(topVec.x, bottomVec.y, bottomVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+        } else {
+            // Side Face (Row A / Row B) - Batter along X plane
+            const signX = Math.sign(topVec.x) || 1;
+            const outwardDir = new THREE.Vector3(signX, 0, 0);
+
+            offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+            offsetEnd = new THREE.Vector3(bottomVec.x, bottomVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+        }
+
+        position = offsetStart.clone().add(offsetEnd).multiplyScalar(0.5);
+        direction = offsetEnd.clone().sub(offsetStart).normalize();
+        length = offsetStart.distanceTo(offsetEnd);
+    }
 
     if (isAnode) baseThickness = 0.15;
     else if (isClamp) baseThickness = baseThickness * 1.8;
@@ -211,20 +277,51 @@ const ComponentMesh = ({
 
         // Tangent rotation angle for anode group orientation
         anodeRotY = Math.atan2(ox, oz);
-    } else if (isRiser || isClamp) {
-        // Calculate outward radial vector away from platform center (0, 0, 0)
-        const legMid = startVec.clone().add(endVec).multiplyScalar(0.5);
-        const outwardDir = new THREE.Vector3(legMid.x, 0, legMid.z).normalize();
+    } else if (isClamp) {
+        direction = new THREE.Vector3(0, 1, 0);
 
-        // Enforce exact uniform fixed distance of 0.65m for all Riser components
-        const fixedRiserDist = 0.65;
-        const globalOffset = outwardDir.multiplyScalar(fixedRiserDist);
+        const clampInfo = parseRiserClampInfo(component?.q_id || "");
+        if (clampInfo && allLayouts && allLayouts.length > 0) {
+            const targetRiser = allLayouts.find((l: any) => {
+                const q = (l.component?.q_id || l.q_id || l.id || "").toString().toUpperCase();
+                return (
+                    q.includes(`R${clampInfo.riserNum}-`) ||
+                    q.includes(`R${clampInfo.riserNum}_`) ||
+                    q.includes(`RISER ${clampInfo.riserNum}`) ||
+                    q.includes(`RISER-${clampInfo.riserNum}`)
+                );
+            });
 
-        // Convert global offset back to local coordinates of the parent group
-        const localOffset = globalOffset.applyQuaternion(quaternion.clone().invert());
-        ox = localOffset.x;
-        oy = localOffset.y;
-        oz = localOffset.z;
+            if (targetRiser) {
+                const rStart = new THREE.Vector3(...(targetRiser.start || targetRiser.position || [0, 0, 0]));
+                const rEnd = new THREE.Vector3(...(targetRiser.end || targetRiser.position || rStart));
+
+                const isStartTop = rStart.y >= rEnd.y;
+                const topVec = isStartTop ? rStart : rEnd;
+                const bottomVec = isStartTop ? rEnd : rStart;
+
+                const dX = Math.abs(bottomVec.x - topVec.x);
+                const dZ = Math.abs(bottomVec.z - topVec.z);
+
+                let offsetStart: THREE.Vector3;
+                let offsetEnd: THREE.Vector3;
+
+                if (dZ >= dX) {
+                    const signZ = Math.sign(topVec.z) || 1;
+                    const outwardDir = new THREE.Vector3(0, 0, signZ);
+                    offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+                    offsetEnd = new THREE.Vector3(topVec.x, bottomVec.y, bottomVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+                } else {
+                    const signX = Math.sign(topVec.x) || 1;
+                    const outwardDir = new THREE.Vector3(signX, 0, 0);
+                    offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+                    offsetEnd = new THREE.Vector3(bottomVec.x, bottomVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+                }
+
+                const t = Math.max(0, Math.min(1, (clampInfo.targetY - offsetStart.y) / (offsetEnd.y - offsetStart.y || 1)));
+                position = offsetStart.clone().lerp(offsetEnd, t);
+            }
+        }
     }
 
     if (isNaN(ox)) ox = 0;
@@ -236,13 +333,21 @@ const ComponentMesh = ({
     const riserBendGeometry = useMemo(() => {
         if (!isRiser || isCaisson) return null;
 
-        const isEndLower = endVec.y <= startVec.y;
-        const bottomLocalY = isEndLower ? (safeMeshLength / 2) : (-safeMeshLength / 2);
-        const bottomYDir = isEndLower ? 1 : -1;
+        // Bottom of the cylinder in local space (when direction points downward) is at +safeMeshLength / 2 (seabed/mudline)
+        const bottomLocalY = safeMeshLength / 2;
+        const bottomYDir = 1;
 
         // Calculate global outward radial vector pointing away from platform center (0, 0, 0)
-        const legMid = startVec.clone().add(endVec).multiplyScalar(0.5);
-        const globalOutward = new THREE.Vector3(legMid.x, 0, legMid.z).normalize();
+        const isStartTop = startVec.y >= endVec.y;
+        const topVec = isStartTop ? startVec : endVec;
+        const bottomVec = isStartTop ? endVec : startVec;
+
+        const dX = Math.abs(bottomVec.x - topVec.x);
+        const dZ = Math.abs(bottomVec.z - topVec.z);
+        const signZ = Math.sign(topVec.z) || 1;
+        const signX = Math.sign(topVec.x) || 1;
+
+        const globalOutward = dZ >= dX ? new THREE.Vector3(0, 0, signZ) : new THREE.Vector3(signX, 0, 0);
 
         // Convert global outward direction to local coordinates of the component group
         const localOutward = globalOutward.applyQuaternion(quaternion.clone().invert()).normalize();
@@ -258,7 +363,7 @@ const ComponentMesh = ({
 
         const curve = new THREE.CatmullRomCurve3([p0, p1, p2, p3]);
         return new THREE.TubeGeometry(curve, 24, baseThickness > 0.3 ? 0.25 : baseThickness, 16, false);
-    }, [isRiser, startVec, endVec, safeMeshLength, baseThickness, quaternion]);
+    }, [isRiser, isCaisson, startVec, endVec, safeMeshLength, baseThickness, quaternion]);
 
     const hasNaN = [
         startVec.x,
@@ -528,7 +633,7 @@ const ComponentMesh = ({
                     {isSelected && (
                         <Outlines
                             thickness={0.08}
-                            color="#f97316"
+                            color="#2563eb"
                         />
                     )}
                     {hovered && !isSelected && (
@@ -547,7 +652,7 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
+                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]"
                                 : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
@@ -595,7 +700,7 @@ const ComponentMesh = ({
                     {isSelected && (
                         <Outlines
                             thickness={0.04}
-                            color="#f97316"
+                            color="#2563eb"
                         />
                     )}
                     {hovered && !isSelected && (
@@ -613,14 +718,14 @@ const ComponentMesh = ({
                                 emissive={emissiveColor}
                                 emissiveIntensity={emissiveInt}
                             />
-                            {isSelected && <Outlines thickness={0.04} color="#f97316" />}
+                            {isSelected && <Outlines thickness={0.04} color="#2563eb" />}
                             {hovered && !isSelected && <Outlines thickness={0.02} color="#38bdf8" />}
                         </mesh>
                     )}
                     {isClamp && (
                         <mesh position={[0, 0, 0]} castShadow receiveShadow>
-                            <boxGeometry args={[baseThickness + 0.4, 0.6, 0.05]} />
-                            <meshStandardMaterial color="#d97706" metalness={0.8} roughness={0.25} />
+                            <boxGeometry args={[baseThickness + 0.35, 0.6, baseThickness + 0.35]} />
+                            <meshStandardMaterial color="#f97316" emissive="#ea580c" emissiveIntensity={0.3} metalness={0.6} roughness={0.2} />
                         </mesh>
                     )}
                     {isAnode && (
@@ -689,18 +794,16 @@ const ComponentMesh = ({
                     <meshBasicMaterial transparent opacity={0} />
                 </mesh>
 
-                {showLabel && (
+                {showLabel && !isWeld && (
                     <Html
                         distanceFactor={15}
-                        position={[0, (isAnode || isWeld ? safeMeshLength : length) / 2 + 0.5, 0]}
+                        position={[0, (isAnode ? safeMeshLength : length) / 2 + 0.5, 0]}
                         center
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
                                 ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
-                                : isWeld
-                                    ? "bg-orange-500 text-white border-orange-400 scale-100 opacity-90 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
-                                    : "bg-white/90 text-blue-900 border-blue-200"
+                                : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
                             {labelText}
@@ -962,16 +1065,22 @@ function InstancedComponentViewer({
 
             const isFender = code === "FD" || code.includes("FEND");
             const isRiserGuard = code === "RG" || code.includes("RGUARD") || code.includes("RISG");
+            const isRiser =
+                code === "RS" ||
+                code.includes("RISER") || code.includes("RISR") ||
+                qIdUpper.includes("RISER") || qIdUpper.includes("RISR") ||
+                /^R\d+[-_]/i.test(qIdUpper) ||
+                (qIdUpper.startsWith("R") && !qIdUpper.startsWith("RIS-") && !qIdUpper.startsWith("ROW"));
 
-            if (isFender || isRiserGuard) {
+            const isClamp = code === "CL" || code.includes("CLAM") || (code === "SUPP" && qIdUpper.includes("RIS"));
+
+            if (isFender || isRiserGuard || isRiser || isClamp) {
                 custom.push({ ...layout, comp, code });
                 return;
             }
 
             const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
             const isNode = code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND";
-            const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL";
-            const isClamp = code === "CL" || code.includes("CLAM") || isRiserSupport;
 
             const item = { ...layout, comp, code, qIdUpper };
 
@@ -999,13 +1108,43 @@ function InstancedComponentViewer({
         cylinders.forEach((item, i) => {
             const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
             const end = new THREE.Vector3(...(item.end || item.position || [0, 0, 0]));
-            const len = Math.max(start.distanceTo(end), 0.01);
-            const pos = start.clone().add(end).multiplyScalar(0.5);
-            const dir = end.clone().sub(start).normalize();
+            const code = item.code || "";
+            const isRiser = code === "RS" || code.includes("RISER") || code.includes("RISR");
+            const isAnode = code === "AN" || code.includes("ANOD");
+
+            let len = Math.max(start.distanceTo(end), 0.01);
+            let pos = start.clone().add(end).multiplyScalar(0.5);
+            let dir = end.clone().sub(start).normalize();
+
+            if (isRiser) {
+                const isStartTop = start.y >= end.y;
+                const topVec = isStartTop ? start : end;
+                const bottomVec = isStartTop ? end : start;
+
+                const dX = Math.abs(bottomVec.x - topVec.x);
+                const dZ = Math.abs(bottomVec.z - topVec.z);
+
+                let offsetStart: THREE.Vector3;
+                let offsetEnd: THREE.Vector3;
+
+                if (dZ >= dX) {
+                    const signZ = Math.sign(topVec.z) || 1;
+                    const outwardDir = new THREE.Vector3(0, 0, signZ);
+                    offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+                    offsetEnd = new THREE.Vector3(topVec.x, bottomVec.y, bottomVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+                } else {
+                    const signX = Math.sign(topVec.x) || 1;
+                    const outwardDir = new THREE.Vector3(signX, 0, 0);
+                    offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+                    offsetEnd = new THREE.Vector3(bottomVec.x, bottomVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
+                }
+
+                pos = offsetStart.clone().add(offsetEnd).multiplyScalar(0.5);
+                dir = offsetEnd.clone().sub(offsetStart).normalize();
+                len = offsetStart.distanceTo(offsetEnd);
+            }
 
             let thickness = item.thickness || 0.3;
-            const code = item.code;
-            const isAnode = code === "AN" || code.includes("ANOD");
             if (isAnode) thickness = 0.15;
             const meshLen = isAnode ? 0.8 : len;
 
@@ -1020,7 +1159,6 @@ function InstancedComponentViewer({
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
             const isConductor = code === "CD" || code === "CS" || code.includes("COND") || code === "CO";
-            const isRiser = code === "RS" || code.includes("RISER") || code.includes("RISR");
 
             const defaultColor = isSelected
                 ? "#f97316"
@@ -1197,7 +1335,11 @@ function InstancedComponentViewer({
                 const s = w.start || w.position || [0, 0, 0];
                 const e = w.end || w.position || s;
                 const pos = [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2 + 0.3, (s[2] + e[2]) / 2] as [number, number, number];
-                const labelText = w.comp?.q_id || w.q_id || `WN${idx + 1}`;
+                
+                const rawLabel = w.comp?.q_id || w.q_id || `WN${idx + 1}`;
+                const match = rawLabel.match(/(?:WN\s*|N\s*)?(\d+)/i) || rawLabel.match(/N?([A-Za-z0-9]+)/);
+                const labelText = match ? match[1] : rawLabel.replace(/^[^\d]+/, "") || rawLabel;
+
                 const compId = w.comp?.id || w.id;
                 const isSelected = selectedCompId === compId;
 
@@ -1211,8 +1353,8 @@ function InstancedComponentViewer({
                             }}
                             className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border cursor-pointer transition-all shadow-md ${
                                 isSelected
-                                    ? "bg-orange-600 text-white border-orange-400 scale-110 opacity-100 z-20 shadow-[0_0_12px_rgba(249,115,22,0.6)]"
-                                    : "bg-orange-950/80 text-orange-200 border-orange-500/50 backdrop-blur-sm opacity-90 hover:opacity-100 hover:scale-105"
+                                    ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 z-20 shadow-[0_0_12px_rgba(37,99,235,0.6)]"
+                                    : "bg-slate-900/90 text-blue-300 border-blue-500/50 backdrop-blur-sm opacity-90 hover:opacity-100 hover:scale-105"
                             }`}
                         >
                             {labelText}
@@ -1287,6 +1429,7 @@ function InstancedComponentViewer({
                     inspectionStatus={selectedLayout.inspectionStatus}
                     isStatusChecked={true}
                     inspectionColor={selectedLayout.color}
+                    allLayouts={layouts}
                 />
             )}
             {/* Procedural Components (Fenders & Riser Guards) */}
@@ -1307,6 +1450,7 @@ function InstancedComponentViewer({
                     inspectionStatus={layout.inspectionStatus || "NOT_INSPECTED"}
                     isStatusChecked={selectedInspectionFilters.includes(layout.inspectionStatus || "NOT_INSPECTED")}
                     inspectionColor={layout.color}
+                    allLayouts={layouts}
                 />
             ))}
         </group>

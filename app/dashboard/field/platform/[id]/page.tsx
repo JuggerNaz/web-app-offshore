@@ -58,7 +58,7 @@ export default function DetailPage() {
 
   useEffect(() => {
     const resolvedType = Array.isArray(type) ? type[0] : type;
-    setPageId(parseInt(id as string) ?? 0);
+    setPageId(parseInt(id as string) || 0);
     setPageType(resolvedType || "platform");
   }, []);
 
