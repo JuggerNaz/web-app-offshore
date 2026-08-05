@@ -145,37 +145,72 @@ export const GET = withAuth(
       (mathResult.componentLayouts || []).forEach((m: any) => {
         const comp = m.component || m;
         if (comp.id) mathLayoutsByCompId.set(Number(comp.id), m);
-        if (comp.q_id) mathLayoutsByQId.set(comp.q_id.toUpperCase(), m);
+        if (comp.comp_id) mathLayoutsByCompId.set(Number(comp.comp_id), m);
+        if (comp.q_id) mathLayoutsByQId.set(comp.q_id.toUpperCase().trim(), m);
       });
 
       // Repair stored rows if their 3D coordinates are (0,0,0) or missing
       componentsToEnrich = componentsToEnrich.map((item: any) => {
-        const cid = Number(item.comp_id || item.structure_components?.id);
-        const qid = (item.q_id || item.structure_components?.q_id || "").toUpperCase();
-        const mathLayout = mathLayoutsByCompId.get(cid) || mathLayoutsByQId.get(qid);
+        const cid1 = Number(item.comp_id);
+        const cid2 = Number(item.structure_components?.id);
+        const qid = (item.q_id || item.structure_components?.q_id || "").toUpperCase().trim();
+        const mathLayout = mathLayoutsByCompId.get(cid1) || mathLayoutsByCompId.get(cid2) || mathLayoutsByQId.get(qid);
 
-        const isZero = (item.start_x === 0 || item.start_x === "0" || !item.start_x) &&
-                       (item.start_y === 0 || item.start_y === "0" || !item.start_y) &&
-                       (item.start_z === 0 || item.start_z === "0" || !item.start_z);
+        const code = (item.code || item.structure_components?.code || "").toUpperCase();
+        const isPile = code === "PL" || code === "PILE" || qid.includes("PILE");
 
-        if (isZero && mathLayout) {
-          const start = mathLayout.start || [0, 0, 0];
-          const end = mathLayout.end || [0, 0, 0];
-          const posX = (start[0] + end[0]) / 2;
-          const posY = (start[1] + end[1]) / 2;
-          const posZ = (start[2] + end[2]) / 2;
+        if (isPile) {
+          const sX = mathLayout?.start?.x ?? mathLayout?.start?.[0] ?? (item.start_x || 0);
+          let sY = mathLayout?.start?.y ?? mathLayout?.start?.[1] ?? (item.start_y || 0);
+          const sZ = mathLayout?.start?.z ?? mathLayout?.start?.[2] ?? (item.start_z || 0);
+
+          let eX = mathLayout?.end?.x ?? mathLayout?.end?.[0] ?? (item.end_x || sX);
+          let eY = mathLayout?.end?.y ?? mathLayout?.end?.[1] ?? (item.end_y || sY);
+          let eZ = mathLayout?.end?.z ?? mathLayout?.end?.[2] ?? (item.end_z || sZ);
+
+          if (sY === eY) {
+            eY = sY - 2.0;
+          }
+
           return {
             ...item,
-            start_x: start[0],
-            start_y: start[1],
-            start_z: start[2],
-            end_x: end[0],
-            end_y: end[1],
-            end_z: end[2],
-            pos_x: posX,
-            pos_y: posY,
-            pos_z: posZ,
-            thickness: mathLayout.thickness || item.thickness || 0.3,
+            start_x: sX,
+            start_y: sY,
+            start_z: sZ,
+            end_x: eX,
+            end_y: eY,
+            end_z: eZ,
+            pos_x: (sX + eX) / 2,
+            pos_y: (sY + eY) / 2,
+            pos_z: (sZ + eZ) / 2,
+            thickness: mathLayout?.thickness || 0.2,
+          };
+        }
+
+        const isZeroOrPoint = ((item.start_x === 0 || item.start_x === "0" || !item.start_x) &&
+                       (item.start_y === 0 || item.start_y === "0" || !item.start_y) &&
+                       (item.start_z === 0 || item.start_z === "0" || !item.start_z)) ||
+                       (item.start_x === item.end_x && item.start_y === item.end_y && item.start_z === item.end_z);
+
+        if (isZeroOrPoint && mathLayout) {
+          const sX = mathLayout.start?.x ?? mathLayout.start?.[0] ?? 0;
+          const sY = mathLayout.start?.y ?? mathLayout.start?.[1] ?? 0;
+          const sZ = mathLayout.start?.z ?? mathLayout.start?.[2] ?? 0;
+          const eX = mathLayout.end?.x ?? mathLayout.end?.[0] ?? sX;
+          const eY = mathLayout.end?.y ?? mathLayout.end?.[1] ?? sY;
+          const eZ = mathLayout.end?.z ?? mathLayout.end?.[2] ?? sZ;
+          return {
+            ...item,
+            start_x: sX,
+            start_y: sY,
+            start_z: sZ,
+            end_x: eX,
+            end_y: eY,
+            end_z: eZ,
+            pos_x: (sX + eX) / 2,
+            pos_y: (sY + eY) / 2,
+            pos_z: (sZ + eZ) / 2,
+            thickness: mathLayout.thickness || item.thickness || 0.2,
           };
         }
         return item;
@@ -194,26 +229,32 @@ export const GET = withAuth(
 
       if (missingMathLayouts.length > 0) {
         const extraEnriched = missingMathLayouts.map((m: any) => {
-          const start = m.start || [0, 0, 0];
-          const end = m.end || [0, 0, 0];
-          const posX = (start[0] + end[0]) / 2;
-          const posY = (start[1] + end[1]) / 2;
-          const posZ = (start[2] + end[2]) / 2;
+          const sX = m.start?.x ?? m.start?.[0] ?? 0;
+          const sY = m.start?.y ?? m.start?.[1] ?? 0;
+          const sZ = m.start?.z ?? m.start?.[2] ?? 0;
+          const eX = m.end?.x ?? m.end?.[0] ?? sX;
+          const eY = m.end?.y ?? m.end?.[1] ?? sY;
+          const eZ = m.end?.z ?? m.end?.[2] ?? sZ;
+          const posX = (sX + eX) / 2;
+          const posY = (sY + eY) / 2;
+          const posZ = (sZ + eZ) / 2;
           return {
             component_id: m.id?.toString() || `${m.q_id || "COMP"}-${Math.random()}`,
             comp_id: m.id || m.component?.id,
-            start_x: start[0],
-            start_y: start[1],
-            start_z: start[2],
-            end_x: end[0],
-            end_y: end[1],
-            end_z: end[2],
+            start_x: sX,
+            start_y: sY,
+            start_z: sZ,
+            end_x: eX,
+            end_y: eY,
+            end_z: eZ,
             pos_x: posX,
             pos_y: posY,
             pos_z: posZ,
             q_id: m.q_id || m.component?.q_id,
             code: m.code || m.component?.code,
-            thickness: m.thickness || 0.3,
+            thickness: m.thickness || 0.2,
+            shape_type: m.shape_type || m.component?.shape_type || "Cylinder",
+            visibility_flag: true,
             structure_components: m.component || m,
           };
         });

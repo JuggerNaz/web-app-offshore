@@ -21,8 +21,8 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight} from "lucide-react";
-import { getEffectiveClockAngle } from "@/utils/platform-3d-math";
+import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight } from "lucide-react";
+import { getEffectiveClockAngle, computeRiserOffsetEndpoints } from "@/utils/platform-3d-math";
 
 interface Component3D {
     id: number;
@@ -78,6 +78,7 @@ const ComponentMesh = ({
     component,
     isSelected,
     onClick,
+    onDoubleClick,
     start,
     end,
     thickness = 0.3,
@@ -91,6 +92,7 @@ const ComponentMesh = ({
     component: Component3D;
     isSelected: boolean;
     onClick: () => void;
+    onDoubleClick?: () => void;
     start: [number, number, number];
     end: [number, number, number];
     thickness?: number;
@@ -136,7 +138,7 @@ const ComponentMesh = ({
     const isInspectionHighlighted = isInspectionMode && isStatusChecked;
 
     const displayColor = isSelected
-        ? "#f97316"
+        ? "#2563eb"
         : hovered
             ? "#60a5fa"
             : isInspectionHighlighted
@@ -148,7 +150,7 @@ const ComponentMesh = ({
                 : defaultMeshColor;
 
     const emissiveColor = isSelected
-        ? "#ea580c"
+        ? "#1d4ed8"
         : (isInspectionHighlighted && inspectionStatus === "HAS_ANOMALY")
             ? "#ef4444"
             : isWeld
@@ -158,7 +160,7 @@ const ComponentMesh = ({
                     : "#000000";
 
     const emissiveInt = isSelected
-        ? 0.6
+        ? 0.7
         : (isInspectionHighlighted && inspectionStatus === "HAS_ANOMALY")
             ? 0.5
             : isWeld
@@ -179,37 +181,20 @@ const ComponentMesh = ({
     let position = startVec.clone().add(endVec).multiplyScalar(0.5);
     let direction = endVec.clone().sub(startVec).normalize();
 
+    const md = component?.metadata || component || {};
+    const compAny = component as any;
+
     if (isRiser) {
-        const isStartTop = startVec.y >= endVec.y;
-        const topVec = isStartTop ? startVec : endVec;
-        const bottomVec = isStartTop ? endVec : startVec;
-
-        const dX = Math.abs(bottomVec.x - topVec.x);
-        const dZ = Math.abs(bottomVec.z - topVec.z);
-
-        let offsetStart: THREE.Vector3;
-        let offsetEnd: THREE.Vector3;
-
-        if (dZ >= dX) {
-            // Front / Back Face (Row 1 / Row 2) - Batter along Z plane
-            const signZ = Math.sign(topVec.z) || 1;
-            const outwardDir = new THREE.Vector3(0, 0, signZ);
-
-            offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-            offsetEnd = new THREE.Vector3(topVec.x, bottomVec.y, bottomVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-        } else {
-            // Side Face (Row A / Row B) - Batter along X plane
-            const signX = Math.sign(topVec.x) || 1;
-            const outwardDir = new THREE.Vector3(signX, 0, 0);
-
-            offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-            offsetEnd = new THREE.Vector3(bottomVec.x, bottomVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-        }
-
+        const { offsetStart, offsetEnd } = computeRiserOffsetEndpoints(startVec, endVec, 0.75, 0.08, md);
         position = offsetStart.clone().add(offsetEnd).multiplyScalar(0.5);
         direction = offsetEnd.clone().sub(offsetStart).normalize();
         length = offsetStart.distanceTo(offsetEnd);
     }
+    const sLegStr = (compAny?.s_leg || md.s_leg || "").toString().trim().toUpperCase();
+    const fLegStr = (compAny?.f_leg || md.f_leg || "").toString().trim().toUpperCase();
+    const isLegComponent = code.includes("LG") || qIdUpper.includes("LEG") || (sLegStr && sLegStr !== "N/A") || (fLegStr && fLegStr !== "N/A");
+    const isLegMember = !isAnode && !isWeld && !isClamp && isLegComponent;
+    const isMainLegWeld = isWeld && isLegComponent;
 
     if (isAnode) baseThickness = 0.15;
     else if (isClamp) baseThickness = baseThickness * 1.8;
@@ -235,7 +220,6 @@ const ComponentMesh = ({
         }
     }
 
-    const md = component.metadata || {};
     const rawClockPos = md.clk_pos ?? md.clockPosition;
     let clockPos: number;
     if (isAnode && (rawClockPos === undefined || rawClockPos === null || rawClockPos === "" || rawClockPos === "N/A")) {
@@ -295,28 +279,8 @@ const ComponentMesh = ({
             if (targetRiser) {
                 const rStart = new THREE.Vector3(...(targetRiser.start || targetRiser.position || [0, 0, 0]));
                 const rEnd = new THREE.Vector3(...(targetRiser.end || targetRiser.position || rStart));
-
-                const isStartTop = rStart.y >= rEnd.y;
-                const topVec = isStartTop ? rStart : rEnd;
-                const bottomVec = isStartTop ? rEnd : rStart;
-
-                const dX = Math.abs(bottomVec.x - topVec.x);
-                const dZ = Math.abs(bottomVec.z - topVec.z);
-
-                let offsetStart: THREE.Vector3;
-                let offsetEnd: THREE.Vector3;
-
-                if (dZ >= dX) {
-                    const signZ = Math.sign(topVec.z) || 1;
-                    const outwardDir = new THREE.Vector3(0, 0, signZ);
-                    offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-                    offsetEnd = new THREE.Vector3(topVec.x, bottomVec.y, bottomVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-                } else {
-                    const signX = Math.sign(topVec.x) || 1;
-                    const outwardDir = new THREE.Vector3(signX, 0, 0);
-                    offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-                    offsetEnd = new THREE.Vector3(bottomVec.x, bottomVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-                }
+                const targetMd = targetRiser.component?.metadata || targetRiser.metadata || targetRiser;
+                const { offsetStart, offsetEnd } = computeRiserOffsetEndpoints(rStart, rEnd, 0.75, 0.08, targetMd);
 
                 const t = Math.max(0, Math.min(1, (clampInfo.targetY - offsetStart.y) / (offsetEnd.y - offsetStart.y || 1)));
                 position = offsetStart.clone().lerp(offsetEnd, t);
@@ -337,17 +301,11 @@ const ComponentMesh = ({
         const bottomLocalY = safeMeshLength / 2;
         const bottomYDir = 1;
 
-        // Calculate global outward radial vector pointing away from platform center (0, 0, 0)
-        const isStartTop = startVec.y >= endVec.y;
-        const topVec = isStartTop ? startVec : endVec;
-        const bottomVec = isStartTop ? endVec : startVec;
+        // Calculate global outward face normal vector
+        const { offsetStart, offsetEnd, outwardDir } = computeRiserOffsetEndpoints(startVec, endVec, 0.75, 0.08, md);
 
-        const dX = Math.abs(bottomVec.x - topVec.x);
-        const dZ = Math.abs(bottomVec.z - topVec.z);
-        const signZ = Math.sign(topVec.z) || 1;
-        const signX = Math.sign(topVec.x) || 1;
-
-        const globalOutward = dZ >= dX ? new THREE.Vector3(0, 0, signZ) : new THREE.Vector3(signX, 0, 0);
+        const globalOutward = outwardDir ? outwardDir.clone() : new THREE.Vector3(0, 0, 1);
+        if (globalOutward.lengthSq() < 0.001) globalOutward.set(0, 0, 1);
 
         // Convert global outward direction to local coordinates of the component group
         const localOutward = globalOutward.applyQuaternion(quaternion.clone().invert()).normalize();
@@ -362,7 +320,7 @@ const ComponentMesh = ({
         const p3 = p0.clone().add(new THREE.Vector3(0, bottomYDir * bendRadius, 0)).add(localOutward.clone().multiplyScalar(bendRadius + spoolLength));
 
         const curve = new THREE.CatmullRomCurve3([p0, p1, p2, p3]);
-        return new THREE.TubeGeometry(curve, 24, baseThickness > 0.3 ? 0.25 : baseThickness, 16, false);
+        return new THREE.TubeGeometry(curve, 24, baseThickness / 2, 16, false);
     }, [isRiser, isCaisson, startVec, endVec, safeMeshLength, baseThickness, quaternion]);
 
     const hasNaN = [
@@ -463,6 +421,10 @@ const ComponentMesh = ({
                     e.stopPropagation();
                     onClick();
                 }}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onDoubleClick) onDoubleClick();
+                }}
                 onPointerOver={(e) => {
                     e.stopPropagation();
                     setHovered(true);
@@ -478,18 +440,6 @@ const ComponentMesh = ({
                 <mesh castShadow={false} receiveShadow={false}>
                     <boxGeometry args={[spanWidth + 0.4, fenderHeight, 1.0]} />
                     <meshBasicMaterial transparent opacity={0} />
-                    {isSelected && (
-                        <Outlines
-                            thickness={0.08}
-                            color="#f97316"
-                        />
-                    )}
-                    {hovered && !isSelected && (
-                        <Outlines
-                            thickness={0.04}
-                            color="#38bdf8"
-                        />
-                    )}
                 </mesh>
 
                 {showLabel && (
@@ -500,7 +450,7 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
+                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]"
                                 : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
@@ -615,6 +565,10 @@ const ComponentMesh = ({
                     e.stopPropagation();
                     onClick();
                 }}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onDoubleClick) onDoubleClick();
+                }}
                 onPointerOver={(e) => {
                     e.stopPropagation();
                     setHovered(true);
@@ -630,18 +584,6 @@ const ComponentMesh = ({
                 <mesh castShadow={false} receiveShadow={false}>
                     <boxGeometry args={[spanWidth + 0.4, guardHeight, 0.4]} />
                     <meshBasicMaterial transparent opacity={0} />
-                    {isSelected && (
-                        <Outlines
-                            thickness={0.08}
-                            color="#2563eb"
-                        />
-                    )}
-                    {hovered && !isSelected && (
-                        <Outlines
-                            thickness={0.04}
-                            color="#38bdf8"
-                        />
-                    )}
                 </mesh>
 
                 {showLabel && (
@@ -670,17 +612,28 @@ const ComponentMesh = ({
                 position={offsetPos as [number, number, number]}
                 rotation={isAnode ? [0, anodeRotY, 0] : [0, 0, 0]}
             >
-                <mesh castShadow receiveShadow>
+                <mesh
+                    castShadow
+                    receiveShadow
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onClick();
+                    }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (onDoubleClick) onDoubleClick();
+                    }}
+                >
                     {isNode || (length <= 0.001 && !isAnode && !isWeld) ? (
-                        <sphereGeometry args={[Math.max(thickness * 1.5, 0.01), 16, 16]} />
+                        <sphereGeometry args={[Math.max(baseThickness / 2, 0.01), 16, 16]} />
                     ) : isAnode ? (
                         <boxGeometry args={[0.2, safeMeshLength, 0.2]} />
                     ) : isClamp ? (
                         <boxGeometry args={[baseThickness, 0.8, baseThickness]} />
                     ) : isWeld ? (
-                        <cylinderGeometry args={[baseThickness, baseThickness, safeMeshLength, 32]} />
+                        <cylinderGeometry args={[baseThickness / 2, baseThickness / 2, safeMeshLength, 32]} />
                     ) : (
-                        <cylinderGeometry args={[baseThickness, baseThickness, safeMeshLength, 6]} />
+                        <cylinderGeometry args={[baseThickness / 2, baseThickness / 2, safeMeshLength, 16]} />
                     )}
                     <meshStandardMaterial
                         color={displayColor}
@@ -697,18 +650,6 @@ const ComponentMesh = ({
                             transparent
                         />
                     )}
-                    {isSelected && (
-                        <Outlines
-                            thickness={0.04}
-                            color="#2563eb"
-                        />
-                    )}
-                    {hovered && !isSelected && (
-                        <Outlines
-                            thickness={0.02}
-                            color="#38bdf8"
-                        />
-                    )}
                     {isRiser && riserBendGeometry && (
                         <mesh geometry={riserBendGeometry} castShadow receiveShadow>
                             <meshStandardMaterial
@@ -718,14 +659,12 @@ const ComponentMesh = ({
                                 emissive={emissiveColor}
                                 emissiveIntensity={emissiveInt}
                             />
-                            {isSelected && <Outlines thickness={0.04} color="#2563eb" />}
-                            {hovered && !isSelected && <Outlines thickness={0.02} color="#38bdf8" />}
                         </mesh>
                     )}
                     {isClamp && (
                         <mesh position={[0, 0, 0]} castShadow receiveShadow>
                             <boxGeometry args={[baseThickness + 0.35, 0.6, baseThickness + 0.35]} />
-                            <meshStandardMaterial color="#f97316" emissive="#ea580c" emissiveIntensity={0.3} metalness={0.6} roughness={0.2} />
+                            <meshStandardMaterial color={isSelected ? "#2563eb" : "#f97316"} emissive={isSelected ? "#1d4ed8" : "#ea580c"} emissiveIntensity={isSelected ? 0.7 : 0.3} metalness={0.6} roughness={0.2} />
                         </mesh>
                     )}
                     {isAnode && (
@@ -1001,27 +940,79 @@ function ResetViewHandler({ trigger }: { trigger: number }) {
 
 
 
-function CameraRig({ selectedPos, isActivated, isDirectClickRef }: { selectedPos: THREE.Vector3 | null; isActivated: boolean; isDirectClickRef: React.MutableRefObject<boolean> }) {
+function CameraRig({
+    selectedPos,
+    isActivated,
+    isDirectClickRef,
+    focusTargetPos,
+}: {
+    selectedPos: THREE.Vector3 | null;
+    isActivated: boolean;
+    isDirectClickRef: React.MutableRefObject<boolean>;
+    focusTargetPos: THREE.Vector3 | null;
+}) {
     const { camera, controls } = useThree();
-    
+    const animRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (!isActivated || !controls) return;
+
+        const orbControls = controls as any;
+        if (focusTargetPos) {
+            const startTarget = orbControls.target.clone();
+            const endTarget = focusTargetPos.clone();
+            const startCamPos = camera.position.clone();
+
+            const offset = startCamPos.clone().sub(startTarget);
+            const dist = offset.length();
+            const targetDist = Math.min(Math.max(dist, 5), 18);
+            if (dist > 0.001) {
+                offset.normalize().multiplyScalar(targetDist);
+            } else {
+                offset.set(12, 8, 12);
+            }
+            const endCamPos = endTarget.clone().add(offset);
+
+            let startTime = performance.now();
+            const duration = 500;
+
+            const animate = (now: number) => {
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const ease = 1 - Math.pow(1 - progress, 3);
+
+                orbControls.target.lerpVectors(startTarget, endTarget, ease);
+                camera.position.lerpVectors(startCamPos, endCamPos, ease);
+                orbControls.update();
+
+                if (progress < 1) {
+                    animRef.current = requestAnimationFrame(animate);
+                }
+            };
+
+            if (animRef.current) cancelAnimationFrame(animRef.current);
+            animRef.current = requestAnimationFrame(animate);
+        }
+    }, [focusTargetPos, camera, controls, isActivated]);
+
     useEffect(() => {
         if (!isActivated) return;
         if (isDirectClickRef.current) {
             isDirectClickRef.current = false;
             return;
         }
-        if (selectedPos && controls) {
+        if (selectedPos && controls && !focusTargetPos) {
             const target = new THREE.Vector3(selectedPos.x, selectedPos.y, selectedPos.z);
             const offset = new THREE.Vector3(15, 10, 15);
             const cameraPos = target.clone().add(offset);
-            
+
             (controls as any).target.copy(target);
             camera.position.copy(cameraPos);
             if (typeof (controls as any).update === 'function') {
                 (controls as any).update();
             }
         }
-    }, [selectedPos, camera, controls, isActivated, isDirectClickRef]);
+    }, [selectedPos, camera, controls, isActivated, isDirectClickRef, focusTargetPos]);
 
     return null;
 }
@@ -1030,6 +1021,7 @@ function InstancedComponentViewer({
     layouts,
     selectedCompId,
     onSelectComponent,
+    onDoubleClickComponent,
     isDirectClickRef,
     showWeldNumbering,
     isInspectionMode,
@@ -1038,6 +1030,7 @@ function InstancedComponentViewer({
     layouts: any[];
     selectedCompId?: number;
     onSelectComponent?: (comp: any) => void;
+    onDoubleClickComponent?: (comp: any, pos: THREE.Vector3) => void;
     isDirectClickRef: React.MutableRefObject<boolean>;
     showWeldNumbering?: boolean;
     isInspectionMode?: boolean;
@@ -1098,6 +1091,14 @@ function InstancedComponentViewer({
         return { cylinders: cyl, welds: wld, spheres: sph, boxes: box, customLayouts: custom };
     }, [layouts]);
 
+    const toVec3 = (v: any): THREE.Vector3 => {
+        if (!v) return new THREE.Vector3(0, 0, 0);
+        if (v instanceof THREE.Vector3) return v.clone();
+        if (Array.isArray(v)) return new THREE.Vector3(Number(v[0]) || 0, Number(v[1]) || 0, Number(v[2]) || 0);
+        if (typeof v === "object") return new THREE.Vector3(Number(v.x) || 0, Number(v.y) || 0, Number(v.z) || 0);
+        return new THREE.Vector3(0, 0, 0);
+    };
+
     // Apply matrices and colors for Cylinders
     useLayoutEffect(() => {
         if (!cylinderRef.current) return;
@@ -1106,8 +1107,8 @@ function InstancedComponentViewer({
         const color = new THREE.Color();
 
         cylinders.forEach((item, i) => {
-            const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
-            const end = new THREE.Vector3(...(item.end || item.position || [0, 0, 0]));
+            const start = toVec3(item.start || item.position);
+            const end = toVec3(item.end || item.position);
             const code = item.code || "";
             const isRiser = code === "RS" || code.includes("RISER") || code.includes("RISR");
             const isAnode = code === "AN" || code.includes("ANOD");
@@ -1117,28 +1118,8 @@ function InstancedComponentViewer({
             let dir = end.clone().sub(start).normalize();
 
             if (isRiser) {
-                const isStartTop = start.y >= end.y;
-                const topVec = isStartTop ? start : end;
-                const bottomVec = isStartTop ? end : start;
-
-                const dX = Math.abs(bottomVec.x - topVec.x);
-                const dZ = Math.abs(bottomVec.z - topVec.z);
-
-                let offsetStart: THREE.Vector3;
-                let offsetEnd: THREE.Vector3;
-
-                if (dZ >= dX) {
-                    const signZ = Math.sign(topVec.z) || 1;
-                    const outwardDir = new THREE.Vector3(0, 0, signZ);
-                    offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-                    offsetEnd = new THREE.Vector3(topVec.x, bottomVec.y, bottomVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-                } else {
-                    const signX = Math.sign(topVec.x) || 1;
-                    const outwardDir = new THREE.Vector3(signX, 0, 0);
-                    offsetStart = new THREE.Vector3(topVec.x, topVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-                    offsetEnd = new THREE.Vector3(bottomVec.x, bottomVec.y, topVec.z).add(outwardDir.clone().multiplyScalar(0.75));
-                }
-
+                const itemMd = item.comp?.metadata || item.comp || item;
+                const { offsetStart, offsetEnd } = computeRiserOffsetEndpoints(start, end, 0.75, 0.08, itemMd);
                 pos = offsetStart.clone().add(offsetEnd).multiplyScalar(0.5);
                 dir = offsetEnd.clone().sub(offsetStart).normalize();
                 len = offsetStart.distanceTo(offsetEnd);
@@ -1159,16 +1140,19 @@ function InstancedComponentViewer({
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
             const isConductor = code === "CD" || code === "CS" || code.includes("COND") || code === "CO";
+            const isPile = code === "PL" || code === "PILE" || (item.comp?.q_id || "").toUpperCase().includes("PILE");
 
             const defaultColor = isSelected
-                ? "#f97316"
+                ? "#2563eb"
                 : isAnode
-                ? "#F8FAFC"
-                : isRiser
-                ? "#334155"
-                : isConductor
-                ? "#475569"
-                : "#cbd5e1";
+                    ? "#F8FAFC"
+                    : isPile
+                        ? "#475569"
+                        : isRiser
+                            ? "#334155"
+                            : isConductor
+                                ? "#475569"
+                                : "#cbd5e1";
 
             color.set(defaultColor);
             mesh.setColorAt(i, color);
@@ -1186,8 +1170,8 @@ function InstancedComponentViewer({
         const color = new THREE.Color();
 
         welds.forEach((item, i) => {
-            const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
-            const end = new THREE.Vector3(...(item.end || item.position || [0, 0, 0]));
+            const start = toVec3(item.start || item.position);
+            const end = toVec3(item.end || item.position);
             const dir = end.clone().sub(start).normalize();
             const len = start.distanceTo(end);
 
@@ -1206,7 +1190,7 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#f97316" : "#d946ef");
+            color.set(isSelected ? "#2563eb" : "#d946ef");
             mesh.setColorAt(i, color);
         });
 
@@ -1222,7 +1206,7 @@ function InstancedComponentViewer({
         const color = new THREE.Color();
 
         spheres.forEach((item, i) => {
-            const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
+            const start = toVec3(item.start || item.position);
             const thickness = (item.thickness || 0.3) + 0.08;
 
             matrix.compose(start, new THREE.Quaternion(), new THREE.Vector3(thickness, thickness, thickness));
@@ -1230,7 +1214,7 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#f97316" : "#94a3b8");
+            color.set(isSelected ? "#2563eb" : "#94a3b8");
             mesh.setColorAt(i, color);
         });
 
@@ -1246,7 +1230,7 @@ function InstancedComponentViewer({
         const color = new THREE.Color();
 
         boxes.forEach((item, i) => {
-            const start = new THREE.Vector3(...(item.start || item.position || [0, 0, 0]));
+            const start = toVec3(item.start || item.position);
             const thickness = (item.thickness || 0.3) * 1.8;
 
             matrix.compose(start, new THREE.Quaternion(), new THREE.Vector3(thickness, thickness * 1.5, thickness));
@@ -1254,7 +1238,7 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#f97316" : "#d97706");
+            color.set(isSelected ? "#2563eb" : "#d97706");
             mesh.setColorAt(i, color);
         });
 
@@ -1273,9 +1257,9 @@ function InstancedComponentViewer({
 
     const selectedPos = useMemo(() => {
         if (!selectedLayout) return null;
-        const s = selectedLayout.start || selectedLayout.position || [0, 0, 0];
-        const e = selectedLayout.end || selectedLayout.position || s;
-        return [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2 + 0.5, (s[2] + e[2]) / 2] as [number, number, number];
+        const s = toVec3(selectedLayout.start || selectedLayout.position);
+        const e = toVec3(selectedLayout.end || selectedLayout.position);
+        return [(s.x + e.x) / 2, (s.y + e.y) / 2 + 0.5, (s.z + e.z) / 2] as [number, number, number];
     }, [selectedLayout]);
 
     return (
@@ -1290,6 +1274,17 @@ function InstancedComponentViewer({
                         if (e.instanceId !== undefined && cylinders[e.instanceId]) {
                             isDirectClickRef.current = true;
                             if (onSelectComponent) onSelectComponent(cylinders[e.instanceId].comp);
+                        }
+                    }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && cylinders[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            const item = cylinders[e.instanceId];
+                            const s = toVec3(item.start || item.position);
+                            const end = toVec3(item.end || item.position);
+                            const center = new THREE.Vector3((s.x + end.x) / 2, (s.y + end.y) / 2, (s.z + end.z) / 2);
+                            if (onDoubleClickComponent) onDoubleClickComponent(item.comp, center);
                         }
                     }}
                     onPointerOver={(e) => {
@@ -1317,6 +1312,17 @@ function InstancedComponentViewer({
                             if (onSelectComponent) onSelectComponent(welds[e.instanceId].comp);
                         }
                     }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && welds[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            const item = welds[e.instanceId];
+                            const s = toVec3(item.start || item.position);
+                            const end = toVec3(item.end || item.position);
+                            const center = new THREE.Vector3((s.x + end.x) / 2, (s.y + end.y) / 2, (s.z + end.z) / 2);
+                            if (onDoubleClickComponent) onDoubleClickComponent(item.comp, center);
+                        }
+                    }}
                     onPointerOver={(e) => {
                         e.stopPropagation();
                         if (e.instanceId !== undefined && welds[e.instanceId]) {
@@ -1332,10 +1338,10 @@ function InstancedComponentViewer({
 
             {/* Always Display Node Weld Numbers (Toggled via Node Numbers checkbox) */}
             {showWeldNumbering && welds.map((w, idx) => {
-                const s = w.start || w.position || [0, 0, 0];
-                const e = w.end || w.position || s;
-                const pos = [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2 + 0.3, (s[2] + e[2]) / 2] as [number, number, number];
-                
+                const s = toVec3(w.start || w.position);
+                const e = toVec3(w.end || w.position);
+                const pos = [(s.x + e.x) / 2, (s.y + e.y) / 2 + 0.3, (s.z + e.z) / 2] as [number, number, number];
+
                 const rawLabel = w.comp?.q_id || w.q_id || `WN${idx + 1}`;
                 const match = rawLabel.match(/(?:WN\s*|N\s*)?(\d+)/i) || rawLabel.match(/N?([A-Za-z0-9]+)/);
                 const labelText = match ? match[1] : rawLabel.replace(/^[^\d]+/, "") || rawLabel;
@@ -1351,11 +1357,16 @@ function InstancedComponentViewer({
                                 isDirectClickRef.current = true;
                                 if (onSelectComponent) onSelectComponent(w.comp);
                             }}
-                            className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border cursor-pointer transition-all shadow-md ${
-                                isSelected
+                            onDoubleClick={(evt) => {
+                                evt.stopPropagation();
+                                isDirectClickRef.current = true;
+                                const center = new THREE.Vector3(pos[0], pos[1], pos[2]);
+                                if (onDoubleClickComponent) onDoubleClickComponent(w.comp, center);
+                            }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border cursor-pointer transition-all shadow-md ${isSelected
                                     ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 z-20 shadow-[0_0_12px_rgba(37,99,235,0.6)]"
                                     : "bg-slate-900/90 text-blue-300 border-blue-500/50 backdrop-blur-sm opacity-90 hover:opacity-100 hover:scale-105"
-                            }`}
+                                }`}
                         >
                             {labelText}
                         </div>
@@ -1373,6 +1384,16 @@ function InstancedComponentViewer({
                         if (e.instanceId !== undefined && spheres[e.instanceId]) {
                             isDirectClickRef.current = true;
                             if (onSelectComponent) onSelectComponent(spheres[e.instanceId].comp);
+                        }
+                    }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && spheres[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            const item = spheres[e.instanceId];
+                            const s = toVec3(item.start || item.position);
+                            const center = s.clone();
+                            if (onDoubleClickComponent) onDoubleClickComponent(item.comp, center);
                         }
                     }}
                     onPointerOver={(e) => {
@@ -1400,6 +1421,16 @@ function InstancedComponentViewer({
                             if (onSelectComponent) onSelectComponent(boxes[e.instanceId].comp);
                         }
                     }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && boxes[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            const item = boxes[e.instanceId];
+                            const s = toVec3(item.start || item.position);
+                            const center = s.clone();
+                            if (onDoubleClickComponent) onDoubleClickComponent(item.comp, center);
+                        }
+                    }}
                     onPointerOver={(e) => {
                         e.stopPropagation();
                         if (e.instanceId !== undefined && boxes[e.instanceId]) {
@@ -1413,25 +1444,6 @@ function InstancedComponentViewer({
                 </instancedMesh>
             )}
 
-
-
-            {/* Selected Component Highlight Mesh Overlay */}
-            {selectedLayout && (
-                <ComponentMesh
-                    component={selectedLayout.component || selectedLayout.originalComp || selectedLayout}
-                    isSelected={true}
-                    onClick={() => {}}
-                    start={selectedLayout.start || selectedLayout.position}
-                    end={selectedLayout.end || selectedLayout.position}
-                    thickness={selectedLayout.thickness}
-                    showWeldNumbering={showWeldNumbering}
-                    isInspectionMode={isInspectionMode}
-                    inspectionStatus={selectedLayout.inspectionStatus}
-                    isStatusChecked={true}
-                    inspectionColor={selectedLayout.color}
-                    allLayouts={layouts}
-                />
-            )}
             {/* Procedural Components (Fenders & Riser Guards) */}
             {customLayouts.map((layout, idx) => (
                 <ComponentMesh
@@ -1441,6 +1453,13 @@ function InstancedComponentViewer({
                     onClick={() => {
                         isDirectClickRef.current = true;
                         if (onSelectComponent) onSelectComponent(layout.comp);
+                    }}
+                    onDoubleClick={() => {
+                        isDirectClickRef.current = true;
+                        const s = layout.start || layout.position || [0, 0, 0];
+                        const end = layout.end || layout.position || s;
+                        const center = new THREE.Vector3((s[0] + end[0]) / 2, (s[1] + end[1]) / 2, (s[2] + end[2]) / 2);
+                        if (onDoubleClickComponent) onDoubleClickComponent(layout.comp, center);
                     }}
                     start={layout.start || layout.position}
                     end={layout.end || layout.position}
@@ -1576,7 +1595,7 @@ export function Structural3DViewer({
         return Array.from(new Set(faces.map((f) => f.face).filter(Boolean)));
     }, [faces]);
 
-    
+
     // USE WEBAPP_3D DATABASE INSTEAD OF FRONTEND PROCEDURAL MATH
     const { componentLayouts, foundationMembers, elvMarkers } = useMemo(() => {
         if (!webapp3dData) return { componentLayouts: [], foundationMembers: [], elvMarkers: [] };
@@ -1584,25 +1603,38 @@ export function Structural3DViewer({
         const layouts = (webapp3dData.components || []).map((dbItem: any) => {
             const dbQIdUpper = (dbItem.q_id || dbItem.structure_components?.q_id || "").toUpperCase().trim();
             const dbCompIdStr = String(dbItem.component_id || dbItem.comp_id || "");
-            const comp: any = rawComponents.find((c: any) => 
-                String(c.id) === dbCompIdStr || 
+            const comp: any = rawComponents.find((c: any) =>
+                String(c.id) === dbCompIdStr ||
                 (c.comp_id && String(c.comp_id) === dbCompIdStr) ||
                 (dbQIdUpper && (c.q_id || "").toUpperCase().trim() === dbQIdUpper)
             ) || dbItem.structure_components || dbItem.component || {};
-            const code = (comp.code || dbItem.code || "").toUpperCase();
-            const q_id = comp.q_id || dbItem.q_id || `COMP-${dbItem.component_id}`;
+            const q_id = comp.q_id || dbItem.q_id || dbItem.structure_components?.q_id || `COMP-${dbItem.component_id}`;
+            const code = (comp.code || dbItem.code || dbItem.structure_components?.code || "").toUpperCase();
+            const qIdUpper = q_id.toUpperCase();
 
+            const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE") || dbQIdUpper.includes("PILE");
             const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+
+            const compMd = comp.metadata || dbItem.metadata || {};
+            const sLegStr = (comp.s_leg || compMd.s_leg || dbItem.s_leg || "").toString().trim().toUpperCase();
+            const fLegStr = (comp.f_leg || compMd.f_leg || dbItem.f_leg || "").toString().trim().toUpperCase();
+            const isLegComponent = code.includes("LG") || qIdUpper.includes("LEG") || dbQIdUpper.includes("LEG") || (sLegStr && sLegStr !== "N/A") || (fLegStr && fLegStr !== "N/A");
+            const isMainLegWeld = isWeld && isLegComponent;
+
             const weldColor = isWeld ? "#d946ef" : null;
             const finalColor = isInspectionMode ? dbItem.inspection_color : (weldColor || dbItem.color_hex || "#64748b");
-            
-            const startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
-                ? [dbItem.start_x, dbItem.start_y, dbItem.start_z]
-                : (dbItem.start || [dbItem.pos_x || 0, dbItem.pos_y || 0, dbItem.pos_z || 0]);
 
-            const endVec = (dbItem.end_x !== undefined && dbItem.end_y !== undefined && dbItem.end_z !== undefined)
-                ? [dbItem.end_x, dbItem.end_y, dbItem.end_z]
-                : (dbItem.end || [dbItem.pos_x || 0, dbItem.pos_y || 0, dbItem.pos_z || 0]);
+            let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
+                ? [Number(dbItem.start_x), Number(dbItem.start_y), Number(dbItem.start_z)]
+                : (dbItem.start || [Number(dbItem.pos_x || 0), Number(dbItem.pos_y || 0), Number(dbItem.pos_z || 0)]);
+
+            let endVec = (dbItem.end_x !== undefined && dbItem.end_y !== undefined && dbItem.end_z !== undefined)
+                ? [Number(dbItem.end_x), Number(dbItem.end_y), Number(dbItem.end_z)]
+                : (dbItem.end || [Number(dbItem.pos_x || 0), Number(dbItem.pos_y || 0), Number(dbItem.pos_z || 0)]);
+
+            if (isPile && Math.abs(startVec[1] - endVec[1]) < 0.1) {
+                endVec = [startVec[0], startVec[1] - 2.0, startVec[2]];
+            }
 
             const enrichedComp = { ...comp, code, q_id };
 
@@ -1625,7 +1657,7 @@ export function Structural3DViewer({
                 rotation: [dbItem.rot_x || 0, dbItem.rot_y || 0, dbItem.rot_z || 0],
                 scale: [dbItem.scale_x || 1, dbItem.scale_y || 1, dbItem.scale_z || 1],
                 color: finalColor,
-                thickness: dbItem.dimensions?.radius || (isWeld ? 0.25 : 0.5),
+                thickness: dbItem.thickness || dbItem.dimensions?.radius || (isWeld ? 0.25 : isPile ? 0.2 : 0.5),
                 length: dbItem.dimensions?.length || 1,
                 offsetDistance: dbItem.dimensions?.offset || 0,
                 shape: dbItem.shape_type,
@@ -1889,9 +1921,12 @@ export function Structural3DViewer({
         }
     }, [selectedCompId, isActivated]);
 
+    const [focusTargetPos, setFocusTargetPos] = useState<THREE.Vector3 | null>(null);
+    const [focusedCompName, setFocusedCompName] = useState<string | null>(null);
+
     const selectedLayout = useMemo(() => {
         if (!selectedCompId) return null;
-        return componentLayouts.find((l: any) => 
+        return componentLayouts.find((l: any) =>
             l.id === selectedCompId ||
             l.component_id === selectedCompId ||
             l.component?.id === selectedCompId ||
@@ -2043,6 +2078,10 @@ export function Structural3DViewer({
                 shadows="soft"
                 gl={{ antialias: true }}
                 dpr={[1, 2]}
+                onPointerMissed={() => {
+                    setFocusTargetPos(null);
+                    setFocusedCompName(null);
+                }}
                 onCreated={({ gl }) => {
                     (window as any).renderer = gl;
                 }}
@@ -2050,7 +2089,7 @@ export function Structural3DViewer({
                 <color attach="background" args={["#ffffff"]} />
                 <fog attach="fog" args={["#ffffff", 40, 220]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
-                <CameraRig selectedPos={selectedPos} isActivated={isActivated} isDirectClickRef={isDirectClickRef} />
+                <CameraRig selectedPos={selectedPos} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
 
                 <ambientLight intensity={0.35} />
@@ -2116,6 +2155,11 @@ export function Structural3DViewer({
                             layouts={filteredComponentLayouts}
                             selectedCompId={selectedCompId}
                             onSelectComponent={onSelectComponent}
+                            onDoubleClickComponent={(comp, centerPos) => {
+                                setFocusTargetPos(centerPos);
+                                setFocusedCompName(comp?.q_id || comp?.code || "Component");
+                                onSelectComponent(comp);
+                            }}
                             isDirectClickRef={isDirectClickRef}
                             showWeldNumbering={showWeldNumbering}
                             isInspectionMode={isInspectionMode}
@@ -2207,9 +2251,26 @@ export function Structural3DViewer({
                 />
             </Canvas>
 
+            {/* Camera Focus Lock Badge Indicator */}
+            {focusTargetPos && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-in fade-in zoom-in duration-300 pointer-events-auto">
+                    <button
+                        onClick={() => {
+                            setFocusTargetPos(null);
+                            setFocusedCompName(null);
+                        }}
+                        className="px-4 py-2 rounded-full bg-blue-600/95 hover:bg-blue-700 text-white text-xs font-bold shadow-2xl border border-blue-400 backdrop-blur transition-all flex items-center gap-2.5 cursor-pointer"
+                    >
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Camera Focused: <strong className="text-blue-100">{focusedCompName || "Component"}</strong></span>
+                        <span className="text-[10px] bg-blue-950/80 text-blue-200 px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold border border-blue-400/30">Click to Unlock</span>
+                    </button>
+                </div>
+            )}
 
 
-            
+
+
 
 
             {/* Click-outside backdrop */}
@@ -2238,7 +2299,7 @@ export function Structural3DViewer({
                     </Button>
                 )}
 
-                
+
                 {/* Inspection Filter */}
                 <div className="relative">
                     <Button
@@ -2293,7 +2354,7 @@ export function Structural3DViewer({
                                     </label>
                                 </div>
                             </div>
-                            
+
                             <div className="flex flex-col gap-1.5 py-1">
                                 {/* Not Inspected Checkbox */}
                                 <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">

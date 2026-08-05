@@ -195,7 +195,7 @@ export default function Platform3DPage() {
         {
             revalidateOnFocus: false,
             revalidateOnReconnect: false,
-            revalidateIfStale: false,
+            revalidateIfStale: true,
             refreshInterval: 0,
         }
     );

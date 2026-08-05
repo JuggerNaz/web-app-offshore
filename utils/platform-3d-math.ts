@@ -22,6 +22,111 @@ export function getEffectiveClockAngle(clockPos: number): number {
     return (effective / 12) * Math.PI * 2;
 }
 
+export function computeRiserOffsetEndpoints(
+    startVec: THREE.Vector3,
+    endVec: THREE.Vector3,
+    standoff: number = 0.75,
+    batterSlope: number = 0.08,
+    metadata?: any
+): { offsetStart: THREE.Vector3; offsetEnd: THREE.Vector3; outwardDir: THREE.Vector3 } {
+    const isStartTop = startVec.y >= endVec.y;
+    const topVec = isStartTop ? startVec.clone() : endVec.clone();
+    const bottomVec = isStartTop ? endVec.clone() : startVec.clone();
+
+    const md = metadata || {};
+    const faceStr = (md.face || md.face_name || md.face_code || "").toString().toUpperCase();
+    const sLegStr = (md.s_leg || md.leg || "").toString().toUpperCase();
+    const fLegStr = (md.f_leg || md.leg || "").toString().toUpperCase();
+
+    let isNormalZ = true;
+
+    // 1. Determine normal direction from leg metadata
+    if (sLegStr && fLegStr) {
+        const sRow = sLegStr.charAt(0);
+        const fRow = fLegStr.charAt(0);
+        if ((sRow === 'A' || sRow === 'B') && sRow === fRow) {
+            // Row A or Row B face (runs horizontally in X, face normal in Z)
+            isNormalZ = true;
+        } else if (sLegStr !== fLegStr && sLegStr.replace(/[AB]/, '') === fLegStr.replace(/[AB]/, '')) {
+            // Cross end column face (runs horizontally in Z, face normal in X)
+            isNormalZ = false;
+        }
+    } else if (sLegStr || fLegStr) {
+        const leg = sLegStr || fLegStr;
+        if (leg.startsWith('A') || leg.startsWith('B')) {
+            isNormalZ = true;
+        }
+    }
+
+    // 2. Explicit face string overrides
+    if (faceStr.includes("ROW A") || faceStr.includes("ROW B") || faceStr.includes("FACE A") || faceStr.includes("FACE B")) {
+        isNormalZ = true;
+    } else if (faceStr.includes("ROW 1") || faceStr.includes("ROW 3") || faceStr.includes("SIDE")) {
+        isNormalZ = false;
+    } else if (!sLegStr && !fLegStr && !faceStr) {
+        // Fallback: If Z offset from center is significant, treat as Row face (normal in Z)
+        const absX = Math.abs(topVec.x);
+        const absZ = Math.abs(topVec.z);
+        isNormalZ = absZ >= absX * 0.35 || absZ > 2.0;
+    }
+
+    const deltaY = Math.max(0, topVec.y - bottomVec.y);
+    const deltaR = deltaY * batterSlope;
+
+    let offsetStart: THREE.Vector3;
+    let offsetEnd: THREE.Vector3;
+    let outwardDir: THREE.Vector3;
+
+    if (isNormalZ) {
+        // Row A / Row B Face - Outward direction is strictly along Z plane (+Z or -Z)
+        const signZ = Math.sign(topVec.z) || 1;
+        outwardDir = new THREE.Vector3(0, 0, signZ);
+
+        // Keep X strictly aligned with topVec.x (no rightward/leftward drift along the face)
+        offsetStart = new THREE.Vector3(
+            topVec.x,
+            topVec.y,
+            topVec.z + signZ * standoff
+        );
+
+        // Calculate bottom Z leaning forward outward
+        const existingZLean = Math.abs(bottomVec.z - topVec.z);
+        const actualZLean = existingZLean >= deltaR * 0.4 ? existingZLean : deltaR;
+        const targetBotZ = topVec.z + signZ * actualZLean;
+
+        offsetEnd = new THREE.Vector3(
+            topVec.x, // No sideways drift in X
+            bottomVec.y,
+            targetBotZ + signZ * standoff
+        );
+    } else {
+        // Side/End Column Face - Outward direction is strictly along X plane (+X or -X)
+        const signX = Math.sign(topVec.x) || 1;
+        outwardDir = new THREE.Vector3(signX, 0, 0);
+
+        // Keep Z strictly aligned with topVec.z (no sideways drift)
+        offsetStart = new THREE.Vector3(
+            topVec.x + signX * standoff,
+            topVec.y,
+            topVec.z
+        );
+
+        // Calculate bottom X leaning forward outward
+        const existingXLean = Math.abs(bottomVec.x - topVec.x);
+        const actualXLean = existingXLean >= deltaR * 0.4 ? existingXLean : deltaR;
+        const targetBotX = topVec.x + signX * actualXLean;
+
+        offsetEnd = new THREE.Vector3(
+            targetBotX + signX * standoff,
+            bottomVec.y,
+            topVec.z // No sideways drift in Z
+        );
+    }
+
+    return { offsetStart, offsetEnd, outwardDir };
+}
+
+
 export function isDegenerateFootprint(legCoords: Array<{ x: number; z: number }>): boolean {
     if (!legCoords || legCoords.length < 2) return true;
     for (let i = 0; i < legCoords.length; i++) {
@@ -564,7 +669,15 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 }
             }
 
-            // 1. Prioritize authoritative node weld references (e.g. "WN N4") if they exist in nodeMap
+            // 1. Prioritize leg-specific composite key first if legKey is specified
+            if (legKey) {
+                for (const alias of aliases) {
+                    const compositeKey = `${alias}|${legKey}`;
+                    if (nodeMap.has(compositeKey)) return nodeMap.get(compositeKey);
+                }
+            }
+
+            // 2. Fallback to authoritative node weld references (e.g. "WN N4") if they exist in nodeMap
             for (const alias of aliases) {
                 if (alias.startsWith("WN") && nodeMap.has(alias)) {
                     const vec = nodeMap.get(alias)!;
@@ -572,12 +685,8 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 }
             }
 
-            // 2. Standard composite/alias fallback lookup
+            // 3. Fallback to global alias
             for (const alias of aliases) {
-                if (legKey) {
-                    const compositeKey = `${alias}|${legKey}`;
-                    if (nodeMap.has(compositeKey)) return nodeMap.get(compositeKey);
-                }
                 if (nodeMap.has(alias)) return nodeMap.get(alias);
             }
             return undefined;
@@ -991,10 +1100,12 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             const isAnode = code === "AN" || code.includes("ANOD");
             const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
             const isClamp = code === "CL" || code.includes("CLAM");
+            const isPile = code === "PL" || code === "PILE" || qIdUpper.includes("PILE");
             const isPointAccessory = isAnode || isWeld || isClamp;
 
             let thickness = 0.15;
-            if (code.includes("LG")) thickness = 0.5;
+            if (code.includes("LG")) thickness = 0.48;
+            else if (isPile) thickness = 0.2;
             else if (code === "RS" || code.includes("RISER") || code.includes("RISR")) thickness = 0.3;
             else if (code.includes("HM") || code.includes("HD")) thickness = 0.2;
             else if (code.includes("VM") || code.includes("VD")) thickness = 0.16;
@@ -1012,7 +1123,40 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
             const isPointNodeWeld = isWeld && (!md.s_node || !md.f_node || md.s_node === md.f_node || md.s_node.toString().toUpperCase() === extractBareNode(c.q_id));
 
-            if (md.associated_comp_id && code !== "VM" && !isPointNodeWeld) {
+            if (isPile) {
+                const legMatch = qIdUpper.match(/(?:LEG\s*|PL\s*|PILE\s*|LEG\-?)([A-Z0-9]+)/i) || qIdUpper.match(/([A-Z]\d+)/i);
+                const targetLeg = (md.s_leg || md.f_leg || md.leg || (legMatch?.[1]) || "").toUpperCase();
+
+                const nodeMatch = (qIdUpper.match(/(?:WN\s*|N\s*)?(\d+)/i) || [])[1];
+                const targetNode = String(md.s_node || md.f_node || md.start_node || md.end_node || nodeMatch || "").toUpperCase().trim();
+
+                const nodePos = (targetNode ? lookupNode(targetNode, targetLeg) : undefined) ||
+                                (targetNode ? lookupNode(targetNode, undefined) : undefined) ||
+                                (hasStartNode ? startNode : hasEndNode ? endNode : undefined);
+
+                const yTop = nodePos ? nodePos.y : (md.elv_1 ? sanitizeElevation(md.elv_1) : minElv);
+                const pileLength = md.length ? Math.abs(parseFloat(md.length)) : 2.0;
+                const yBottom = yTop - pileLength;
+
+                let topCoords = nodePos ? nodePos.clone() : new THREE.Vector3(0, yTop, 0);
+                if (!nodePos && targetLeg) {
+                    const cTop = getLegCoordsAtElv(targetLeg, yTop);
+                    topCoords.set(cTop.x, yTop, cTop.z);
+                }
+
+                let bottomCoords = new THREE.Vector3();
+                if (targetLeg) {
+                    const cBot = getLegCoordsAtElv(targetLeg, yBottom);
+                    bottomCoords.set(cBot.x, yBottom, cBot.z);
+                } else {
+                    bottomCoords.set(topCoords.x, yBottom, topCoords.z);
+                }
+
+                start.copy(topCoords);
+                end.copy(bottomCoords);
+                thickness = 0.2;
+                resolved = true;
+            } else if (md.associated_comp_id && code !== "VM" && !isPointNodeWeld) {
                 if (code !== "WN") {
                     pendingAttachments.push(c);
                 }
@@ -1055,40 +1199,129 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 code.includes("RISR") ||
                 code.includes("CAIS")
             ) {
-                if (hasStartNode && hasEndNode) {
+                const getScaleFactor = (yVal: number) => {
+                    if (isD21JT) {
+                        const scaleX = (13.91 - 0.12489 * (yVal - 2.872)) / 13.91;
+                        const scaleZ = (12.45 - 0.16665 * (yVal - 2.872)) / 12.45;
+                        return { x: scaleX, z: scaleZ };
+                    } else if (geometryType === "TRIPOD") {
+                        const scale = getScaleAtY(tripodPoints, yVal);
+                        return { x: scale, z: scale };
+                    } else {
+                        const scaleX = getScaleAtY(xPoints, yVal);
+                        const scaleZ = getScaleAtY(zPoints, yVal);
+                        return { x: scaleX, z: scaleZ };
+                    }
+                };
+
+                const getCoordsAtElv = (p: THREE.Vector3, yRef: number, yTarget: number) => {
+                    const sRef = getScaleFactor(yRef);
+                    const sTarget = getScaleFactor(yTarget);
+
+                    const nominalX = p.x / (sRef.x || 1.0);
+                    const nominalZ = p.z / (sRef.z || 1.0);
+
+                    return new THREE.Vector3(
+                        nominalX * sTarget.x,
+                        yTarget,
+                        nominalZ * sTarget.z
+                    );
+                };
+
+                // Check if there are associated support welds (WP / SUPP) that define guide hole midpoints
+                const compQIdUpper = (c.q_id || "").toUpperCase().trim();
+                const compIdStr = String(c.id);
+
+                const matchingSupps = components.filter((other) => {
+                    const oCode = (other.code || "").toUpperCase();
+                    const oQId = (other.q_id || "").toUpperCase();
+                    const isSupp = oCode === "WP" || oCode === "WN" || oQId.includes("SUPP") || oQId.includes("CLP");
+                    if (!isSupp) return false;
+
+                    const assocId = other.metadata?.associated_comp_id;
+                    if (assocId && String(assocId) === compIdStr) return true;
+                    if (compQIdUpper && (oQId.startsWith(`${compQIdUpper}-`) || oQId.startsWith(`${compQIdUpper} `))) return true;
+                    return false;
+                });
+
+                const suppMidpoints: { elv: number; midpoint: THREE.Vector3 }[] = [];
+                matchingSupps.forEach((supp) => {
+                    const suppMd = supp.metadata || {};
+                    const sNodeName = suppMd.s_node || suppMd.start_node;
+                    const fNodeName = suppMd.f_node || suppMd.end_node;
+                    const sLegName = suppMd.s_leg || suppMd.leg;
+                    const fLegName = suppMd.f_leg || suppMd.leg;
+
+                    const sPos = sNodeName ? (lookupNode(sNodeName, sLegName) || lookupNode(sNodeName, undefined)) : null;
+                    const fPos = fNodeName ? (lookupNode(fNodeName, fLegName) || lookupNode(fNodeName, undefined)) : null;
+
+                    if (sPos && fPos && sPos.distanceTo(fPos) > 0.001) {
+                        const midpoint = new THREE.Vector3(
+                            (sPos.x + fPos.x) / 2,
+                            (sPos.y + fPos.y) / 2,
+                            (sPos.z + fPos.z) / 2
+                        );
+                        const elv = suppMd.elv_1 !== undefined ? sanitizeElevation(suppMd.elv_1) : (sPos.y + fPos.y) / 2;
+                        suppMidpoints.push({ elv, midpoint });
+                    }
+                });
+
+                if (suppMidpoints.length > 0) {
+                    suppMidpoints.sort((a, b) => b.elv - a.elv);
+                    const y1 = md.elv_1 !== undefined ? sanitizeElevation(md.elv_1) : suppMidpoints[0].elv;
+                    const y2 = md.elv_2 !== undefined ? sanitizeElevation(md.elv_2) : suppMidpoints[suppMidpoints.length - 1].elv;
+                    const yTop = Math.max(y1, y2);
+                    const yBot = Math.min(y1, y2);
+
+                    let topMid = suppMidpoints[0].midpoint.clone();
+                    let botMid = suppMidpoints[suppMidpoints.length - 1].midpoint.clone();
+
+                    const distVal = parseFloat(md.dist || "0");
+                    const sLegName = (c.s_leg || md.s_leg || "").toString().trim().toUpperCase();
+                    const fLegName = (c.f_leg || md.f_leg || "").toString().trim().toUpperCase();
+                    const offsetDistance = 0.50; // Outward standoff outside jacket frame
+
+                    let dir = new THREE.Vector3(0, 0, 0);
+                    if (startNode && endNode && startNode.distanceTo(endNode) > 0.001) {
+                        dir = endNode.clone().sub(startNode).normalize();
+                    } else if (sLegName && fLegName && sLegName !== fLegName) {
+                        const sL = legMap[sLegName];
+                        const fL = legMap[fLegName];
+                        if (sL && fL) {
+                            const legVec = new THREE.Vector3(fL.x - sL.x, 0, fL.z - sL.z);
+                            if (legVec.lengthSq() > 0.001) dir = legVec.normalize();
+                        }
+                    }
+
+                    if (distVal > 0 && dir.lengthSq() > 0.001) {
+                        topMid = startNode
+                            ? startNode.clone().add(dir.clone().multiplyScalar(distVal))
+                            : topMid.add(dir.clone().multiplyScalar(distVal));
+
+                        const sNodeBot = startNode ? getCoordsAtElv(startNode, startNode.y, yBot) : botMid;
+                        botMid = sNodeBot.clone().add(dir.clone().multiplyScalar(distVal));
+                    }
+
+                    if (dir.lengthSq() > 0.001) {
+                        const perpTop = new THREE.Vector3(-dir.z, 0, dir.x);
+                        const vCenterTop = new THREE.Vector3(topMid.x, 0, topMid.z);
+                        if (perpTop.dot(vCenterTop) < 0) perpTop.negate();
+                        topMid.add(perpTop.multiplyScalar(offsetDistance));
+
+                        const perpBot = new THREE.Vector3(-dir.z, 0, dir.x);
+                        const vCenterBot = new THREE.Vector3(botMid.x, 0, botMid.z);
+                        if (perpBot.dot(vCenterBot) < 0) perpBot.negate();
+                        botMid.add(perpBot.multiplyScalar(offsetDistance));
+                    }
+
+                    start.set(topMid.x, yTop, topMid.z);
+                    end.set(botMid.x, yBot, botMid.z);
+                    resolved = true;
+                } else if (hasStartNode && hasEndNode) {
                     const distVal = parseFloat(md.dist || "0");
                     const y1 = sanitizeElevation(md.elv_1);
                     const y2 = sanitizeElevation(md.elv_2);
                     const yTop = Math.max(y1, y2);
-
-                    const getScaleFactor = (yVal: number) => {
-                        if (isD21JT) {
-                            const scaleX = (13.91 - 0.12489 * (yVal - 2.872)) / 13.91;
-                            const scaleZ = (12.45 - 0.16665 * (yVal - 2.872)) / 12.45;
-                            return { x: scaleX, z: scaleZ };
-                        } else if (geometryType === "TRIPOD") {
-                            const scale = getScaleAtY(tripodPoints, yVal);
-                            return { x: scale, z: scale };
-                        } else {
-                            const scaleX = getScaleAtY(xPoints, yVal);
-                            const scaleZ = getScaleAtY(zPoints, yVal);
-                            return { x: scaleX, z: scaleZ };
-                        }
-                    };
-
-                    const getCoordsAtElv = (p: THREE.Vector3, yRef: number, yTarget: number) => {
-                        const sRef = getScaleFactor(yRef);
-                        const sTarget = getScaleFactor(yTarget);
-
-                        const nominalX = p.x / (sRef.x || 1.0);
-                        const nominalZ = p.z / (sRef.z || 1.0);
-
-                        return new THREE.Vector3(
-                            nominalX * sTarget.x,
-                            yTarget,
-                            nominalZ * sTarget.z
-                        );
-                    };
 
                     // Compute start and end node coords at both elevations
                     const sNode1 = getCoordsAtElv(startNode, startNode.y, y1);
@@ -1097,20 +1330,47 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     const sNode2 = getCoordsAtElv(startNode, startNode.y, y2);
                     const eNode2 = getCoordsAtElv(endNode, endNode.y, y2);
 
+                    const sLegName = (c.s_leg || md.s_leg || "").toString().trim().toUpperCase();
+                    const fLegName = (c.f_leg || md.f_leg || "").toString().trim().toUpperCase();
+
                     // Compute points along the members at y1 and y2
                     const len1 = eNode1.distanceTo(sNode1);
-                    const dir1 = (len1 > 0.001 && distVal > 0) ? eNode1.clone().sub(sNode1).normalize() : new THREE.Vector3(0, 0, 0);
+                    let dir1 = (len1 > 0.001) ? eNode1.clone().sub(sNode1).normalize() : new THREE.Vector3(0, 0, 0);
+                    if (dir1.lengthSq() < 0.001 && sLegName && fLegName && sLegName !== fLegName) {
+                        const sL = legMap[sLegName];
+                        const fL = legMap[fLegName];
+                        if (sL && fL) {
+                            const sLegPos = getCoordsAtElv(new THREE.Vector3(sL.x, y1, sL.z), y1, y1);
+                            const fLegPos = getCoordsAtElv(new THREE.Vector3(fL.x, y1, fL.z), y1, y1);
+                            const legVec = new THREE.Vector3(fLegPos.x - sLegPos.x, 0, fLegPos.z - sLegPos.z);
+                            if (legVec.lengthSq() > 0.001) {
+                                dir1 = legVec.normalize();
+                            }
+                        }
+                    }
                     const offsetPos1 = sNode1.clone().add(dir1.clone().multiplyScalar(distVal));
 
                     const len2 = eNode2.distanceTo(sNode2);
-                    const dir2 = (len2 > 0.001 && distVal > 0) ? eNode2.clone().sub(sNode2).normalize() : new THREE.Vector3(0, 0, 0);
+                    let dir2 = (len2 > 0.001) ? eNode2.clone().sub(sNode2).normalize() : new THREE.Vector3(0, 0, 0);
+                    if (dir2.lengthSq() < 0.001 && sLegName && fLegName && sLegName !== fLegName) {
+                        const sL = legMap[sLegName];
+                        const fL = legMap[fLegName];
+                        if (sL && fL) {
+                            const sLegPos = getCoordsAtElv(new THREE.Vector3(sL.x, y2, sL.z), y2, y2);
+                            const fLegPos = getCoordsAtElv(new THREE.Vector3(fL.x, y2, fL.z), y2, y2);
+                            const legVec = new THREE.Vector3(fLegPos.x - sLegPos.x, 0, fLegPos.z - sLegPos.z);
+                            if (legVec.lengthSq() > 0.001) {
+                                dir2 = legVec.normalize();
+                            }
+                        }
+                    }
                     const offsetPos2 = sNode2.clone().add(dir2.clone().multiplyScalar(distVal));
 
-                    const offsetDistance = distVal > 0 ? 0.35 : 0; // Standoff only applies if distVal > 0
+                    const offsetDistance = 0.50; // Outward standoff outside jacket frame
                     const finalStart = offsetPos1.clone();
                     const finalEnd = offsetPos2.clone();
 
-                    if (offsetDistance > 0 && dir1.lengthSq() > 0.001) {
+                    if (dir1.lengthSq() > 0.001) {
                         const perp1 = new THREE.Vector3(-dir1.z, 0, dir1.x);
                         const vCenter1 = new THREE.Vector3(offsetPos1.x, 0, offsetPos1.z);
                         if (perp1.dot(vCenter1) < 0) {
@@ -1119,7 +1379,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         finalStart.add(perp1.multiplyScalar(offsetDistance));
                     }
 
-                    if (offsetDistance > 0 && dir2.lengthSq() > 0.001) {
+                    if (dir2.lengthSq() > 0.001) {
                         const perp2 = new THREE.Vector3(-dir2.z, 0, dir2.x);
                         const vCenter2 = new THREE.Vector3(offsetPos2.x, 0, offsetPos2.z);
                         if (perp2.dot(vCenter2) < 0) {
@@ -1506,6 +1766,8 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 const code = (layout.component.code || "").toUpperCase();
                 const qId = (layout.component.q_id || "").toUpperCase();
                 const isCgf = code === "CF" || qId.includes("CGF");
+                const isPile = code === "PL" || code === "PILE" || qId.includes("PILE");
+                if (isPile) return true;
                 return !(code === "LG" || code === "LEG" || qId.includes("LEG") || isCgf);
             })
             .map((layout) => ({
@@ -1809,12 +2071,12 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
     await supabase.from("webapp_3d").delete().eq("structure_id", structureId);
     
     const insertData = componentLayouts.map((m: any) => {
-      const startX = m.start?.[0] ?? m.position?.[0] ?? 0;
-      const startY = m.start?.[1] ?? m.position?.[1] ?? 0;
-      const startZ = m.start?.[2] ?? m.position?.[2] ?? 0;
-      const endX = m.end?.[0] ?? startX;
-      const endY = m.end?.[1] ?? startY;
-      const endZ = m.end?.[2] ?? startZ;
+      const startX = m.start?.x ?? m.start?.[0] ?? m.position?.[0] ?? 0;
+      const startY = m.start?.y ?? m.start?.[1] ?? m.position?.[1] ?? 0;
+      const startZ = m.start?.z ?? m.start?.[2] ?? m.position?.[2] ?? 0;
+      const endX = m.end?.x ?? m.end?.[0] ?? startX;
+      const endY = m.end?.y ?? m.end?.[1] ?? startY;
+      const endZ = m.end?.z ?? m.end?.[2] ?? startZ;
       const posX = (startX + endX) / 2;
       const posY = (startY + endY) / 2;
       const posZ = (startZ + endZ) / 2;

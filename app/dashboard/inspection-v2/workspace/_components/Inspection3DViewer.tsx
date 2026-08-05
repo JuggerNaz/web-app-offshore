@@ -76,7 +76,7 @@ const ComponentModel = ({
         />
         {/* Visible Edges for better definition */}
         <Edges
-          scale={1.05}
+          scale={1.0}
           threshold={15}
           color={isSelected ? "#ffffff" : hovered ? "#ffffff" : "#1e293b"}
         />
