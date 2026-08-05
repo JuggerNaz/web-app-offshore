@@ -91,7 +91,7 @@ export function SOWDialog({
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [showAnalytics, setShowAnalytics] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(true);
-    const [scopeStatusFilter, setScopeStatusFilter] = useState<'all' | 'selected' | 'completed' | 'incomplete' | 'pending'>('all');
+    const [scopeStatusFilter, setScopeStatusFilter] = useState<'all' | 'selected' | 'completed' | 'incomplete' | 'pending' | 'anomaly'>('all');
     const [expandedMode, setExpandedMode] = useState<string | null>(null);
     const [expandedTaskType, setExpandedTaskType] = useState<string | null>(null);
     const [expandedCompType, setExpandedCompType] = useState<string | null>(null);
@@ -101,12 +101,15 @@ export function SOWDialog({
     const [extraInspectionIds, setExtraInspectionIds] = useState<number[]>([]);
     const [showAddInspectionDialog, setShowAddInspectionDialog] = useState(false);
     const [searchAddInspection, setSearchAddInspection] = useState("");
+    const [liveComponents, setLiveComponents] = useState<any[]>([]);
     
     // Logic state
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
     const [componentSplitByElevation, setComponentSplitByElevation] = useState<Record<number, boolean>>({});
     const [componentBreakpoints, setComponentBreakpoints] = useState<Record<number, number[]>>({});
     const [newElevationInput, setNewElevationInput] = useState<Record<number, string>>({});
+    const [showBreakInput, setShowBreakInput] = useState<Record<number, boolean>>({});
+    const [hideArchived, setHideArchived] = useState<boolean>(false);
     const [copyDialogOpen, setCopyDialogOpen] = useState(false);
     const [pendingReportToAdd, setPendingReportToAdd] = useState<ReportNumber | null>(null);
     const [selectedInspectionFilter, setSelectedInspectionFilter] = useState<number | 'all'>('all');
@@ -134,6 +137,17 @@ export function SOWDialog({
         try {
             const res = await fetch(`/api/sow?jobpack_id=${jobpackId}&structure_id=${structure.id}`);
             const { data } = await res.json();
+
+            // Fetch live enriched components (with inspections & anomalies)
+            try {
+                const compRes = await fetch(`/api/structure-components?structure_id=${structure.id}`);
+                const compData = await compRes.json();
+                if (compData?.data && Array.isArray(compData.data)) {
+                    setLiveComponents(compData.data);
+                }
+            } catch (e) {
+                console.warn("[SOWDialog] Error loading enriched components:", e);
+            }
             
             // Also fetch all master inspection types to allow adding new ones
             const itRes = await fetch('/api/inspection-types');
@@ -416,11 +430,72 @@ export function SOWDialog({
         return ranges;
     };
 
+    const isReportMatch = (itemRpt: string | null | undefined, activeRpt: string) => {
+        if (!itemRpt || itemRpt === 'null') return activeRpt === 'null' || !activeRpt;
+        if (itemRpt === activeRpt) return true;
+        const cleanItem = itemRpt.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        const cleanActive = activeRpt.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        return cleanItem === cleanActive || cleanActive.startsWith(cleanItem) || cleanItem.startsWith(cleanActive);
+    };
+
     const getItemStatus = (compId: number, typeId: number, s: number, e: number): InspectionStatus => {
-        const itm = sowItems.find(i => i.component_id === compId && i.inspection_type_id === typeId && (i.report_number || 'null') === activeReport);
-        if (!itm) return "pending";
-        if (itm.elevation_required && itm.elevation_data) return itm.elevation_data.find((d: any) => d.start === s && d.end === e)?.status || "pending";
-        return itm.status || "pending";
+        const itm = sowItems.find(i => i.component_id === compId && i.inspection_type_id === typeId && isReportMatch(i.report_number, activeReport));
+        const comp = (liveComponents.length > 0 ? liveComponents : components).find(c => c.id === compId);
+        const itType = validInspections.find(t => t.id === typeId);
+
+        // Check if there is an inspection record for this component and inspection type in live components
+        const rec = comp && Array.isArray((comp as any).inspections)
+            ? (comp as any).inspections.find((r: any) => {
+                const matchesRpt = isReportMatch(r.sow_report_no, activeReport);
+                const matchesJobpack = !r.jobpack_id || String(r.jobpack_id) === String(jobpackId);
+                const matchesCode = itType && r.inspection_type_code && (
+                    r.inspection_type_code.toUpperCase() === itType.code.toUpperCase() ||
+                    itType.code.toUpperCase().includes(r.inspection_type_code.toUpperCase()) ||
+                    r.inspection_type_code.toUpperCase().includes(itType.code.toUpperCase())
+                );
+                return matchesRpt && matchesJobpack && matchesCode;
+            })
+            : null;
+
+        // Check if component has direct anomaly in anomalies array matching inspection type/code and report
+        const hasDirectCompAnomaly = comp && Array.isArray((comp as any).anomalies) && (comp as any).anomalies.some((a: any) => {
+            const matchesRpt = isReportMatch(a.sow_report_no, activeReport);
+            if (!matchesRpt) return false;
+            if (!itType) return true;
+            const cat = (a.category || a.defect_type || a.description || "").toUpperCase();
+            const code = itType.code.toUpperCase();
+            const name = itType.name.toUpperCase();
+            return cat.includes(code) || cat.includes(name) || name.includes(cat) || code.includes(cat);
+        });
+
+        // Check anomaly flags across sowItem, elevation range, live inspection record, and component anomalies
+        const itmStatusStr = ((itm?.status as string) || '').toLowerCase();
+        const recStatusStr = ((rec?.status as string) || '').toLowerCase();
+
+        const isAnom = 
+            itmStatusStr === 'anomaly' || itmStatusStr === 'anomalous' ||
+            recStatusStr === 'anomaly' || recStatusStr === 'anomalous' ||
+            Boolean((itm as any)?.has_anomaly || (itm as any)?.hasAnomaly || (itm as any)?.is_anomaly) ||
+            Boolean(rec?.has_anomaly) ||
+            Boolean(hasDirectCompAnomaly) ||
+            (Array.isArray((itm as any)?.insp_anomalies) && (itm as any).insp_anomalies.length > 0);
+
+        if (isAnom) return "anomaly" as InspectionStatus;
+
+        if (itm?.elevation_required && itm?.elevation_data) {
+            const elev = itm.elevation_data.find((d: any) => d.start === s && d.end === e);
+            if (elev) {
+                const elevStatus = (elev.status || '').toLowerCase();
+                if (elevStatus === 'anomaly' || (elev as any).has_anomaly) return "anomaly" as InspectionStatus;
+                if (elevStatus === 'completed') return "completed" as InspectionStatus;
+                if (elevStatus === 'incomplete') return "incomplete" as InspectionStatus;
+            }
+        }
+
+        if (itmStatusStr === 'completed' || recStatusStr === 'completed') return "completed" as InspectionStatus;
+        if (itmStatusStr === 'incomplete' || recStatusStr === 'incomplete') return "incomplete" as InspectionStatus;
+
+        return "pending" as InspectionStatus;
     };
 
     const isSelected = (compId: number, typeId: number, s: number, e: number) => {
@@ -428,19 +503,36 @@ export function SOWDialog({
     };
 
     const activeComponents = useMemo(() => {
-        let filtered = components.filter(c => {
+        const componentsToFilter = liveComponents.length > 0 ? liveComponents : components;
+        let filtered = componentsToFilter.filter(c => {
+            // 1. Hide Archived components option
+            if (hideArchived) {
+                const isArchived = Boolean((c as any)?.is_deleted || (c as any)?.is_archived || (c as any)?.archived);
+                if (isArchived) return false;
+            }
+
+            // 2. Smart Search by QID, Type, Code, Nodes, Legs, Elevation, and Inspection task names/codes
             let matchesSearch = true;
             if (componentSearch) {
-                const s = componentSearch.toLowerCase();
-                matchesSearch = [
-                    c.qid, c.type, c.s_node, c.f_node, c.s_leg, c.f_leg, 
-                    c.top_und, c.comp_group, 
+                const s = componentSearch.toLowerCase().trim();
+                const matchesQidOrCode = [
+                    c.qid, c.type, c.code, (c as any).component_code, (c as any).component_type,
+                    c.s_node, c.f_node, c.s_leg, c.f_leg, c.top_und, c.comp_group,
                     c.elv_1?.toString(), c.elv_2?.toString()
-                ].some(val => val && val.toString().toLowerCase().includes(s));
+                ].some(val => val && String(val).toLowerCase().includes(s));
+
+                const matchesInspection = validInspections.some(it => {
+                    const itMatch = (it.code && it.code.toLowerCase().includes(s)) || (it.name && it.name.toLowerCase().includes(s));
+                    if (!itMatch) return false;
+                    const ranges = getComponentRanges(c);
+                    return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) || getItemStatus(c.id, it.id, r.start, r.end) !== 'pending');
+                });
+
+                matchesSearch = matchesQidOrCode || matchesInspection;
             }
             if (!matchesSearch) return false;
             
-            // Combine status and inspection filters
+            // 3. Combined Status Filter & Inspection Type Filter
             let matchesStatus = true;
             const inspectionsToCheck = selectedInspectionFilter === 'all' 
                 ? validInspections 
@@ -459,16 +551,37 @@ export function SOWDialog({
             } else if (scopeStatusFilter === 'completed') {
                 matchesStatus = inspectionsToCheck.some(it => {
                     const ranges = getComponentRanges(c);
-                    return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) && getItemStatus(c.id, it.id, r.start, r.end) === 'completed');
+                    return ranges.some(r => {
+                        const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
+                        return status === 'completed';
+                    });
                 });
             } else if (scopeStatusFilter === 'incomplete') {
                 matchesStatus = inspectionsToCheck.some(it => {
                     const ranges = getComponentRanges(c);
-                    return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) && getItemStatus(c.id, it.id, r.start, r.end) === 'incomplete');
+                    return ranges.some(r => {
+                        const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
+                        return status === 'incomplete';
+                    });
+                });
+            } else if (scopeStatusFilter === 'anomaly') {
+                matchesStatus = inspectionsToCheck.some(it => {
+                    const ranges = getComponentRanges(c);
+                    return ranges.some(r => {
+                        const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
+                        return status === 'anomaly' || status === 'anomalous';
+                    });
                 });
             } else if (scopeStatusFilter === 'all') {
-                // If 'all' is selected, we don't filter rows by status or inspection selection
-                matchesStatus = true;
+                if (selectedInspectionFilter !== 'all') {
+                    // Combine condition: show components that have assignments or field records for selectedInspectionFilter
+                    matchesStatus = inspectionsToCheck.some(it => {
+                        const ranges = getComponentRanges(c);
+                        return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) || getItemStatus(c.id, it.id, r.start, r.end) !== 'pending');
+                    });
+                } else {
+                    matchesStatus = true;
+                }
             }
             
             return matchesStatus;
@@ -493,7 +606,7 @@ export function SOWDialog({
             if (valA > valB) return compSortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [components, componentSearch, scopeStatusFilter, selectedInspectionFilter, validInspections, selectedItems, sowItems, activeReport, compSortConfig]);
+    }, [liveComponents, components, componentSearch, scopeStatusFilter, selectedInspectionFilter, validInspections, compSortConfig, selectedItems, componentSplitByElevation, componentBreakpoints, hideArchived]);
 
     // ── ACTIONS ──
     const handleAddReportNumber = () => {
@@ -618,7 +731,7 @@ export function SOWDialog({
         setRenameInput(oldNo);
     };
 
-    const handleConfirmRenameReportNumber = () => {
+    const handleConfirmRenameReportNumber = async () => {
         if (!editingReportNo) return;
         const trimmed = renameInput.trim().toUpperCase();
         if (!trimmed) {
@@ -638,8 +751,11 @@ export function SOWDialog({
         }
 
         const oldNo = editingReportNo;
-        // Update reportNumbers array
-        setReportNumbers(prev => prev.map(r => r.number === oldNo ? { ...r, number: trimmed } : r));
+        setEditingReportNo(null);
+
+        // Update reportNumbers array state
+        const updatedReportNumbers = reportNumbers.map(r => r.number === oldNo ? { ...r, number: trimmed } : r);
+        setReportNumbers(updatedReportNumbers);
 
         // Update selected items keys
         setSelectedItems(prev => {
@@ -658,7 +774,7 @@ export function SOWDialog({
 
         // Update sowItems array
         setSOWItems(prev => prev.map(item => {
-            if (item.report_number === oldNo) {
+            if (item.report_number === oldNo || isReportMatch(item.report_number, oldNo)) {
                 return { ...item, report_number: trimmed };
             }
             return item;
@@ -668,19 +784,32 @@ export function SOWDialog({
             setActiveReportNumber(trimmed);
         }
 
-        // Track rename so we cascade to DB tables on save
-        setPendingRenames(prev => {
-            // If we already renamed X → oldNo, collapse to X → trimmed
-            const collapsed = prev.map(r => r.newNo === oldNo ? { ...r, newNo: trimmed } : r);
-            // If collapse didn't match anything, add a new entry
-            if (!collapsed.some(r => r.newNo === trimmed)) {
-                collapsed.push({ oldNo, newNo: trimmed });
+        // Immediately trigger cascade rename across all database tables (u_sow_items, insp_records, etc.)
+        try {
+            const res = await fetch("/api/sow/rename-report", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jobpack_id: jobpackId,
+                    structure_id: structure.id,
+                    sow_id: sow?.id || null,
+                    old_report_no: oldNo,
+                    new_report_no: trimmed,
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                const itemsCount = data.counts?.u_sow_items || 0;
+                const recsCount = data.counts?.insp_records || 0;
+                toast.success(`Report "${oldNo}" renamed to "${trimmed}" (${itemsCount} SOW items, ${recsCount} inspection records updated).`);
+                loadSOW();
+            } else {
+                toast.error(`Rename committed locally, but server update failed: ${data.error}`);
             }
-            return collapsed;
-        });
-
-        toast.success(`Report Number changed from "${oldNo}" to "${trimmed}". Click "Finalize Scope Matrix" to update all inspection records, dive jobs & ROV jobs.`);
-        setEditingReportNo(null);
+        } catch (e: any) {
+            console.error("[SOW Rename] Error:", e);
+            toast.error("Failed to commit rename to database server.");
+        }
     };
 
     const toggleSelection = (compId: number, typeId: number, s: number, e: number) => {
@@ -692,6 +821,9 @@ export function SOWDialog({
         setSelectedItems(prev => {
             const next = new Set(prev);
             activeComponents.forEach(comp => {
+                const isArchived = Boolean((comp as any)?.is_deleted || (comp as any)?.is_archived || (comp as any)?.archived);
+                if (checked && isArchived) return; // Ignore archived QIDs from bulk selection for upcoming tasks
+
                 const ranges = getComponentRanges(comp);
                 ranges.forEach(r => {
                     const key = `${activeReport}:${comp.id}:${typeId}:${r.start}:${r.end}`;
@@ -996,19 +1128,28 @@ export function SOWDialog({
                                 <ArrowLeft className="h-4 w-4" /> Back
                             </Button>
                         )}
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                    "h-9 px-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 flex items-center gap-2 font-bold text-[10px] bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm transition-all",
-                                    isCorrecting && "animate-pulse opacity-70"
-                                )}
-                            onClick={handleStatusCorrection}
-                            disabled={isCorrecting || readOnly}
-                        >
-                            <RefreshCw className={cn("h-3.5 w-3.5", isCorrecting && "animate-spin")} />
-                            {isCorrecting ? "Correcting..." : "Correct Status"}
-                        </Button>
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button 
+                                        variant="outline"
+                                        size="sm" 
+                                        className={cn(
+                                            "h-9 px-3 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2 font-bold text-[10px] bg-white dark:bg-slate-800 rounded-xl border border-blue-200 dark:border-blue-800 shadow-sm transition-all",
+                                            isCorrecting && "animate-pulse opacity-70"
+                                        )}
+                                        onClick={handleStatusCorrection}
+                                        disabled={isCorrecting || readOnly}
+                                    >
+                                        <RefreshCw className={cn("h-3.5 w-3.5 text-blue-600 dark:text-blue-400", isCorrecting && "animate-spin")} />
+                                        {isCorrecting ? "Syncing..." : "Sync & Refresh SOW"}
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent className="font-bold text-xs max-w-[260px]">
+                                    Cross-check captured inspection logs, auto-insert missing components, and sync anomaly flags.
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
                         <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg"><ShieldCheck className="h-5 w-5 text-white" /></div>
                         <div className="flex flex-col">
                             <DialogTitle className="text-sm font-black leading-tight text-slate-900 dark:text-slate-100">
@@ -1129,61 +1270,85 @@ export function SOWDialog({
 
                 <div className="flex-1 flex overflow-hidden relative">
                     {/* LEFT FILTERS */}
-                    <div className={cn("flex flex-col bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 transition-all shrink-0", isSidebarCollapsed ? "w-0 opacity-0" : "w-[300px]")}>
-                        <div className="p-6">
-                            <div className="flex items-center gap-2 mb-4"><Search className="h-4 w-4 text-blue-600 dark:text-blue-400" /><h3 className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">Inventory Filters</h3></div>
-                            <div className="relative mb-6"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-200 dark:text-slate-600" /><Input placeholder="Search asset attributes..." value={componentSearch} onChange={e => setComponentSearch(e.target.value)} className="pl-9 h-11 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none text-xs font-black shadow-inner text-slate-900 dark:text-slate-100" /></div>
+                    <div className={cn("flex flex-col bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 transition-all shrink-0 h-full overflow-y-auto custom-scrollbar", isSidebarCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-[290px]")}>
+                        <div className="p-4 space-y-4">
+                            <div className="flex items-center gap-2"><Search className="h-4 w-4 text-blue-600 dark:text-blue-400" /><h3 className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">Inventory Filters</h3></div>
                             
-                            <div className="mb-6 space-y-2">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Filter By Status</h4>
+                            <div className="relative"><Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" /><Input placeholder="Search asset attributes..." value={componentSearch} onChange={e => setComponentSearch(e.target.value)} className="pl-8 h-9 rounded-xl bg-slate-50 dark:bg-slate-800 border-none text-[11px] font-bold shadow-inner text-slate-900 dark:text-slate-100" /></div>
+                            
+                            <div className="space-y-2">
+                                <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filter By Status</h4>
                                 
-                                <label className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors overflow-hidden relative group">
-                                    <div className={cn("absolute inset-y-0 left-0 w-1 transition-colors", scopeStatusFilter === 'all' ? "bg-slate-400" : "bg-transparent group-hover:bg-slate-200 dark:group-hover:bg-slate-700")} />
-                                    <input type="radio" checked={scopeStatusFilter === 'all'} onChange={() => setScopeStatusFilter('all')} className="accent-slate-600 h-4 w-4 ml-1" />
-                                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2"><Layers className="h-4 w-4 text-slate-400 dark:text-slate-500" /> All Components</span>
-                                </label>
-                                
-                                <label className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors overflow-hidden relative group">
-                                    <div className={cn("absolute inset-y-0 left-0 w-1 transition-colors", scopeStatusFilter === 'selected' ? "bg-blue-500" : "bg-transparent group-hover:bg-slate-200 dark:group-hover:bg-slate-700")} />
-                                    <input type="radio" checked={scopeStatusFilter === 'selected'} onChange={() => setScopeStatusFilter('selected')} className="accent-blue-600 h-4 w-4 ml-1" />
-                                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-blue-500 dark:text-blue-400" /> Selected</span>
-                                </label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'all' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                        <input type="radio" checked={scopeStatusFilter === 'all'} onChange={() => setScopeStatusFilter('all')} className="sr-only" />
+                                        <Layers className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                        <span className="truncate">All</span>
+                                    </label>
 
-                                <label className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors overflow-hidden relative group">
-                                    <div className={cn("absolute inset-y-0 left-0 w-1 transition-colors", scopeStatusFilter === 'pending' ? "bg-slate-500" : "bg-transparent group-hover:bg-slate-200 dark:group-hover:bg-slate-700")} />
-                                    <input type="radio" checked={scopeStatusFilter === 'pending'} onChange={() => setScopeStatusFilter('pending')} className="accent-slate-500 h-4 w-4 ml-1" />
-                                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2"><Clock className="h-4 w-4 text-slate-400 dark:text-slate-500" /> Pending</span>
-                                </label>
+                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'selected' ? "bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                        <input type="radio" checked={scopeStatusFilter === 'selected'} onChange={() => setScopeStatusFilter('selected')} className="sr-only" />
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                        <span className="truncate">Selected</span>
+                                    </label>
 
-                                <label className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors overflow-hidden relative group">
-                                    <div className={cn("absolute inset-y-0 left-0 w-1 transition-colors", scopeStatusFilter === 'completed' ? "bg-emerald-500" : "bg-transparent group-hover:bg-slate-200 dark:group-hover:bg-slate-700")} />
-                                    <input type="radio" checked={scopeStatusFilter === 'completed'} onChange={() => setScopeStatusFilter('completed')} className="accent-emerald-600 h-4 w-4 ml-1" />
-                                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400" /> Inspected</span>
-                                </label>
+                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'pending' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                        <input type="radio" checked={scopeStatusFilter === 'pending'} onChange={() => setScopeStatusFilter('pending')} className="sr-only" />
+                                        <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                        <span className="truncate">Pending</span>
+                                    </label>
 
-                                <label className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors overflow-hidden relative group">
-                                    <div className={cn("absolute inset-y-0 left-0 w-1 transition-colors", scopeStatusFilter === 'incomplete' ? "bg-rose-500" : "bg-transparent group-hover:bg-slate-200 dark:group-hover:bg-slate-700")} />
-                                    <input type="radio" checked={scopeStatusFilter === 'incomplete'} onChange={() => setScopeStatusFilter('incomplete')} className="accent-rose-600 h-4 w-4 ml-1" />
-                                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase flex items-center gap-2"><AlertCircle className="h-4 w-4 text-rose-500 dark:text-rose-400" /> Incomplete / Anomalies</span>
-                                </label>
+                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'completed' ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                        <input type="radio" checked={scopeStatusFilter === 'completed'} onChange={() => setScopeStatusFilter('completed')} className="sr-only" />
+                                        <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                        <span className="truncate">Inspected</span>
+                                    </label>
+
+                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'incomplete' ? "bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                        <input type="radio" checked={scopeStatusFilter === 'incomplete'} onChange={() => setScopeStatusFilter('incomplete')} className="sr-only" />
+                                        <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                        <span className="truncate">Incomplete</span>
+                                    </label>
+
+                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'anomaly' ? "bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                        <input type="radio" checked={scopeStatusFilter === 'anomaly'} onChange={() => setScopeStatusFilter('anomaly')} className="sr-only" />
+                                        <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                                        <span className="truncate">Anomalies</span>
+                                    </label>
+                                </div>
+
+                                <div className="pt-2">
+                                    <label className="flex items-center justify-between p-2 rounded-xl border border-purple-100 dark:border-purple-900/40 bg-purple-50/40 dark:bg-purple-950/20 cursor-pointer hover:bg-purple-50/70 transition-colors">
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-2 w-2 rounded-full bg-purple-500 shrink-0" />
+                                            <span className="text-[10px] font-black text-purple-900 dark:text-purple-200">Hide Archived QIDs</span>
+                                        </div>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={hideArchived} 
+                                            onChange={e => setHideArchived(e.target.checked)} 
+                                            className="h-3.5 w-3.5 rounded accent-purple-600 cursor-pointer" 
+                                        />
+                                    </label>
+                                </div>
                             </div>
                             
-                            <div className="mb-6 space-y-3">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <ListFilter className="h-3.5 w-3.5 text-blue-500" /> Filter By Inspection
+                            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                    <ListFilter className="h-3 w-3 text-blue-500" /> Filter By Inspection
                                 </h4>
                                 <Select 
                                     value={selectedInspectionFilter.toString()} 
                                     onValueChange={(v) => setSelectedInspectionFilter(v === 'all' ? 'all' : Number(v))}
                                 >
-                                    <SelectTrigger className="w-full h-11 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none text-[11px] font-black shadow-inner focus:ring-0 focus:ring-offset-0 text-slate-900 dark:text-slate-100">
+                                    <SelectTrigger className="w-full h-9 rounded-xl bg-slate-50 dark:bg-slate-800 border-none text-[11px] font-black shadow-inner focus:ring-0 focus:ring-offset-0 text-slate-900 dark:text-slate-100">
                                         <SelectValue placeholder="Select Inspection Type..." />
                                     </SelectTrigger>
                                     <SelectContent className="max-h-[300px] dark:bg-slate-900 dark:border-slate-800">
                                         <SelectItem value="all" className="text-[11px] font-black uppercase dark:text-slate-100">All Inspections</SelectItem>
                                         
                                         <SelectGroup>
-                                            <SelectLabel className="text-[10px] font-black text-slate-400 uppercase px-2 py-1.5 flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-800/50">
+                                            <SelectLabel className="text-[10px] font-black text-slate-400 uppercase px-2 py-1 flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-800/50">
                                                 <Waves className="h-3 w-3 text-emerald-500 dark:text-emerald-400" /> Diving Mode
                                             </SelectLabel>
                                             {validInspections.filter(it => it.mode === 'DIVING').map(it => (
@@ -1197,7 +1362,7 @@ export function SOWDialog({
                                         </SelectGroup>
 
                                         <SelectGroup>
-                                            <SelectLabel className="text-[10px] font-black text-slate-400 uppercase px-2 py-1.5 flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-800/50">
+                                            <SelectLabel className="text-[10px] font-black text-slate-400 uppercase px-2 py-1 flex items-center gap-1.5 bg-slate-50/50 dark:bg-slate-800/50">
                                                 <PlaneTakeoff className="h-3 w-3 text-blue-500 dark:text-blue-400" /> ROV Mode
                                             </SelectLabel>
                                             {validInspections.filter(it => it.mode === 'ROV').map(it => (
@@ -1216,7 +1381,7 @@ export function SOWDialog({
                                         variant="ghost" 
                                         size="sm" 
                                         onClick={() => setSelectedInspectionFilter('all')}
-                                        className="w-full h-8 text-[10px] font-black text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl"
+                                        className="w-full h-7 text-[10px] font-black text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg"
                                     >
                                         Clear Inspection Filter
                                     </Button>
@@ -1224,29 +1389,56 @@ export function SOWDialog({
 
                                 <Button 
                                     variant="outline" 
-                                    className="w-full h-10 rounded-xl border-dashed border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-500 hover:border-blue-500 dark:hover:text-blue-400 dark:hover:border-blue-400 mt-3 transition-all flex items-center justify-center gap-2"
+                                    className="w-full h-8 rounded-xl border-dashed border-slate-200 dark:border-slate-800 text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-blue-500 hover:border-blue-500 dark:hover:text-blue-400 dark:hover:border-blue-400 mt-2 transition-all flex items-center justify-center gap-1.5"
                                     onClick={() => setShowAddInspectionDialog(true)}
                                     disabled={readOnly}
                                 >
-                                    <Plus className="h-3.5 w-3.5" /> Add Inspection Type
+                                    <Plus className="h-3 w-3" /> Add Inspection Type
                                 </Button>
                             </div>
 
-                            <div className="p-8 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-800/30 mt-auto rounded-[2rem] mx-4 mb-6 border border-slate-100 dark:border-slate-800 shadow-inner">
-                                <div className="h-12 w-12 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-3">
-                                    <Navigation className="h-5 w-5 text-blue-500 dark:text-blue-400"/>
+                            <div className="p-4 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-inner">
+                                <div className="h-9 w-9 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-1.5">
+                                    <Navigation className="h-4 w-4 text-blue-500 dark:text-blue-400"/>
                                 </div>
-                                <div className="text-4xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">{activeComponents.length}</div>
-                                <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center mt-1 leading-tight">Active Component<br/>Library</div>
+                                <div className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">{activeComponents.length}</div>
+                                <div className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center mt-0.5 leading-tight">Active Component Library</div>
                             </div>
                         </div>
                     </div>
 
                     {/* MAIN WORKSPACE */}
                     <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
-                        <div className="px-6 py-2 border-b border-slate-50 dark:border-slate-900 flex justify-between items-center bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm z-30">
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}>{isSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" /> : <PanelLeftClose className="h-5 w-5 text-slate-400 dark:text-slate-600" />}</Button>
-                            <Badge className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900 font-black text-[9px] tracking-widest px-3 py-1.5 rounded-full uppercase">Project Strategy Grid</Badge>
+                        <div className="px-6 py-2 border-b border-slate-50 dark:border-slate-900 flex justify-between items-center bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm z-30 gap-4 flex-wrap">
+                            <div className="flex items-center gap-3">
+                                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}>{isSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" /> : <PanelLeftClose className="h-5 w-5 text-slate-400 dark:text-slate-600" />}</Button>
+                                <Badge className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900 font-black text-[9px] tracking-widest px-3 py-1.5 rounded-full uppercase">Project Strategy Grid</Badge>
+                            </div>
+
+                            {/* MATRIX LEGEND */}
+                            <div className="flex items-center gap-4 text-[10px] font-black text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/80 px-3.5 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm flex-wrap">
+                                <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Legend:</span>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="h-4 w-4 rounded-md bg-[#0ea5e9] flex items-center justify-center text-white shadow-xs"><Check className="h-2.5 w-2.5 stroke-[3px]" /></div>
+                                    <span>Pending Scope</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="h-4 w-4 rounded-md bg-emerald-500 flex items-center justify-center text-white shadow-xs"><Check className="h-2.5 w-2.5 stroke-[3px]" /></div>
+                                    <span>Inspected</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="h-4 w-4 rounded-md bg-rose-500 flex items-center justify-center text-white shadow-xs"><AlertTriangle className="h-2.5 w-2.5 stroke-[2.5px]" /></div>
+                                    <span>Anomaly Flagged</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="h-4 w-4 rounded-md bg-amber-500 flex items-center justify-center text-white shadow-xs"><AlertCircle className="h-2.5 w-2.5 stroke-[2.5px]" /></div>
+                                    <span>Incomplete</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
+                                    <div className="h-4 px-1.5 rounded-md bg-purple-100 dark:bg-purple-950/80 border border-purple-300 dark:border-purple-800 flex items-center justify-center text-purple-700 dark:text-purple-300 shadow-xs text-[8px] font-black line-through">ARCH</div>
+                                    <span className="text-purple-700 dark:text-purple-300">Archived / Deleted Component</span>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="flex-1 overflow-auto custom-scrollbar">
@@ -1296,7 +1488,8 @@ export function SOWDialog({
                                                     const ranges = getComponentRanges(c);
                                                     return ranges.every(r => isSelected(c.id, it.id, r.start, r.end));
                                                 });
-                                                 return (
+
+                                                return (
                                                     <th key={it.id} className={cn("p-0 border-b border-slate-50 dark:border-slate-800 min-w-[85px] h-64 relative group transition-all duration-300 overflow-hidden", styles.light, "dark:bg-slate-900/40")}>
                                                         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/[0.02] dark:to-white/[0.02]" />
                                                         
@@ -1307,327 +1500,391 @@ export function SOWDialog({
                                                                 onChange={e => handleBulkSelect(it.id, e.target.checked)}
                                                                 disabled={!activeReportNumber || readOnly}
                                                                 className={cn(
-                                                                    "h-6 w-6 rounded-lg border-2 accent-current transition-all shadow-lg cursor-pointer", 
-                                                                    styles.text,
-                                                                    (!activeReportNumber || readOnly) && "cursor-not-allowed opacity-50"
-                                                                )} 
+                                                                    "h-6 w-6 rounded-lg border-2 accent-current transition-all shadow-lg cursor-pointer",
+                                                                    styles.text
+                                                                )}
                                                             />
                                                         </div>
 
-                                                        <div className="absolute inset-0 flex flex-col items-center justify-end pb-10 px-2">
-                                                            <div className={cn("writing-mode-vertical text-[12px] font-black uppercase transform rotate-180 tracking-tighter transition-all group-hover:scale-105 group-hover:-translate-y-1", styles.text)} 
-                                                                style={{ writingMode: 'vertical-rl' }}>
-                                                                {it.name}
-                                                            </div>
-                                                            <div className={cn("mt-4 px-2 py-0.5 rounded-full text-[8px] font-black tracking-[0.15em] uppercase shadow-sm transition-all", styles.bg, "text-white opacity-30 group-hover:opacity-100 group-hover:translate-y-[-2px]")}>
-                                                                {it.mode}
+                                                        <div className="absolute inset-0 flex flex-col justify-end p-3 pointer-events-none">
+                                                            <div className="flex flex-col items-center gap-2">
+                                                                <span className={cn("text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-xs", styles.light, styles.text, styles.border, "border bg-white/80 dark:bg-slate-900/80 backdrop-blur-xs")}>
+                                                                    {it.mode}
+                                                                </span>
+                                                                <div className="h-44 flex items-center justify-center my-1">
+                                                                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-200 tracking-tight whitespace-nowrap -rotate-90 origin-center block uppercase max-w-[170px] truncate drop-shadow-2xs">
+                                                                        {it.name}
+                                                                    </span>
+                                                                </div>
                                                             </div>
                                                         </div>
-
-                                                        <div className={cn("absolute inset-x-0 bottom-0 h-1.5 transition-all group-hover:h-2", styles.bg, "opacity-20 group-hover:opacity-60")} />
-                                                        
-                                                        {/* Right border separator */}
-                                                        <div className="absolute right-0 top-1/4 bottom-1/4 w-[1px] bg-slate-200 dark:bg-slate-800 opacity-50" />
                                                     </th>
                                                 );
                                             })}
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
-                                    {rows.map(({ comp, range, idx, total }) => (
-                                        <tr key={`${comp.id}:${range.start}:${range.end}`} className={cn("group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors", idx > 0 && "bg-slate-50/20 dark:bg-slate-900/10")}>
-                                            <td className="p-5 border-r border-slate-50 dark:border-slate-800 sticky left-0 bg-white dark:bg-slate-950 z-10 w-[280px] group-hover:bg-slate-50 dark:group-hover:bg-slate-900 transition-colors">
-                                                <div className="flex flex-col gap-2">
-                                                    <div className={cn("font-black leading-tight flex items-center gap-2", idx === 0 ? "text-slate-800 dark:text-slate-100 text-[14px]" : "text-slate-400 dark:text-slate-500 text-[12px] pl-4")}>
-                                                        {idx === 0 ? (
-                                                            <>
-                                                                <div className="h-2 w-2 rounded-full bg-blue-500" /> 
-                                                                {comp.qid}
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <span className="text-slate-300 dark:text-slate-600 font-mono">↳</span>
-                                                                <span>{comp.qid}</span>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                    <div className={cn("flex items-center gap-2", idx > 0 && "pl-4")}>
-                                                        {idx === 0 && (
-                                                            <>
-                                                                <Badge variant="outline" className="text-[8px] font-black h-4 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 px-1.5 rounded-full uppercase">{comp.type}</Badge>
-                                                                {total > 1 && (
-                                                                    <span className="text-[9px] text-slate-400 font-bold">
-                                                                        (Base: {Number(comp.elv_1 || 0).toFixed(1)}m – {Number(comp.elv_2 || 0).toFixed(1)}m)
-                                                                    </span>
+                                <tbody className="divide-y divide-slate-50 dark:divide-slate-800/60">
+                                    {activeComponents.map((comp) => {
+                                        const ranges = getComponentRanges(comp);
+                                        const total = ranges.length;
+                                        const isArchived = Boolean((comp as any)?.is_deleted || (comp as any)?.is_archived || (comp as any)?.archived);
+                                        return ranges.map((range, idx) => (
+                                            <tr key={`${comp.id}-${range.start}-${range.end}`} className={cn("group transition-colors", isArchived ? "bg-purple-50/30 dark:bg-purple-950/10 hover:bg-purple-50/60 dark:hover:bg-purple-950/20" : "hover:bg-slate-50/80 dark:hover:bg-slate-900/30")}>
+                                                <td className={cn("p-2.5 border-r border-slate-50 dark:border-slate-800 sticky left-0 z-30 transition-colors", isArchived ? "bg-purple-50/40 dark:bg-slate-950 group-hover:bg-purple-50/70 dark:group-hover:bg-slate-900" : "bg-white dark:bg-slate-950 group-hover:bg-slate-50 dark:group-hover:bg-slate-900")}>
+                                                    <div className="flex flex-col gap-1">
+                                                        {/* Top compact row: Dot, QID, Badges, Elevation range, Break toggle icon */}
+                                                        <div className="flex items-center justify-between gap-1.5 min-w-0">
+                                                            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                                                                {idx === 0 ? (
+                                                                    <>
+                                                                        <div className={cn("h-2 w-2 rounded-full shrink-0", isArchived ? "bg-purple-500 animate-pulse" : "bg-blue-500")} />
+                                                                        <span className={cn("font-black leading-tight text-[13px] truncate", isArchived ? "text-purple-700 dark:text-purple-300 line-through" : "text-slate-800 dark:text-slate-100")}>
+                                                                            {comp.qid}
+                                                                        </span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="text-slate-300 dark:text-slate-600 font-mono text-[11px] pl-2">↳</span>
+                                                                        <span className={cn("font-black text-[12px] truncate", isArchived ? "text-purple-500 dark:text-purple-400 line-through" : "text-slate-600 dark:text-slate-300")}>
+                                                                            {comp.qid}
+                                                                        </span>
+                                                                    </>
                                                                 )}
-                                                            </>
-                                                        )}
-                                                        <span className={cn("font-black font-mono tracking-tighter flex items-center gap-1.5", idx === 0 ? "text-[10px] text-slate-600 dark:text-slate-400" : "text-[10px] text-blue-500 dark:text-blue-400")}>
-                                                            {range.label}
-                                                            {total > 1 && !readOnly && (
-                                                                <Trash2 
-                                                                    className="h-3.5 w-3.5 text-slate-300 hover:text-rose-500 cursor-pointer transition-colors" 
-                                                                    onClick={() => deleteRange(comp, range)}
-                                                                />
-                                                            )}
-                                                        </span>
-                                                    </div>
-                                                    {idx === 0 && !readOnly && (
-                                                        <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-1.5">
-                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Elevation Breaks</span>
-                                                            <div className="flex items-center gap-1">
-                                                                <Input 
-                                                                    placeholder="e.g. -9, -6, -3" 
-                                                                    value={newElevationInput[comp.id] || ""} 
-                                                                    onChange={e => setNewElevationInput(prev => ({ ...prev, [comp.id]: e.target.value }))}
-                                                                    className="h-7 text-[10px] px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border-none font-bold text-slate-800 dark:text-slate-200"
-                                                                />
-                                                                <Button 
-                                                                    onClick={() => {
-                                                                        const input = newElevationInput[comp.id] || "";
-                                                                        const typedPts = input.split(",")
-                                                                            .map(s => parseFloat(s.trim()))
-                                                                            .filter(n => !isNaN(n));
-                                                                        
-                                                                        if (typedPts.length < 1) {
-                                                                            toast.error("Please enter at least 1 elevation point (e.g. -5)");
-                                                                            return;
-                                                                        }
-                                                                        
-                                                                        const existing = componentBreakpoints[comp.id] || [];
-                                                                        const allPointsSet = new Set<number>([...existing, ...typedPts]);
-                                                                        const pts = Array.from(allPointsSet).sort((a, b) => a - b);
-                                                                        
-                                                                        setComponentBreakpoints(prev => ({ ...prev, [comp.id]: pts }));
-                                                                        setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
-                                                                        setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: true }));
-                                                                        
-                                                                        // Auto-tick ranges overlapping with physical bounds
-                                                                        const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
-                                                                        const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
-                                                                        const bounds: number[] = [];
-                                                                        if (elv1 !== null) bounds.push(elv1);
-                                                                        if (elv2 !== null) bounds.push(elv2);
-                                                                        
-                                                                        const rangePointsSet = new Set<number>();
-                                                                        bounds.forEach(b => rangePointsSet.add(b));
-                                                                        pts.forEach(p => rangePointsSet.add(p));
-                                                                        
-                                                                        const sortedPoints = Array.from(rangePointsSet).sort((a, b) => a - b);
-                                                                        const newRanges: { start: number; end: number }[] = [];
-                                                                        for (let i = 0; i < sortedPoints.length - 1; i++) {
-                                                                            newRanges.push({ start: sortedPoints[i], end: sortedPoints[i + 1] });
-                                                                        }
-                                                                        
-                                                                        setSelectedItems(prev => {
-                                                                            const next = new Set(prev);
-                                                                            validInspections.forEach(it => {
-                                                                                const baseKey = `${activeReport}:${comp.id}:${it.id}:0:0`;
-                                                                                const wasBaseSelected = prev.has(baseKey);
-                                                                                
-                                                                                if (wasBaseSelected) {
-                                                                                    next.delete(baseKey);
-                                                                                }
-                                                                                
-                                                                                const minB = bounds.length >= 2 ? Math.min(...bounds) : -Infinity;
-                                                                                const maxB = bounds.length >= 2 ? Math.max(...bounds) : Infinity;
-                                                                                
-                                                                                newRanges.forEach(r => {
-                                                                                    const rMin = Math.min(r.start, r.end);
-                                                                                    const rMax = Math.max(r.start, r.end);
-                                                                                    
-                                                                                    // Tick if overlap exists and the task is active/selected
-                                                                                    if (wasBaseSelected && rMin < maxB && rMax > minB) {
-                                                                                        next.add(`${activeReport}:${comp.id}:${it.id}:${r.start}:${r.end}`);
-                                                                                    }
-                                                                                });
-                                                                            });
-                                                                            return next;
-                                                                        });
-                                                                        
-                                                                        toast.success(`Elevation breaks applied to ${comp.qid}`);
+
+                                                                {idx === 0 && (
+                                                                    <>
+                                                                        <Badge variant="outline" className={cn("text-[8px] font-black h-4 px-1.5 rounded-full uppercase shrink-0", isArchived ? "border-purple-300 dark:border-purple-800 bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300" : "border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500")}>
+                                                                            {comp.type}
+                                                                        </Badge>
+                                                                        {isArchived && (
+                                                                            <Badge variant="outline" className="text-[8px] font-black h-4 border-purple-400 dark:border-purple-700 bg-purple-600 text-white px-1.5 rounded-full uppercase tracking-wider shrink-0 shadow-xs">
+                                                                                ARCHIVED
+                                                                            </Badge>
+                                                                        )}
+                                                                    </>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Elevation Break Toggle / Config Icon */}
+                                                            {idx === 0 && !readOnly && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setShowBreakInput(prev => ({ ...prev, [comp.id]: !prev[comp.id] }));
                                                                     }}
-                                                                    size="sm" 
-                                                                    className="h-7 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-[9px] font-bold text-white border-none"
+                                                                    className={cn(
+                                                                        "p-1 rounded-md transition-all text-[9px] font-black flex items-center gap-1 shrink-0 border",
+                                                                        showBreakInput[comp.id] || total > 1
+                                                                            ? "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 shadow-xs"
+                                                                            : "text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                                                    )}
+                                                                    title={showBreakInput[comp.id] ? "Hide Elevation Breaks input" : "Split / Configure Elevation Breaks"}
                                                                 >
-                                                                    Apply
-                                                                </Button>
-                                                                {componentSplitByElevation[comp.id] && (
+                                                                    <Sliders className="h-3 w-3" />
+                                                                    {total > 1 ? (
+                                                                        <span className="font-mono text-[9px]">({total} breaks)</span>
+                                                                    ) : (
+                                                                        <span className="hidden group-hover:inline font-semibold text-[8px]">+ Break</span>
+                                                                    )}
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Sub-line: Range label */}
+                                                        <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-tighter">
+                                                            <span>
+                                                                {idx === 0 
+                                                                    ? (total > 1 ? `Base: ${Number(comp.elv_1 || 0).toFixed(1)}m – ${Number(comp.elv_2 || 0).toFixed(1)}m` : `${range.label}`)
+                                                                    : `↳ ${range.label}`
+                                                                }
+                                                            </span>
+                                                            {total > 1 && !readOnly && (
+                                                                <span title="Remove break">
+                                                                    <Trash2 
+                                                                        className="h-3 w-3 text-slate-300 hover:text-rose-500 cursor-pointer transition-colors" 
+                                                                        onClick={() => deleteRange(comp, range)}
+                                                                    />
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Collapsible Elevation Breaks Input (ONLY shown if opted or user toggles break input open) */}
+                                                        {idx === 0 && !readOnly && (showBreakInput[comp.id] || total > 1) && (
+                                                            <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-1.5 bg-slate-50/80 dark:bg-slate-900/80 p-2 rounded-lg">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Elevation Breaks</span>
+                                                                    <button 
+                                                                        onClick={() => setShowBreakInput(prev => ({ ...prev, [comp.id]: false }))}
+                                                                        className="text-[9px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                                    >
+                                                                        Hide
+                                                                    </button>
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <Input 
+                                                                        placeholder="e.g. -9, -6, -3" 
+                                                                        value={newElevationInput[comp.id] || ""} 
+                                                                        onChange={e => setNewElevationInput(prev => ({ ...prev, [comp.id]: e.target.value }))}
+                                                                        className="h-6 text-[10px] px-2 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-200"
+                                                                    />
                                                                     <Button 
                                                                         onClick={() => {
-                                                                            setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: false }));
-                                                                            setComponentBreakpoints(prev => {
-                                                                                const copy = { ...prev };
-                                                                                delete copy[comp.id];
-                                                                                return copy;
-                                                                            });
+                                                                            const input = newElevationInput[comp.id] || "";
+                                                                            const typedPts = input.split(",")
+                                                                                .map(s => parseFloat(s.trim()))
+                                                                                .filter(n => !isNaN(n));
+                                                                            
+                                                                            if (typedPts.length < 1) {
+                                                                                toast.error("Please enter at least 1 elevation point (e.g. -5)");
+                                                                                return;
+                                                                            }
+                                                                            
+                                                                            const existing = componentBreakpoints[comp.id] || [];
+                                                                            const allPointsSet = new Set<number>([...existing, ...typedPts]);
+                                                                            const pts = Array.from(allPointsSet).sort((a, b) => a - b);
+                                                                            
+                                                                            setComponentBreakpoints(prev => ({ ...prev, [comp.id]: pts }));
                                                                             setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
+                                                                            setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: true }));
+                                                                            
+                                                                            // Auto-tick ranges overlapping with physical bounds
+                                                                            const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
+                                                                            const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
+                                                                            const bounds: number[] = [];
+                                                                            if (elv1 !== null) bounds.push(elv1);
+                                                                            if (elv2 !== null) bounds.push(elv2);
+                                                                            
+                                                                            const rangePointsSet = new Set<number>();
+                                                                            bounds.forEach(b => rangePointsSet.add(b));
+                                                                            pts.forEach(p => rangePointsSet.add(p));
+                                                                            
+                                                                            const sortedPoints = Array.from(rangePointsSet).sort((a, b) => a - b);
+                                                                            const newRanges: { start: number; end: number }[] = [];
+                                                                            for (let i = 0; i < sortedPoints.length - 1; i++) {
+                                                                                newRanges.push({ start: sortedPoints[i], end: sortedPoints[i + 1] });
+                                                                            }
                                                                             
                                                                             setSelectedItems(prev => {
                                                                                 const next = new Set(prev);
                                                                                 validInspections.forEach(it => {
-                                                                                    const prefix = `${activeReport}:${comp.id}:${it.id}:`;
-                                                                                    let anySubSelected = false;
-                                                                                    Array.from(prev).forEach(key => {
-                                                                                        if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
-                                                                                            anySubSelected = true;
-                                                                                            next.delete(key);
+                                                                                    const baseKey = `${activeReport}:${comp.id}:${it.id}:0:0`;
+                                                                                    const wasBaseSelected = prev.has(baseKey);
+                                                                                    
+                                                                                    if (wasBaseSelected) {
+                                                                                        next.delete(baseKey);
+                                                                                    }
+                                                                                    
+                                                                                    const minB = bounds.length >= 2 ? Math.min(...bounds) : -Infinity;
+                                                                                    const maxB = bounds.length >= 2 ? Math.max(...bounds) : Infinity;
+                                                                                    
+                                                                                    newRanges.forEach(r => {
+                                                                                        const rMin = Math.min(r.start, r.end);
+                                                                                        const rMax = Math.max(r.start, r.end);
+                                                                                        
+                                                                                        if (wasBaseSelected && rMin < maxB && rMax > minB) {
+                                                                                            next.add(`${activeReport}:${comp.id}:${it.id}:${r.start}:${r.end}`);
                                                                                         }
                                                                                     });
-                                                                                    if (anySubSelected) {
-                                                                                        next.add(`${prefix}0:0`);
-                                                                                    }
                                                                                 });
                                                                                 return next;
                                                                             });
                                                                             
-                                                                            toast.success(`Elevation breaks cleared for ${comp.qid}`);
+                                                                            toast.success(`Elevation breaks applied to ${comp.qid}`);
                                                                         }}
-                                                                        variant="ghost"
                                                                         size="sm" 
-                                                                        className="h-7 px-2 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-[9px] font-bold"
+                                                                        className="h-6 px-2 rounded-md bg-blue-600 hover:bg-blue-700 text-[9px] font-bold text-white border-none shrink-0"
                                                                     >
-                                                                        Clear
+                                                                        Apply
                                                                     </Button>
-                                                                )}
-                                                            </div>
-                                                            {componentSplitByElevation[comp.id] && componentBreakpoints[comp.id] && (
-                                                                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                                                    {componentBreakpoints[comp.id].map(pt => (
-                                                                        <Badge 
-                                                                            key={pt} 
-                                                                            variant="secondary" 
-                                                                            className="text-[9px] font-black bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 pl-2 pr-1.5 py-0.5 rounded-md flex items-center gap-1 border border-slate-200 dark:border-slate-700"
-                                                                        >
-                                                                            {pt.toFixed(1)}m
-                                                                            <X 
-                                                                                className="h-3 w-3 cursor-pointer hover:text-rose-500 transition-colors" 
-                                                                                onClick={() => {
-                                                                                    const existing = componentBreakpoints[comp.id] || [];
-                                                                                    const updated = existing.filter(p => p !== pt);
-                                                                                    
-                                                                                    if (updated.length < 1) {
-                                                                                        setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: false }));
-                                                                                        setComponentBreakpoints(prev => {
-                                                                                            const copy = { ...prev };
-                                                                                            delete copy[comp.id];
-                                                                                            return copy;
+                                                                    {componentSplitByElevation[comp.id] && (
+                                                                        <Button 
+                                                                            onClick={() => {
+                                                                                setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: false }));
+                                                                                setComponentBreakpoints(prev => {
+                                                                                    const copy = { ...prev };
+                                                                                    delete copy[comp.id];
+                                                                                    return copy;
+                                                                                });
+                                                                                setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
+                                                                                
+                                                                                setSelectedItems(prev => {
+                                                                                    const next = new Set(prev);
+                                                                                    validInspections.forEach(it => {
+                                                                                        const prefix = `${activeReport}:${comp.id}:${it.id}:`;
+                                                                                        let anySubSelected = false;
+                                                                                        Array.from(prev).forEach(key => {
+                                                                                            if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
+                                                                                                anySubSelected = true;
+                                                                                                next.delete(key);
+                                                                                            }
                                                                                         });
-                                                                                        setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
-                                                                                        
-                                                                                        setSelectedItems(prev => {
-                                                                                            const next = new Set(prev);
-                                                                                            validInspections.forEach(it => {
-                                                                                                const prefix = `${activeReport}:${comp.id}:${it.id}:`;
-                                                                                                let anySubSelected = false;
-                                                                                                Array.from(prev).forEach(key => {
-                                                                                                    if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
-                                                                                                        anySubSelected = true;
-                                                                                                        next.delete(key);
-                                                                                                    }
-                                                                                                });
-                                                                                                if (anySubSelected) {
-                                                                                                    next.add(`${prefix}0:0`);
-                                                                                                }
-                                                                                            });
-                                                                                            return next;
-                                                                                        });
-                                                                                    } else {
-                                                                                        setComponentBreakpoints(prev => ({ ...prev, [comp.id]: updated }));
-                                                                                        setNewElevationInput(prev => ({ ...prev, [comp.id]: updated.join(", ") }));
-                                                                                        
-                                                                                        const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
-                                                                                        const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
-                                                                                        const bounds: number[] = [];
-                                                                                        if (elv1 !== null) bounds.push(elv1);
-                                                                                        if (elv2 !== null) bounds.push(elv2);
-                                                                                        
-                                                                                        const allPointsSet = new Set<number>();
-                                                                                        bounds.forEach(b => allPointsSet.add(b));
-                                                                                        updated.forEach(p => allPointsSet.add(p));
-                                                                                        
-                                                                                        const sortedPoints = Array.from(allPointsSet).sort((a, b) => a - b);
-                                                                                        const newRanges: { start: number; end: number }[] = [];
-                                                                                        for (let i = 0; i < sortedPoints.length - 1; i++) {
-                                                                                            newRanges.push({ start: sortedPoints[i], end: sortedPoints[i + 1] });
+                                                                                        if (anySubSelected) {
+                                                                                            next.add(`${prefix}0:0`);
                                                                                         }
+                                                                                    });
+                                                                                    return next;
+                                                                                });
+                                                                                
+                                                                                toast.success(`Elevation breaks cleared for ${comp.qid}`);
+                                                                            }}
+                                                                            variant="ghost"
+                                                                            size="sm" 
+                                                                            className="h-6 px-1.5 rounded-md text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-[9px] font-bold shrink-0"
+                                                                        >
+                                                                            Clear
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                                {componentSplitByElevation[comp.id] && componentBreakpoints[comp.id] && (
+                                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                                        {componentBreakpoints[comp.id].map(pt => (
+                                                                            <Badge 
+                                                                                key={pt} 
+                                                                                variant="secondary" 
+                                                                                className="text-[8px] font-black bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 pl-1.5 pr-1 py-0 rounded flex items-center gap-0.5 border border-slate-200 dark:border-slate-700"
+                                                                            >
+                                                                                {pt.toFixed(1)}m
+                                                                                <X 
+                                                                                    className="h-2.5 w-2.5 cursor-pointer hover:text-rose-500 transition-colors" 
+                                                                                    onClick={() => {
+                                                                                        const existing = componentBreakpoints[comp.id] || [];
+                                                                                        const updated = existing.filter(p => p !== pt);
                                                                                         
-                                                                                        setSelectedItems(prev => {
-                                                                                            const next = new Set(prev);
-                                                                                            validInspections.forEach(it => {
-                                                                                                const prefix = `${activeReport}:${comp.id}:${it.id}:`;
-                                                                                                const selectedRanges: { start: number; end: number }[] = [];
-                                                                                                
-                                                                                                Array.from(prev).forEach(key => {
-                                                                                                    if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
-                                                                                                        const parts = key.split(":");
-                                                                                                        selectedRanges.push({ start: parseFloat(parts[3]), end: parseFloat(parts[4]) });
-                                                                                                        next.delete(key);
+                                                                                        if (updated.length < 1) {
+                                                                                            setComponentSplitByElevation(prev => ({ ...prev, [comp.id]: false }));
+                                                                                            setComponentBreakpoints(prev => {
+                                                                                                const copy = { ...prev };
+                                                                                                delete copy[comp.id];
+                                                                                                return copy;
+                                                                                            });
+                                                                                            setNewElevationInput(prev => ({ ...prev, [comp.id]: "" }));
+                                                                                            
+                                                                                            setSelectedItems(prev => {
+                                                                                                const next = new Set(prev);
+                                                                                                validInspections.forEach(it => {
+                                                                                                    const prefix = `${activeReport}:${comp.id}:${it.id}:`;
+                                                                                                    let anySubSelected = false;
+                                                                                                    Array.from(prev).forEach(key => {
+                                                                                                        if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
+                                                                                                            anySubSelected = true;
+                                                                                                            next.delete(key);
+                                                                                                        }
+                                                                                                    });
+                                                                                                    if (anySubSelected) {
+                                                                                                        next.add(`${prefix}0:0`);
                                                                                                     }
                                                                                                 });
-                                                                                                
-                                                                                                const minB = bounds.length >= 2 ? Math.min(...bounds) : -Infinity;
-                                                                                                const maxB = bounds.length >= 2 ? Math.max(...bounds) : Infinity;
-                                                                                                
-                                                                                                newRanges.forEach(r => {
-                                                                                                    const rMin = Math.min(r.start, r.end);
-                                                                                                    const rMax = Math.max(r.start, r.end);
+                                                                                                return next;
+                                                                                            });
+                                                                                        } else {
+                                                                                            setComponentBreakpoints(prev => ({ ...prev, [comp.id]: updated }));
+                                                                                            setNewElevationInput(prev => ({ ...prev, [comp.id]: updated.join(", ") }));
+                                                                                            
+                                                                                            const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
+                                                                                            const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
+                                                                                            const bounds: number[] = [];
+                                                                                            if (elv1 !== null) bounds.push(elv1);
+                                                                                            if (elv2 !== null) bounds.push(elv2);
+                                                                                            
+                                                                                            const allPointsSet = new Set<number>();
+                                                                                            bounds.forEach(b => allPointsSet.add(b));
+                                                                                            updated.forEach(p => allPointsSet.add(p));
+                                                                                            
+                                                                                            const sortedPoints = Array.from(allPointsSet).sort((a, b) => a - b);
+                                                                                            const newRanges: { start: number; end: number }[] = [];
+                                                                                            for (let i = 0; i < sortedPoints.length - 1; i++) {
+                                                                                                newRanges.push({ start: sortedPoints[i], end: sortedPoints[i + 1] });
+                                                                                            }
+                                                                                            
+                                                                                            setSelectedItems(prev => {
+                                                                                                const next = new Set(prev);
+                                                                                                validInspections.forEach(it => {
+                                                                                                    const prefix = `${activeReport}:${comp.id}:${it.id}:`;
+                                                                                                    const selectedRanges: { start: number; end: number }[] = [];
                                                                                                     
-                                                                                                    const wasRangeSelected = selectedRanges.some(sr => {
-                                                                                                        const srMin = Math.min(sr.start, sr.end);
-                                                                                                        const srMax = Math.max(sr.start, sr.end);
-                                                                                                        return rMin < srMax && rMax > srMin;
+                                                                                                    Array.from(prev).forEach(key => {
+                                                                                                        if (key.startsWith(prefix) && !key.endsWith(":0:0")) {
+                                                                                                            const parts = key.split(":");
+                                                                                                            selectedRanges.push({ start: parseFloat(parts[3]), end: parseFloat(parts[4]) });
+                                                                                                            next.delete(key);
+                                                                                                        }
                                                                                                     });
                                                                                                     
-                                                                                                    if (wasRangeSelected && rMin < maxB && rMax > minB) {
-                                                                                                        next.add(`${prefix}${r.start}:${r.end}`);
-                                                                                                    }
+                                                                                                    const minB = bounds.length >= 2 ? Math.min(...bounds) : -Infinity;
+                                                                                                    const maxB = bounds.length >= 2 ? Math.max(...bounds) : Infinity;
+                                                                                                    
+                                                                                                    newRanges.forEach(r => {
+                                                                                                        const rMin = Math.min(r.start, r.end);
+                                                                                                        const rMax = Math.max(r.start, r.end);
+                                                                                                        
+                                                                                                        const wasRangeSelected = selectedRanges.some(sr => {
+                                                                                                            const srMin = Math.min(sr.start, sr.end);
+                                                                                                            const srMax = Math.max(sr.start, sr.end);
+                                                                                                            return rMin < srMax && rMax > srMin;
+                                                                                                        });
+                                                                                                        
+                                                                                                        if (wasRangeSelected && rMin < maxB && rMax > minB) {
+                                                                                                            next.add(`${prefix}${r.start}:${r.end}`);
+                                                                                                        }
+                                                                                                    });
                                                                                                 });
+                                                                                                return next;
                                                                                             });
-                                                                                            return next;
-                                                                                        });
-                                                                                    }
-                                                                                    toast.success(`Removed breakpoint ${pt.toFixed(1)}m`);
-                                                                                }}
-                                                                            />
-                                                                        </Badge>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
+                                                                                        }
+                                                                                        toast.success(`Removed breakpoint ${pt.toFixed(1)}m`);
+                                                                                    }}
+                                                                                />
+                                                                            </Badge>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
                                             {validInspections
                                                 .filter(it => selectedInspectionFilter === 'all' || String(it.id) === String(selectedInspectionFilter))
                                                 .map(it => {
                                                     const styles = getModeStyles(it.mode as any);
                                                     const s = getItemStatus(comp.id, it.id, range.start, range.end);
                                                     const sel = isSelected(comp.id, it.id, range.start, range.end);
+                                                    const isAnom = (s as any) === 'anomaly' || (s as any) === 'ANOMALY' || (s as any) === 'anomalous';
+                                                    const isInc = s === 'incomplete';
+                                                    const isComp = s === 'completed';
                                                     return (
                                                         <td key={it.id} className="p-3 border-r border-slate-50 dark:border-slate-800 text-center bg-white dark:bg-slate-950 group-hover:bg-slate-50 dark:group-hover:bg-slate-900/40 transition-colors">
                                                             <div className="flex flex-col items-center justify-center gap-1.5">
                                                                 <div 
                                                                     onClick={() => {
-                                                                        if (!readOnly && activeReportNumber && s !== 'completed' && s !== 'incomplete') {
+                                                                        if (!readOnly && activeReportNumber && !isComp && !isInc && !isAnom) {
                                                                             toggleSelection(comp.id, it.id, range.start, range.end);
                                                                         }
                                                                     }}
                                                                     className={cn(
                                                                         "h-6 w-6 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm relative select-none",
                                                                         sel 
-                                                                            ? s === 'completed' ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-100 dark:shadow-none scale-105"
-                                                                              : s === 'incomplete' ? "bg-rose-500 border-rose-500 text-white shadow-md shadow-rose-100 dark:shadow-none scale-105"
+                                                                            ? isComp ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-100 dark:shadow-none scale-105"
+                                                                              : isAnom ? "bg-rose-500 border-rose-500 text-white shadow-md shadow-rose-100 dark:shadow-none scale-105"
+                                                                              : isInc ? "bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-100 dark:shadow-none scale-105"
                                                                               : `${styles.bg} border-transparent text-white shadow-md shadow-blue-100 dark:shadow-none scale-105`
                                                                             : "bg-slate-50/50 dark:bg-slate-900/30 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600",
-                                                                        (!activeReportNumber || readOnly || s === 'completed' || s === 'incomplete') ? "cursor-not-allowed opacity-60" : "cursor-pointer active:scale-95"
+                                                                        (!activeReportNumber || readOnly || isComp || isInc || isAnom) ? "cursor-not-allowed opacity-80" : "cursor-pointer active:scale-95"
                                                                     )}
                                                                 >
-                                                                    {sel && <Check className="h-3.5 w-3.5 stroke-[3px]" />}
+                                                                    {sel && (
+                                                                        isComp ? <Check className="h-3.5 w-3.5 stroke-[3px]" />
+                                                                        : isAnom ? <AlertTriangle className="h-3.5 w-3.5 stroke-[2.5px]" />
+                                                                        : isInc ? <AlertCircle className="h-3.5 w-3.5 stroke-[2.5px]" />
+                                                                        : <Check className="h-3.5 w-3.5 stroke-[3px]" />
+                                                                    )}
                                                                 </div>
                                                                 {sel && (
                                                                     <div className={cn("h-1 w-6 rounded-full transition-all", 
-                                                                        s === 'completed' ? "bg-emerald-500" : s === 'incomplete' ? "bg-rose-500" : styles.bg
+                                                                        isComp ? "bg-emerald-500" 
+                                                                        : isAnom ? "bg-rose-500" 
+                                                                        : isInc ? "bg-amber-500" 
+                                                                        : styles.bg
                                                                     )} />
                                                                 )}
                                                             </div>
@@ -1635,8 +1892,9 @@ export function SOWDialog({
                                                     );
                                                 })}
                                         </tr>
-                                    ))}
-                                </tbody>
+                                    ));
+                                })}
+                            </tbody>
                             </table>
                         </div>
                     </div>

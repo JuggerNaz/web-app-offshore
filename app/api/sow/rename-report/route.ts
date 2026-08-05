@@ -1,21 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { withTenant } from "@/utils/tenant-auth";
 
-/**
- * POST /api/sow/rename-report
- *
- * Cascade-renames a SOW report number across ALL related tables:
- *   - insp_records        (sow_report_no)
- *   - insp_dive_jobs      (sow_report_no)
- *   - insp_rov_jobs       (sow_report_no)
- *   - u_sow_items         (report_number)
- *   - u_sow               (report_numbers JSON array)
- *
- * Body:
- *   { jobpack_id, structure_id, sow_id?, old_report_no, new_report_no }
- */
-export const POST = withTenant(async (request, { companyId }) => {
+export async function POST(request: NextRequest) {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -37,101 +23,132 @@ export const POST = withTenant(async (request, { companyId }) => {
             return NextResponse.json({ success: true, message: "No change needed", counts: {} });
         }
 
+        // Clean base strings for prefix matching (e.g. '2026-01' matching '2026-01A')
+        const cleanOld = old_report_no.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+        const isReportMatch = (r: string | null | undefined) => {
+            if (!r || r === 'null') return false;
+            if (r === old_report_no) return true;
+            const cleanR = r.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+            return cleanR === cleanOld || cleanR.startsWith(cleanOld) || cleanOld.startsWith(cleanR);
+        };
+
         const counts: Record<string, number> = {};
 
-        // ── 1. Update insp_records ──
-        const { data: updatedRecords, error: recErr } = await (supabase as any)
-            .from("insp_records")
-            .update({ sow_report_no: new_report_no })
-            .eq("company_id", companyId)
-            .eq("jobpack_id", jobpackIdNum)
-            .eq("structure_id", structureIdNum)
-            .eq("sow_report_no", old_report_no)
-            .select("insp_id");
-
-        if (recErr) {
-            console.error("[rename-report] insp_records error:", recErr);
-            return NextResponse.json({ error: `insp_records update failed: ${recErr.message}` }, { status: 400 });
+        // 1. Update u_sow_items (handling unique index conflicts gracefully)
+        let sowQueryId = sowIdNum;
+        if (!sowQueryId) {
+            const { data: sowData } = await (supabase as any)
+                .from("u_sow")
+                .select("id")
+                .eq("jobpack_id", jobpackIdNum)
+                .eq("structure_id", structureIdNum)
+                .maybeSingle();
+            if (sowData?.id) sowQueryId = sowData.id;
         }
-        counts.insp_records = updatedRecords?.length || 0;
 
-        // ── 2. Update insp_dive_jobs ──
-        const { data: updatedDive, error: diveErr } = await (supabase as any)
-            .from("insp_dive_jobs")
-            .update({ sow_report_no: new_report_no })
-            .eq("company_id", companyId)
-            .eq("jobpack_id", jobpackIdNum)
-            .eq("structure_id", structureIdNum)
-            .eq("sow_report_no", old_report_no)
-            .select("dive_job_id");
+        const { data: allSowItems } = sowQueryId
+            ? await (supabase as any).from("u_sow_items").select("id, report_number").eq("sow_id", sowQueryId)
+            : await (supabase as any).from("u_sow_items").select("id, report_number");
 
-        if (diveErr) {
-            console.error("[rename-report] insp_dive_jobs error:", diveErr);
-            return NextResponse.json({ error: `insp_dive_jobs update failed: ${diveErr.message}` }, { status: 400 });
-        }
-        counts.insp_dive_jobs = updatedDive?.length || 0;
+        const targetItems = (allSowItems || []).filter((item: any) => isReportMatch(item.report_number));
 
-        // ── 3. Update insp_rov_jobs ──
-        const { data: updatedRov, error: rovErr } = await (supabase as any)
-            .from("insp_rov_jobs")
-            .update({ sow_report_no: new_report_no })
-            .eq("company_id", companyId)
-            .eq("jobpack_id", jobpackIdNum)
-            .eq("structure_id", structureIdNum)
-            .eq("sow_report_no", old_report_no)
-            .select("rov_job_id");
+        let updatedSowCount = 0;
+        let deletedDupCount = 0;
 
-        if (rovErr) {
-            console.error("[rename-report] insp_rov_jobs error:", rovErr);
-            return NextResponse.json({ error: `insp_rov_jobs update failed: ${rovErr.message}` }, { status: 400 });
-        }
-        counts.insp_rov_jobs = updatedRov?.length || 0;
-
-        // ── 4. Update u_sow_items (report_number column) ──
-        if (sowIdNum) {
-            const { data: updatedItems, error: itemErr } = await (supabase as any)
+        for (const item of targetItems) {
+            const { error } = await (supabase as any)
                 .from("u_sow_items")
-                .update({ report_number: new_report_no })
-                .eq("company_id", companyId)
-                .eq("sow_id", sowIdNum)
-                .eq("report_number", old_report_no)
-                .select("id");
+                .update({ report_number: new_report_no, updated_at: new Date().toISOString() })
+                .eq("id", item.id);
 
-            if (itemErr) {
-                console.error("[rename-report] u_sow_items error:", itemErr);
-                return NextResponse.json({ error: `u_sow_items update failed: ${itemErr.message}` }, { status: 400 });
+            if (error && error.code === '23505') {
+                // Unique constraint violation: duplicate item with new_report_no already exists! Clean up duplicate old row
+                await (supabase as any).from("u_sow_items").delete().eq("id", item.id);
+                deletedDupCount++;
+            } else if (!error) {
+                updatedSowCount++;
             }
-            counts.u_sow_items = updatedItems?.length || 0;
+        }
 
-            // ── 5. Update u_sow report_numbers JSON array ──
-            const { data: sowData, error: sowFetchErr } = await (supabase as any)
+        counts.u_sow_items = updatedSowCount;
+        counts.u_sow_items_duplicates_cleaned = deletedDupCount;
+
+        // 2. Update insp_records (sow_report_no column)
+        const { data: recsToUpdate } = await (supabase as any)
+            .from("insp_records")
+            .select("insp_id, sow_report_no")
+            .eq("jobpack_id", jobpackIdNum)
+            .eq("structure_id", structureIdNum);
+
+        const recIds = (recsToUpdate || []).filter((r: any) => isReportMatch(r.sow_report_no)).map((r: any) => r.insp_id);
+
+        if (recIds.length > 0) {
+            const { data: updatedRecords, error: recErr } = await (supabase as any)
+                .from("insp_records")
+                .update({ sow_report_no: new_report_no })
+                .in("insp_id", recIds)
+                .select("insp_id");
+            if (recErr) console.error("[rename-report] insp_records error:", recErr);
+            else counts.insp_records = updatedRecords?.length || 0;
+        }
+
+        // 3. Update insp_dive_jobs & insp_rov_jobs
+        const { data: diveJobs } = await (supabase as any)
+            .from("insp_dive_jobs")
+            .select("dive_job_id, sow_report_no")
+            .eq("jobpack_id", jobpackIdNum)
+            .eq("structure_id", structureIdNum);
+
+        const diveIds = (diveJobs || []).filter((d: any) => isReportMatch(d.sow_report_no)).map((d: any) => d.dive_job_id);
+        if (diveIds.length > 0) {
+            const { data: updatedDive } = await (supabase as any)
+                .from("insp_dive_jobs")
+                .update({ sow_report_no: new_report_no })
+                .in("dive_job_id", diveIds)
+                .select("dive_job_id");
+            counts.insp_dive_jobs = updatedDive?.length || 0;
+        }
+
+        const { data: rovJobs } = await (supabase as any)
+            .from("insp_rov_jobs")
+            .select("rov_job_id, sow_report_no")
+            .eq("jobpack_id", jobpackIdNum)
+            .eq("structure_id", structureIdNum);
+
+        const rovIds = (rovJobs || []).filter((r: any) => isReportMatch(r.sow_report_no)).map((r: any) => r.rov_job_id);
+        if (rovIds.length > 0) {
+            const { data: updatedRov } = await (supabase as any)
+                .from("insp_rov_jobs")
+                .update({ sow_report_no: new_report_no })
+                .in("rov_job_id", rovIds)
+                .select("rov_job_id");
+            counts.insp_rov_jobs = updatedRov?.length || 0;
+        }
+
+        // 4. Update u_sow report_numbers JSON array
+        if (sowQueryId) {
+            const { data: sowData } = await (supabase as any)
                 .from("u_sow")
                 .select("id, report_numbers")
-                .eq("id", sowIdNum)
-                .eq("company_id", companyId)
+                .eq("id", sowQueryId)
                 .single();
 
-            if (!sowFetchErr && sowData?.report_numbers) {
+            if (sowData?.report_numbers) {
                 const updatedReportNumbers = (sowData.report_numbers as any[]).map((rn: any) => {
-                    if (rn.number === old_report_no) {
+                    if (rn.number === old_report_no || isReportMatch(rn.number)) {
                         return { ...rn, number: new_report_no };
                     }
                     return rn;
                 });
 
-                const { error: sowUpdateErr } = await (supabase as any)
+                await (supabase as any)
                     .from("u_sow")
                     .update({
                         report_numbers: updatedReportNumbers,
                         updated_at: new Date().toISOString(),
                     })
-                    .eq("id", sowIdNum)
-                    .eq("company_id", companyId);
-
-                if (sowUpdateErr) {
-                    console.error("[rename-report] u_sow error:", sowUpdateErr);
-                    return NextResponse.json({ error: `u_sow update failed: ${sowUpdateErr.message}` }, { status: 400 });
-                }
+                    .eq("id", sowQueryId);
                 counts.u_sow = 1;
             }
         }
@@ -150,4 +167,4 @@ export const POST = withTenant(async (request, { companyId }) => {
             { status: 500 }
         );
     }
-});
+}

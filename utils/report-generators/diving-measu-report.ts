@@ -228,16 +228,16 @@ export const generateDivingMEASUReport = async (
         // Sort groups by elevation descending (top to bottom)
         const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => b.elevNum - a.elevNum);
 
-        // --- 4. Build Table Rows with Group Header Banners ---
+        // --- 4. Build Table Rows with Group Header Banners & Group Findings Footer ---
         const bodyRows: any[] = [];
         let globalItemCounter = 1;
 
         sortedGroups.forEach((group) => {
-            // Group Header Banner Row (Spans across all 5 columns)
+            // Group Header Banner Row (Spans across 4 columns)
             bodyRows.push([
                 {
                     content: `QID: ${group.qid}   |   Elevation: ${group.elevation}   |   Dive No.: ${group.diveNo}`,
-                    colSpan: 5,
+                    colSpan: 4,
                     styles: {
                         fillColor: isPF ? [240, 240, 240] : [241, 245, 249],
                         textColor: colors.navy,
@@ -249,6 +249,8 @@ export const generateDivingMEASUReport = async (
                 }
             ]);
 
+            const groupFindingsList: string[] = [];
+
             // Detail Rows under this group
             group.records.forEach((r) => {
                 const data = r.inspection_data || {};
@@ -258,22 +260,23 @@ export const generateDivingMEASUReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || r.rectified_remarks || '';
 
-                const findingsParts: string[] = [];
                 if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
-                    findingsParts.push(String(r.description).trim());
+                    const desc = String(r.description).trim();
+                    if (!groupFindingsList.includes(desc)) groupFindingsList.push(desc);
                 } else if (data.remarks && String(data.remarks).trim() !== '') {
-                    findingsParts.push(String(data.remarks).trim());
+                    const rem = String(data.remarks).trim();
+                    if (!groupFindingsList.includes(rem)) groupFindingsList.push(rem);
                 }
 
                 if (isAnomaly && anomRef) {
-                    findingsParts.push(`[Ref: ${anomRef}]`);
+                    const refStr = `[Ref: ${anomRef}]`;
+                    if (!groupFindingsList.includes(refStr)) groupFindingsList.push(refStr);
                 }
 
                 if (isRectified) {
-                    findingsParts.push(`[Rectified: ${rectRem || 'Completed'}]`);
+                    const rectStr = `[Rectified: ${rectRem || 'Completed'}]`;
+                    if (!groupFindingsList.includes(rectStr)) groupFindingsList.push(rectStr);
                 }
-
-                const findingsStr = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
 
                 // Extract measurement items
                 let measurementsArr: any[] = [];
@@ -301,14 +304,35 @@ export const generateDivingMEASUReport = async (
                             String(globalItemCounter++),
                             mType,
                             mUnit,
-                            mResult,
-                            findingsStr
+                            mResult
                         ],
                         isAnomaly,
                         isRectified
                     });
                 });
             });
+
+            // Group Findings Footer Row (Placed cleanly at the end of each QID group)
+            const groupFindingsText = groupFindingsList.length > 0 
+                ? groupFindingsList.join('; ') 
+                : 'No specific findings reported.';
+
+            bodyRows.push([
+                {
+                    content: `Findings: ${groupFindingsText}`,
+                    colSpan: 4,
+                    styles: {
+                        fillColor: isPF ? [250, 250, 250] : [248, 250, 252],
+                        textColor: colors.text,
+                        fontStyle: 'bold',
+                        fontSize: 7.5,
+                        cellPadding: 3,
+                        halign: 'left',
+                        lineWidth: 0.2,
+                        lineColor: colors.border
+                    }
+                }
+            ]);
         });
 
         // Convert bodyRows to format expected by autoTable
@@ -318,7 +342,7 @@ export const generateDivingMEASUReport = async (
             startY: startY,
             margin: { left: margin, right: margin, top: margin + 22 + 6, bottom: 20 },
             head: [
-                ['Item No.', 'Type', 'Unit', 'Result', 'Findings']
+                ['Item No.', 'Type', 'Unit', 'Result']
             ],
             body: bodyForAutoTable,
             theme: 'grid',
@@ -355,11 +379,10 @@ export const generateDivingMEASUReport = async (
                 }
             },
             columnStyles: {
-                0: { cellWidth: 18, halign: 'center' },
-                1: { cellWidth: 42, halign: 'left', fontStyle: 'bold' },
-                2: { cellWidth: 20, halign: 'center' },
-                3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
-                4: { cellWidth: 'auto', halign: 'left' }
+                0: { cellWidth: 24, halign: 'center' },
+                1: { cellWidth: 70, halign: 'left', fontStyle: 'bold' },
+                2: { cellWidth: 30, halign: 'center' },
+                3: { cellWidth: 'auto', halign: 'center', fontStyle: 'bold' }
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawHeader(doc);
@@ -399,27 +422,27 @@ export const generateDivingMEASUReport = async (
                 } else {
                     doc.setTextColor(...colors.navy);
                 }
-                doc.setFontSize(7); doc.setFont("helvetica", "bold");
-                doc.text(label, lx + 2, sigY + 3.5);
-                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
-                doc.text("Name:", lx + 2, sigY + 10);
-                doc.text("Date:", lx + 2, sigY + 13.5);
-                doc.text("Signature:", lx + 2, sigY + 17);
-            };
+                doc.setFontSize(6.5); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.2);
 
-            drawSig('PREPARED BY', margin);
-            drawSig('REVIEWED BY', margin + sigW);
-            drawSig('APPROVED BY', margin + (sigW * 2));
+                doc.setTextColor(...colors.text); doc.setFontSize(6); doc.setFont("helvetica", "normal");
+                doc.text("Name:", lx + 2, sigY + 7.5);
+                doc.text("Date:", lx + 2, sigY + 11);
+                doc.text("Sign:", lx + 2, sigY + 15);
+            };
+            drawSig("PREPARED BY (INSPECTOR)", margin);
+            drawSig("REVIEWED BY (SENIOR INSPECTOR)", margin + sigW);
+            drawSig("APPROVED BY (CLIENT REP)", margin + (sigW * 2));
         }
 
-        // --- 6. Apply Watermark & Signatures ---
-        applyWatermarkAndSignaturesGlobal(doc, config);
+        // Apply Watermark
+        applyWatermarkAndSignaturesGlobal(doc, config as any);
 
-        if (config.returnBlob) return doc.output("blob");
+        if (config.returnBlob) {
+            return doc.output('blob');
+        }
 
         doc.save(`Diving_MEASU_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || 'Report'}_${format(new Date(), 'yyyyMMdd')}.pdf`);
-        return;
-
     } catch (e) {
         console.error("Diving MEASU Report Generation Error:", e);
         throw e;

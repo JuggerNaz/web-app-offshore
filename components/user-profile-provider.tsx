@@ -73,6 +73,10 @@ export function UserProfileProvider({
   const [isLoading, setIsLoading] = useState(!initialData);
 
   const fetchProfileSilent = async () => {
+    if (typeof window !== "undefined" && typeof navigator !== "undefined" && !navigator.onLine) {
+      return;
+    }
+
     try {
       const headers: HeadersInit = {};
       const stored = typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null;
@@ -93,7 +97,9 @@ export function UserProfileProvider({
         }
       }
     } catch (err) {
-      console.error("[UserProfileProvider] Error in silent profile check:", err);
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[UserProfileProvider] Silent profile check skipped or failed:", err);
+      }
     }
   };
 
@@ -130,7 +136,7 @@ export function UserProfileProvider({
         }
       }
     } catch (err) {
-      console.error("[UserProfileProvider] Error fetching profile:", err);
+      console.warn("[UserProfileProvider] Error fetching profile:", err);
     } finally {
       setIsLoading(false);
     }
