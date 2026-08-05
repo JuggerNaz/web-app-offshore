@@ -1010,7 +1010,7 @@ function V10PreviewLayout() {
   const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<string[]>([]);
 
   // Drawing Tools state
-  const [currentTool, setCurrentTool] = useState<DrawingTool>("pen");
+  const [currentTool, setCurrentTool] = useState<DrawingTool>("select");
   const [currentColor, setCurrentColor] = useState("#ef4444");
   const [lineWidth, setLineWidth] = useState(3);
   const [showDrawingTools, setShowDrawingTools] = useState(false);
@@ -1020,6 +1020,8 @@ function V10PreviewLayout() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const drawingObjectsRef = useRef<any[]>([]);
+  const overlayManagerRef = useRef<CanvasOverlayManager | null>(null);
 
   const handleExternalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -2500,86 +2502,106 @@ function V10PreviewLayout() {
     }
   }, []);
 
+  const openFloatingWindow = async (title: string, defaultWidth = 1000, defaultHeight = 600) => {
+    let win: Window | null = null;
+
+    // Check if Chrome Document Picture-in-Picture API is available and not currently occupied by another floating panel
+    const dpip = (window as any).documentPictureInPicture;
+    if (dpip && typeof dpip.requestWindow === "function" && !dpip.window) {
+      try {
+        win = await dpip.requestWindow({
+          width: defaultWidth,
+          height: defaultHeight,
+        });
+      } catch (err) {
+        console.warn("Document PiP request failed, using popup window fallback:", err);
+      }
+    }
+
+    // Fallback to standard multi-window popout via window.open if PiP is occupied or unsupported
+    if (!win) {
+      const left = Math.max(0, Math.floor((window.screen.width - defaultWidth) / 2));
+      const top = Math.max(0, Math.floor((window.screen.height - defaultHeight) / 2));
+      win = window.open(
+        "about:blank",
+        `popout_${title.replace(/\s+/g, "_")}_${Date.now()}`,
+        `width=${defaultWidth},height=${defaultHeight},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
+      );
+    }
+
+    if (!win) {
+      toast.error("Could not open floating window. Please check browser popup blocker permissions.");
+      return null;
+    }
+
+    // Copy stylesheets (both link tags and inline style tags)
+    Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
+      try {
+        win!.document.head.appendChild(stylesheet.cloneNode(true));
+      } catch (e) {}
+    });
+
+    // Copy dynamic CSS rules generated at runtime
+    Array.from(document.styleSheets).forEach((sheet) => {
+      try {
+        if (sheet.cssRules) {
+          const newStyle = win!.document.createElement("style");
+          Array.from(sheet.cssRules).forEach((rule) => {
+            newStyle.appendChild(win!.document.createTextNode(rule.cssText));
+          });
+          win!.document.head.appendChild(newStyle);
+        }
+      } catch (e) {}
+    });
+
+    // Sync dark mode configuration and base classes
+    const isDark = document.documentElement.classList.contains("dark");
+    if (isDark) {
+      win.document.documentElement.classList.add("dark");
+    }
+    win.document.body.className = document.body.className;
+
+    const bg = isDark ? "#0b0f19" : "#ffffff";
+    const text = isDark ? "#f8fafc" : "#0f172a";
+
+    win.document.title = title;
+    win.document.head.insertAdjacentHTML(
+      "beforeend",
+      `<style>
+        html, body { 
+          height: 100% !important;
+          width: 100% !important;
+          margin: 0 !important; 
+          padding: 0 !important; 
+          overflow: hidden !important; 
+          background: ${bg} !important; 
+          color: ${text} !important; 
+          font-family: system-ui, -apple-system, sans-serif !important; 
+        }
+        * {
+          box-sizing: border-box;
+        }
+      </style>`
+    );
+
+    return win;
+  };
+
   const handlePopoutCapturedEvents = async () => {
-    if (!("documentPictureInPicture" in window)) {
-      toast.error("Floating window is not supported in this browser. Please use Chrome or Edge.");
+    if (capturedEventsPipWindow) {
+      capturedEventsPipWindow.close();
+      setCapturedEventsPipWindow(null);
       return;
     }
 
-    try {
-      if (capturedEventsPipWindow) {
-        capturedEventsPipWindow.close();
-        return;
-      }
+    const win = await openFloatingWindow("Captured Events", 1100, 650);
+    if (!win) return;
 
-      const pip = await (window as any).documentPictureInPicture.requestWindow({
-        width: 1000,
-        height: 600,
-      });
+    setCapturedEventsPipWindow(win);
 
-      // Copy stylesheets (both link tags, inline style tags, and adoptedStyleSheets rules) to the new window
-      Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
-        try {
-          pip.document.head.appendChild(stylesheet.cloneNode(true));
-        } catch (e) {
-          console.warn("Could not clone stylesheet element", e);
-        }
-      });
-
-      // Copy constructs/document.styleSheets directly for CSS rules generated dynamically (e.g. Next.js / Tailwind CSS-in-JS)
-      Array.from(document.styleSheets).forEach((sheet) => {
-        try {
-          if (sheet.cssRules) {
-            const newStyle = pip.document.createElement("style");
-            Array.from(sheet.cssRules).forEach((rule) => {
-              newStyle.appendChild(pip.document.createTextNode(rule.cssText));
-            });
-            pip.document.head.appendChild(newStyle);
-          }
-        } catch (e) {
-          // Cross-origin stylesheet access might throw, which is safely ignored
-        }
-      });
-
-      // Sync dark mode configuration and base classes
-      const isDark = document.documentElement.classList.contains("dark");
-      if (isDark) {
-        pip.document.documentElement.classList.add("dark");
-      }
-      pip.document.body.className = document.body.className;
-
-      const bg = isDark ? "#0b0f19" : "#ffffff";
-      const text = isDark ? "#f8fafc" : "#0f172a";
-
-      // Add basic HTML structure overlay with matching theme color and box-sizing reset
-      pip.document.head.insertAdjacentHTML(
-        "beforeend",
-        `<style>
-          html, body { 
-            height: 100% !important;
-            width: 100% !important;
-            margin: 0 !important; 
-            padding: 0 !important; 
-            overflow: hidden !important; 
-            background: ${bg} !important; 
-            color: ${text} !important; 
-            font-family: system-ui, -apple-system, sans-serif !important; 
-          }
-          * {
-            box-sizing: border-box;
-          }
-        </style>`
-      );
-
-      setCapturedEventsPipWindow(pip);
-
-      pip.addEventListener("pagehide", () => {
-        setCapturedEventsPipWindow(null);
-      });
-    } catch (error) {
-      console.error("Failed to open captured events floating window:", error);
-      toast.error("Failed to open floating window");
-    }
+    const cleanup = () => setCapturedEventsPipWindow(null);
+    win.addEventListener("pagehide", cleanup);
+    win.addEventListener("beforeunload", cleanup);
   };
 
   const handleDeleteTape = async (tapeIdToDelete: number) => {
@@ -3089,40 +3111,21 @@ function V10PreviewLayout() {
     }
   };
 
-  // Maintain stream and overlay when mounting/unmounting or PiP
+  // Maintain stream overlay
   useEffect(() => {
     if (streamActive && previewStream && videoRef.current) {
       videoRef.current.srcObject = previewStream;
     }
-
-    let om: CanvasOverlayManager | null = null;
-    if (streamActive && canvasRef.current) {
-      // Check if the current manager is already bound to this canvas
-      if (overlayManager && overlayManager.getCanvas() === canvasRef.current) {
-        overlayManager.setTool(currentTool);
-        overlayManager.setColor(currentColor);
-        overlayManager.setLineWidth(lineWidth);
-        return;
-      }
-
-      // Capture existing objects if we're replacing an old manager
-      const existingObjects = overlayManager ? overlayManager.getObjects() : [];
-
-      om = new CanvasOverlayManager(canvasRef.current);
-      om.setTool(currentTool);
-      om.setColor(currentColor);
-      om.setLineWidth(lineWidth);
-      if (existingObjects.length > 0) {
-        om.setObjects(existingObjects);
-      }
-      setOverlayManager(om);
-    }
-  }, [pipWindow, streamActive, previewStream, currentTool, currentColor, lineWidth]);
+  }, [pipWindow, streamActive, previewStream]);
 
   const stopStream = () => {
     if (previewStream) {
       previewStream.getTracks().forEach((t) => t.stop());
       setPreviewStream(null);
+    }
+    if (overlayManagerRef.current) {
+      overlayManagerRef.current.destroy();
+      overlayManagerRef.current = null;
     }
     if (overlayManager) {
       overlayManager.destroy();
@@ -3285,80 +3288,15 @@ function V10PreviewLayout() {
       return;
     }
 
-    const pip = (window as any).documentPictureInPicture;
-    if (!pip) {
-      // Fallback to standard video PiP if Document PiP not supported
-      if (videoRef.current) {
-        try {
-          if ("requestPictureInPicture" in (videoRef.current as any)) {
-            (videoRef.current as any).requestPictureInPicture();
-          } else {
-            toast.info(
-              "Standard PiP not supported. Try using Chrome for advanced floating controls."
-            );
-          }
-        } catch (err) {
-          console.error("PiP failed", err);
-        }
-      }
-      return;
-    }
+    const win = await openFloatingWindow("Photo / Video Grab", 960, 600);
+    if (!win) return;
 
-    try {
-      const pw = await pip.requestWindow({
-        width: 320,
-        height: 480,
-      });
+    win.document.body.style.background = "#000";
+    setPipWindow(win);
 
-      // Copy stylesheets (both link tags, inline style tags, and adoptedStyleSheets rules) to the new window
-      Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
-        try {
-          pw.document.head.appendChild(stylesheet.cloneNode(true));
-        } catch (e) {
-          console.warn("Could not clone stylesheet element", e);
-        }
-      });
-
-      // Copy constructs/document.styleSheets directly for CSS rules generated dynamically
-      Array.from(document.styleSheets).forEach((sheet) => {
-        try {
-          if (sheet.cssRules) {
-            const newStyle = pw.document.createElement("style");
-            Array.from(sheet.cssRules).forEach((rule) => {
-              newStyle.appendChild(pw.document.createTextNode(rule.cssText));
-            });
-            pw.document.head.appendChild(newStyle);
-          }
-        } catch (e) {
-          // Cross-origin stylesheet access safely ignored
-        }
-      });
-
-      // Sync dark mode configuration and base classes
-      const isDark = document.documentElement.classList.contains("dark");
-      if (isDark) {
-        pw.document.documentElement.classList.add("dark");
-      }
-      pw.document.body.className = document.body.className;
-
-      // Handle background and height for full-screen stretching
-      pw.document.documentElement.style.height = "100%";
-      pw.document.body.style.height = "100%";
-      pw.document.body.style.background = "#000";
-      pw.document.body.style.margin = "0";
-      pw.document.body.style.overflow = "hidden";
-      pw.document.body.style.display = "flex";
-      pw.document.body.style.flexDirection = "column";
-
-      pw.addEventListener("pagehide", () => {
-        setPipWindow(null);
-      });
-
-      setPipWindow(pw);
-    } catch (err) {
-      console.error("Failed to open Document PiP", err);
-      toast.error("Could not open floating window.");
-    }
+    const cleanup = () => setPipWindow(null);
+    win.addEventListener("pagehide", cleanup);
+    win.addEventListener("beforeunload", cleanup);
   };
 
   const handleLinkToRecord = (file: (typeof recordedFiles)[0]) => {
@@ -7494,9 +7432,17 @@ function V10PreviewLayout() {
             onPopOut={handlePopOutStream}
             onStopStream={() => setStreamActive(false)}
             pipActive={!!pipWindow}
+            pipWindow={pipWindow}
             formatTime={formatTime}
             showDrawingTools={showDrawingTools}
             setShowDrawingTools={setShowDrawingTools}
+            currentTool={currentTool}
+            setCurrentTool={setCurrentTool}
+            currentColor={currentColor}
+            setCurrentColor={setCurrentColor}
+            lineWidth={lineWidth}
+            setLineWidth={setLineWidth}
+            overlayManager={overlayManager}
           />
         );
       case "form":
