@@ -18,6 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import useSWR, { mutate } from "swr";
@@ -251,12 +256,14 @@ export function ComponentSpecDialog({
     fetcher
   );
   const faceOptions = faceData?.data
-    ? faceData.data.map((x: any) => ({
-        value: x.face,
-        label: x.face,
-      }))
-    : [];
-
+    ? [
+        { value: "N/A", label: "N/A" },
+        ...faceData.data.map((x: any) => ({
+          value: x.face,
+          label: x.face,
+        }))
+      ]
+    : [{ value: "N/A", label: "N/A" }];
   // Form state for create mode
   const [formData, setFormData] = useState({
     q_id: "",
@@ -1102,6 +1109,26 @@ export function ComponentSpecDialog({
     if (isCreateMode || isEditMode) {
       setFormData((prev) => ({ ...prev, [field]: value }));
     }
+  };
+
+  const handleFaceToggle = (faceVal: string) => {
+    const currentVal = isCreateMode || isEditMode ? formData.face : (component?.metadata?.face ?? "");
+    const currentFaces = currentVal ? currentVal.split(',').map((f: string) => f.trim()).filter(Boolean) : [];
+    
+    let newFaces = [...currentFaces];
+    if (faceVal === "N/A") {
+      newFaces = currentFaces.includes("N/A") ? [] : ["N/A"];
+    } else {
+      if (newFaces.includes("N/A")) {
+        newFaces = newFaces.filter((f) => f !== "N/A");
+      }
+      if (newFaces.includes(faceVal)) {
+        newFaces = newFaces.filter((f) => f !== faceVal);
+      } else {
+        newFaces.push(faceVal);
+      }
+    }
+    handleInputChange("face", newFaces.join(", "));
   };
 
   const handleAdditionalInfoChange = (field: string, value: any) => {
@@ -1990,39 +2017,49 @@ export function ComponentSpecDialog({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="col-span-3 space-y-2">
+                    <div className="col-span-3 space-y-2 flex flex-col">
                       <Label
                         htmlFor="face"
                         className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
                       >
                         Face
                       </Label>
-                      <Select
-                        value={
-                          isCreateMode || isEditMode
-                            ? formData.face
-                            : (component?.metadata?.face ?? "")
-                        }
-                        onValueChange={(val) => handleInputChange("face", val)}
-                        disabled={!(isCreateMode || isEditMode) || faceOptions.length === 0}
-                      >
-                        <SelectTrigger
-                          id="face"
-                          className={cn(
-                            "rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold",
-                            (isCreateMode ? formData.face : (component?.metadata?.face ?? "")) ? "dark:text-white" : "dark:text-slate-500"
-                          )}
-                        >
-                          <SelectValue placeholder="Select face" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                          {faceOptions.map((opt: any) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            id="face"
+                            disabled={!(isCreateMode || isEditMode) || faceOptions.length === 0}
+                            className={cn(
+                              "w-full justify-between rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold",
+                              (isCreateMode ? formData.face : (component?.metadata?.face ?? "")) ? "dark:text-white" : "dark:text-slate-500 font-normal"
+                            )}
+                          >
+                            <span className="truncate">
+                              {(isCreateMode ? formData.face : (component?.metadata?.face ?? "")) || "Select face"}
+                            </span>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[200px] p-0 rounded-xl max-h-[300px] overflow-y-auto z-[9999]" align="start">
+                          <div className="p-2 flex flex-col gap-1">
+                            {faceOptions.map((opt: any) => {
+                              const currentVal = isCreateMode || isEditMode ? formData.face : (component?.metadata?.face ?? "");
+                              const currentFaces = currentVal ? currentVal.split(',').map((f: string) => f.trim()) : [];
+                              const isChecked = currentFaces.includes(opt.value);
+                              return (
+                                <div
+                                  key={opt.value}
+                                  className="flex items-center space-x-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 p-2 cursor-pointer"
+                                  onClick={() => handleFaceToggle(opt.value)}
+                                >
+                                  <Checkbox checked={isChecked} />
+                                  <span className="text-sm">{opt.label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                     {/* Platform Row 2: Part, Structural Group */}
                     <div className="col-span-6 space-y-2">
@@ -2308,36 +2345,49 @@ export function ComponentSpecDialog({
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="col-span-4 space-y-2">
+                        <div className="col-span-4 space-y-2 flex flex-col">
                           <Label
                             htmlFor="face"
                             className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-white ml-1"
                           >
                             Face
                           </Label>
-                          <Select
-                            value={
-                              isCreateMode || isEditMode
-                                ? formData.face
-                                : (component?.metadata?.face ?? "")
-                            }
-                            onValueChange={(val) => handleInputChange("face", val)}
-                            disabled={!(isCreateMode || isEditMode) || faceOptions.length === 0}
-                          >
-                            <SelectTrigger
-                              id="face"
-                              className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
-                            >
-                              <SelectValue placeholder="Select face" />
-                            </SelectTrigger>
-                            <SelectContent className="rounded-xl">
-                              {faceOptions.map((opt: any) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                id="face"
+                                disabled={!(isCreateMode || isEditMode) || faceOptions.length === 0}
+                                className={cn(
+                                  "w-full justify-between rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold",
+                                  (isCreateMode ? formData.face : (component?.metadata?.face ?? "")) ? "dark:text-white" : "dark:text-slate-500 font-normal"
+                                )}
+                              >
+                                <span className="truncate">
+                                  {(isCreateMode ? formData.face : (component?.metadata?.face ?? "")) || "Select face"}
+                                </span>
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[200px] p-0 rounded-xl max-h-[300px] overflow-y-auto z-[9999]" align="start">
+                              <div className="p-2 flex flex-col gap-1">
+                                {faceOptions.map((opt: any) => {
+                                  const currentVal = isCreateMode || isEditMode ? formData.face : (component?.metadata?.face ?? "");
+                                  const currentFaces = currentVal ? currentVal.split(',').map((f: string) => f.trim()) : [];
+                                  const isChecked = currentFaces.includes(opt.value);
+                                  return (
+                                    <div
+                                      key={opt.value}
+                                      className="flex items-center space-x-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 p-2 cursor-pointer"
+                                      onClick={() => handleFaceToggle(opt.value)}
+                                    >
+                                      <Checkbox checked={isChecked} />
+                                      <span className="text-sm">{opt.label}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
                         </div>
                         {/* Row 5: Part, Structural Group (Identity) */}
                         <div className="col-span-6 space-y-2">

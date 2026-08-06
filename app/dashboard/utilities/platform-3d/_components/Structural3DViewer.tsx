@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight } from "lucide-react";
 import { getEffectiveClockAngle, computeRiserOffsetEndpoints } from "@/utils/platform-3d-math";
+import { getMainLegElementSets } from "../platform-legs-recognition";
 
 interface Component3D {
     id: number;
@@ -110,7 +111,7 @@ const ComponentMesh = ({
     const qIdUpper = (component?.q_id || "").toUpperCase();
     const isNode = code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND";
     const isAnode = code === "AN" || code.includes("ANOD");
-    const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+    const isWeld = code === "WN";
     const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL";
     const isClamp = code === "CL" || code.includes("CLAM") || isRiserSupport;
     const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS");
@@ -213,11 +214,7 @@ const ComponentMesh = ({
 
     let labelText = component.q_id;
     if (isWeld) {
-        const match =
-            component.q_id.match(/WN\s*N?([A-Za-z0-9]+)/i) || component.q_id.match(/N?([A-Za-z0-9]+)/);
-        if (match) {
-            labelText = match[1];
-        }
+        labelText = component.q_id.replace(/^(?:WN\s*N?|N\s*)/i, "").trim() || component.q_id;
     }
 
     const rawClockPos = md.clk_pos ?? md.clockPosition;
@@ -1040,16 +1037,24 @@ function InstancedComponentViewer({
     const cylinderRef = useRef<THREE.InstancedMesh>(null);
     const sphereRef = useRef<THREE.InstancedMesh>(null);
     const boxRef = useRef<THREE.InstancedMesh>(null);
+    const anodeBoxRef = useRef<THREE.InstancedMesh>(null);
+    const anodeStubRef = useRef<THREE.InstancedMesh>(null);
+    const anodeElbowRef = useRef<THREE.InstancedMesh>(null);
 
     const [hoveredComp, setHoveredComp] = useState<any | null>(null);
 
+    const { mainMemberIds, mainNodeIds } = useMemo(() => {
+        return getMainLegElementSets(layouts);
+    }, [layouts]);
+
     // Group layouts into cylinders, welds, spheres, boxes, and custom procedural components (Fenders & Riser Guards)
-    const { cylinders, welds, spheres, boxes, customLayouts } = useMemo(() => {
+    const { cylinders, welds, spheres, boxes, customLayouts, anodes } = useMemo(() => {
         const cyl: any[] = [];
         const wld: any[] = [];
         const sph: any[] = [];
         const box: any[] = [];
         const custom: any[] = [];
+        const ands: any[] = [];
 
         layouts.forEach((layout) => {
             const comp = layout.component || layout.originalComp || { id: layout.id, q_id: layout.q_id, code: layout.code };
@@ -1072,8 +1077,9 @@ function InstancedComponentViewer({
                 return;
             }
 
-            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+            const isWeld = code === "WN";
             const isNode = code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND";
+            const isAnode = code === "AN" || code.includes("ANOD") || qIdUpper === "AN" || qIdUpper.includes("ANOD") || qIdUpper.startsWith("BAN");
 
             const item = { ...layout, comp, code, qIdUpper };
 
@@ -1081,6 +1087,8 @@ function InstancedComponentViewer({
                 wld.push(item);
             } else if (isNode) {
                 sph.push(item);
+            } else if (isAnode) {
+                ands.push(item);
             } else if (isClamp) {
                 box.push(item);
             } else {
@@ -1088,7 +1096,7 @@ function InstancedComponentViewer({
             }
         });
 
-        return { cylinders: cyl, welds: wld, spheres: sph, boxes: box, customLayouts: custom };
+        return { cylinders: cyl, welds: wld, spheres: sph, boxes: box, customLayouts: custom, anodes: ands };
     }, [layouts]);
 
     const toVec3 = (v: any): THREE.Vector3 => {
@@ -1109,13 +1117,16 @@ function InstancedComponentViewer({
         cylinders.forEach((item, i) => {
             const start = toVec3(item.start || item.position);
             const end = toVec3(item.end || item.position);
-            const code = item.code || "";
+            const rawCode = item.code || item.comp?.code || "";
+            const code = String(rawCode).toUpperCase();
             const isRiser = code === "RS" || code.includes("RISER") || code.includes("RISR");
-            const isAnode = code === "AN" || code.includes("ANOD");
 
-            let len = Math.max(start.distanceTo(end), 0.01);
+            const originalDistance = start.distanceTo(end);
+            let len = Math.max(originalDistance, 0.01);
             let pos = start.clone().add(end).multiplyScalar(0.5);
-            let dir = end.clone().sub(start).normalize();
+            
+            // If distance is too small, fallback to a vertical direction to prevent NaN normalization
+            let dir = originalDistance > 0.001 ? end.clone().sub(start).normalize() : new THREE.Vector3(0, 1, 0);
 
             if (isRiser) {
                 const itemMd = item.comp?.metadata || item.comp || item;
@@ -1126,8 +1137,14 @@ function InstancedComponentViewer({
             }
 
             let thickness = item.thickness || 0.3;
-            if (isAnode) thickness = 0.15;
-            const meshLen = isAnode ? 0.8 : len;
+
+            const compIdStr = String(item.comp?.id || item.id);
+            const isMainLeg = mainMemberIds.has(compIdStr);
+            if (isMainLeg) {
+                thickness *= 2.0;
+            }
+
+            const meshLen = len;
 
             const quat = new THREE.Quaternion();
             if (len > 0.001) {
@@ -1144,15 +1161,13 @@ function InstancedComponentViewer({
 
             const defaultColor = isSelected
                 ? "#2563eb"
-                : isAnode
-                    ? "#F8FAFC"
-                    : isPile
-                        ? "#475569"
-                        : isRiser
-                            ? "#334155"
-                            : isConductor
-                                ? "#475569"
-                                : "#cbd5e1";
+                : isPile
+                    ? "#475569"
+                    : isRiser
+                        ? "#334155"
+                        : isConductor
+                            ? "#475569"
+                            : "#cbd5e1";
 
             color.set(defaultColor);
             mesh.setColorAt(i, color);
@@ -1160,7 +1175,7 @@ function InstancedComponentViewer({
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [cylinders, selectedCompId]);
+    }, [cylinders, selectedCompId, mainMemberIds]);
 
     // Apply matrices and colors for Welds (Vertical Purple Cylinder Collars - Pic 2)
     useLayoutEffect(() => {
@@ -1175,15 +1190,46 @@ function InstancedComponentViewer({
             const dir = end.clone().sub(start).normalize();
             const len = start.distanceTo(end);
 
+            const compIdStr = String(item.comp?.id || item.id);
+            const isMainLegWeld = mainNodeIds.has(compIdStr);
+
             // Collar height: 0.5m; Collar radius: leg radius + 0.03m (slightly larger than member radius)
-            const collarRadius = (item.thickness || 0.3) + 0.03;
-            const collarHeight = 0.5;
+            let collarRadius = (item.thickness || 0.3) + 0.03;
+            let collarHeight = 0.5;
+
+            if (isMainLegWeld) {
+                collarRadius *= 2.0;
+                collarHeight *= 2.0;
+            }
+
+            let renderDir = len > 0.001 ? dir : new THREE.Vector3(0, 1, 0);
+
+            if (isMainLegWeld) {
+                let closestDist = Infinity;
+                cylinders.forEach(cyl => {
+                    const cylCompIdStr = String(cyl.comp?.id || cyl.id);
+                    if (mainMemberIds.has(cylCompIdStr)) {
+                        const cylStart = toVec3(cyl.start || cyl.position);
+                        const cylEnd = toVec3(cyl.end || cyl.position);
+                        const line = new THREE.Line3(cylStart, cylEnd);
+                        const cp = new THREE.Vector3();
+                        line.closestPointToPoint(start, true, cp);
+                        const dist = start.distanceTo(cp);
+                        if (dist < closestDist && dist < 5.0) {
+                            closestDist = dist;
+                            const d = cylEnd.clone().sub(cylStart);
+                            if (d.lengthSq() > 0.0001) {
+                                renderDir = d.normalize();
+                                if (renderDir.y < 0) renderDir.negate();
+                            }
+                        }
+                    }
+                });
+            }
 
             const pos = start.clone().add(end).multiplyScalar(0.5);
             const quat = new THREE.Quaternion();
-            if (len > 0.001) {
-                quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-            }
+            quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), renderDir);
 
             matrix.compose(pos, quat, new THREE.Vector3(collarRadius, collarHeight, collarRadius));
             mesh.setMatrixAt(i, matrix);
@@ -1196,7 +1242,7 @@ function InstancedComponentViewer({
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [welds, selectedCompId]);
+    }, [welds, selectedCompId, mainNodeIds]);
 
     // Apply matrices and colors for Spheres (Structural Nodes ND)
     useLayoutEffect(() => {
@@ -1207,7 +1253,11 @@ function InstancedComponentViewer({
 
         spheres.forEach((item, i) => {
             const start = toVec3(item.start || item.position);
-            const thickness = (item.thickness || 0.3) + 0.08;
+            let thickness = (item.thickness || 0.3) + 0.08;
+            const compIdStr = String(item.comp?.id || item.id);
+            if (mainNodeIds.has(compIdStr)) {
+                thickness *= 2.0;
+            }
 
             matrix.compose(start, new THREE.Quaternion(), new THREE.Vector3(thickness, thickness, thickness));
             mesh.setMatrixAt(i, matrix);
@@ -1220,7 +1270,7 @@ function InstancedComponentViewer({
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [spheres, selectedCompId]);
+    }, [spheres, selectedCompId, mainNodeIds]);
 
     // Apply matrices and colors for Boxes (Clamps)
     useLayoutEffect(() => {
@@ -1245,6 +1295,212 @@ function InstancedComponentViewer({
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }, [boxes, selectedCompId]);
+
+    // Apply matrices and colors for Anodes (Standoff style)
+    useLayoutEffect(() => {
+        if (!anodeBoxRef.current || !anodeStubRef.current || !anodeElbowRef.current) return;
+        const boxMesh = anodeBoxRef.current;
+        const stubMesh = anodeStubRef.current;
+        const elbowMesh = anodeElbowRef.current;
+        
+        const boxMatrix = new THREE.Matrix4();
+        const stubMatrix = new THREE.Matrix4();
+        const color = new THREE.Color();
+        
+        let stubIndex = 0;
+        let elbowIndex = 0;
+        
+        // Calculate platform geometric center (XZ plane) for vertical member reference (12 o'clock points outward)
+        let sumX = 0, sumZ = 0, nodeCount = 0;
+        spheres.forEach(sph => {
+            const pos = toVec3(sph.start || sph.position);
+            sumX += pos.x;
+            sumZ += pos.z;
+            nodeCount++;
+        });
+        const platformCenter = nodeCount > 0 ? new THREE.Vector3(sumX / nodeCount, 0, sumZ / nodeCount) : new THREE.Vector3(0, 0, 0);
+
+        anodes.forEach((item, i) => {
+            const start = toVec3(item.start || item.position);
+            const end = toVec3(item.end || item.position);
+            let pos = start.clone().add(end).multiplyScalar(0.5); // Center of the anode
+            
+            // Find closest member
+            let closestDist = Infinity;
+            let closestCyl: any = null;
+            let closestPoint = new THREE.Vector3();
+            let cylDir = new THREE.Vector3(0, 1, 0);
+            
+            cylinders.forEach(cyl => {
+                const cs = toVec3(cyl.start || cyl.position);
+                const ce = toVec3(cyl.end || cyl.position);
+                
+                const line = new THREE.Line3(cs, ce);
+                const cp = new THREE.Vector3();
+                line.closestPointToPoint(pos, true, cp);
+                
+                const dist = pos.distanceTo(cp);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closestCyl = cyl;
+                    closestPoint.copy(cp);
+                    let dirLen = ce.clone().sub(cs).length();
+                    cylDir = dirLen > 0.001 ? ce.clone().sub(cs).normalize() : new THREE.Vector3(0, 1, 0);
+                }
+            });
+            
+            // Get member radius
+            let memberRadius = 0.15; // Default (0.3 thickness * 0.5 radius)
+            if (closestCyl) {
+                let th = closestCyl.thickness || 0.3;
+                const compIdStr = String(closestCyl.comp?.id || closestCyl.id);
+                if (mainMemberIds.has(compIdStr)) {
+                    th *= 2.0;
+                }
+                memberRadius = th * 0.5;
+            }
+            
+            // Standoff distance (default 0.15 if perfectly on centerline)
+            let standoffDist = closestDist > 0.001 ? Math.max(closestDist - memberRadius, 0.1) : 0.15;
+            
+            // Parse clock position
+            const md = item.comp?.metadata || item.comp || item;
+            const rawClockPos = md.clock_position ?? md.clk_pos ?? md.clockPosition ?? md.clock;
+            let clockPos = 12; // Default to 12 o'clock
+            if (rawClockPos !== undefined && rawClockPos !== null && rawClockPos !== "" && String(rawClockPos).toUpperCase() !== "N/A") {
+                const str = String(rawClockPos).trim();
+                const parts = str.split(':');
+                if (parts.length > 0) {
+                    const hrs = parseFloat(parts[0]);
+                    const mins = parts.length > 1 ? parseFloat(parts[1]) : 0;
+                    if (!isNaN(hrs)) {
+                        clockPos = hrs + (isNaN(mins) ? 0 : mins / 60);
+                        if (clockPos > 12) clockPos = clockPos % 12;
+                        if (clockPos === 0) clockPos = 12;
+                    }
+                }
+            }
+            
+            // Calculate 12 o'clock reference vector
+            let refVec = new THREE.Vector3();
+            if (Math.abs(cylDir.y) > 0.8) {
+                // Vertical member: 12 o'clock points outward from platform center
+                refVec.set(closestPoint.x - platformCenter.x, 0, closestPoint.z - platformCenter.z).normalize();
+                if (refVec.lengthSq() < 0.001) refVec.set(0, 0, 1);
+            } else {
+                // Horizontal/Diagonal member: 12 o'clock points Up (Global +Y)
+                refVec.set(0, 1, 0);
+                // Project onto orthogonal plane
+                refVec.sub(cylDir.clone().multiplyScalar(refVec.dot(cylDir))).normalize();
+                if (refVec.lengthSq() < 0.001) refVec.set(1, 0, 0);
+            }
+            
+            // Rotate refVec by clock angle clockwise looking down the member (cylDir)
+            const clockAngle = (clockPos / 12) * Math.PI * 2;
+            let normal = refVec.clone().applyAxisAngle(cylDir, -clockAngle).normalize();
+            
+            // Dynamically reposition the anode based on the computed normal and standoff
+            pos = closestPoint.clone().add(normal.clone().multiplyScalar(memberRadius + standoffDist));
+            closestDist = memberRadius + standoffDist;
+            
+            // Anode properties
+            const anodeLength = 0.8;
+            const anodeWidth = 0.15;
+            const anodeHeight = 0.15;
+            const stubRadius = 0.05;
+            const bendRadius = 0.08;
+            const penetration = 0.05;
+            
+            // Render Main Anode Body (Box)
+            // BoxGeometry args are [width(x), height(y), depth(z)]. We want length along Y axis to match cylDir.
+            const boxQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cylDir);
+            boxMatrix.compose(pos, boxQuat, new THREE.Vector3(anodeWidth, anodeLength, anodeHeight));
+            boxMesh.setMatrixAt(i, boxMatrix);
+            
+            const compId = item.comp?.id || item.id;
+            const isSelected = selectedCompId === compId;
+            const defaultColor = isSelected ? "#2563eb" : "#e2e8f0"; // light grey/zinc
+            color.set(defaultColor);
+            boxMesh.setColorAt(i, color);
+            
+            // End points of the anode body
+            const end1 = pos.clone().add(cylDir.clone().multiplyScalar(anodeLength / 2));
+            const end2 = pos.clone().sub(cylDir.clone().multiplyScalar(anodeLength / 2));
+            
+            // Axial stubs extend total 0.1m outward (including bend radius)
+            const totalAxialLen = 0.1;
+            const axialLen = Math.max(totalAxialLen - bendRadius, 0.01);
+            
+            const axialStub1Pos = end1.clone().add(cylDir.clone().multiplyScalar(axialLen / 2));
+            const axialStub2Pos = end2.clone().sub(cylDir.clone().multiplyScalar(axialLen / 2));
+            
+            // The outer tips are the theoretical sharp corners
+            const outerTip1 = end1.clone().add(cylDir.clone().multiplyScalar(totalAxialLen));
+            const outerTip2 = end2.clone().add(cylDir.clone().multiplyScalar(-totalAxialLen));
+            
+            // Standoff is distance from pos to surface of the member
+            const standoff = pos.distanceTo(closestPoint) - memberRadius;
+            const totalRadialLen = Math.max(standoff, bendRadius + 0.01) + penetration;
+            const radialLen = Math.max(totalRadialLen - bendRadius, 0.01);
+            
+            // The radial stub starts after the bendRadius drop-off from the outer tip
+            const radialStart1 = outerTip1.clone().sub(normal.clone().multiplyScalar(bendRadius));
+            const radialStart2 = outerTip2.clone().sub(normal.clone().multiplyScalar(bendRadius));
+            
+            const radialStub1Pos = radialStart1.clone().sub(normal.clone().multiplyScalar(radialLen / 2));
+            const radialStub2Pos = radialStart2.clone().sub(normal.clone().multiplyScalar(radialLen / 2));
+            
+            // Axial Stub 1 & 2 (parallel to cylinder direction)
+            const stubQuatAxial = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cylDir);
+            stubMatrix.compose(axialStub1Pos, stubQuatAxial, new THREE.Vector3(stubRadius, axialLen, stubRadius));
+            stubMesh.setMatrixAt(stubIndex++, stubMatrix);
+            stubMesh.setColorAt(stubIndex - 1, color);
+            
+            stubMatrix.compose(axialStub2Pos, stubQuatAxial, new THREE.Vector3(stubRadius, axialLen, stubRadius));
+            stubMesh.setMatrixAt(stubIndex++, stubMatrix);
+            stubMesh.setColorAt(stubIndex - 1, color);
+            
+            // Radial Stub 1 & 2 (parallel to normal vector pointing outwards, so we align Y with normal)
+            const stubQuatRadial = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+            stubMatrix.compose(radialStub1Pos, stubQuatRadial, new THREE.Vector3(stubRadius, radialLen, stubRadius));
+            stubMesh.setMatrixAt(stubIndex++, stubMatrix);
+            stubMesh.setColorAt(stubIndex - 1, color);
+            
+            stubMatrix.compose(radialStub2Pos, stubQuatRadial, new THREE.Vector3(stubRadius, radialLen, stubRadius));
+            stubMesh.setMatrixAt(stubIndex++, stubMatrix);
+            stubMesh.setColorAt(stubIndex - 1, color);
+            
+            // Elbow 1 & 2 (Torus geometries for smooth corners)
+            const elbow1Pos = outerTip1.clone().sub(normal.clone().multiplyScalar(bendRadius)).sub(cylDir.clone().multiplyScalar(bendRadius));
+            const elbow2Pos = outerTip2.clone().sub(normal.clone().multiplyScalar(bendRadius)).add(cylDir.clone().multiplyScalar(bendRadius));
+            
+            const makeElbowMatrix = (p: THREE.Vector3, xAxis: THREE.Vector3, yAxis: THREE.Vector3) => {
+                const zAxis = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
+                const m = new THREE.Matrix4();
+                m.makeBasis(xAxis, yAxis, zAxis);
+                m.setPosition(p);
+                return m;
+            };
+            
+            const elbow1Matrix = makeElbowMatrix(elbow1Pos, normal, cylDir);
+            elbowMesh.setMatrixAt(elbowIndex++, elbow1Matrix);
+            elbowMesh.setColorAt(elbowIndex - 1, color);
+            
+            const elbow2Matrix = makeElbowMatrix(elbow2Pos, normal, cylDir.clone().negate());
+            elbowMesh.setMatrixAt(elbowIndex++, elbow2Matrix);
+            elbowMesh.setColorAt(elbowIndex - 1, color);
+            
+        });
+        
+        boxMesh.instanceMatrix.needsUpdate = true;
+        if (boxMesh.instanceColor) boxMesh.instanceColor.needsUpdate = true;
+        stubMesh.instanceMatrix.needsUpdate = true;
+        if (stubMesh.instanceColor) stubMesh.instanceColor.needsUpdate = true;
+        stubMesh.count = stubIndex;
+        elbowMesh.instanceMatrix.needsUpdate = true;
+        if (elbowMesh.instanceColor) elbowMesh.instanceColor.needsUpdate = true;
+        elbowMesh.count = elbowIndex;
+    }, [anodes, cylinders, selectedCompId, mainMemberIds]);
 
     // Find layout of selected component for overlay label and highlight mesh
     const selectedLayout = useMemo(() => {
@@ -1300,6 +1556,64 @@ function InstancedComponentViewer({
                 </instancedMesh>
             )}
 
+            {/* Anode Box Instanced Buffer */}
+            {anodes.length > 0 && (
+                <instancedMesh
+                    ref={anodeBoxRef}
+                    args={[undefined, undefined, anodes.length]}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && anodes[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            if (onSelectComponent) onSelectComponent(anodes[e.instanceId].comp);
+                        }
+                    }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && anodes[e.instanceId]) {
+                            isDirectClickRef.current = true;
+                            const item = anodes[e.instanceId];
+                            const s = toVec3(item.start || item.position);
+                            const end = toVec3(item.end || item.position);
+                            const center = new THREE.Vector3((s.x + end.x) / 2, (s.y + end.y) / 2, (s.z + end.z) / 2);
+                            if (onDoubleClickComponent) onDoubleClickComponent(item.comp, center);
+                        }
+                    }}
+                    onPointerOver={(e) => {
+                        e.stopPropagation();
+                        if (e.instanceId !== undefined && anodes[e.instanceId]) {
+                            setHoveredComp(anodes[e.instanceId].comp);
+                        }
+                    }}
+                    onPointerOut={() => setHoveredComp(null)}
+                >
+                    <boxGeometry args={[1, 1, 1]} />
+                    <meshStandardMaterial metalness={0.5} roughness={0.5} />
+                </instancedMesh>
+            )}
+
+            {/* Anode Stub Instanced Buffer */}
+            {anodes.length > 0 && (
+                <instancedMesh
+                    ref={anodeStubRef}
+                    args={[undefined, undefined, anodes.length * 4]}
+                >
+                    <cylinderGeometry args={[1, 1, 1, 12]} />
+                    <meshStandardMaterial metalness={0.5} roughness={0.5} />
+                </instancedMesh>
+            )}
+
+            {/* Anode Elbow Instanced Buffer */}
+            {anodes.length > 0 && (
+                <instancedMesh
+                    ref={anodeElbowRef}
+                    args={[undefined, undefined, anodes.length * 2]}
+                >
+                    <torusGeometry args={[0.08, 0.05, 8, 12, Math.PI / 2]} />
+                    <meshStandardMaterial metalness={0.5} roughness={0.5} />
+                </instancedMesh>
+            )}
+
             {/* Weld Cylinder Collar Instanced Buffer (Pic 2) */}
             {welds.length > 0 && (
                 <instancedMesh
@@ -1340,11 +1654,10 @@ function InstancedComponentViewer({
             {showWeldNumbering && welds.map((w, idx) => {
                 const s = toVec3(w.start || w.position);
                 const e = toVec3(w.end || w.position);
-                const pos = [(s.x + e.x) / 2, (s.y + e.y) / 2 + 0.3, (s.z + e.z) / 2] as [number, number, number];
+                const pos = [(s.x + e.x) / 2, (s.y + e.y) / 2 + 1.1, (s.z + e.z) / 2] as [number, number, number];
 
                 const rawLabel = w.comp?.q_id || w.q_id || `WN${idx + 1}`;
-                const match = rawLabel.match(/(?:WN\s*|N\s*)?(\d+)/i) || rawLabel.match(/N?([A-Za-z0-9]+)/);
-                const labelText = match ? match[1] : rawLabel.replace(/^[^\d]+/, "") || rawLabel;
+                const labelText = rawLabel.replace(/^(?:WN\s*N?|N\s*)/i, "").trim() || rawLabel;
 
                 const compId = w.comp?.id || w.id;
                 const isSelected = selectedCompId === compId;
@@ -1363,9 +1676,9 @@ function InstancedComponentViewer({
                                 const center = new THREE.Vector3(pos[0], pos[1], pos[2]);
                                 if (onDoubleClickComponent) onDoubleClickComponent(w.comp, center);
                             }}
-                            className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border cursor-pointer transition-all shadow-md ${isSelected
-                                    ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 z-20 shadow-[0_0_12px_rgba(37,99,235,0.6)]"
-                                    : "bg-slate-900/90 text-blue-300 border-blue-500/50 backdrop-blur-sm opacity-90 hover:opacity-100 hover:scale-105"
+                            className={`text-[11px] font-black uppercase tracking-widest whitespace-nowrap cursor-pointer select-none transition-all -translate-x-3 -translate-y-2 [-webkit-text-stroke:0.4px_rgba(0,0,0,0.85)] ${isSelected
+                                    ? "text-orange-300 scale-125 opacity-100 z-20 [-webkit-text-stroke:0.6px_#000] [text-shadow:0_0_8px_rgba(249,115,22,0.9)]"
+                                    : "text-orange-500 opacity-90 hover:opacity-100 hover:text-orange-400 hover:scale-110"
                                 }`}
                         >
                             {labelText}
@@ -1734,14 +2047,14 @@ export function Structural3DViewer({
 
         // 1. Explicit Component Specifications FACE Field Check (if specified)
         if (compFace) {
-            const cleanCompFace = compFace.replace(/^ROW\s*|^FACE\s*/i, "").trim();
-            const isDirectMatch =
-                compFace === fUpper ||
-                cleanCompFace === cleanFace ||
-                compFace.includes(cleanFace) ||
-                fUpper.includes(cleanCompFace);
+            const compFacesArray = compFace.split(',').map((f: string) => f.trim()).filter(Boolean);
+            
+            const isMatch = compFacesArray.some((cf: string) => {
+                const cleanCompFace = cf.replace(/^ROW\s*|^FACE\s*/i, "").trim();
+                return cf === fUpper || cleanCompFace === cleanFace || cf.includes(cleanFace) || fUpper.includes(cleanCompFace);
+            });
 
-            if (isDirectMatch) {
+            if (isMatch) {
                 return true;
             } else {
                 // Explicitly assigned to a different face -> hide component
@@ -2253,7 +2566,7 @@ export function Structural3DViewer({
 
             {/* Camera Focus Lock Badge Indicator */}
             {focusTargetPos && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-in fade-in zoom-in duration-300 pointer-events-auto">
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 animate-in fade-in zoom-in duration-300 pointer-events-auto">
                     <button
                         onClick={() => {
                             setFocusTargetPos(null);
