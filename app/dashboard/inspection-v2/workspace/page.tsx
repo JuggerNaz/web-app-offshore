@@ -5856,7 +5856,7 @@ function V10PreviewLayout() {
       }
 
       // Synchronous auto-calculation for MGI Profile threshold
-      if (['MGI', 'RMGI'].includes(specStr) && activeMGIProfile && activeMGIProfile.thresholds?.length > 0) {
+      if (['MGI', 'RMGI', 'DMGI', 'MGROW'].includes(specStr) && activeMGIProfile && activeMGIProfile.thresholds?.length > 0) {
           const vDepthRaw = activeProps.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
           const vDepthUnit = activeProps.verification_depth_unit || 'm';
           const waterDepth = Math.abs(headerData.waterDepth || 0);
@@ -5878,6 +5878,7 @@ function V10PreviewLayout() {
              
              if (foundThreshold !== null) {
                  activeProps.mgi_profile = `${foundThreshold.toFixed(1)}mm`;
+                 activeProps.max_allowable_thickness = foundThreshold;
              }
           }
       }

@@ -36,19 +36,49 @@ export const generateInspectionReport = async (
                 attachment: []
             };
         } else {
-            const { data: fetchedInsp, error: inspError } = await supabase
-                .from('insp_records')
-                .select(`
-                    *,
-                    inspection_type ( code, name ),
-                    structure_components ( q_id, name )
-                `)
-                .eq('insp_id', inspectionId)
-                .single();
+            let fetchedInsp: any = null;
+            let inspError: any = null;
 
-            if (inspError || !fetchedInsp) {
+            if (inspectionId && !isNaN(inspectionId) && inspectionId > 0) {
+                const res = await supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        structure_components:component_id ( q_id, code )
+                    `)
+                    .eq('insp_id', inspectionId)
+                    .maybeSingle();
+                fetchedInsp = res.data;
+                inspError = res.error;
+            }
+
+            if (!fetchedInsp && (config as any)?.jobPackId && (config as any)?.structureId) {
+                let q = supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        structure_components:component_id ( q_id, code )
+                    `)
+                    .eq('jobpack_id', (config as any).jobPackId)
+                    .eq('structure_id', (config as any).structureId);
+
+                if ((config as any).sowReportNo) {
+                    q = q.eq('sow_report_no', (config as any).sowReportNo);
+                }
+
+                const res = await q.order('insp_id', { ascending: false }).limit(1).maybeSingle();
+                fetchedInsp = res.data;
+            }
+
+            if (!fetchedInsp) {
                 console.error("Error fetching inspection for report:", inspError);
                 throw new Error("Inspection not found");
+            }
+            if (!fetchedInsp.inspection_type) {
+                fetchedInsp.inspection_type = {
+                    code: fetchedInsp.inspection_type_code || "",
+                    name: fetchedInsp.inspection_type_code || "General Inspection"
+                };
             }
             inspection = fetchedInsp;
         }

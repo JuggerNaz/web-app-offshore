@@ -43,13 +43,18 @@ export const generateMultiInspectionReport = async (
                 .from('insp_records')
                 .select(`
                     *,
-                    inspection_type ( code, name ),
-                    structure_components ( q_id, name )
+                    structure_components:component_id ( q_id, code )
                 `)
                 .eq('insp_id', inspectionId)
-                .single();
+                .maybeSingle();
 
             if (inspError || !inspection) continue;
+            if (!inspection.inspection_type) {
+                inspection.inspection_type = {
+                    code: inspection.inspection_type_code || "",
+                    name: inspection.inspection_type_code || "General Inspection"
+                };
+            }
 
             // 2. Fetch Anomalies
             const { data: anomalies } = await supabase

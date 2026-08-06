@@ -341,7 +341,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     React.useEffect(() => {
         if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
-        if (!activeSpec || (activeSpec.toUpperCase() !== 'MGI' && activeSpec.toUpperCase() !== 'RMGI')) return;
+        if (!activeSpec || !['MGI', 'RMGI', 'DMGI', 'MGROW'].includes(activeSpec.toUpperCase())) return;
         const vDepthRaw = getFormDepth();
         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
         const waterDepth = resolveWaterDepth();
@@ -350,6 +350,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         const formattedThreshold = `${applicableMax.toFixed(1)}mm`;
         if (dynamicProps?.mgi_profile !== formattedThreshold && handleDynamicPropChange) {
             handleDynamicPropChange('mgi_profile', formattedThreshold);
+        }
+        if (dynamicProps?.max_allowable_thickness !== applicableMax && handleDynamicPropChange) {
+            handleDynamicPropChange('max_allowable_thickness', applicableMax);
         }
         if (activeMGIProfile?.id && dynamicProps?._mgi_profile_id !== activeMGIProfile.id && handleDynamicPropChange) {
             handleDynamicPropChange('_mgi_profile_id', activeMGIProfile.id);

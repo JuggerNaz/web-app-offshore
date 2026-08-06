@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
         let jobpackId = searchParams.get("jobpack_id");
         let structureId = searchParams.get("structure_id");
         let inspectionId = searchParams.get("inspection_id");
+        let anomalyId = searchParams.get("anomaly_id");
 
         // Robust cleanup for parameters
         const clean = (val: string | null) => (val === "undefined" || val === "null" || !val) ? null : val;
@@ -19,20 +20,23 @@ export async function GET(request: NextRequest) {
         jobpackId = clean(jobpackId);
         structureId = clean(structureId);
         inspectionId = clean(inspectionId);
+        anomalyId = clean(anomalyId);
 
-        if (!jobpackId && !inspectionId) {
-            return NextResponse.json({ error: "JobPack ID or Inspection ID is required" }, { status: 400 });
+        if (!jobpackId && !inspectionId && !anomalyId) {
+            return NextResponse.json({ error: "JobPack ID, Inspection ID, or Anomaly ID is required" }, { status: 400 });
         }
 
-        console.log(`[AnomalyReport] Req: JobPack=${jobpackId}, Structure=${structureId}, Report=${sowReportNo}, Inspection=${inspectionId}`);
+        console.log(`[AnomalyReport] Req: JobPack=${jobpackId}, Structure=${structureId}, Report=${sowReportNo}, Inspection=${inspectionId}, Anomaly=${anomalyId}`);
 
         // 1. Query v_anomaly_details View
         let query = (supabase as any)
             .from("v_anomaly_details")
             .select("*");
 
-        // If specific inspection ID is requested, prioritize it and ignore broad filters
-        if (inspectionId) {
+        // If specific anomaly ID is requested, prioritize it to print ONLY that single anomaly!
+        if (anomalyId) {
+            query = query.eq("anomaly_id", anomalyId);
+        } else if (inspectionId) {
             query = query.eq("id", inspectionId); 
         } else {
             // Apply broad filters only if no direct ID is provided

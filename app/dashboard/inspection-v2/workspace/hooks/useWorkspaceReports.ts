@@ -2788,21 +2788,17 @@ export function useWorkspaceReports(
 
             const mgiRecords = currentRecords.filter(r => {
                 const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-                return code === 'MGROW' || code === 'RMGI';
+                return code === 'MGROW' || code === 'RMGI' || code === 'DMGI';
             });
-            let profile = null;
-            const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
-            if (profileId) {
-                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
-                profile = data;
-            }
+            const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
+            const profile = await getMGIProfileForJobpack(supabase, jobPackId, profileId);
 
             return await generateDivingMGIReport(
                 mgiRecords,
                 profile,
                 { ...headerData, contractorLogoUrl, waterDepth: headerData.waterDepth || 0 },
                 { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), returnBlob: false },
+                { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), jobPackId: Number(jobPackId), returnBlob: false },
                 supabase
             );
         },
@@ -2817,21 +2813,17 @@ export function useWorkspaceReports(
 
             const mgiRecords = currentRecords.filter(r => {
                 const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-                return code === 'MGROW' || code === 'RMGI';
+                return code === 'MGROW' || code === 'RMGI' || code === 'DMGI';
             });
-            let profile = null;
-            const profileId = mgiRecords[0]?.inspection_data?._mgi_profile_id;
-            if (profileId) {
-                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
-                profile = data;
-            }
+            const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
+            const profile = await getMGIProfileForJobpack(supabase, jobPackId, profileId);
 
             return await generateDivingMGIReport(
                 mgiRecords,
                 profile,
                 { ...headerData, contractorLogoUrl, waterDepth: headerData.waterDepth || 0 },
                 { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), returnBlob: true },
+                { printFriendly: printFriendly || false, sowReportNo: headerData.sowReportNo, structureId: Number(structureId), jobPackId: Number(jobPackId), returnBlob: true },
                 supabase
             );
         },

@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
+import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 
 const LANDSCAPE_SECTION_XML = `<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
 const PORTRAIT_SECTION_XML = `<w:sectPr><w:pgSz w:w="11906" w:h="16838" w:orient="portrait"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
@@ -490,7 +491,19 @@ export const mapInspectionDataForDocx = async (
                 pdfBlob = (await generateDivingAnodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;
             } else if (templateId === 'diving-mgi-report') {
                 const { generateDivingMGIReport } = await import("./diving-mgi-report");
-                pdfBlob = (await generateDivingMGIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DMGI"), {}, { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;
+                const { createClient } = await import("@/utils/supabase/client");
+                const supabase = createClient();
+                const mgiRecs = records.filter(r => ['DMGI', 'MGROW', 'RMGI'].includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase()));
+                const profileId = mgiRecs.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
+                const mgiProfile = await getMGIProfileForJobpack(supabase, jobPack?.id, profileId);
+                pdfBlob = (await generateDivingMGIReport(
+                    mgiRecs,
+                    mgiProfile,
+                    { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel, waterDepth: structure?.depth || structure?.metadata?.water_depth || 0 },
+                    companySettings || {},
+                    { jobPackId: jobPack?.id, returnBlob: true, showSignatures: false, showPageNumbers: false } as any,
+                    supabase
+                )) || null;
             } else if (templateId === 'diving-utclb-report') {
                 const { generateDivingUTCLBReport } = await import("./diving-utclb-report");
                 pdfBlob = (await generateDivingUTCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "UTCLB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;

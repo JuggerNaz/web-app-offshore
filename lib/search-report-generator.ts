@@ -66,7 +66,10 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
     { templateId: "diving-anmain", label: "Anode Maintenance Report (ANMAIN)", code: "ANMAIN", mode: "DIVING" },
   ],
   DMGI: [
-    { templateId: "diving-mgi", label: "Diving Marine Growth (DMGI)", code: "DMGI", mode: "DIVING" },
+    { templateId: "diving-mgi", label: "Marine Growth Inspection Graph Report (Diving)", code: "DMGI", mode: "DIVING" },
+  ],
+  MGROW: [
+    { templateId: "diving-mgi", label: "Marine Growth Inspection Graph Report (Diving)", code: "MGROW", mode: "DIVING" },
   ],
   // Multi-template: Caisson Diving
   DCASN: [
@@ -158,6 +161,9 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
   RSZCI: [
     { templateId: "rszci", label: "ROV Splash Zone (SZCI)", code: "RSZCI", mode: "ROV" },
   ],
+  ANOMALY: [
+    { templateId: "anomaly-report", label: "Defect & Anomaly Report", code: "ANOMALY", mode: "DIVING" },
+  ],
 };
 
 /**
@@ -188,6 +194,7 @@ export function getTemplatesForInspectionType(
 
 interface SearchReportContext {
   inspId: number;
+  anomalyId?: number;
   inspectionTypeCode: string;
   jobpackId: number;
   structureId: number;
@@ -206,6 +213,34 @@ export async function generateReportFromSearch(
   showSignatures: boolean = true
 ): Promise<Blob | void> {
   const supabase = createClient();
+
+  // If this is an anomaly report, handle it directly with anomalyId filter!
+  if (templateId === "anomaly-report" || ctx.inspectionTypeCode === "ANOMALY" || ctx.anomalyId) {
+    const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
+    const settings = await getReportHeaderData();
+    const companyInfo = {
+      company_name: settings.companyName,
+      logo_url: settings.companyLogo,
+      department_name: settings.departmentName,
+    };
+    return await generateDefectAnomalyReport(
+      { id: ctx.jobpackId },
+      { id: ctx.structureId },
+      ctx.sowReportNo || "",
+      companyInfo,
+      {
+        anomalyId: ctx.anomalyId,
+        inspectionId: ctx.inspId,
+        reportYear: new Date().getFullYear().toString(),
+        preparedBy: { name: "Inspector", date: new Date().toISOString() },
+        showContractorLogo: true,
+        showPageNumbers: true,
+        printFriendly,
+        showSignatures,
+        returnBlob: true,
+      }
+    ) as Blob;
+  }
 
   // 1. Fetch the inspection record(s) for this SOW report
   let query = (supabase as any)
@@ -709,6 +744,29 @@ async function routeToGenerator(
       if (!recs.length) return;
       const { generateROVRMGIReport } = await import("@/utils/report-generators/rov-rmgi-report");
       return await generateROVRMGIReport(recs, headerData, companyInfo, opts) as Blob;
+    }
+
+    // Defect & Anomaly Report
+    case "anomaly-report": {
+      const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
+      const jobPack = { id: opts.jobPackId };
+      const structure = { id: opts.structureId };
+      return await generateDefectAnomalyReport(
+        jobPack,
+        structure,
+        opts.sowReportNo || "",
+        companyInfo,
+        {
+          ...opts,
+          anomalyId: opts.anomalyId || opts.inspId,
+          inspectionId: opts.inspId,
+          reportYear: new Date().getFullYear().toString(),
+          preparedBy: { name: "Inspector", date: new Date().toISOString() },
+          showContractorLogo: true,
+          showPageNumbers: true,
+          returnBlob: true,
+        }
+      ) as Blob;
     }
 
     // ── Fallback: Generic Inspection Report ─────────────────────────────────

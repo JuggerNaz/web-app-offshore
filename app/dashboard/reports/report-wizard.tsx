@@ -4707,16 +4707,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             try {
                 const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id 
                                 || jobPack.mgi_profile_id;
-                
-                if (profileId) {
-                    const pRes = await fetch(`/api/mgi-profiles/${profileId}`);
-                    const pJson = await pRes.json();
-                    activeMGIProfile = pJson.data;
-                } else {
-                    const pRes = await fetch(`/api/mgi-profiles`);
-                    const pJson = await pRes.json();
-                    activeMGIProfile = pJson.data?.find((p: any) => p.is_active && !p.is_job_specific);
-                }
+                activeMGIProfile = await getMGIProfileForJobpack(supabase, selections.jobPackId, profileId);
             } catch (e) { console.error("Profile fetch error", e); }
 
             let contractorLogoUrl = "";
