@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -680,19 +680,17 @@ export const generateDefectAnomalyReport = async (
 
                 // Title
                 doc.setFont("helvetica", "bold");
-                doc.text(p.title, x + 2, y + 3);
+                doc.text(p.title, x + 2, y + 4);
 
-                // Name Label
+                // Labels & Values
                 doc.setFont("helvetica", "normal");
                 doc.text("Name:", x + 2, y + 9);
-                if (p.name) doc.text(p.name, x + 12, y + 9);
+                if (p.name) doc.text(p.name, x + 14, y + 9);
 
-                // Sign Label
-                doc.text("Sign:", x + 2, y + 15);
+                doc.text("Sign:", x + 2, y + 14);
 
-                // Date Label
-                doc.text("Date:", x + 2, y + 21);
-                if (p.date) doc.text(p.date, x + 12, y + 21);
+                doc.text("Date:", x + 2, y + 19);
+                if (p.date) doc.text(formatPdfDate(p.date), x + 14, y + 19);
             });
         };
 

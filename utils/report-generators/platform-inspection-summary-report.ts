@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -420,7 +420,7 @@ export const generatePlatformInspectionSummaryReport = async (
             }
             const sigY = pageHeight - 32;
 
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
                 if (!config?.printFriendly) {
@@ -434,13 +434,15 @@ export const generatePlatformInspectionSummaryReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 9.5);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 9.5);
                 doc.text("Date:", lx + 2, sigY + 13);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13);
                 doc.text("Signature:", lx + 2, sigY + 16.5);
             };
 
-            drawSig("PREPARED BY",  margin);
-            drawSig("REVIEWED BY",  margin + sigW);
-            drawSig("APPROVED BY",  margin + sigW * 2);
+            drawSig("PREPARED BY",  margin, config?.preparedBy);
+            drawSig("REVIEWED BY",  margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY",  margin + sigW * 2, config?.approvedBy);
         }
 
         // ── Page Footers ────────────────────────────────────────────────────────

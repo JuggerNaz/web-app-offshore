@@ -119,8 +119,12 @@ export const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: num
 };
 
 // Helper to format date as dd-mm-yyyy
-const formatPdfDate = (dateStr?: string): string => {
+export const formatPdfDate = (dateStr?: string): string => {
     if (!dateStr) return "";
+    // Handle dd/mm/yyyy or yyyy-mm-dd
+    if (dateStr.includes("/")) {
+        return dateStr;
+    }
     const parts = dateStr.split("-");
     if (parts.length === 3) {
         return `${parts[2]}-${parts[1]}-${parts[0]}`;
@@ -134,21 +138,22 @@ export function applyWatermarkAndSignaturesGlobal(doc: jsPDF, config: any) {
         console.log("applyWatermarkAndSignaturesGlobal: Watermark already applied, skipping.");
         return;
     }
-    (doc as any)._watermarkApplied = true;
 
     console.log("applyWatermarkAndSignaturesGlobal: Started overlay process", { config });
+
     if (!config) {
         console.warn("applyWatermarkAndSignaturesGlobal: No config object passed!");
         return;
     }
+
+    (doc as any)._watermarkApplied = true;
 
     const pageCount = doc.getNumberOfPages();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 12;
     const contentWidth = pageWidth - margin * 2;
-    const sigW = contentWidth / 3;
-    const sigY = typeof config?.sigY === 'number' ? config.sigY : (pageHeight - 38);
+    const sigY = typeof config?.sigY === 'number' ? config.sigY : (pageHeight - margin - 32);
 
     console.log("applyWatermarkAndSignaturesGlobal: Document properties", { pageCount, pageWidth, pageHeight, sigY });
 
@@ -182,8 +187,8 @@ export function applyWatermarkAndSignaturesGlobal(doc: jsPDF, config: any) {
         }
     }
 
-    // 2. Draw Signatures on the last page if enabled
-    if (config.showSignatures !== false) {
+    // 2. Draw Signatures on the last page if enabled and overlay requested
+    if (config.showSignatures !== false && config.overlaySignatureText) {
         console.log("applyWatermarkAndSignaturesGlobal: Overlaying signatures block text");
         doc.setPage(pageCount);
         doc.saveGraphicsState();
@@ -195,19 +200,19 @@ export function applyWatermarkAndSignaturesGlobal(doc: jsPDF, config: any) {
         const rev = config.reviewedBy || { name: "", date: "" };
         const app = config.approvedBy || { name: "", date: "" };
 
-        console.log("applyWatermarkAndSignaturesGlobal: Signatory details", { prep, rev, app });
+        const sigW = (pageWidth - margin * 2) / 3;
 
-        // Draw Prepared By details
-        doc.text(prep.name || "", margin + 11, sigY + 10);
-        doc.text(formatPdfDate(prep.date), margin + 10, sigY + 13.5);
+        // Draw Prepared By details: Name on Name: row (sigY + 9), Date on Date: row (sigY + 19)
+        if (prep.name) doc.text(prep.name, margin + 14, sigY + 9);
+        if (prep.date) doc.text(formatPdfDate(prep.date), margin + 14, sigY + 19);
 
         // Draw Reviewed By details
-        doc.text(rev.name || "", margin + sigW + 11, sigY + 10);
-        doc.text(formatPdfDate(rev.date), margin + sigW + 10, sigY + 13.5);
+        if (rev.name) doc.text(rev.name, margin + sigW + 14, sigY + 9);
+        if (rev.date) doc.text(formatPdfDate(rev.date), margin + sigW + 14, sigY + 19);
 
         // Draw Approved By details
-        doc.text(app.name || "", margin + sigW * 2 + 11, sigY + 10);
-        doc.text(formatPdfDate(app.date), margin + sigW * 2 + 10, sigY + 13.5);
+        if (app.name) doc.text(app.name, margin + sigW * 2 + 14, sigY + 9);
+        if (app.date) doc.text(formatPdfDate(app.date), margin + sigW * 2 + 14, sigY + 19);
 
         doc.restoreGraphicsState();
     }

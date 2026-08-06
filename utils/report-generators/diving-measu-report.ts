@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -412,10 +412,10 @@ export const generateDivingMEASUReport = async (
                 sigY = pageHeight - 38;
             }
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
-                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.2);
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
-                if (!config.printFriendly) {
+                if (!isPF) {
                     doc.setFillColor(...colors.navy);
                     doc.rect(lx, sigY, sigW - 4, 4.5, "FD");
                     doc.setTextColor(255);
@@ -427,12 +427,14 @@ export const generateDivingMEASUReport = async (
 
                 doc.setTextColor(...colors.text); doc.setFontSize(6); doc.setFont("helvetica", "normal");
                 doc.text("Name:", lx + 2, sigY + 7.5);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 7.5);
                 doc.text("Date:", lx + 2, sigY + 11);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 11);
                 doc.text("Sign:", lx + 2, sigY + 15);
             };
-            drawSig("PREPARED BY (INSPECTOR)", margin);
-            drawSig("REVIEWED BY (SENIOR INSPECTOR)", margin + sigW);
-            drawSig("APPROVED BY (CLIENT REP)", margin + (sigW * 2));
+            drawSig("PREPARED BY (INSPECTOR)", margin, config?.preparedBy);
+            drawSig("REVIEWED BY (SENIOR INSPECTOR)", margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY (CLIENT REP)", margin + (sigW * 2), config?.approvedBy);
         }
 
         // Apply Watermark

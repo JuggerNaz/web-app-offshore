@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 
@@ -16,9 +16,10 @@ interface ReportConfig {
     jobPackId?: number;
     structureId?: number;
     sowReportNo?: string;
-    preparedBy?: { name: string; date: string 
+    preparedBy?: { name: string; date: string };
+    reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
-    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
@@ -246,7 +247,7 @@ export const generateROVPhotographyReport = async (
             
             const sigY = pageHeight - 35;
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15);
                 if (!config.printFriendly) {
                     doc.setFillColor(...colors.navy); doc.rect(lx, sigY, sigW - 5, 4, 'F');
@@ -257,12 +258,14 @@ export const generateROVPhotographyReport = async (
                 doc.setFontSize(7); doc.text(label, lx + 2, sigY + 3);
                 doc.setTextColor(...colors.text); doc.setFontSize(6); 
                 doc.text('Name:', lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text('Date:', lx + 2, sigY + 13);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13);
             };
 
-            drawSig('PREPARED BY', margin);
-            drawSig('REVIEWED BY', margin + sigW);
-            drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig("PREPARED BY", margin, config?.preparedBy);
+            drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);

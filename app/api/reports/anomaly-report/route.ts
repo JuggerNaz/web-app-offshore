@@ -60,6 +60,19 @@ export async function GET(request: NextRequest) {
             throw viewError;
         }
 
+        // Deduplicate anomalies (since v_anomaly_details LEFT JOIN u_lib_combo can return duplicate rows per combo entry)
+        const seenKeys = new Set<string>();
+        const uniqueAnomalies: any[] = [];
+        for (const item of (anomalies || [])) {
+            const key = item.anomaly_id 
+                ? `anom_${item.anomaly_id}` 
+                : (item.id ? `insp_${item.id}_${item.display_ref_no || ''}` : `ref_${item.display_ref_no || ''}_${item.priority || ''}`);
+            if (seenKeys.has(key)) continue;
+            seenKeys.add(key);
+            uniqueAnomalies.push(item);
+        }
+        anomalies = uniqueAnomalies;
+
         if (!anomalies || anomalies.length === 0) {
             return NextResponse.json({
                 data: [],
