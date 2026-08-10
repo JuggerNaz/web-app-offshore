@@ -369,6 +369,7 @@ interface ReportWizardDialogProps {
         generateDivingAnodeReport: () => void;
         generateDivingACFMCReport: () => void;
         generateDivingPLCOReport: () => void;
+        generateDivingItemReport?: () => void;
         generatePhotographyReport: () => void;
         generateROVRWDIReport: () => void;
         generatePhotographyLogReport: () => void;
@@ -579,6 +580,7 @@ export function ReportWizardDialog({
 
             // ── INSPECTION REPORTS (DIVING) ────────────────────────────────────────
             { id: 'gvins', code: 'GVINS', name: 'General Visual Inspection Report (Diving)', description: 'General visual inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateGVINSReport, available: hasRecords(['GVINS', 'DGVI']) },
+            { id: 'diving-item-report', code: 'PL_IC', name: 'Item Inspection Report (Diving)', description: 'Portrait Item Inspection report (Diving) with QID, Elevation, Dive No., CP, Item Type, Description, and Findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingItemReport || handlers.generateFullInspectionReport, available: hasRecords(['PL_IC', 'ITEM']) },
             { id: 'bsins', code: 'BSINS', name: 'Bolted Support Inspection (Diving)', description: 'Detailed bolted support inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateBSINSReport, available: hasRecords(['BSINS']) },
             { id: 'cvins', code: 'CVINS', name: 'Close Visual Inspection (Diving)', description: 'Close visual inspection report with findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCVINSReport, available: hasRecords(['CVINS']) },
             { id: 'clean', code: 'CLEAN', name: 'Cleaning Inspection (Diving)', description: 'Cleaning inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCLEANReport, available: hasRecords(['CLEAN']) },
@@ -673,7 +675,7 @@ export function ReportWizardDialog({
 
         // Base codes already handled by primary baseTemplates
         const baseCodesSet = new Set(baseTemplates.map(b => b.code.toUpperCase()));
-        const extraExcludedCodes = ['RCASN', 'DCASN', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RRISI', 'DRISI', 'SZONE', 'SZCI', 'RSZCI', 'DSZCI', 'SEABED', 'RSEAB', 'MGROW', 'RMGI', 'DMGI', 'FMD', 'RFMD', 'DFMD', 'UTWT', 'RUTWT', 'DUTWT', 'UTWTK', 'SCOUR', 'RSCOR', 'DSCOR', 'BOATLANDING', 'BL', 'RISERGUARD', 'RG', 'CAISSONGUARD', 'SG', 'CONDUCTORGUARD', 'CU', 'RSANI', 'ANODE', 'ANOD', 'PL_AN', 'ANMAIN', 'CP', 'CPCLB', 'UTCLB', 'ACFMC', 'PL_CO', 'RWDI', 'RICMI', 'RSWNI', 'SWNI', 'JTISI', 'ITISI', 'GVINS', 'DGVI', 'RGVI', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'INSP', 'DEFECT', 'FINDINGS', 'ANOM', 'PHOTO', 'COMP', 'JP_SUM', 'SOW_REP', 'STR_OVR', 'EXEC'];
+        const extraExcludedCodes = ['PL_IC', 'ITEM', 'RCASN', 'DCASN', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RRISI', 'DRISI', 'SZONE', 'SZCI', 'RSZCI', 'DSZCI', 'SEABED', 'RSEAB', 'MGROW', 'RMGI', 'DMGI', 'FMD', 'RFMD', 'DFMD', 'UTWT', 'RUTWT', 'DUTWT', 'UTWTK', 'SCOUR', 'RSCOR', 'DSCOR', 'BOATLANDING', 'BL', 'RISERGUARD', 'RG', 'CAISSONGUARD', 'SG', 'CONDUCTORGUARD', 'CU', 'RSANI', 'ANODE', 'ANOD', 'PL_AN', 'ANMAIN', 'CP', 'CPCLB', 'UTCLB', 'ACFMC', 'PL_CO', 'RWDI', 'RICMI', 'RSWNI', 'SWNI', 'JTISI', 'ITISI', 'GVINS', 'DGVI', 'RGVI', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'INSP', 'DEFECT', 'FINDINGS', 'ANOM', 'PHOTO', 'COMP', 'JP_SUM', 'SOW_REP', 'STR_OVR', 'EXEC'];
         extraExcludedCodes.forEach(c => baseCodesSet.add(c));
 
         // Add dynamic reports (excluding any codes covered by base templates)

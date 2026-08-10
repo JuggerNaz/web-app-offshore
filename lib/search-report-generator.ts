@@ -62,6 +62,9 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
   PL_AN: [
     { templateId: "diving-anode", label: "Diving Anode Inspection", code: "PL_AN", mode: "DIVING" },
   ],
+  PL_IC: [
+    { templateId: "diving-item-report", label: "Item Inspection Report (Diving)", code: "PL_IC", mode: "DIVING" },
+  ],
   ANMAIN: [
     { templateId: "diving-anmain", label: "Anode Maintenance Report (ANMAIN)", code: "ANMAIN", mode: "DIVING" },
   ],
@@ -437,6 +440,13 @@ async function routeToGenerator(
       if (!recs.length) return;
       const { generateDivingPLCOReport } = await import("@/utils/report-generators/diving-plco-report");
       return await generateDivingPLCOReport(recs, headerData, companyInfo, opts) as Blob;
+    }
+    case "diving-item-report":
+    case "plic": {
+      const recs = filterByCode(["PL_IC"]);
+      if (!recs.length) return;
+      const { generateDivingItemReport } = await import("@/utils/report-generators/diving-item-report");
+      return await generateDivingItemReport(recs, headerData, companyInfo, opts) as Blob;
     }
     case "diving-anode": {
       const recs = filterByCode(["PL_AN"]);

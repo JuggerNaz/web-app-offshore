@@ -1659,7 +1659,7 @@
                     "name": "item_type",
                     "label": "Type of Item",
                     "type": "combo",
-                    "lib_code": "ITEM_TYPE",
+                    "lib_code": "ITEM_TYP",
                     "required": true
                 },
                 {

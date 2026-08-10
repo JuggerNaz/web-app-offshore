@@ -187,6 +187,7 @@ interface WorkspaceDialogsProps {
         divingMgiPreviewOpen: boolean;
         divingAcfmcPreviewOpen: boolean;
         divingPlcoPreviewOpen: boolean;
+        divingItemReportPreviewOpen?: boolean;
         rovRwdiPreviewOpen: boolean;
         divingDcasnUwPreviewOpen: boolean;
         divingDcasnTsPreviewOpen: boolean;
@@ -289,6 +290,7 @@ interface WorkspaceDialogsProps {
         setDivingMgiPreviewOpen: (open: boolean) => void;
         setDivingAcfmcPreviewOpen: (open: boolean) => void;
         setDivingPlcoPreviewOpen: (open: boolean) => void;
+        setDivingItemReportPreviewOpen?: (open: boolean) => void;
         setRovRwdiPreviewOpen: (open: boolean) => void;
         setDivingDcasnUwPreviewOpen: (open: boolean) => void;
         setDivingDcasnTsPreviewOpen: (open: boolean) => void;
@@ -386,6 +388,8 @@ interface WorkspaceDialogsProps {
         generateDivingMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingACFMCReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingPLCOReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingItemReport?: () => void;
+        generateDivingItemReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateROVRWDIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCASNUWReport: () => void;
         generateDivingDCASNUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -536,6 +540,7 @@ export function WorkspaceDialogs({
         divingMgiPreviewOpen,
         divingAcfmcPreviewOpen,
         divingPlcoPreviewOpen,
+        divingItemReportPreviewOpen,
         rovRwdiPreviewOpen,
         divingDcasnUwPreviewOpen,
         divingDcasnTsPreviewOpen,
@@ -628,6 +633,7 @@ export function WorkspaceDialogs({
         setDivingMgiPreviewOpen,
         setDivingAcfmcPreviewOpen,
         setDivingPlcoPreviewOpen,
+        setDivingItemReportPreviewOpen,
         setRovRwdiPreviewOpen,
         setDivingDcasnUwPreviewOpen,
         setDivingDcasnTsPreviewOpen,
@@ -3224,6 +3230,7 @@ export function WorkspaceDialogs({
                     generateDivingAnodeReport: () => setters.setDivingAnodePreviewOpen(true),
                     generateDivingACFMCReport: () => setters.setDivingAcfmcPreviewOpen(true),
                     generateDivingPLCOReport: () => setters.setDivingPlcoPreviewOpen(true),
+                    generateDivingItemReport: () => setters.setDivingItemReportPreviewOpen ? setters.setDivingItemReportPreviewOpen(true) : handlers.generateDivingItemReport?.(),
                     generateROVRWDIReport: () => setters.setRovRwdiPreviewOpen(true),
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
@@ -3296,6 +3303,8 @@ export function WorkspaceDialogs({
                             case 'DANODE': setters.setDivingAnodePreviewOpen(true); break;
                             case 'ACFMC': setters.setDivingAcfmcPreviewOpen(true); break;
                             case 'PL_CO': setters.setDivingPlcoPreviewOpen(true); break;
+                            case 'PL_IC':
+                            case 'ITEM': setters.setDivingItemReportPreviewOpen?.(true); break;
                             case 'RWDI': setters.setRovRwdiPreviewOpen(true); break;
                             case 'PHOTO': setters.setPhotographyPreviewOpen(true); break;
                             case 'PLOG': setters.setPhotographyLogPreviewOpen(true); break;
@@ -3356,6 +3365,23 @@ export function WorkspaceDialogs({
                 generateReport={async (pf, ss) => {
                     if (generatePipelineEventSketchReportBlob) {
                         return await generatePipelineEventSketchReportBlob(pf, ss);
+                    }
+                }}
+            />
+
+            {/* ── ITEM INSPECTION REPORT (DIVING) PREVIEW DIALOG ────────────── */}
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingItemReportPreviewOpen || false}
+                onOpenChange={(open) => setDivingItemReportPreviewOpen?.(open)}
+                title="Diving Item Inspection Report (PL_IC) Preview"
+                fileName={`Diving_Item_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                generateReport={async (pf, ss) => {
+                    if (handlers.generateDivingItemReportBlob) {
+                        return await handlers.generateDivingItemReportBlob(pf, ss);
                     }
                 }}
             />

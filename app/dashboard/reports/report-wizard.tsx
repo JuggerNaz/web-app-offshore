@@ -58,6 +58,7 @@ import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anod
 import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
 import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
 import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
+import { generateDivingItemReport } from "@/utils/report-generators/diving-item-report";
 import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Types
@@ -183,6 +184,7 @@ export const REPORT_TEMPLATES = {
         { id: "diving-jtisi-detail-report", name: "J-Tube Inspection Summary Report without Sketch (Diving)", icon: FileText, description: "Portrait J-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-itisi-report", name: "I-Tube Inspection Report with Sketch (Diving)", icon: FileText, description: "Portrait I-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-itisi-detail-report", name: "I-Tube Inspection Summary Report without Sketch (Diving)", icon: FileText, description: "Portrait I-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-item-report", name: "Item Inspection Report (Diving)", icon: FileBarChart, description: "Portrait Item Inspection report (Diving) — QID, Elevation, Dive No., CP, Item Type, Description, and findings.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -201,6 +203,7 @@ const TOC_SECTIONS = [
   { id: 2, name: "General Visual Inspection", templates: [
       { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", mode: "Diving" },
+      { id: "diving-item-report", name: "Item Inspection Report (Diving)", mode: "Diving" },
       { id: "diving-bsins-report", name: "Bolted Support Inspection (Diving)", mode: "Diving" },
       { id: "diving-cvins-report", name: "Close Visual Inspection (Diving)", mode: "Diving" },
       { id: "diving-clean-report", name: "Cleaning Inspection (Diving)", mode: "Diving" },
@@ -5183,6 +5186,61 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             return await generateDivingDCONDReport(
                 records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Item Inspection (Diving) Report
+        if (currentTemplateId === "diving-item-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            const itemRecords = (records || []).filter((r: any) => {
+                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                return code === 'PL_IC' || code === 'ITEM';
+            });
+
+            const targetRecords = itemRecords.length > 0 ? itemRecords : (records || []);
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingItemReport(
+                targetRecords,
                 headerData,
                 companySettings,
                 { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
