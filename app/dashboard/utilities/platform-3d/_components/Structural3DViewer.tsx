@@ -235,19 +235,17 @@ const ComponentMesh = ({
     let anodeRotY = 0;
 
     if (isAnode) {
-        // Calculate orthogonal basis in global space relative to direction
-        const upVec = new THREE.Vector3(0, 1, 0);
-        if (Math.abs(direction.y) > 0.99) {
-            upVec.set(0, 0, -1);
+        // Calculate compass-style rotation vector around Global Y-axis for horizontal members or member direction for vertical members
+        const rotAxis = Math.abs(direction.y) > 0.8 ? direction : new THREE.Vector3(0, 1, 0);
+        let refVec = new THREE.Vector3(1, 0, 0);
+        if (Math.abs(direction.y) > 0.8) {
+            refVec = new THREE.Vector3(0, 0, -1);
+            refVec.sub(direction.clone().multiplyScalar(refVec.dot(direction))).normalize();
         }
-        upVec.sub(direction.clone().multiplyScalar(upVec.dot(direction))).normalize();
-        const rightVec = new THREE.Vector3().crossVectors(upVec, direction).normalize();
-
-        // Calculate global offset vector for the clock position (12 o'clock = UP, 3 o'clock = RIGHT)
-        const globalOffset = rightVec
+        
+        const globalOffset = refVec
             .clone()
-            .multiplyScalar(Math.sin(angle))
-            .add(upVec.clone().multiplyScalar(Math.cos(angle)))
+            .applyAxisAngle(rotAxis, -angle)
             .multiplyScalar(offsetDistance);
 
         // Convert the global offset back to local coordinates of the parent rotated group
@@ -1383,21 +1381,20 @@ function InstancedComponentViewer({
             
             // Calculate 12 o'clock reference vector
             let refVec = new THREE.Vector3();
-            if (Math.abs(cylDir.y) > 0.8) {
-                // Vertical member: 12 o'clock points outward from platform center
-                refVec.set(closestPoint.x - platformCenter.x, 0, closestPoint.z - platformCenter.z).normalize();
-                if (refVec.lengthSq() < 0.001) refVec.set(0, 0, 1);
-            } else {
-                // Horizontal/Diagonal member: 12 o'clock points Up (Global +Y)
-                refVec.set(0, 1, 0);
-                // Project onto orthogonal plane
-                refVec.sub(cylDir.clone().multiplyScalar(refVec.dot(cylDir))).normalize();
-                if (refVec.lengthSq() < 0.001) refVec.set(1, 0, 0);
-            }
+            const isVertical = Math.abs(cylDir.y) > 0.8;
             
-            // Rotate refVec by clock angle clockwise looking down the member (cylDir)
+            refVec.set(closestPoint.x - platformCenter.x, 0, closestPoint.z - platformCenter.z).normalize();
+            if (refVec.lengthSq() < 0.001) refVec.set(1, 0, 0);
+
+            // For horizontal members, rotate around Global Y-axis (compass style)
+            const rotAxis = isVertical ? cylDir : new THREE.Vector3(0, 1, 0);
+            if (isVertical) {
+                refVec.sub(cylDir.clone().multiplyScalar(refVec.dot(cylDir))).normalize();
+            }
+
+            // Rotate refVec by clock angle clockwise around vertical/member axis
             const clockAngle = (clockPos / 12) * Math.PI * 2;
-            let normal = refVec.clone().applyAxisAngle(cylDir, -clockAngle).normalize();
+            let normal = refVec.clone().applyAxisAngle(rotAxis, -clockAngle).normalize();
             
             // Dynamically reposition the anode based on the computed normal and standoff
             pos = closestPoint.clone().add(normal.clone().multiplyScalar(memberRadius + standoffDist));

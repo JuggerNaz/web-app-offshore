@@ -16,10 +16,7 @@ export function determineGeometryType(platformDetails: any, legNames: string[]):
 }
 
 export function getEffectiveClockAngle(clockPos: number): number {
-    let effective = clockPos;
-    if (clockPos === 3) effective = 9;
-    else if (clockPos === 9) effective = 3;
-    return (effective / 12) * Math.PI * 2;
+    return (clockPos / 12) * Math.PI * 2;
 }
 
 export function computeRiserOffsetEndpoints(
@@ -762,17 +759,12 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     const t = (targetY - sNode.y) / (fNode.y - sNode.y);
                     pos.copy(sNode).lerp(fNode, Math.max(0, Math.min(1, t)));
                 } else {
-                    // For horizontal members, distribute using dist if available, else evenly
+                    // For horizontal/diagonal members, distribute using dist/length if available, else evenly
                     let t = (idx + 1) / (count + 1);
-                    const distVal = parseFloat(md.dist);
-                    if (!isNaN(distVal) && distVal > 0) {
-                        const dx = Math.abs(fNode.x - sNode.x);
-                        const dy = Math.abs(fNode.y - sNode.y);
-                        const dz = Math.abs(fNode.z - sNode.z);
-                        const model_projected_span = Math.max(dx, dy, dz);
-                        if (model_projected_span > 0.01) {
-                            t = Math.max(0, Math.min(1, distVal / model_projected_span));
-                        }
+                    const distVal = parseFloat(md.dist || md.length || md.dist_from_start);
+                    const totalSpan = sNode.distanceTo(fNode);
+                    if (!isNaN(distVal) && distVal > 0 && totalSpan > 0.01) {
+                        t = Math.max(0, Math.min(1, distVal / totalSpan));
                     }
                     pos.copy(sNode).lerp(fNode, t);
                 }
@@ -874,30 +866,27 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 });
 
                 // Determine the real physical length of the parent member.
-                // We look for a child weld that is located at the end node (f_node) of the parent.
-                let realParentLength = 0;
-                const endNodeWeld = children.find(c => {
-                    const cNode = (c.metadata?.s_node || "").toUpperCase().trim();
-                    const parentFNode = (parentMd.f_node || "").toUpperCase().trim();
-                    return cNode === parentFNode && parentFNode !== "";
-                });
-                if (endNodeWeld) {
-                    realParentLength = parseFloat(endNodeWeld.metadata?.dist || "0");
+                let realParentLength = parseFloat(parentMd.length || parentMd.dist || "0");
+                if (realParentLength <= 0 && children.length > 0) {
+                     const endNodeWeld = children.find(c => {
+                        const cNode = (c.metadata?.s_node || "").toUpperCase().trim();
+                        const parentFNode = (parentMd.f_node || "").toUpperCase().trim();
+                        return cNode === parentFNode && parentFNode !== "";
+                    });
+                    if (endNodeWeld) {
+                        realParentLength = parseFloat(endNodeWeld.metadata?.dist || endNodeWeld.metadata?.length || "0");
+                    }
                 }
+                const actual3DSpan = pStart.distanceTo(pEnd);
 
                 const count = children.length;
                 children.forEach((c, idx) => {
                     let t = (idx + 1) / (count + 1);
-                    const distVal = parseFloat(c.metadata?.dist);
+                    const distVal = parseFloat(c.metadata?.dist || c.metadata?.length);
                     if (!isNaN(distVal) && distVal > 0) {
-                        const dx = Math.abs(pEnd.x - pStart.x);
-                        const dy = Math.abs(pEnd.y - pStart.y);
-                        const dz = Math.abs(pEnd.z - pStart.z);
-                        const model_projected_span = Math.max(dx, dy, dz);
-                        if (realParentLength > 0.01) {
-                            t = Math.max(0, Math.min(1, distVal / realParentLength));
-                        } else if (model_projected_span > 0.01) {
-                            t = Math.max(0, Math.min(1, distVal / model_projected_span));
+                        const refLen = realParentLength > 0.01 ? realParentLength : actual3DSpan;
+                        if (refLen > 0.01) {
+                            t = Math.max(0, Math.min(1, distVal / refLen));
                         }
                     }
                     const pos = pStart.clone().lerp(pEnd, t);
@@ -976,11 +965,21 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     const clockPos = parseFloat(md.clk_pos);
                     if (!isNaN(clockPos)) {
                         const angle = getEffectiveClockAngle(clockPos);
-                        const offsetDir = right
-                            .clone()
-                            .multiplyScalar(Math.sin(angle))
-                            .add(up.clone().multiplyScalar(Math.cos(angle)))
-                            .normalize();
+                        
+                        let offsetDir = new THREE.Vector3();
+                        if (Math.abs(dir.y) <= 0.8) {
+                            // Horizontal parent member: rotate horizontally (compass style) around Global Y-axis
+                            // 12 o'clock is along the member (dir), 3 is right, 6 is back, 9 is left
+                            const rotAxis = new THREE.Vector3(0, 1, 0);
+                            offsetDir = dir.clone().applyAxisAngle(rotAxis, -angle).normalize();
+                        } else {
+                            // Vertical parent member: rotate in the horizontal plane (orthogonal to vertical dir)
+                            offsetDir = right
+                                .clone()
+                                .multiplyScalar(Math.sin(angle))
+                                .add(up.clone().multiplyScalar(Math.cos(angle)))
+                                .normalize();
+                        }
 
                         const distance = parseFloat(md.dist);
                         if (!isNaN(distance)) {
