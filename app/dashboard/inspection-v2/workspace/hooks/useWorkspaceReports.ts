@@ -50,6 +50,7 @@ import { generateDivingPLCOReport as generateDivingPLCOReportTemplate } from "@/
 import { generateROVRWDIReport as generateROVRWDIReportTemplate } from "@/utils/report-generators/rov-rwdi-report";
 import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
 import { generateDivingItemReport as generateDivingItemReportTemplate } from "@/utils/report-generators/diving-item-report";
+import { generateDivingITMAINReport as generateDivingITMAINReportTemplate } from "@/utils/report-generators/diving-itmain-report";
 import { generateDivingDCASNUWReport as generateDivingDCASNUWReportTemplate } from "@/utils/report-generators/diving-dcasn-uw-report";
 import { generateDivingDCASNTSReport as generateDivingDCASNTSReportTemplate } from "@/utils/report-generators/diving-dcasn-ts-report";
 import { generateDivingDCASNReport as generateDivingDCASNReportTemplate } from "@/utils/report-generators/diving-dcasn-report";
@@ -133,6 +134,7 @@ export function useWorkspaceReports(
     const [divingAcfmcPreviewOpen, setDivingAcfmcPreviewOpen] = useState(false);
     const [divingPlcoPreviewOpen, setDivingPlcoPreviewOpen] = useState(false);
     const [divingItemReportPreviewOpen, setDivingItemReportPreviewOpen] = useState(false);
+    const [divingItmainReportPreviewOpen, setDivingItmainReportPreviewOpen] = useState(false);
     const [rovRwdiPreviewOpen, setRovRwdiPreviewOpen] = useState(false);
     const [divingDcasnUwPreviewOpen, setDivingDcasnUwPreviewOpen] = useState(false);
     const [divingDcasnTsPreviewOpen, setDivingDcasnTsPreviewOpen] = useState(false);
@@ -2240,6 +2242,21 @@ export function useWorkspaceReports(
         return await generateDivingItemReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, printFriendly, returnBlob: true, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any) as Blob;
     };
 
+    const generateDivingITMAINReportAction = async () => {
+        setDivingItmainReportPreviewOpen(true);
+    };
+
+    const generateDivingITMAINReportBlob = async (printFriendly?: boolean, showSignatures?: boolean) => {
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingITMAINReportTemplate(currentRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { ...reportConfig, printFriendly, returnBlob: true, showSignatures: showSignatures ?? reportConfig.showSignatures, structureId: Number(structureId), sowReportNo: headerData.sowReportNo } as any) as Blob;
+    };
+
     const generateInspectionReportByType = async (typeId: number) => {
         const type = allInspectionTypes.find(t => t.id === typeId);
         const typeCode = (type?.code || "").toUpperCase();
@@ -2331,6 +2348,10 @@ export function useWorkspaceReports(
         }
         if (typeCode === 'PL_IC' || typeCode === 'ITEM') {
             await generateDivingItemReportAction();
+            return;
+        }
+        if (typeCode === 'ITMAIN') {
+            await generateDivingITMAINReportAction();
             return;
         }
         if (typeCode === 'RWDI') {
@@ -2474,6 +2495,7 @@ export function useWorkspaceReports(
         divingItisiPreviewOpen, setDivingItisiPreviewOpen,
         divingItisiDetailPreviewOpen, setDivingItisiDetailPreviewOpen,
         divingItemReportPreviewOpen, setDivingItemReportPreviewOpen,
+        divingItmainReportPreviewOpen, setDivingItmainReportPreviewOpen,
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
@@ -2539,6 +2561,8 @@ export function useWorkspaceReports(
         generateDivingANMAINReportBlob,
         generateDivingItemReport: generateDivingItemReportAction,
         generateDivingItemReportBlob,
+        generateDivingITMAINReport: generateDivingITMAINReportAction,
+        generateDivingITMAINReportBlob,
         generateRGVIReport,
         generateRGVIReportBlob,
         generateRCASNReport,

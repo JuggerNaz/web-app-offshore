@@ -275,14 +275,45 @@ function getTemplateTableSpec(templateId: string): {
                     ]
                 ],
                 columnStyles: {
-                    0: { cellWidth: 14, halign: "center" },
-                    1: { cellWidth: 24 },
-                    2: { cellWidth: 20, halign: "center" },
-                    3: { cellWidth: 20, halign: "center" },
-                    4: { cellWidth: 22, halign: "center" },
-                    5: { cellWidth: 26 },
-                    6: { cellWidth: 34 },
+                    0: { cellWidth: 10, halign: "center" },
+                    1: { cellWidth: 20 },
+                    2: { cellWidth: 16, halign: "center" },
+                    3: { cellWidth: 16, halign: "center" },
+                    4: { cellWidth: 18, halign: "center" },
+                    5: { cellWidth: 22 },
+                    6: { cellWidth: 32 },
                     7: { cellWidth: "auto" },
+                }
+            };
+
+        case "diving-itmain-report":
+        case "ITMAIN":
+            return {
+                orientation: "portrait",
+                sampleRowCount: 12,
+                head: [
+                    [
+                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
+                        { content: "QID", styles: { halign: "center", valign: "middle" } },
+                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
+                        { content: "Angle (°)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Dim 1 (m)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Dim 2 (m)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Dim 3 (m)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Findings", styles: { halign: "center", valign: "middle" } },
+                    ]
+                ],
+                columnStyles: {
+                    0: { cellWidth: 10, halign: "center" },
+                    1: { cellWidth: 20 },
+                    2: { cellWidth: 16, halign: "center" },
+                    3: { cellWidth: 16, halign: "center" },
+                    4: { cellWidth: 16, halign: "center" },
+                    5: { cellWidth: 16, halign: "center" },
+                    6: { cellWidth: 16, halign: "center" },
+                    7: { cellWidth: 16, halign: "center" },
+                    8: { cellWidth: "auto" },
                 }
             };
 

@@ -3346,12 +3346,48 @@
             "code": "ITMAIN",
             "name": "Item Maintenance Inspection",
             "methods": [
-                "ROV",
                 "DIVING"
             ],
             "fields": [
                 {
-                    "$ref": "it_main_detail_readings"
+                    "name": "angle",
+                    "label": "Angle",
+                    "type": "number",
+                    "unitCategory": "ANGLE",
+                    "required": true
+                },
+                {
+                    "name": "dimension1",
+                    "label": "Dimension 1",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": true
+                },
+                {
+                    "name": "dimension2",
+                    "label": "Dimension 2",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": true
+                },
+                {
+                    "name": "dimension3",
+                    "label": "Dimension 3",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": true
+                },
+                {
+                    "name": "comments",
+                    "label": "Comments",
+                    "type": "text",
+                    "required": true
                 }
             ]
         }
