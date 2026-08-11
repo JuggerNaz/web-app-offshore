@@ -5790,7 +5790,7 @@ function V10PreviewLayout() {
       // Apply synchronous auto-calculations to guarantee computed fields are saved 
       // even if the user clicks 'Save' before the React useEffect finishes its cycle.
       const specStr = String(activeSpec || '').toUpperCase();
-      if (['UTWTK', 'RUTWT', 'DUTWT', 'SZONE', 'RSZCI', 'DSZCI'].includes(specStr)) {
+      if (['UTWTK', 'RUTWT', 'DUTWT', 'SZONE', 'RSZCI', 'DSZCI', 'RISER', 'DRISR', 'RRISI', 'RRISR', 'SZCI', 'UTWT'].some(c => specStr.includes(c))) {
         const readings: number[] = [];
         const r3 = parseFloat(activeProps.ut_3_o_clock); if (!isNaN(r3)) readings.push(r3);
         const r6 = parseFloat(activeProps.ut_6_o_clock); if (!isNaN(r6)) readings.push(r6);
@@ -5816,7 +5816,7 @@ function V10PreviewLayout() {
             if (isNaN(min)) min = 0;
         }
 
-        const ntRaw = activeProps.nominal_thickness;
+        const ntRaw = activeProps.nominal_thickness || activeProps.nominal_wall_thickness || activeProps.wall_thickness || activeProps.nom_wt;
         const nt = (ntRaw === undefined || ntRaw === null || ntRaw === "") ? 0 : parseFloat(ntRaw);
         const safeNt = isNaN(nt) ? 0 : nt;
 
@@ -5824,6 +5824,8 @@ function V10PreviewLayout() {
         let pctLoss = 0;
         if (safeNt > 0) {
             pctLoss = (loss / safeNt) * 100;
+            activeProps.nom_wt_12_percent = parseFloat((safeNt * 0.12).toFixed(3));
+            activeProps.nom_wt_25_percent = parseFloat((safeNt * 0.25).toFixed(3));
         }
 
         activeProps.wall_thickness_loss = parseFloat(loss.toFixed(2));
