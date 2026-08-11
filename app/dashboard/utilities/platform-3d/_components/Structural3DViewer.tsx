@@ -22,7 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight } from "lucide-react";
-import { getEffectiveClockAngle, computeRiserOffsetEndpoints } from "@/utils/platform-3d-math";
+import { getEffectiveClockAngle, computeRiserOffsetEndpoints, generatePlatform3DCoordinates } from "@/utils/platform-3d-math";
 import { getMainLegElementSets } from "../platform-legs-recognition";
 
 interface Component3D {
@@ -332,7 +332,19 @@ const ComponentMesh = ({
 
     if (hasNaN) return null;
 
-    const isFender = code === "FD";
+    const isFender =
+        code === "FD" ||
+        code === "BL" ||
+        code === "BLD" ||
+        code.includes("FEND") ||
+        code.includes("BOAT") ||
+        code.includes("LAND") ||
+        qIdUpper.includes("BOAT") ||
+        qIdUpper.includes("LANDING") ||
+        qIdUpper.includes("FEND") ||
+        qIdUpper.includes("FENDER") ||
+        qIdUpper.startsWith("BL") ||
+        qIdUpper.startsWith("BLD");
     if (isFender) {
         const md = component.metadata || {};
         let clockPos = parseFloat(md.clk_pos || "12");
@@ -1059,7 +1071,19 @@ function InstancedComponentViewer({
             const code = (comp?.code || "").toUpperCase();
             const qIdUpper = (comp?.q_id || "").toUpperCase();
 
-            const isFender = code === "FD" || code.includes("FEND");
+            const isFender =
+                code === "FD" ||
+                code === "BL" ||
+                code === "BLD" ||
+                code.includes("FEND") ||
+                code.includes("BOAT") ||
+                code.includes("LAND") ||
+                qIdUpper.includes("BOAT") ||
+                qIdUpper.includes("LANDING") ||
+                qIdUpper.includes("FEND") ||
+                qIdUpper.includes("FENDER") ||
+                qIdUpper.startsWith("BL") ||
+                qIdUpper.startsWith("BLD");
             const isRiserGuard = code === "RG" || code.includes("RGUARD") || code.includes("RISG");
             const isRiser =
                 code === "RS" ||
@@ -1906,9 +1930,14 @@ export function Structural3DViewer({
     }, [faces]);
 
 
-    // USE WEBAPP_3D DATABASE INSTEAD OF FRONTEND PROCEDURAL MATH
+    // USE WEBAPP_3D DATABASE OR FALLBACK TO FRONTEND PROCEDURAL MATH
     const { componentLayouts, foundationMembers, elvMarkers } = useMemo(() => {
-        if (!webapp3dData) return { componentLayouts: [], foundationMembers: [], elvMarkers: [] };
+        if (!webapp3dData) {
+            if (!platformDetails || !elevations || !faces || !components) return { componentLayouts: [], foundationMembers: [], elvMarkers: [] };
+            
+            // Fallback to frontend procedural math
+            return generatePlatform3DCoordinates(platformDetails, elevations, faces, components);
+        }
 
         const layouts = (webapp3dData.components || []).map((dbItem: any) => {
             const dbQIdUpper = (dbItem.q_id || dbItem.structure_components?.q_id || "").toUpperCase().trim();

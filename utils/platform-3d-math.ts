@@ -762,9 +762,14 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     // For horizontal/diagonal members, distribute using dist/length if available, else evenly
                     let t = (idx + 1) / (count + 1);
                     const distVal = parseFloat(md.dist || md.length || md.dist_from_start);
-                    const totalSpan = sNode.distanceTo(fNode);
-                    if (!isNaN(distVal) && distVal > 0 && totalSpan > 0.01) {
-                        t = Math.max(0, Math.min(1, distVal / totalSpan));
+                    if (!isNaN(distVal) && distVal > 0) {
+                        const dx = Math.abs(fNode.x - sNode.x);
+                        const dy = Math.abs(fNode.y - sNode.y);
+                        const dz = Math.abs(fNode.z - sNode.z);
+                        const model_projected_span = Math.max(dx, dy, dz);
+                        if (model_projected_span > 0.01) {
+                            t = Math.max(0, Math.min(1, distVal / model_projected_span));
+                        }
                     }
                     pos.copy(sNode).lerp(fNode, t);
                 }
@@ -877,16 +882,19 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         realParentLength = parseFloat(endNodeWeld.metadata?.dist || endNodeWeld.metadata?.length || "0");
                     }
                 }
-                const actual3DSpan = pStart.distanceTo(pEnd);
-
                 const count = children.length;
                 children.forEach((c, idx) => {
                     let t = (idx + 1) / (count + 1);
                     const distVal = parseFloat(c.metadata?.dist || c.metadata?.length);
                     if (!isNaN(distVal) && distVal > 0) {
-                        const refLen = realParentLength > 0.01 ? realParentLength : actual3DSpan;
-                        if (refLen > 0.01) {
-                            t = Math.max(0, Math.min(1, distVal / refLen));
+                        const dx = Math.abs(pEnd.x - pStart.x);
+                        const dy = Math.abs(pEnd.y - pStart.y);
+                        const dz = Math.abs(pEnd.z - pStart.z);
+                        const model_projected_span = Math.max(dx, dy, dz);
+                        if (realParentLength > 0.01) {
+                            t = Math.max(0, Math.min(1, distVal / realParentLength));
+                        } else if (model_projected_span > 0.01) {
+                            t = Math.max(0, Math.min(1, distVal / model_projected_span));
                         }
                     }
                     const pos = pStart.clone().lerp(pEnd, t);

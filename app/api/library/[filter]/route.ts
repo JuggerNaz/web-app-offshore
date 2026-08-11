@@ -106,12 +106,60 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Get current user for cr_user
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Assuming body contains the fields to insert. We inject lib_code, workunit, cr_user
+  const libId = body.lib_id;
+
+  // Check if an item with the same category (lib_code) and ID/Value (lib_id) already exists (including soft-deleted)
+  if (libId) {
+    const { data: existing } = await supabase
+      .from("u_lib_list" as any)
+      .select("*")
+      .eq("lib_code", decodedFilter)
+      .eq("lib_id", libId)
+      .maybeSingle();
+
+    if (existing) {
+      const isSoftDeleted =
+        existing.lib_delete === 1 ||
+        existing.lib_delete === "1" ||
+        existing.lib_delete === "Y" ||
+        (existing.lib_delete !== null && existing.lib_delete !== undefined);
+
+      if (isSoftDeleted) {
+        // Automatically reactivate the record (lib_delete = null) and update attributes with new inputs
+        const updatePayload = {
+          ...body,
+          lib_code: decodedFilter,
+          workunit: '000',
+          cr_user: user?.email || user?.id || 'system',
+          lib_delete: null,
+        };
+
+        const { data: updated, error: updateError } = await supabase
+          .from("u_lib_list" as any)
+          .update(updatePayload)
+          .eq("lib_code", decodedFilter)
+          .eq("lib_id", libId)
+          .select()
+          .single();
+
+        if (updateError) {
+          return handleSupabaseError(updateError, "Failed to reactivate library item");
+        }
+
+        return apiSuccess(updated);
+      } else {
+        return NextResponse.json({ error: "Item with this ID already exists" }, { status: 409 });
+      }
+    }
+  }
+
+  // Inject lib_code, workunit, cr_user and ensure lib_delete is null
   const payload = {
     ...body,
     lib_code: decodedFilter,
     workunit: '000',
-    cr_user: user?.email || user?.id || 'system'
+    cr_user: user?.email || user?.id || 'system',
+    lib_delete: null,
   };
 
   const { data, error } = await supabase

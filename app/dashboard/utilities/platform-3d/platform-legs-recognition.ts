@@ -34,7 +34,7 @@ export function detectPlatformLegs(nodes: Node3D[], members: Member3D[]): Platfo
   nodes.forEach(n => nodeMap.set(n.id, n));
 
   // 1. Identify potential leg members (steep angle with vertical axis)
-  // Assuming Y is up (standard for ThreeJS). Leg members typically have an angle < 30 degrees from vertical.
+  // Assuming Y is up (standard for ThreeJS). Leg members typically have an angle <= 30 degrees from vertical.
   const MAX_LEG_ANGLE_DEG = 30;
   
   const legLikeMembers = members.filter(m => {
@@ -52,13 +52,13 @@ export function detectPlatformLegs(nodes: Node3D[], members: Member3D[]): Platfo
     const angleRad = Math.acos(Math.abs(dy) / length);
     const angleDeg = angleRad * (180 / Math.PI);
     
-    // Strictly only consider members with "VEM" in their name/qid
-    const isVEM = m.name.toUpperCase().includes('VEM');
-    return angleDeg <= MAX_LEG_ANGLE_DEG && isVEM;
+    // Strictly only consider members with "VEM" or "LEG" in their name/qid
+    const nameUpper = m.name.toUpperCase();
+    const isLegName = nameUpper.includes('VEM') || nameUpper.includes('LEG');
+    return angleDeg <= MAX_LEG_ANGLE_DEG && isLegName;
   });
 
   // 2. Group into continuous chains
-  // We use a union-find or simple BFS/DFS to group connected leg members
   const adjacency = new Map<string, Member3D[]>();
   legLikeMembers.forEach(m => {
     if (!adjacency.has(m.startNodeId)) adjacency.set(m.startNodeId, []);
@@ -68,7 +68,7 @@ export function detectPlatformLegs(nodes: Node3D[], members: Member3D[]): Platfo
   });
 
   const visitedMembers = new Set<string>();
-  const chains: Member3D[][] = [];
+  const allChains: Member3D[][] = [];
 
   legLikeMembers.forEach(m => {
     if (visitedMembers.has(m.id)) return;
@@ -91,14 +91,94 @@ export function detectPlatformLegs(nodes: Node3D[], members: Member3D[]): Platfo
         }
       }
     }
-    chains.push(chain);
+    allChains.push(chain);
   });
 
-  // 3 & 4. Find all nodes for each leg (endpoints + collinear intermediate nodes)
+  if (allChains.length === 0) {
+    return [];
+  }
+
+  // Calculate height span and center of gravity for each chain
+  const chainDetails = allChains.map(chainMembers => {
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let sumX = 0;
+    let sumZ = 0;
+    let count = 0;
+
+    chainMembers.forEach(m => {
+      const s = nodeMap.get(m.startNodeId);
+      const e = nodeMap.get(m.endNodeId);
+      if (s) {
+        minY = Math.min(minY, s.y);
+        maxY = Math.max(maxY, s.y);
+        sumX += s.x;
+        sumZ += s.z;
+        count++;
+      }
+      if (e) {
+        minY = Math.min(minY, e.y);
+        maxY = Math.max(maxY, e.y);
+        sumX += e.x;
+        sumZ += e.z;
+        count++;
+      }
+    });
+
+    const heightSpan = maxY - minY;
+    const avgX = count > 0 ? sumX / count : 0;
+    const avgZ = count > 0 ? sumZ / count : 0;
+
+    return { chainMembers, heightSpan, minY, maxY, avgX, avgZ };
+  });
+
+  // Filter 1: Exclude short secondary vertical struts (must span at least 45% of maximum leg chain height)
+  const maxSpan = Math.max(...chainDetails.map(c => c.heightSpan), 0);
+  const majorChains = chainDetails.filter(c => c.heightSpan >= maxSpan * 0.45 && c.heightSpan > 1.0);
+
+  // Filter 2: Distinguish main outer corner legs from mid-face vertical struts based on distance from platform center
+  let platformCenterX = 0;
+  let platformCenterZ = 0;
+  if (majorChains.length > 0) {
+    platformCenterX = majorChains.reduce((sum, c) => sum + c.avgX, 0) / majorChains.length;
+    platformCenterZ = majorChains.reduce((sum, c) => sum + c.avgZ, 0) / majorChains.length;
+  }
+
+  const chainsWithRadius = majorChains.map(c => {
+    const dx = c.avgX - platformCenterX;
+    const dz = c.avgZ - platformCenterZ;
+    const distFromCenter = Math.sqrt(dx * dx + dz * dz);
+    return { ...c, distFromCenter };
+  });
+
+  // Group chains into 4 spatial quadrants to isolate true corner leg columns
+  const quadrants = new Map<number, typeof chainsWithRadius>();
+  chainsWithRadius.forEach(c => {
+    const qIndex = (c.avgX >= platformCenterX ? 1 : 0) + (c.avgZ >= platformCenterZ ? 2 : 0);
+    if (!quadrants.has(qIndex)) quadrants.set(qIndex, []);
+    quadrants.get(qIndex)!.push(c);
+  });
+
+  const selectedChains: typeof chainsWithRadius = [];
+  quadrants.forEach(qChains => {
+    qChains.sort((a, b) => b.distFromCenter - a.distFromCenter);
+    const maxDistInQuadrant = qChains[0].distFromCenter;
+
+    // Filter out mid-face members (which sit closer to center than outer corner legs)
+    qChains.forEach(c => {
+      if (c.distFromCenter >= maxDistInQuadrant * 0.85) {
+        selectedChains.push(c);
+      }
+    });
+  });
+
+  const finalChains = selectedChains.length > 0 ? selectedChains : majorChains;
+
+  // 3 & 4. Find all nodes for each main leg (endpoints + collinear intermediate nodes)
   const platformLegs: PlatformLeg[] = [];
   
-  // Sort chains by top-most Z coordinate to roughly determine legs, or by X/Y quadrant
-  chains.forEach((chainMembers, index) => {
+  finalChains.forEach((chainDetail, index) => {
+    const chainMembers = chainDetail.chainMembers;
     const legNodesSet = new Set<string>();
     
     // Add all explicit endpoints
@@ -108,7 +188,6 @@ export function detectPlatformLegs(nodes: Node3D[], members: Member3D[]): Platfo
     });
 
     // Find collinear intermediate nodes
-    // e.g., if a node lies on the line segment of a main member, it's part of the leg.
     nodes.forEach(n => {
       if (legNodesSet.has(n.id)) return;
 
@@ -119,7 +198,7 @@ export function detectPlatformLegs(nodes: Node3D[], members: Member3D[]): Platfo
 
         if (isPointOnSegment(n, start, end)) {
           legNodesSet.add(n.id);
-          break; // Node is on this member
+          break;
         }
       }
     });
@@ -128,15 +207,12 @@ export function detectPlatformLegs(nodes: Node3D[], members: Member3D[]): Platfo
       .map(id => nodeMap.get(id)!)
       .sort((a, b) => b.y - a.y); // Sort top to bottom
 
-    // Sort members top to bottom based on start/end Y
     const sortedMembers = chainMembers.sort((a, b) => {
       const ay = Math.max(nodeMap.get(a.startNodeId)!.y, nodeMap.get(a.endNodeId)!.y);
       const by = Math.max(nodeMap.get(b.startNodeId)!.y, nodeMap.get(b.endNodeId)!.y);
       return by - ay;
     });
 
-    // Try to guess leg name (A1, A2, etc.) based on average X, Y if necessary
-    // For now, just generic naming
     let legId = `Leg ${index + 1}`;
 
     platformLegs.push({
