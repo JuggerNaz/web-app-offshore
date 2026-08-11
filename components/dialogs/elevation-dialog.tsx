@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAtom } from "jotai";
 import { urlId } from "@/utils/client-state";
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
@@ -28,14 +28,64 @@ export function ElevationDialog() {
   const form = useForm<z.infer<typeof ElevationSchema>>({
     resolver: zodResolver(ElevationSchema),
     defaultValues: {
-      workunit: "m",
+      workunit: "000",
+      orient: "ABOVE",
     }
   });
 
+  const elv = form.watch("elv");
+  const orient = form.watch("orient");
+  const prevElv = useRef<any>(elv);
+  const prevOrient = useRef<any>(orient);
+
+  // Rule 1: When user enters a value (+ve or -ve), automatically set orientation
+  useEffect(() => {
+    if (elv !== prevElv.current) {
+      prevElv.current = elv;
+      const numElv = parseFloat(String(elv));
+      if (!isNaN(numElv) && numElv !== 0) {
+        if (numElv > 0 && orient !== "ABOVE") {
+          form.setValue("orient", "ABOVE", { shouldValidate: true });
+          prevOrient.current = "ABOVE";
+        } else if (numElv < 0 && orient !== "BELOW") {
+          form.setValue("orient", "BELOW", { shouldValidate: true });
+          prevOrient.current = "BELOW";
+        }
+      }
+    }
+  }, [elv, orient, form]);
+
+  // Rule 2: When user selects orientation, reset elevation sign accordingly (+ve for ABOVE, -ve for BELOW)
+  useEffect(() => {
+    if (orient !== prevOrient.current) {
+      prevOrient.current = orient;
+      const numElv = parseFloat(String(elv));
+      if (!isNaN(numElv) && numElv !== 0) {
+        if (orient === "ABOVE" && numElv < 0) {
+          const updatedElv = Math.abs(numElv);
+          form.setValue("elv", updatedElv, { shouldValidate: true });
+          prevElv.current = updatedElv;
+        } else if (orient === "BELOW" && numElv > 0) {
+          const updatedElv = -Math.abs(numElv);
+          form.setValue("elv", updatedElv, { shouldValidate: true });
+          prevElv.current = updatedElv;
+        }
+      }
+    }
+  }, [orient, elv, form]);
+
   const onSubmit = async (values: z.infer<typeof ElevationSchema>) => {
+    if (values.elv === undefined || values.elv === null || isNaN(Number(values.elv))) {
+      toast.error("Please enter a valid elevation value");
+      return;
+    }
+
+    const finalElv = values.orient === "BELOW" ? -Math.abs(Number(values.elv)) : Math.abs(Number(values.elv));
+
     const elevObject = {
       ...values,
-      elv: values.orient === "BELOW" ? -Math.abs(values.elv || 0) : Math.abs(values.elv || 0),
+      elv: finalElv,
+      workunit: "000",
       plat_id: pageId,
       cr_user: "",
     };
@@ -48,7 +98,10 @@ export function ElevationDialog() {
       mutate(`/api/platform/elevation/${pageId}`);
       toast.success("Elevation created successfully");
       setOpen(false);
-      form.reset();
+      form.reset({
+        workunit: "000",
+        orient: "ABOVE",
+      });
     } catch (error) {
       toast.error("Failed to update elevation");
     }
@@ -84,18 +137,16 @@ export function ElevationDialog() {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="p-8 space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="col-span-2">
-                <FormFieldWrap
-                  label="Elevation Value"
-                  name="elv"
-                  form={form}
-                  placeholder="0.00"
-                  ftype="normal"
-                  type="number"
-                  description="Required value in meters"
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-6">
+              <FormFieldWrap
+                label="Elevation Value (m)"
+                name="elv"
+                form={form}
+                placeholder="0.00"
+                ftype="normal"
+                type="number"
+                description="Required value in meters (m) (+ve for Above Splash, -ve for Below Splash)"
+              />
               <FormFieldWrap
                 label="Orientation"
                 name="orient"
@@ -105,14 +156,6 @@ export function ElevationDialog() {
                 ]}
                 form={form}
                 ftype="select"
-              />
-              <FormFieldWrap
-                label="Work Unit"
-                name="workunit"
-                form={form}
-                placeholder="m"
-                ftype="normal"
-                maxLength="3"
               />
             </div>
 
@@ -139,3 +182,4 @@ export function ElevationDialog() {
     </Dialog>
   );
 }
+

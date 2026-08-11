@@ -27,14 +27,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ data });
   }
 
+  const includeDeleted = request.nextUrl.searchParams.get("include_deleted") === "true";
+
   // Single code logic (New Feature Requirement)
   // Fetch items for specific master code, hiding hidden items, sorting by value
-  const { data, error } = await supabase
+  let query = supabase
     .from("u_lib_list" as any)
     .select("*")
-    .eq("lib_code", decodedFilter)
-    .or("lib_delete.is.null,lib_delete.neq.1")
-    .order("lib_desc", { ascending: true });
+    .eq("lib_code", decodedFilter);
+
+  if (!includeDeleted) {
+    query = query.or("lib_delete.is.null,lib_delete.neq.1");
+  }
+
+  const { data, error } = await query.order("lib_desc", { ascending: true });
 
   if (error) {
     return handleSupabaseError(error, "Failed to fetch library items");
