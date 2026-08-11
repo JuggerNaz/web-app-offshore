@@ -403,12 +403,35 @@ function V10PreviewLayout() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    const stripPipelinePanelsFromLayout = (node: any): any => {
+      if (!node) return null;
+      if (node.component === "inspectionInfo" || node.component === "quickShortcuts") {
+        return null;
+      }
+      if (Array.isArray(node.children)) {
+        const filteredChildren = node.children
+          .map(stripPipelinePanelsFromLayout)
+          .filter(Boolean);
+        if (filteredChildren.length === 0 && node.type === "tabset") {
+          return null;
+        }
+        return { ...node, children: filteredChildren };
+      }
+      return node;
+    };
+
     const savedLayout = localStorage.getItem("inspection-workspace-layout-v2");
     if (savedLayout && savedLayout !== "[object Object]" && savedLayout.startsWith("{")) {
       try {
         let parsed = JSON.parse(savedLayout);
         if (typeof parsed === 'string') {
           parsed = JSON.parse(parsed);
+        }
+        if (!isPipeline && parsed && parsed.layout) {
+          parsed.layout = stripPipelinePanelsFromLayout(parsed.layout);
+          if (Array.isArray(parsed.borders)) {
+            parsed.borders = parsed.borders.map(stripPipelinePanelsFromLayout).filter(Boolean);
+          }
         }
         if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
           console.log("[DEBUG] Restoring layout from storage", parsed);
@@ -7769,6 +7792,7 @@ function V10PreviewLayout() {
           />
         );
       case "inspectionInfo":
+        if (!isPipeline) return null;
         return (
           <PipelineInspectionInfoPanel
             currentKp={headerData?.kp || "0.000"}
@@ -7779,6 +7803,7 @@ function V10PreviewLayout() {
           />
         );
       case "quickShortcuts":
+        if (!isPipeline) return null;
         return (
           <QuickShortcutsPanel
             onSelectEvent={handlePipelineEventSelect}

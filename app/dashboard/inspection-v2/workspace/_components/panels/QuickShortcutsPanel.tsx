@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Sparkles,
@@ -15,7 +16,7 @@ import {
   ArrowDown,
   Keyboard,
   X,
-  GripVertical,
+  Search,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -25,7 +26,6 @@ import {
   PIPELINE_EVENT_CATEGORIES,
   TOGGLE_PAIRS,
   INITIAL_SHORTCUT_IDS,
-  type QuickShortcutItem,
 } from "./PipelineEventMenuPanel";
 
 // ---------------------------------------------------------------------------
@@ -90,13 +90,11 @@ export function QuickShortcutsPanel({
   inspMethod = "ROV",
 }: QuickShortcutsPanelProps) {
   // ─── State (mirrors PipelineEventMenuPanel localStorage keys) ──────────
-  const [pinnedIds, setPinnedIds] = useState<string[]>(() =>
-    readLS<string[]>(LS_PINNED, []).filter(
-      (id) => !TOGGLE_PAIRS.some((p) => p.endId === id)
-    ).concat(
-      readLS<string[]>(LS_PINNED, []).length === 0 ? INITIAL_SHORTCUT_IDS : []
-    )
-  );
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() => {
+    const loaded = readLS<string[]>(LS_PINNED, []);
+    const sanitized = loaded.filter((id) => !TOGGLE_PAIRS.some((p) => p.endId === id));
+    return sanitized.length > 0 ? sanitized : INITIAL_SHORTCUT_IDS;
+  });
 
   const [activeToggles, setActiveToggles] = useState<Record<string, boolean>>(() =>
     readLS<Record<string, boolean>>(LS_TOGGLES, {})
@@ -107,6 +105,8 @@ export function QuickShortcutsPanel({
   );
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [panelSearch, setPanelSearch] = useState("");
+  const [settingsSearch, setSettingsSearch] = useState("");
 
   // ─── Container ref for ResizeObserver (auto columns) ──────────────────
   const containerRef = useRef<HTMLDivElement>(null);
@@ -127,7 +127,7 @@ export function QuickShortcutsPanel({
     return () => observer.disconnect();
   }, []);
 
-  // ─── Cross-window sync: listen to localStorage changes from PipelineEventMenuPanel ──
+  // ─── Cross-window & polling sync ──────────────────────────────────────
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === LS_PINNED && e.newValue) {
@@ -147,7 +147,6 @@ export function QuickShortcutsPanel({
     return () => window.removeEventListener("storage", handler);
   }, []);
 
-  // Polling fallback (same tab, storage event does NOT fire for same-tab writes)
   useEffect(() => {
     const interval = setInterval(() => {
       const pins = readLS<string[]>(LS_PINNED, []);
@@ -160,6 +159,11 @@ export function QuickShortcutsPanel({
       const toggles = readLS<Record<string, boolean>>(LS_TOGGLES, {});
       setActiveToggles((prev) => {
         if (JSON.stringify(prev) !== JSON.stringify(toggles)) return toggles;
+        return prev;
+      });
+      const hks = readLS<Record<string, string>>(LS_HOTKEYS, DEFAULT_HOTKEYS);
+      setCustomHotkeys((prev) => {
+        if (JSON.stringify(prev) !== JSON.stringify(hks)) return hks;
         return prev;
       });
     }, 800);
@@ -186,20 +190,29 @@ export function QuickShortcutsPanel({
     return list;
   }, []);
 
-  // ─── Active shortcuts (respects toggle pairs) ───────────────────────────
+  // ─── Active shortcuts (respects toggle pairs and search) ────────────────
   const activeShortcuts = useMemo(() => {
     const effectiveIds = pinnedIds.length > 0 ? pinnedIds : INITIAL_SHORTCUT_IDS;
     const list = effectiveIds
       .map((id) => allFlattenedEvents.find((e) => e.id === id))
       .filter(Boolean) as typeof allFlattenedEvents;
 
-    return list.filter((item) => {
+    const pairedList = list.filter((item) => {
       const pair = TOGGLE_PAIRS.find((p) => p.startId === item.id || p.endId === item.id);
       if (!pair) return true;
       const isActive = !!activeToggles[pair.groupKey];
       return isActive ? item.id === pair.endId : item.id === pair.startId;
     });
-  }, [pinnedIds, allFlattenedEvents, activeToggles]);
+
+    if (!panelSearch.trim()) return pairedList;
+    const q = panelSearch.toLowerCase().trim();
+    return pairedList.filter(
+      (item) =>
+        item.label.toLowerCase().includes(q) ||
+        item.sub.toLowerCase().includes(q) ||
+        item.cat.toLowerCase().includes(q)
+    );
+  }, [pinnedIds, allFlattenedEvents, activeToggles, panelSearch]);
 
   // ─── Active in-progress events banner ───────────────────────────────────
   const activeEventsList = useMemo(() => {
@@ -216,15 +229,14 @@ export function QuickShortcutsPanel({
   }, [activeToggles, allFlattenedEvents]);
 
   // ─── Hotkey badge helper ─────────────────────────────────────────────────
-  const getHotkey = (id: string, idx: number) => {
+  const getHotkey = useCallback((id: string, idx: number) => {
     if (customHotkeys[id]) return customHotkeys[id];
     if (idx < 6) return `Alt+${idx + 1}`;
     return null;
-  };
+  }, [customHotkeys]);
 
   // ─── Handle button click (fires onSelectEvent & updates toggle state) ───
   const handleClick = useCallback((sc: typeof allFlattenedEvents[0]) => {
-    // Determine toggles
     const pair = TOGGLE_PAIRS.find((p) => p.startId === sc.id || p.endId === sc.id);
     const isEndEvent = pair ? sc.id === pair.endId : false;
 
@@ -252,6 +264,47 @@ export function QuickShortcutsPanel({
       kpSource: "CALCULATED",
     });
   }, [activeToggles, currentKp, onSelectEvent]);
+
+  // ─── Global Keyboard Listener for Custom Hotkeys ────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+
+      const parts: string[] = [];
+      if (e.ctrlKey) parts.push("Ctrl");
+      if (e.altKey) parts.push("Alt");
+      if (e.shiftKey) parts.push("Shift");
+
+      const keyUpper = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+      parts.push(keyUpper);
+
+      const pressedCombo = parts.join("+");
+
+      const match = activeShortcuts.find((sc, index) => {
+        const assigned = getHotkey(sc.id, index);
+        return assigned && assigned.toUpperCase() === pressedCombo.toUpperCase();
+      });
+
+      if (match) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleClick(match);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeShortcuts, getHotkey, handleClick]);
 
   // ─── Handle stop banner click ────────────────────────────────────────────
   const handleStop = useCallback((groupKey: string, endId: string) => {
@@ -308,7 +361,9 @@ export function QuickShortcutsPanel({
 
   const resetPins = () => {
     setPinnedIds(INITIAL_SHORTCUT_IDS);
+    setCustomHotkeys(DEFAULT_HOTKEYS);
     localStorage.setItem(LS_PINNED, JSON.stringify(INITIAL_SHORTCUT_IDS));
+    localStorage.setItem(LS_HOTKEYS, JSON.stringify(DEFAULT_HOTKEYS));
   };
 
   // ─── Grid column inline style ────────────────────────────────────────────
@@ -320,7 +375,7 @@ export function QuickShortcutsPanel({
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full w-full bg-slate-100/90 dark:bg-[#0a0f1c] overflow-hidden">
+    <div className="flex flex-col h-full w-full bg-slate-100/90 dark:bg-[#0a0f1c] overflow-hidden font-sans">
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-100/90 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-center gap-1.5">
@@ -332,17 +387,38 @@ export function QuickShortcutsPanel({
             variant="secondary"
             className="text-[9px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60 px-1.5"
           >
-            {activeShortcuts.length}
+            {activeShortcuts.length} Items
           </Badge>
         </div>
         <button
           onClick={() => setIsSettingsOpen(true)}
-          className="flex items-center gap-1 text-[10px] font-medium text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition bg-white dark:bg-slate-950 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-800 shadow-sm"
-          title="Configure Quick Log shortcuts"
+          className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition bg-white dark:bg-slate-950 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-800 shadow-sm"
+          title="Configure Quick Log shortcuts, reorder, & assign hotkeys"
         >
           <Settings className="w-3 h-3 text-slate-500" />
-          <span className="hidden sm:inline">Pins</span>
+          <span className="hidden sm:inline">Settings</span>
         </button>
+      </div>
+
+      {/* ── Quick Search Bar ─────────────────────────────────────────────── */}
+      <div className="p-2 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800/80 shrink-0">
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400 dark:text-slate-500" />
+          <Input
+            value={panelSearch}
+            onChange={(e) => setPanelSearch(e.target.value)}
+            placeholder="Search quick events..."
+            className="h-8 pl-8 text-[11px] bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-md focus:ring-1 focus:ring-blue-500 font-normal"
+          />
+          {panelSearch && (
+            <button
+              onClick={() => setPanelSearch("")}
+              className="absolute right-2.5 top-2 text-[10px] text-slate-400 hover:text-slate-700 dark:hover:text-white"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Active in-progress banner ─────────────────────────────────────── */}
@@ -382,7 +458,9 @@ export function QuickShortcutsPanel({
         {activeShortcuts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-500 dark:text-slate-600 text-[11px] text-center p-4 gap-2">
             <Sparkles className="w-6 h-6 opacity-40" />
-            <span>No shortcuts pinned. Click <strong>Pins</strong> to configure.</span>
+            <span>
+              {panelSearch ? `No quick log item matching "${panelSearch}"` : "No shortcuts pinned. Click Settings to configure."}
+            </span>
           </div>
         ) : (
           <div style={gridStyle}>
@@ -429,7 +507,6 @@ export function QuickShortcutsPanel({
                           : "bg-slate-100 dark:bg-slate-900 text-blue-600 dark:text-blue-400 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white",
                       ].join(" ")}
                     >
-                      {/* Icon size adapts with CSS */}
                       <span className="[&_svg]:w-5 [&_svg]:h-5 block">{sc.icon}</span>
                     </div>
                   </div>
@@ -472,54 +549,87 @@ export function QuickShortcutsPanel({
         <DialogContent className="max-w-lg bg-white dark:bg-slate-950 border-2 border-slate-200 dark:border-slate-800 shadow-2xl p-0 overflow-hidden font-sans">
           <DialogHeader className="p-4 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
             <DialogTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2 text-slate-900 dark:text-slate-100">
-              <Sparkles className="w-4 h-4 text-amber-500" /> Quick Log — Pin Settings
+              <Sparkles className="w-4 h-4 text-amber-500" /> Quick Log Settings — Order &amp; Hotkeys
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Pin, reorder, or remove shortcuts. Changes sync instantly to the Event Menu panel.
+              Reorder items, assign custom hotkeys (e.g. Alt+1, Ctrl+1), or search to pin new events.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-4 max-h-[420px] overflow-y-auto custom-scrollbar space-y-3">
-            {/* Pinned order */}
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Pinned Shortcuts (Drag to reorder)
+          <div className="p-4 max-h-[440px] overflow-y-auto custom-scrollbar space-y-4">
+            {/* Order & Custom Hotkey Assignment */}
+            <div className="bg-amber-50/70 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                <span className="flex items-center gap-1.5">
+                  <Keyboard className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  Order &amp; Custom Hotkeys
+                </span>
+                <span className="text-[9px] font-normal text-amber-700 dark:text-amber-300">
+                  Alt, Ctrl, Shift + Key
+                </span>
               </div>
-              <div className="space-y-1">
+
+              <div className="space-y-1.5 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
                 {(pinnedIds.length > 0 ? pinnedIds : INITIAL_SHORTCUT_IDS).map((id, index) => {
                   const evt = allFlattenedEvents.find((e) => e.id === id);
                   if (!evt) return null;
+                  const currentHotkey = getHotkey(id, index) || "";
+
                   return (
                     <div
                       key={id}
-                      className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5"
+                      className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] shadow-2xs gap-2"
                     >
-                      <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[10.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
-                          {evt.label}
-                        </div>
-                        <div className="text-[9px] text-slate-400 truncate">
-                          {evt.cat} › {evt.sub}
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-[9px] font-black text-slate-400 w-4 shrink-0">
+                          #{index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                            {evt.label}
+                          </div>
+                          <div className="text-[8.5px] text-slate-400 truncate">
+                            {evt.cat} › {evt.sub}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => movePinned(index, -1)}
-                          disabled={index === 0}
-                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 disabled:opacity-30 text-slate-500"
-                          title="Move up"
-                        >
-                          <ArrowUp className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => movePinned(index, 1)}
-                          disabled={index === (pinnedIds.length > 0 ? pinnedIds : INITIAL_SHORTCUT_IDS).length - 1}
-                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 disabled:opacity-30 text-slate-500"
-                          title="Move down"
-                        >
-                          <ArrowDown className="w-3 h-3" />
-                        </button>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Reorder Up / Down Controls */}
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => movePinned(index, -1)}
+                            disabled={index === 0}
+                            className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-30 text-slate-700 dark:text-slate-200 transition"
+                            title="Move Up"
+                          >
+                            <ArrowUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => movePinned(index, 1)}
+                            disabled={index === (pinnedIds.length > 0 ? pinnedIds : INITIAL_SHORTCUT_IDS).length - 1}
+                            className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-30 text-slate-700 dark:text-slate-200 transition"
+                            title="Move Down"
+                          >
+                            <ArrowDown className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Editable Custom Hotkey Input */}
+                        <input
+                          type="text"
+                          value={currentHotkey}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const updated = { ...customHotkeys, [id]: val };
+                            setCustomHotkeys(updated);
+                            localStorage.setItem(LS_HOTKEYS, JSON.stringify(updated));
+                          }}
+                          placeholder="Hotkey"
+                          className="w-20 h-6.5 px-1 text-[10px] font-mono font-extrabold text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 rounded text-center focus:ring-1 focus:ring-amber-500 uppercase"
+                          title="Type hotkey combo e.g. Alt+1, Ctrl+S, Shift+A"
+                        />
+
                         <button
                           onClick={() => removePinned(id)}
                           className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-950 text-red-500"
@@ -534,20 +644,53 @@ export function QuickShortcutsPanel({
               </div>
             </div>
 
-            {/* Add more */}
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                All Available Events — Check to Pin
+            {/* Available Events Selection with Search */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  All Pipeline Events — Check to Pin
+                </span>
+                <Badge variant="outline" className="text-[9px] font-bold">
+                  {(pinnedIds.length > 0 ? pinnedIds : INITIAL_SHORTCUT_IDS).length} Pinned
+                </Badge>
               </div>
-              <div className="space-y-0.5 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <Input
+                  value={settingsSearch}
+                  onChange={(e) => setSettingsSearch(e.target.value)}
+                  placeholder="Search events to pin (Anode, CP, Span, Skip...)"
+                  className="h-8 pl-8 text-[11px] bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                />
+                {settingsSearch && (
+                  <button
+                    onClick={() => setSettingsSearch("")}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-0.5 max-h-[180px] overflow-y-auto custom-scrollbar pr-1 border border-slate-200 dark:border-slate-800 rounded-lg p-2 bg-slate-50/50 dark:bg-slate-900/50">
                 {allFlattenedEvents
-                  .filter((e) => !TOGGLE_PAIRS.some((p) => p.endId === e.id))
+                  .filter((e) => {
+                    if (TOGGLE_PAIRS.some((p) => p.endId === e.id)) return false;
+                    if (!settingsSearch.trim()) return true;
+                    const q = settingsSearch.toLowerCase().trim();
+                    return (
+                      e.label.toLowerCase().includes(q) ||
+                      e.sub.toLowerCase().includes(q) ||
+                      e.cat.toLowerCase().includes(q)
+                    );
+                  })
                   .map((e) => {
                     const isPinned = (pinnedIds.length > 0 ? pinnedIds : INITIAL_SHORTCUT_IDS).includes(e.id);
                     return (
                       <label
                         key={e.id}
-                        className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-900 transition"
+                        className="flex items-center gap-2.5 px-2 py-1.5 rounded-md cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                       >
                         <Checkbox
                           checked={isPinned}
@@ -555,10 +698,10 @@ export function QuickShortcutsPanel({
                           className="border-slate-400 dark:border-slate-600"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="text-[10.5px] font-medium text-slate-800 dark:text-slate-100 truncate">
+                          <div className="text-[10.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
                             {e.label}
                           </div>
-                          <div className="text-[9px] text-slate-400 truncate">
+                          <div className="text-[8.5px] text-slate-400 truncate">
                             {e.cat} › {e.sub}
                           </div>
                         </div>
@@ -578,10 +721,13 @@ export function QuickShortcutsPanel({
             </button>
             <Button
               size="sm"
-              onClick={() => setIsSettingsOpen(false)}
-              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4"
+              onClick={() => {
+                setIsSettingsOpen(false);
+                setSettingsSearch("");
+              }}
+              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 h-8"
             >
-              Done
+              Done &amp; Save
             </Button>
           </div>
         </DialogContent>

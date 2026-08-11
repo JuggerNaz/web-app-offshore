@@ -60,86 +60,74 @@ export function DiverLogPanelPipeline({
     {
       id: "Rov Launched",
       label: "Rov Launched",
-      color: "border-blue-200 dark:border-blue-500/40 text-slate-800 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:border-blue-400 bg-slate-50/50 dark:bg-[#0c1322] active:bg-blue-100",
-      svg: (
-        <svg viewBox="0 0 100 50" className="w-full max-w-[120px] h-auto text-slate-700 dark:text-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-300 mx-auto" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M5 38 L95 38" stroke="currentColor" strokeWidth="1" strokeDasharray="3 3" />
-          <path d="M15 38 L30 18 L50 18" stroke="currentColor" />
-          <rect x="52" y="14" width="22" height="12" rx="2" fill="currentColor" fillOpacity="0.2" />
-          <path d="M52 20 L74 20" />
-          <circle cx="58" cy="23" r="2" fill="currentColor" />
-          <circle cx="68" cy="23" r="2" fill="currentColor" />
-          <path d="M50 18 Q55 18, 63 14" stroke="currentColor" strokeWidth="1" />
+      activeGradient: "bg-gradient-to-r from-blue-600 to-cyan-500 text-white border-blue-400 ring-2 ring-blue-400/40 shadow-md shadow-blue-500/25",
+      color: "border-blue-300 dark:border-blue-600/60 bg-blue-50/80 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 hover:bg-gradient-to-r hover:from-blue-600 hover:to-cyan-500 hover:text-white hover:border-blue-500",
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2v10" />
+          <path d="M17 7l-5 5-5-5" />
+          <rect x="5" y="14" width="14" height="8" rx="2" fill="currentColor" fillOpacity="0.2" />
         </svg>
       )
     },
     {
       id: "Rov Back to TMS",
       label: "Back to TMS",
-      color: "border-green-200 dark:border-green-500/40 text-slate-800 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/40 hover:border-green-400 bg-slate-50/50 dark:bg-[#0c1322] active:bg-green-100",
-      svg: (
-        <svg viewBox="0 0 100 50" className="w-full max-w-[120px] h-auto text-slate-700 dark:text-green-400 group-hover:text-green-600 dark:group-hover:text-green-300 mx-auto" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="25" y="8" width="50" height="34" rx="4" fill="currentColor" fillOpacity="0.1" />
-          <path d="M35 8 L35 4 L65 4 L65 8" />
-          <rect x="35" y="16" width="30" height="18" rx="2" fill="currentColor" fillOpacity="0.3" stroke="currentColor" strokeWidth="1.5" />
-          <text x="50" y="28" textAnchor="middle" fontSize="8" fontWeight="black" fill="currentColor" stroke="none">TMS</text>
+      activeGradient: "bg-gradient-to-r from-teal-600 to-emerald-500 text-white border-teal-400 ring-2 ring-teal-400/40 shadow-md shadow-teal-500/25",
+      color: "border-teal-300 dark:border-teal-600/60 bg-teal-50/80 dark:bg-teal-950/40 text-teal-800 dark:text-teal-200 hover:bg-gradient-to-r hover:from-teal-600 hover:to-emerald-500 hover:text-white hover:border-teal-500",
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2">
+          <rect x="4" y="6" width="16" height="12" rx="3" fill="currentColor" fillOpacity="0.2" />
+          <path d="M8 20l4-2 4 2" />
         </svg>
       )
     },
     {
       id: "Rov at the Worksite",
       label: "At Worksite",
-      color: "border-lime-200 dark:border-lime-500/40 text-slate-800 dark:text-lime-400 hover:bg-lime-50 dark:hover:bg-lime-950/40 hover:border-lime-400 bg-slate-50/50 dark:bg-[#0c1322] active:bg-lime-100",
-      svg: (
-        <svg viewBox="0 0 100 50" className="w-full max-w-[120px] h-auto text-slate-700 dark:text-lime-400 group-hover:text-lime-600 dark:group-hover:text-lime-300 mx-auto" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M5 42 Q25 38, 50 42 T95 40" stroke="currentColor" strokeWidth="1.5" />
-          <rect x="65" y="32" width="20" height="8" rx="1" fill="currentColor" fillOpacity="0.1" />
-          <circle cx="75" cy="36" r="3" />
-          <rect x="15" y="14" width="24" height="14" rx="2" fill="currentColor" fillOpacity="0.3" />
-          <circle cx="22" cy="24" r="2.5" fill="currentColor" />
-          <path d="M39 21 L47 21" stroke="currentColor" strokeWidth="1" />
-          <path d="M47 16 L57 26 M55 12 L69 26" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2" />
+      activeGradient: "bg-gradient-to-r from-emerald-600 to-lime-500 text-white border-emerald-400 ring-2 ring-emerald-400/40 shadow-md shadow-emerald-500/25",
+      color: "border-emerald-300 dark:border-emerald-600/60 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 hover:bg-gradient-to-r hover:from-emerald-600 hover:to-lime-500 hover:text-white hover:border-emerald-500",
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2">
+          <circle cx="12" cy="12" r="8" fill="currentColor" fillOpacity="0.2" />
+          <path d="M12 8v8M8 12h8" />
         </svg>
       )
     },
     {
       id: "Rov Leaving the Worksite",
       label: "Leaving Worksite",
-      color: "border-amber-200 dark:border-amber-500/40 text-slate-800 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-400 bg-slate-50/50 dark:bg-[#0c1322] active:bg-amber-100",
-      svg: (
-        <svg viewBox="0 0 100 50" className="w-full max-w-[120px] h-auto text-slate-700 dark:text-amber-400 group-hover:text-amber-600 dark:group-hover:text-amber-300 mx-auto" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M5 44 L95 44" stroke="currentColor" strokeWidth="1" />
-          <rect x="40" y="10" width="24" height="14" rx="2" fill="currentColor" fillOpacity="0.2" />
-          <path d="M52 24 L52 34 M46 24 L42 30 M58 24 L62 30" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M35 17 L25 17" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M30 13 L24 17 L30 21" stroke="currentColor" strokeWidth="1.5" />
+      activeGradient: "bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-400 ring-2 ring-amber-400/40 shadow-md shadow-amber-500/25",
+      color: "border-amber-300 dark:border-amber-600/60 bg-amber-50/80 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 hover:bg-gradient-to-r hover:from-amber-500 hover:to-orange-500 hover:text-white hover:border-amber-500",
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2">
+          <path d="M5 12h14" />
+          <path d="M12 5l7 7-7 7" />
         </svg>
       )
     },
     {
       id: "Rov Recovered",
       label: "Rov Recovered",
-      color: "border-purple-200 dark:border-purple-500/40 text-slate-800 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:border-purple-400 bg-slate-50/50 dark:bg-[#0c1322] active:bg-purple-100",
-      svg: (
-        <svg viewBox="0 0 100 50" className="w-full max-w-[120px] h-auto text-slate-700 dark:text-purple-400 group-hover:text-purple-600 dark:group-hover:text-purple-300 mx-auto" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="25" y="8" width="50" height="34" rx="4" fill="currentColor" fillOpacity="0.1" />
-          <path d="M35 8 L35 4 L65 4 L65 8" />
-          <rect x="35" y="16" width="30" height="18" rx="2" fill="currentColor" fillOpacity="0.3" stroke="currentColor" strokeWidth="1.5" />
-          <text x="50" y="28" textAnchor="middle" fontSize="8" fontWeight="black" fill="currentColor" stroke="none">TMS</text>
+      activeGradient: "bg-gradient-to-r from-purple-600 to-pink-500 text-white border-purple-400 ring-2 ring-purple-400/40 shadow-md shadow-purple-500/25",
+      color: "border-purple-300 dark:border-purple-600/60 bg-purple-50/80 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 hover:bg-gradient-to-r hover:from-purple-600 hover:to-pink-500 hover:text-white hover:border-purple-500",
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2">
+          <path d="M12 22V12" />
+          <path d="M7 17l5-5 5 5" />
+          <rect x="5" y="2" width="14" height="8" rx="2" fill="currentColor" fillOpacity="0.2" />
         </svg>
       )
     },
     {
       id: "Rov On Hire",
       label: "Rov On Hire",
-      color: "border-orange-200 dark:border-orange-500/40 text-slate-800 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/40 hover:border-orange-400 bg-slate-50/50 dark:bg-[#0c1322] active:bg-orange-100",
-      svg: (
-        <svg viewBox="0 0 100 50" className="w-full max-w-[120px] h-auto text-slate-700 dark:text-orange-400 group-hover:text-orange-600 dark:group-hover:text-orange-300 mx-auto" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="5" y="36" width="90" height="10" rx="1" fill="currentColor" fillOpacity="0.2" />
-          <path d="M25 36 L30 28 L70 28 L75 36" stroke="currentColor" />
-          <rect x="32" y="16" width="36" height="14" rx="2" fill="currentColor" fillOpacity="0.4" />
-          <circle cx="42" cy="23" r="2" fill="currentColor" />
-          <circle cx="58" cy="23" r="2" fill="currentColor" />
+      activeGradient: "bg-gradient-to-r from-indigo-600 to-blue-600 text-white border-indigo-400 ring-2 ring-indigo-400/40 shadow-md shadow-indigo-500/25",
+      color: "border-indigo-300 dark:border-indigo-600/60 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 hover:bg-gradient-to-r hover:from-indigo-600 hover:to-blue-600 hover:text-white hover:border-indigo-500",
+      icon: (
+        <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2">
+          <rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" fillOpacity="0.2" />
+          <path d="M8 12h8" />
         </svg>
       )
     }
@@ -234,7 +222,7 @@ export function DiverLogPanelPipeline({
           </div>
         </div>
 
-        {/* Grid Interactive State Selector */}
+        {/* Grid Interactive State Selector — Compact & Colorful Buttons */}
         <div className="p-2 flex-1 flex flex-row flex-wrap justify-center items-center gap-2 bg-white dark:bg-[#090d16] min-h-0 overflow-y-auto">
           {rovActions.map((act) => {
             const isSelectable = options.includes(act.id);
@@ -247,18 +235,18 @@ export function DiverLogPanelPipeline({
                 key={act.id}
                 onClick={() => isSelectable && handleMovementLog && handleMovementLog(act.id)}
                 disabled={!isSelectable && !isActive}
-                className={`flex flex-col justify-center items-center p-2 rounded-md border-2 text-center transition-all min-h-[72px] flex-1 min-w-[80px] ${
+                className={`flex flex-row items-center justify-center gap-2 px-3 py-2 rounded-xl border text-center transition-all min-h-[44px] flex-1 min-w-[110px] ${
                   isActive
-                    ? "bg-blue-50 dark:bg-blue-600/10 border-blue-500 text-blue-600 dark:text-blue-300 ring-2 ring-blue-500/20 shadow-[0_0_12px_rgba(59,130,246,0.25)]"
+                    ? act.activeGradient
                     : isSelectable
-                      ? act.color + " cursor-pointer shadow-sm active:scale-95"
-                      : "border-slate-100 dark:border-slate-900 bg-slate-50 dark:bg-slate-950/20 text-slate-300 dark:text-slate-800 opacity-20 cursor-not-allowed"
+                      ? act.color + " cursor-pointer shadow-xs active:scale-95 font-bold"
+                      : "border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/40 text-slate-400 opacity-40 cursor-not-allowed"
                 }`}
               >
-                <div className="mb-1 shrink-0 scale-100 w-full">
-                  {act.svg}
+                <div className="shrink-0">
+                  {act.icon}
                 </div>
-                <span className="text-[9px] font-black uppercase tracking-wider leading-tight">
+                <span className="text-[10px] font-black uppercase tracking-wider leading-tight">
                   {act.label}
                 </span>
               </button>
@@ -272,7 +260,7 @@ export function DiverLogPanelPipeline({
             onClick={handleMovementPrev}
             disabled={currentMovement === "Awaiting Deployment"}
             variant="outline"
-            className="flex-1 h-8 text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-900 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 bg-transparent flex items-center justify-center gap-1.5"
+            className="flex-1 h-8 text-[9px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-950/60 bg-rose-50 dark:bg-rose-950/30 flex items-center justify-center gap-1.5 shadow-2xs"
             title="Rollback to previous action"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> UNDO
@@ -281,7 +269,7 @@ export function DiverLogPanelPipeline({
           <Button
             onClick={() => setIsMovementLogOpen(true)}
             variant="outline"
-            className="flex-[1.2] h-8 text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-900 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 bg-transparent flex items-center justify-center gap-1"
+            className="flex-[1.2] h-8 text-[9px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/60 hover:bg-blue-100 dark:hover:bg-blue-950/60 bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center gap-1 shadow-2xs"
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="8" y1="6" x2="21" y2="6" />
