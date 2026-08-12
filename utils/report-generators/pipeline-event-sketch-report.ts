@@ -320,6 +320,10 @@ export const generatePipelineEventSketchReport = async (
         }
     }
 
+    // Extract continuous Span and Burial intervals across all events
+    const spanIntervals = extractFeatureIntervals(events, "SPAN");
+    const burialIntervals = extractFeatureIntervals(events, "BURIAL");
+
     // ── 2. Geodetic Parameters Data ──────────────────────────────────────────
     let geodeticData: any = jobPack?.metadata?.geodetic_parameters || null;
     if (!geodeticData && (structure?.id || config.structureId)) {
@@ -524,8 +528,10 @@ export const generatePipelineEventSketchReport = async (
         return startY + legendH + 2;
     };
 
-    // ── 5. Page Chunking & Canvas Generation Loop ────────────────────────────
-    const eventsPerPage = 7;
+    // ── 5. Multi-Track Serpentine Ribbon Page Generation Loop ────────────────
+    const eventsPerTrack = 8;
+    const tracksPerPage = 3;
+    const eventsPerPage = tracksPerPage * eventsPerTrack; // 24 events per page
     const totalPages = Math.max(1, Math.ceil(events.length / eventsPerPage));
 
     for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
@@ -534,217 +540,281 @@ export const generatePipelineEventSketchReport = async (
         drawHeader(doc);
         let currentY = margin + 21.5;
         currentY = drawSubHeader(doc, currentY);
-        currentY = drawGeodeticBlock(doc, currentY);
+        if (pageIdx === 0 && geodeticData) {
+            currentY = drawGeodeticBlock(doc, currentY);
+        }
         currentY = drawLegendBlock(doc, currentY);
 
         const pageChunk = events.slice(pageIdx * eventsPerPage, (pageIdx + 1) * eventsPerPage);
+        const numTracksOnPage = Math.max(1, Math.ceil(pageChunk.length / eventsPerTrack));
 
-        // Render Canvas Graphics Section
-        const canvasH = 42;
-        const canvasY = currentY;
-        doc.setDrawColor(...colors.navy); doc.setLineWidth(0.3);
-        doc.setFillColor(252, 253, 255);
-        doc.rect(margin, canvasY, contentWidth, canvasH, "FD");
+        for (let trackIdx = 0; trackIdx < numTracksOnPage; trackIdx++) {
+            const trackEvents = pageChunk.slice(trackIdx * eventsPerTrack, (trackIdx + 1) * eventsPerTrack);
+            if (trackEvents.length === 0) continue;
 
-        // Canvas Header Bar
-        doc.setFillColor(...colors.navy);
-        doc.rect(margin, canvasY, contentWidth, 5, "F");
-        doc.setFontSize(7.5); doc.setFont("helvetica", "bold"); doc.setTextColor(255, 255, 255);
+            const trackGlobalNum = pageIdx * tracksPerPage + trackIdx + 1;
+            const startGlobalIdx = pageIdx * eventsPerPage + trackIdx * eventsPerTrack + 1;
 
-        const chunkMinKp = pageChunk.length > 0 ? Math.min(...pageChunk.map(e => e.kp)) : 0;
-        const chunkMaxKp = pageChunk.length > 0 ? Math.max(...pageChunk.map(e => e.kp)) : 1;
-        const kpSpan = Math.max(0.05, chunkMaxKp - chunkMinKp);
+            const trackMinKp = Math.min(...trackEvents.map(e => e.kp));
+            const trackMaxKp = Math.max(...trackEvents.map(e => e.kp));
+            const kpSpan = Math.max(0.02, trackMaxKp - trackMinKp);
 
-        doc.text(`PIPELINE ELEVATION PROFILE & SKETCH (KP ${chunkMinKp.toFixed(3)} TO KP ${chunkMaxKp.toFixed(3)})`, margin + 3, canvasY + 3.8);
+            // Track Container Y Setup
+            const trackStartY = currentY;
 
-        // Define Pipe Line Axis Y
-        const pipeY = canvasY + 24;
-        const graphMarginX = 20;
-        const graphXStart = margin + graphMarginX;
-        const graphXEnd = margin + contentWidth - graphMarginX;
-        const graphW = graphXEnd - graphXStart;
-
-        // Draw Pipe Body
-        doc.setFillColor(148, 163, 184); // Slate metallic pipe
-        doc.rect(graphXStart, pipeY - 2, graphW, 4, "F");
-        doc.setDrawColor(51, 65, 85); doc.setLineWidth(0.3);
-        doc.line(graphXStart, pipeY - 2, graphXEnd, pipeY - 2);
-        doc.line(graphXStart, pipeY + 2, graphXEnd, pipeY + 2);
-
-        // KP Axis Scale Line & Ticks
-        doc.setDrawColor(...colors.muted); doc.setLineWidth(0.15);
-        doc.line(graphXStart, pipeY + 7, graphXEnd, pipeY + 7);
-        dText(doc, `KP ${chunkMinKp.toFixed(3)}`, graphXStart, pipeY + 11, "center");
-        dText(doc, `KP ${((chunkMinKp + chunkMaxKp) / 2).toFixed(3)}`, graphXStart + graphW / 2, pipeY + 11, "center");
-        dText(doc, `KP ${chunkMaxKp.toFixed(3)}`, graphXEnd, pipeY + 11, "center");
-
-        // Major Ticks
-        [0, 0.25, 0.5, 0.75, 1].forEach(pct => {
-            const tx = graphXStart + pct * graphW;
-            doc.line(tx, pipeY + 6, tx, pipeY + 8);
-        });
-
-        // Track X positions to prevent flag overlapping
-        const placedFlags: { x: number; level: number }[] = [];
-
-        // Render Page Events on Graphic Canvas
-        pageChunk.forEach((evt, idx) => {
-            const markerIdx = idx + 1;
-            const pct = kpSpan === 0 ? (idx + 0.5) / pageChunk.length : Math.min(1, Math.max(0, (evt.kp - chunkMinKp) / kpSpan));
-            const evtX = graphXStart + pct * graphW;
-
-            const categoryKey = (evt.category.toLowerCase() as keyof typeof colors);
-            const categoryColor: [number, number, number] = colors[categoryKey] || colors.general;
-
-            // ── Graphical Span Line (Req #4) ──────────────────────────────────
-            if (evt.category === "SPAN") {
-                const spanW = Math.max(12, Math.min(30, (evt.spanLength || 10) * 1.5));
-                const sx1 = Math.max(graphXStart, evtX - spanW / 2);
-                const sx2 = Math.min(graphXEnd, evtX + spanW / 2);
-                const dropY = pipeY + 5;
-
-                doc.setDrawColor(colors.span[0], colors.span[1], colors.span[2]); doc.setLineWidth(0.6);
-                doc.line(sx1, pipeY + 2, sx1, dropY);
-                doc.line(sx1, dropY, sx2, dropY);
-                doc.line(sx2, dropY, sx2, pipeY + 2);
-
-                // Hatch under pipe
-                doc.setFontSize(5.5); doc.setTextColor(colors.span[0], colors.span[1], colors.span[2]);
-                doc.text(`FREE SPAN (${evt.spanLength || "N/A"}m)`, (sx1 + sx2) / 2, dropY + 2.5, { align: "center" });
+            // ── Track Header Banner ─────────────────────────────────────────
+            const bannerH = 4.2;
+            if (isPrintFriendly) {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.2);
+                doc.rect(margin, trackStartY, contentWidth, bannerH, "S");
+                doc.setTextColor(...colors.navy);
+            } else {
+                doc.setFillColor(...colors.navy);
+                doc.rect(margin, trackStartY, contentWidth, bannerH, "F");
+                doc.setTextColor(255, 255, 255);
             }
+            doc.setFontSize(7); doc.setFont("helvetica", "bold");
+            doc.text(`TRACK #${trackGlobalNum} — PIPELINE PROFILE & EVENTS (KP ${trackMinKp.toFixed(3)} TO KP ${trackMaxKp.toFixed(3)})`, margin + 3, trackStartY + 3);
+            doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
+            doc.text(`${trackEvents.length} Events in Segment`, margin + contentWidth - 3, trackStartY + 3, { align: "right" });
 
-            // ── Graphical Burial Line (Req #4) ────────────────────────────────
-            if (evt.category === "BURIAL") {
-                const burialW = Math.max(14, Math.min(35, (evt.burialDepth || 1) * 15));
-                const bx1 = Math.max(graphXStart, evtX - burialW / 2);
-                const bx2 = Math.min(graphXEnd, evtX + burialW / 2);
-                const coverY = pipeY - 5;
+            // ── Track Pipe Canvas Graphic Section ────────────────────────────
+            const canvasY = trackStartY + bannerH;
+            const canvasH = 17;
 
-                doc.setDrawColor(colors.burial[0], colors.burial[1], colors.burial[2]); doc.setLineWidth(0.5);
-                doc.line(bx1, pipeY - 2, bx1, coverY);
-                doc.line(bx1, coverY, bx2, coverY);
-                doc.line(bx2, coverY, bx2, pipeY - 2);
+            doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
+            doc.setFillColor(252, 253, 255);
+            doc.rect(margin, canvasY, contentWidth, canvasH, "FD");
 
-                doc.setFontSize(5.5); doc.setTextColor(colors.burial[0], colors.burial[1], colors.burial[2]);
-                doc.text(`BURIED COVER (${evt.burialDepth || "N/A"}m)`, (bx1 + bx2) / 2, coverY - 1, { align: "center" });
-            }
+            // Pipe Line Axis Y (Centered inside canvas)
+            const pipeY = canvasY + 9;
+            const graphMarginX = 18;
+            const graphXStart = margin + graphMarginX;
+            const graphXEnd = margin + contentWidth - graphMarginX;
+            const graphW = graphXEnd - graphXStart;
 
-            // ── Graphical Stabilizers (Mattresses / Concrete Blocks) ──────────
-            if (evt.category === "STABILIZER") {
-                doc.setFillColor(colors.stabilizer[0], colors.stabilizer[1], colors.stabilizer[2]);
-                doc.rect(evtX - 5, pipeY + 2.2, 10, 3, "F");
-                doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.1);
-                doc.rect(evtX - 5, pipeY + 2.2, 10, 3, "S");
-            }
+            // Draw Slate Metallic Pipe Body
+            doc.setFillColor(148, 163, 184);
+            doc.rect(graphXStart, pipeY - 1.5, graphW, 3, "F");
+            doc.setDrawColor(51, 65, 85); doc.setLineWidth(0.25);
+            doc.line(graphXStart, pipeY - 1.5, graphXEnd, pipeY - 1.5);
+            doc.line(graphXStart, pipeY + 1.5, graphXEnd, pipeY + 1.5);
 
-            // ── Graphical Pipeline Crossing ──────────────────────────────────
-            if (evt.category === "CROSSING") {
-                doc.setDrawColor(colors.crossing[0], colors.crossing[1], colors.crossing[2]); doc.setLineWidth(0.8);
-                doc.line(evtX - 4, pipeY - 6, evtX + 4, pipeY + 6);
-                doc.line(evtX - 4, pipeY + 6, evtX + 4, pipeY - 6);
-            }
+            // KP Scale Line & Major Ticks
+            doc.setDrawColor(...colors.muted); doc.setLineWidth(0.15);
+            doc.line(graphXStart, pipeY + 4.5, graphXEnd, pipeY + 4.5);
+            dText(doc, `KP ${trackMinKp.toFixed(3)}`, graphXStart, pipeY + 7.5, "center");
+            dText(doc, `KP ${((trackMinKp + trackMaxKp) / 2).toFixed(3)}`, graphXStart + graphW / 2, pipeY + 7.5, "center");
+            dText(doc, `KP ${trackMaxKp.toFixed(3)}`, graphXEnd, pipeY + 7.5, "center");
 
-            // ── Non-Overlapping Staggering Logic (Req #6) ─────────────────────
-            let level = 1;
-            for (const prev of placedFlags) {
-                if (Math.abs(prev.x - evtX) < 14) {
-                    level = prev.level === 1 ? 2 : prev.level === 2 ? 3 : 1;
-                }
-            }
-            placedFlags.push({ x: evtX, level });
+            [0, 0.25, 0.5, 0.75, 1].forEach(pct => {
+                const tx = graphXStart + pct * graphW;
+                doc.line(tx, pipeY + 3.8, tx, pipeY + 5.2);
+            });
 
-            // Flag Stem Height & Direction
-            let stemY = pipeY - (level === 1 ? 12 : level === 2 ? 18 : 10);
-            if (level === 3) stemY = pipeY + 12; // bottom stem if crowded
+            // ── Render Continuous Span Intervals on Track ─────────────────
+            spanIntervals.forEach(spanInt => {
+                if (spanInt.startKp <= trackMaxKp && spanInt.endKp >= trackMinKp) {
+                    const effStartKp = Math.max(spanInt.startKp, trackMinKp);
+                    const effEndKp = Math.min(spanInt.endKp, trackMaxKp);
 
-            doc.setDrawColor(categoryColor[0], categoryColor[1], categoryColor[2]); doc.setLineWidth(0.4);
-            doc.line(evtX, pipeY, evtX, stemY);
+                    const pctStart = kpSpan === 0 ? 0 : Math.min(1, Math.max(0, (effStartKp - trackMinKp) / kpSpan));
+                    const pctEnd = kpSpan === 0 ? 1 : Math.min(1, Math.max(0, (effEndKp - trackMinKp) / kpSpan));
 
-            // Badge Marker Circle
-            doc.setFillColor(categoryColor[0], categoryColor[1], categoryColor[2]);
-            doc.circle(evtX, stemY, 3, "F");
-            doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.2);
-            doc.circle(evtX, stemY, 3, "S");
+                    const sx1 = graphXStart + pctStart * graphW;
+                    const sx2 = graphXStart + pctEnd * graphW;
+                    const dropY = pipeY + 3.8;
 
-            doc.setFontSize(6.5); doc.setFont("helvetica", "bold"); doc.setTextColor(255, 255, 255);
-            doc.text(String(markerIdx), evtX, stemY + 1.2, { align: "center" });
+                    doc.setDrawColor(colors.span[0], colors.span[1], colors.span[2]);
+                    doc.setLineWidth(0.5);
+                    doc.line(sx1, dropY, sx2, dropY);
 
-            // Event Flag Tag Label
-            doc.setFontSize(5.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.text);
-            const tagTxt = `[${markerIdx}] ${evt.eventType.substring(0, 10)}`;
-            doc.text(tagTxt, evtX, level === 3 ? stemY + 4.5 : stemY - 4, { align: "center" });
-        });
+                    // Left vertical cap (only if span actually starts in this track)
+                    const isStartInTrack = spanInt.startKp >= trackMinKp;
+                    if (isStartInTrack) {
+                        doc.line(sx1, pipeY + 1.5, sx1, dropY);
+                    } else {
+                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.span);
+                        doc.text("« CONT.", Math.max(margin + 2, sx1 - 10), dropY + 1);
+                    }
 
-        // Render Bottom Event Details Table (Req #3)
-        const tableStartY = canvasY + canvasH + 2;
+                    // Right vertical cap (only if span actually ends in this track)
+                    const isEndInTrack = spanInt.endKp <= trackMaxKp;
+                    if (isEndInTrack) {
+                        doc.line(sx2, dropY, sx2, pipeY + 1.5);
+                    } else {
+                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.span);
+                        doc.text("CONT. »", Math.min(margin + contentWidth - 2, sx2 + 1), dropY + 1);
+                    }
 
-        const tableBody = pageChunk.map((evt, idx) => {
-            const markerIdx = idx + 1;
-            return [
-                `[${markerIdx}]`,
-                evt.kpDisplay,
-                evt.eventName,
-                evt.eventType,
-                evt.position,
-                evt.northing !== "-" && evt.easting !== "-" ? `N:${evt.northing}\nE:${evt.easting}` : "-",
-                evt.description
-            ];
-        });
-
-        autoTable(doc, {
-            startY: tableStartY,
-            margin: { left: margin, right: margin },
-            head: [
-                [
-                    { content: "#", styles: { halign: "center" } },
-                    { content: "KP / FP", styles: { halign: "left" } },
-                    { content: "EVENT NAME", styles: { halign: "left" } },
-                    { content: "EVENT TYPE", styles: { halign: "left" } },
-                    { content: "POSITION", styles: { halign: "center" } },
-                    { content: "GEODETIC (N / E)", styles: { halign: "left" } },
-                    { content: "DESCRIPTION / FINDINGS & OBSERVATIONS", styles: { halign: "left" } }
-                ]
-            ],
-            body: tableBody as any,
-            theme: "grid",
-            headStyles: {
-                fillColor: isPrintFriendly ? [240, 240, 240] : [31, 55, 93],
-                textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-                fontSize: 7.5,
-                fontStyle: "bold",
-                cellPadding: 2,
-                lineColor: [200, 200, 200],
-                lineWidth: 0.1
-            },
-            styles: {
-                fontSize: 7,
-                cellPadding: 2,
-                textColor: [30, 41, 59],
-                lineColor: [210, 215, 225],
-                lineWidth: 0.1,
-                valign: "middle"
-            },
-            columnStyles: {
-                0: { cellWidth: 12, halign: "center", fontStyle: "bold", textColor: [31, 55, 93] },
-                1: { cellWidth: 22, fontStyle: "bold" },
-                2: { cellWidth: 38 },
-                3: { cellWidth: 35 },
-                4: { cellWidth: 22, halign: "center" },
-                5: { cellWidth: 32 },
-                6: { cellWidth: "auto" }
-            },
-            didParseCell: (data) => {
-                if (data.section === "body" && data.column.index === 0) {
-                    const rowIdx = data.row.index;
-                    const evt = pageChunk[rowIdx];
-                    if (evt) {
-                        const catKey = (evt.category.toLowerCase() as keyof typeof colors);
-                        const catCol = colors[catKey] || colors.navy;
-                        data.cell.styles.textColor = catCol as [number, number, number];
+                    if (sx2 - sx1 > 10) {
+                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.span);
+                        doc.text(`SPAN (${spanInt.lengthM.toFixed(1)}m)`, (sx1 + sx2) / 2, dropY + 2.5, { align: "center" });
                     }
                 }
-            }
-        });
+            });
+
+            // ── Render Continuous Burial Cover Intervals on Track ──────────
+            burialIntervals.forEach(burialInt => {
+                if (burialInt.startKp <= trackMaxKp && burialInt.endKp >= trackMinKp) {
+                    const effStartKp = Math.max(burialInt.startKp, trackMinKp);
+                    const effEndKp = Math.min(burialInt.endKp, trackMaxKp);
+
+                    const pctStart = kpSpan === 0 ? 0 : Math.min(1, Math.max(0, (effStartKp - trackMinKp) / kpSpan));
+                    const pctEnd = kpSpan === 0 ? 1 : Math.min(1, Math.max(0, (effEndKp - trackMinKp) / kpSpan));
+
+                    const bx1 = graphXStart + pctStart * graphW;
+                    const bx2 = graphXStart + pctEnd * graphW;
+                    const coverY = pipeY - 3.8;
+
+                    doc.setDrawColor(colors.burial[0], colors.burial[1], colors.burial[2]);
+                    doc.setLineWidth(0.5);
+                    doc.line(bx1, coverY, bx2, coverY);
+
+                    // Left vertical cap (only if burial starts in this track)
+                    const isStartInTrack = burialInt.startKp >= trackMinKp;
+                    if (isStartInTrack) {
+                        doc.line(bx1, pipeY - 1.5, bx1, coverY);
+                    } else {
+                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.burial);
+                        doc.text("« CONT.", Math.max(margin + 2, bx1 - 10), coverY - 0.5);
+                    }
+
+                    // Right vertical cap (only if burial ends in this track)
+                    const isEndInTrack = burialInt.endKp <= trackMaxKp;
+                    if (isEndInTrack) {
+                        doc.line(bx2, coverY, bx2, pipeY - 1.5);
+                    } else {
+                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.burial);
+                        doc.text("CONT. »", Math.min(margin + contentWidth - 2, bx2 + 1), coverY - 0.5);
+                    }
+
+                    if (bx2 - bx1 > 10) {
+                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.burial);
+                        doc.text(`BURIAL (${burialInt.lengthM.toFixed(1)}m)`, (bx1 + bx2) / 2, coverY - 1.2, { align: "center" });
+                    }
+                }
+            });
+
+            // Track placed flag badge X coordinates to prevent overlaps
+            const placedFlags: { x: number; level: number }[] = [];
+
+            // Render Events on Track Graphic
+            trackEvents.forEach((evt, idx) => {
+                const globalMarkerIdx = startGlobalIdx + idx;
+                const pct = kpSpan === 0 ? (idx + 0.5) / trackEvents.length : Math.min(1, Math.max(0, (evt.kp - trackMinKp) / kpSpan));
+                const evtX = graphXStart + pct * graphW;
+
+                const categoryKey = (evt.category.toLowerCase() as keyof typeof colors);
+                const categoryColor: [number, number, number] = colors[categoryKey] || colors.general;
+
+                // Stabilizer Concrete Block
+                if (evt.category === "STABILIZER") {
+                    doc.setFillColor(colors.stabilizer[0], colors.stabilizer[1], colors.stabilizer[2]);
+                    doc.rect(evtX - 4, pipeY + 1.8, 8, 2.2, "F");
+                }
+
+                // Pipeline Crossing Mark
+                if (evt.category === "CROSSING") {
+                    doc.setDrawColor(colors.crossing[0], colors.crossing[1], colors.crossing[2]); doc.setLineWidth(0.6);
+                    doc.line(evtX - 3, pipeY - 4, evtX + 3, pipeY + 4);
+                    doc.line(evtX - 3, pipeY + 4, evtX + 3, pipeY - 4);
+                }
+
+                // Non-Overlapping Flag Pin Logic
+                let level = 1;
+                for (const prev of placedFlags) {
+                    if (Math.abs(prev.x - evtX) < 12) {
+                        level = prev.level === 1 ? 2 : 1;
+                    }
+                }
+                placedFlags.push({ x: evtX, level });
+
+                const stemY = pipeY - (level === 1 ? 6.5 : 7.8);
+
+                doc.setDrawColor(categoryColor[0], categoryColor[1], categoryColor[2]); doc.setLineWidth(0.35);
+                doc.line(evtX, pipeY - 1.5, evtX, stemY);
+
+                // Circular Badge Pin with Event Global Index
+                doc.setFillColor(categoryColor[0], categoryColor[1], categoryColor[2]);
+                doc.circle(evtX, stemY, 2.2, "F");
+                doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.15);
+                doc.circle(evtX, stemY, 2.2, "S");
+
+                doc.setFontSize(5.2); doc.setFont("helvetica", "bold"); doc.setTextColor(255, 255, 255);
+                doc.text(String(globalMarkerIdx), evtX, stemY + 0.8, { align: "center" });
+            });
+
+            // ── Track Attached Event Details Table ───────────────────────────
+            const tableStartY = canvasY + canvasH;
+
+            const tableBody = trackEvents.map((evt, idx) => {
+                const globalMarkerIdx = startGlobalIdx + idx;
+                const posStr = evt.position && evt.position !== "-" ? evt.position : evt.northing !== "-" ? `N:${evt.northing}` : "-";
+                const typeStr = evt.eventType !== evt.eventName ? `${evt.eventType}` : evt.category;
+                return [
+                    `[${globalMarkerIdx}]`,
+                    evt.kpDisplay,
+                    `${evt.eventName} (${typeStr})`,
+                    posStr,
+                    evt.description
+                ];
+            });
+
+            autoTable(doc, {
+                startY: tableStartY,
+                margin: { left: margin, right: margin },
+                head: [
+                    [
+                        { content: "#", styles: { halign: "center" } },
+                        { content: "KP / FP", styles: { halign: "left" } },
+                        { content: "EVENT NAME & TYPE", styles: { halign: "left" } },
+                        { content: "POSITION / COORD", styles: { halign: "left" } },
+                        { content: "DESCRIPTION / FINDINGS & OBSERVATIONS", styles: { halign: "left" } }
+                    ]
+                ],
+                body: tableBody as any,
+                theme: "grid",
+                headStyles: {
+                    fillColor: isPrintFriendly ? [240, 240, 240] : [31, 55, 93],
+                    textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+                    fontSize: 6.5,
+                    fontStyle: "bold",
+                    cellPadding: 1,
+                    lineColor: [200, 200, 200],
+                    lineWidth: 0.1
+                },
+                styles: {
+                    fontSize: 6.2,
+                    cellPadding: 1,
+                    textColor: [30, 41, 59],
+                    lineColor: [215, 220, 230],
+                    lineWidth: 0.1,
+                    valign: "middle",
+                    minCellHeight: 3.5
+                },
+                columnStyles: {
+                    0: { cellWidth: 10, halign: "center", fontStyle: "bold" },
+                    1: { cellWidth: 20, fontStyle: "bold" },
+                    2: { cellWidth: 52 },
+                    3: { cellWidth: 32 },
+                    4: { cellWidth: "auto" }
+                },
+                didParseCell: (data) => {
+                    if (data.section === "body" && data.column.index === 0) {
+                        const rowIdx = data.row.index;
+                        const evt = trackEvents[rowIdx];
+                        if (evt) {
+                            const catKey = (evt.category.toLowerCase() as keyof typeof colors);
+                            const catCol = colors[catKey] || colors.navy;
+                            data.cell.styles.textColor = catCol as [number, number, number];
+                        }
+                    }
+                }
+            });
+
+            currentY = (doc as any).lastAutoTable.finalY + 3;
+        }
     }
 
     // Apply Watermark, Signatures & Page Numbers
@@ -760,4 +830,79 @@ export const generatePipelineEventSketchReport = async (
 function dText(doc: jsPDF, txt: string, x: number, y: number, align: "left" | "center" | "right" = "left") {
     doc.setFontSize(6); doc.setFont("helvetica", "normal"); doc.setTextColor(71, 85, 105);
     doc.text(txt, x, y, { align });
+}
+
+interface PipelineFeatureInterval {
+    id: string;
+    type: "SPAN" | "BURIAL";
+    startKp: number;
+    endKp: number;
+    lengthM: number;
+    heightDepthM: number;
+}
+
+function extractFeatureIntervals(allEvents: PipelineEventItem[], categoryTarget: "SPAN" | "BURIAL"): PipelineFeatureInterval[] {
+    const targetEvents = allEvents.filter(e => e.category === categoryTarget);
+    const intervals: PipelineFeatureInterval[] = [];
+    const processedIndices = new Set<number>();
+
+    for (let i = 0; i < targetEvents.length; i++) {
+        if (processedIndices.has(i)) continue;
+        const e1 = targetEvents[i];
+
+        const text1 = `${e1.eventName} ${e1.eventType} ${e1.description}`.toUpperCase();
+        const isStart1 = text1.includes("START") || text1.includes("BEGIN") || text1.includes("INIT");
+        const isEnd1 = text1.includes("END") || text1.includes("FINISH") || text1.includes("TERM");
+
+        let pairedIdx = -1;
+        for (let j = i + 1; j < targetEvents.length; j++) {
+            if (processedIndices.has(j)) continue;
+            const e2 = targetEvents[j];
+            const text2 = `${e2.eventName} ${e2.eventType} ${e2.description}`.toUpperCase();
+            const isStart2 = text2.includes("START") || text2.includes("BEGIN");
+            const isEnd2 = text2.includes("END") || text2.includes("FINISH");
+
+            if ((isStart1 && isEnd2) || (isEnd1 && isStart2) || (!isStart1 && !isEnd1 && (isStart2 || isEnd2))) {
+                pairedIdx = j;
+                break;
+            }
+        }
+
+        if (pairedIdx !== -1) {
+            const e2 = targetEvents[pairedIdx];
+            processedIndices.add(i);
+            processedIndices.add(pairedIdx);
+
+            const minKp = Math.min(e1.kp, e2.kp);
+            const maxKp = Math.max(e1.kp, e2.kp);
+            const kpDiffM = (maxKp - minKp) * 1000;
+            const lengthM = Math.max(e1.spanLength || e2.spanLength || 0, kpDiffM > 0 ? kpDiffM : 5);
+            const heightM = e1.spanHeight || e2.spanHeight || e1.burialDepth || e2.burialDepth || 0;
+
+            intervals.push({
+                id: `${e1.id}_${e2.id}`,
+                type: categoryTarget,
+                startKp: minKp,
+                endKp: maxKp > minKp ? maxKp : minKp + (lengthM / 1000),
+                lengthM: Math.max(lengthM, kpDiffM),
+                heightDepthM: heightM
+            });
+        } else {
+            processedIndices.add(i);
+            const lenM = e1.spanLength || e1.burialDepth || 5;
+            const minKp = e1.kp;
+            const maxKp = e1.kp + (lenM / 1000);
+
+            intervals.push({
+                id: String(e1.id),
+                type: categoryTarget,
+                startKp: minKp,
+                endKp: maxKp,
+                lengthM: lenM,
+                heightDepthM: e1.spanHeight || e1.burialDepth || 0
+            });
+        }
+    }
+
+    return intervals;
 }

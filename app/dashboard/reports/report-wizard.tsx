@@ -115,6 +115,7 @@ export const REPORT_TEMPLATES = {
     ],
     inspection: [
         { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "defect-summary-pipeline", name: "Defect Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-summary", name: "Findings Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all findings with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
         { id: "defect-anomaly-report", name: "Defect / Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
@@ -151,6 +152,7 @@ export const REPORT_TEMPLATES = {
         { id: "rov-rcasn-sketch-report", name: "Caisson Survey (Sketch) Report (ROV)", icon: FileBarChart, description: "Detailed ROV Caisson inspection with graphical elevation profiles and terminator sketch", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcond-sketch-report", name: "Conductor Survey (Sketch) Report (ROV)", icon: FileBarChart, description: "Detailed ROV Conductor inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "pipeline-event-sketch-report", name: "Pipeline Event List Sketch Report", icon: Compass, description: "Landscape Pipeline Navigation event list sketch report with graphical KP pipeline elevation profile, span/burial profiles, geodetic header, and matched event table", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-navig-report", name: "Pipeline Visual Inspection Report", icon: FileBarChart, description: "Landscape Pipeline Visual Inspection Report for inspection type NAVIG — Item No., Date, Time, Easting, Northing, KP, Depth, CP Reading, Event Name, Finding & Anomaly Priority", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-bl-report", name: "Boatlanding Survey Report (ROV)", icon: FileBarChart, description: "Portrait Boatlanding Survey report — grouped by Boatlanding (BL) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rg-report", name: "Riser Guard Survey Report (ROV)", icon: FileBarChart, description: "Portrait Riser Guard Survey report — grouped by Riser Guard (RG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-sg-report", name: "Caisson Guard Survey Report (ROV)", icon: FileBarChart, description: "Portrait Caisson Guard Survey report — grouped by Caisson Guard (SG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
@@ -1638,6 +1640,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVCondReport }  = await import("@/utils/report-generators/rov-rcond-report");
             const { generateROVCondSketchReport } = await import("@/utils/report-generators/rov-rcond-sketch-report");
             const { generatePipelineEventSketchReport } = await import("@/utils/report-generators/pipeline-event-sketch-report");
+            const { generateROVNavigReport } = await import("@/utils/report-generators/rov-navig-report");
             const { generateROVBoatlandingReport } = await import("@/utils/report-generators/rov-boatlanding-report");
             const { generateROVRiserGuardReport } = await import("@/utils/report-generators/rov-riser-guard-report");
             const { generateROVCaissonGuardReport } = await import("@/utils/report-generators/rov-caisson-guard-report");
@@ -1837,6 +1840,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return await generateDefectSummaryReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
+        // Defect Summary Report (Pipeline)
+        if (currentTemplateId === "defect-summary-pipeline" || currentTemplateId === "defect-summary-pipeline-report") {
+            const { generatePipelineDefectSummaryReport } = await import("@/utils/report-generators/defect-summary-pipeline-report");
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            if (!jobPack && !selections.printBlankReport) return null;
+
+            return await generatePipelineDefectSummaryReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig as any);
+        }
+
         // Defect / Anomaly Report / Findings Report
         if (currentTemplateId === "defect-anomaly-report" || currentTemplateId === "findings-report") {
             const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
@@ -1934,6 +1947,64 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 selections.sowReportNo || "N/A",
                 companySettings,
                 { ...reportConfig, returnBlob, structureId: Number(selections.structureId), sowReportNo: selections.sowReportNo, headerData } as any,
+                records
+            );
+        }
+
+        // Pipeline Visual Inspection Report (ROV) - NAVIG
+        if (currentTemplateId === "rov-navig-report" || currentTemplateId === "rov_navig_report" || currentTemplateId === "pipeline-visual-inspection-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
+
+            let records: any[] = [];
+            if (!selections.printBlankReport && selections.structureId) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    const structId = Number(selections.structureId);
+                    let q = supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            structure_components:component_id(id, q_id, code, metadata)
+                        `)
+                        .eq('structure_id', structId)
+                        .order('insp_id', { ascending: true });
+
+                    if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                        q = q.eq('sow_report_no', selections.sowReportNo);
+                    }
+
+                    const { data } = await q;
+                    if (data && data.length > 0) records = data;
+                } catch (err) {
+                    console.error("Error fetching records for NAVIG report", err);
+                }
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack.metadata.contrac).maybeSingle();
+                    contractorLogoUrl = contrData?.logo_url || "";
+                } catch (e) {}
+            }
+            const headerData = {
+                date: format(new Date(), "dd/MM/yyyy"),
+                jobpackName: jobPack?.name || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure?.str_name || structure?.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateROVNavigReport(
+                jobPack || {},
+                structure || {},
+                selections.sowReportNo || "N/A",
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: Number(selections.structureId), sowReportNo: selections.sowReportNo, printBlankReport: selections.printBlankReport, isBlankReport: selections.printBlankReport, headerData } as any,
                 records
             );
         }

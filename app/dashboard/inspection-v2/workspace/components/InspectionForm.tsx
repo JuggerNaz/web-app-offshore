@@ -21,7 +21,9 @@ import {
     Camera, 
     CloudUpload,
     Search,
-    Loader2
+    Loader2,
+    Sparkles,
+    RefreshCw
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -1578,8 +1580,18 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         <select value={anomalyData.priority} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, priority: e.target.value }))} className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-semibold dark:text-slate-200 ${ringClass}`}><option value="">Select Priority</option>{priorities.map(p => (<option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>))}</select>
                                     </div>
                                     <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
-                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Reference No</label>
-                                        <div className="relative"><input ref={refInputRef} type="text" value={anomalyData.referenceNo} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, referenceNo: e.target.value }))} onFocus={() => setPrevRefNo(anomalyData.referenceNo)} onBlur={async (e) => { const isValid = await validateAnomalyRef(e.target.value); if (!isValid) setTimeout(() => refInputRef.current?.focus(), 10); }} placeholder="Enter reference no..." className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-mono font-bold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`} /></div>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Reference No</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAnomalyData((prev: any) => ({ ...prev, referenceNo: "" }))}
+                                                className="text-[9px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-1 cursor-pointer transition-colors"
+                                                title="Auto-generate next reference number"
+                                            >
+                                                <Sparkles className="w-2.5 h-2.5" /> Auto-Gen
+                                            </button>
+                                        </div>
+                                        <div className="relative"><input ref={refInputRef} type="text" value={anomalyData.referenceNo} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, referenceNo: e.target.value }))} onFocus={() => setPrevRefNo(anomalyData.referenceNo)} onBlur={async (e) => { const isValid = await validateAnomalyRef(e.target.value); if (!isValid) setTimeout(() => refInputRef.current?.focus(), 10); }} placeholder="Auto-generating..." className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-mono font-bold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`} /></div>
                                     </div>
                                     <div className="space-y-1.5 flex-grow min-w-full">
                                         <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Recommendation</label>

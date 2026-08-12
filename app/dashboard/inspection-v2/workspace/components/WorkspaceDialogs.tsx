@@ -136,6 +136,7 @@ interface WorkspaceDialogsProps {
         rgviPreviewOpen: boolean;
         rcondSketchPreviewOpen: boolean;
         pipelineEventSketchPreviewOpen?: boolean;
+        navigPreviewOpen?: boolean;
         showRemovalConfirm: boolean;
         editingRecordId: number | null;
         pendingReclass: any;
@@ -251,6 +252,7 @@ interface WorkspaceDialogsProps {
         setRgviPreviewOpen: (open: boolean) => void;
         setRcondSketchPreviewOpen: (open: boolean) => void;
         setPipelineEventSketchPreviewOpen?: (open: boolean) => void;
+        setNavigPreviewOpen?: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
         setPendingReclass: (val: any) => void;
         setShowTaskSelector: (open: boolean) => void;
@@ -298,9 +300,12 @@ interface WorkspaceDialogsProps {
         setDivingDcasnTsPreviewOpen: (open: boolean) => void;
         setDivingDcondUwPreviewOpen: (open: boolean) => void;
         setDivingDcondTsPreviewOpen: (open: boolean) => void;
+        setPipelineDefectSummaryPreviewOpen?: (open: boolean) => void;
+        pipelineDefectSummaryPreviewOpen?: boolean;
+        pipelineEventSketchPreviewOpen?: boolean;
+        navigPreviewOpen?: boolean;
         setIsReportWizardOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
-
         setRovCalibrationDialogOpen: (open: boolean) => void;
         setReportConfig: (cfg: any) => void;
     };
@@ -363,6 +368,10 @@ interface WorkspaceDialogsProps {
         generateRCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePipelineEventSketchReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generatePipelineDefectSummaryReport?: () => void;
+        generatePipelineDefectSummaryReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateROVNavigReport?: () => void;
+        generateROVNavigReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSeabedReport: (templateId?: string) => Promise<void>;
         generateSeabedReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSeabedDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -493,6 +502,7 @@ export function WorkspaceDialogs({
         rgviPreviewOpen,
         rcondSketchPreviewOpen,
         pipelineEventSketchPreviewOpen,
+        navigPreviewOpen,
         showRemovalConfirm,
         editingRecordId,
         pendingReclass,
@@ -598,6 +608,7 @@ export function WorkspaceDialogs({
         setRgviPreviewOpen,
         setRcondSketchPreviewOpen,
         setPipelineEventSketchPreviewOpen,
+        setNavigPreviewOpen,
         setShowRemovalConfirm,
         setPendingReclass,
         setShowTaskSelector,
@@ -690,6 +701,8 @@ export function WorkspaceDialogs({
         generateRCONDReportBlob,
         generateRCONDSketchReportBlob,
         generatePipelineEventSketchReportBlob,
+        generateROVNavigReport,
+        generateROVNavigReportBlob,
         generateSeabedReport,
         generateSeabedReportBlob,
         generateSeabedDetailReportBlob,
@@ -2777,6 +2790,17 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={navigPreviewOpen || false} 
+                onOpenChange={setNavigPreviewOpen || (() => {})} 
+                title="Pipeline Visual Inspection Report Preview" 
+                fileName={`Pipeline_Visual_Inspection_Report_${headerData.sowReportNo}`} 
+                generateReport={generateROVNavigReportBlob || (async () => {})} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={seabedPreviewOpen}
                 onOpenChange={setSeabedPreviewOpen}
                 title={(() => {
@@ -3268,6 +3292,8 @@ export function WorkspaceDialogs({
                     generateRCONDReport: () => setters.setRcondPreviewOpen(true),
                     generateRCONDSketchReport: () => setters.setRcondSketchPreviewOpen(true),
                     generatePipelineEventSketchReport: () => setters.setPipelineEventSketchPreviewOpen ? setters.setPipelineEventSketchPreviewOpen(true) : handlers.generatePipelineEventSketchReport?.(),
+                    generateROVNavigReport: () => setters.setNavigPreviewOpen ? setters.setNavigPreviewOpen(true) : handlers.generateROVNavigReport?.(),
+                    generatePipelineDefectSummaryReport: () => setters.setPipelineDefectSummaryPreviewOpen ? setters.setPipelineDefectSummaryPreviewOpen(true) : handlers.generatePipelineDefectSummaryReport?.(),
                     generateBLReport: () => setters.setBlPreviewOpen(true),
                     generateRGReport: () => setters.setRgPreviewOpen(true),
                     generateSGReport: () => setters.setSgPreviewOpen(true),
@@ -3354,8 +3380,29 @@ export function WorkspaceDialogs({
                             case 'PIPE-EVT-S':
                             case 'PIPE_EVT_S':
                             case 'PIPELINE_EVENT_SKETCH': setters.setPipelineEventSketchPreviewOpen?.(true); break;
+                            case 'DSR-PL':
+                            case 'DSR_PL':
+                            case 'DEFECT_SUMMARY_PIPELINE':
+                            case 'defect_summary_pipeline': setters.setPipelineDefectSummaryPreviewOpen?.(true); break;
                             default: toast.error("No preview available for type " + code);
                         }
+                    }
+                }}
+            />
+
+            {/* ── DEFECT SUMMARY REPORT (PIPELINE) PREVIEW DIALOG ────────────── */}
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={setters.pipelineDefectSummaryPreviewOpen || false}
+                onOpenChange={(open) => setters.setPipelineDefectSummaryPreviewOpen?.(open)}
+                title="Defect Summary Report (Pipeline) Preview"
+                fileName={`Pipeline_Defect_Summary_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                generateReport={async (pf, ss) => {
+                    if (handlers.generatePipelineDefectSummaryReportBlob) {
+                        return await handlers.generatePipelineDefectSummaryReportBlob(pf, ss);
                     }
                 }}
             />

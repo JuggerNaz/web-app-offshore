@@ -119,17 +119,23 @@ export const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: num
 };
 
 // Helper to format date as dd-mm-yyyy
-export const formatPdfDate = (dateStr?: string): string => {
+export const formatPdfDate = (dateStr?: any): string => {
     if (!dateStr) return "";
-    // Handle dd/mm/yyyy or yyyy-mm-dd
-    if (dateStr.includes("/")) {
-        return dateStr;
+    if (dateStr instanceof Date) {
+        const d = String(dateStr.getDate()).padStart(2, "0");
+        const m = String(dateStr.getMonth() + 1).padStart(2, "0");
+        const y = dateStr.getFullYear();
+        return `${d}-${m}-${y}`;
     }
-    const parts = dateStr.split("-");
+    const str = String(dateStr).trim();
+    if (str.includes("/")) {
+        return str;
+    }
+    const parts = str.split("-");
     if (parts.length === 3) {
         return `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
-    return dateStr;
+    return str;
 };
 
 // Global watermark and signature overlay function

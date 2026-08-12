@@ -462,17 +462,6 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         >
                             <Printer className="w-4 h-4 text-cyan-400" /> Open Report Wizard...
                         </DropdownMenuItem>
-                        {generatePipelineEventSketchReport && (
-                            <>
-                                <div className="my-1 border-t border-slate-800" />
-                                <DropdownMenuItem 
-                                    onClick={generatePipelineEventSketchReport}
-                                    className="text-xs font-medium hover:bg-slate-800 cursor-pointer py-2 text-slate-200 flex items-center gap-2"
-                                >
-                                    <Compass className="w-4 h-4 text-teal-400" /> Pipeline Event Sketch Report
-                                </DropdownMenuItem>
-                            </>
-                        )}
                     </DropdownMenuContent>
                 </DropdownMenu>
  

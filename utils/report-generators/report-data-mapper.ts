@@ -368,6 +368,9 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'rov-cu-report') {
                 const { generateROVConductorGuardReport } = await import("./rov-conductor-guard-report");
                 pdfBlob = await generateROVConductorGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCDG"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (templateId === 'rov-navig-report' || templateId === 'navig-report') {
+                const { generateROVNavigReport } = await import("./rov-navig-report");
+                pdfBlob = await generateROVNavigReport(jobPack, structure, sowReportNo || "N/A", companySettings || {}, { headerData: { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, returnBlob: true, showSignatures: false, showPageNumbers: false } as any, records);
             } else if (templateId === 'rov-rcond-sketch-report') {
                 const { generateROVCondSketchReport } = await import("./rov-rcond-sketch-report");
                 pdfBlob = await generateROVCondSketchReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCOND"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);

@@ -1610,41 +1610,56 @@ function V10PreviewLayout() {
     }
   }, [isPipeline, headerData, selectedComp, componentsSow, allInspectionTypes, activeSpec]);
 
-  // AUTO-GENERATE ANOMALY REFERENCE NO FOR NEW RECORDS WHEN TYPE CHANGES
+  // AUTO-GENERATE ANOMALY / FINDING REFERENCE NO WHEN TYPE CHANGES OR WHEN MISSING
   useEffect(() => {
-    if (!editingRecordId && (findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo && structureId && headerData?.sowReportNo) {
+    if ((findingType === "Anomaly" || findingType === "Finding") && structureId) {
       const isAnomaly = findingType === "Anomaly";
       const category = isAnomaly ? "ANOMALY" : "FINDING";
       const prefix = isAnomaly ? "A" : "F";
+      const targetPrefix = `/ ${prefix}-`;
 
-      const generateRef = async () => {
-        try {
-          const { data: allAnoms } = await supabase
-            .from("insp_anomalies")
-            .select("sequence_no, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
-            .eq("insp_records.structure_id", parseInt(structureId || "0"))
-            .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"))
-            .eq("insp_records.sow_report_no", headerData.sowReportNo);
+      const currentRef = anomalyData?.referenceNo || "";
+      const isWrongPrefix = currentRef.length > 0 && !currentRef.includes(targetPrefix);
+      const isMissingRef = !currentRef || currentRef.trim() === "";
 
-          let vMaxSeq = 0;
-          if (allAnoms) {
-            for (const a of allAnoms) {
-              const refCategory = a.anomaly_ref_no?.includes(` / ${prefix}-`) ? category : (isAnomaly ? "FINDING" : "ANOMALY");
-              if (refCategory === category && a.sequence_no > vMaxSeq) {
-                vMaxSeq = a.sequence_no;
+      if (isMissingRef || isWrongPrefix) {
+        const generateRef = async () => {
+          try {
+            let query = supabase
+              .from("insp_anomalies")
+              .select("sequence_no, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
+              .eq("insp_records.structure_id", parseInt(structureId || "0"))
+              .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"));
+
+            if (headerData?.sowReportNo) {
+              query = query.eq("insp_records.sow_report_no", headerData.sowReportNo);
+            }
+
+            const { data: allAnoms } = await query;
+
+            let vMaxSeq = 0;
+            if (allAnoms) {
+              for (const a of allAnoms) {
+                const refCategory = a.anomaly_ref_no?.includes(` / ${prefix}-`) ? category : (isAnomaly ? "FINDING" : "ANOMALY");
+                if (refCategory === category && (a.sequence_no || 0) > vMaxSeq) {
+                  vMaxSeq = a.sequence_no;
+                }
               }
             }
+            const seq = vMaxSeq + 1;
+            const structLabel = headerData?.platformName || headerData?.structureName || selectedComp?.name || selectedComp?.str_name || "REF";
+            const baseRef = `${new Date().getFullYear()} / ${structLabel} / ${prefix}-${seq.toString().padStart(3, "0")}`;
+            const finalRef = anomalyData?.rectify ? baseRef + "R" : baseRef;
+
+            setAnomalyData((prev: any) => ({ ...prev, referenceNo: finalRef }));
+          } catch (e) {
+            console.error("[AnomalyRef] Failed to pre-generate ref:", e);
           }
-          const seq = vMaxSeq + 1;
-          const baseRef = `${new Date().getFullYear()} / ${headerData.platformName || "REF"} / ${prefix}-${seq.toString().padStart(3, "0")}`;
-          setAnomalyData(prev => ({ ...prev, referenceNo: baseRef }));
-        } catch (e) {
-          console.error("[AnomalyRef] Failed to pre-generate ref:", e);
-        }
-      };
-      generateRef();
+        };
+        generateRef();
+      }
     }
-  }, [findingType, structureId, headerData?.sowReportNo, jobPackId, headerData?.platformName]);
+  }, [findingType, anomalyData?.referenceNo, anomalyData?.rectify, structureId, headerData?.sowReportNo, jobPackId, headerData?.platformName, selectedComp]);
 
   const {
     previewOpen,
@@ -1839,6 +1854,10 @@ function V10PreviewLayout() {
     generatePipelineEventSketchReportBlob,
     pipelineEventSketchPreviewOpen,
     setPipelineEventSketchPreviewOpen,
+    generateROVNavigReport,
+    generateROVNavigReportBlob,
+    navigPreviewOpen,
+    setNavigPreviewOpen,
     generateSeabedReport,
     generateSeabedReportBlob,
     generateSeabedDetailReport,
@@ -8538,6 +8557,7 @@ function V10PreviewLayout() {
           rgviPreviewOpen,
           rcondSketchPreviewOpen,
           pipelineEventSketchPreviewOpen,
+          navigPreviewOpen,
           showRemovalConfirm,
           editingRecordId,
           pendingReclass,
@@ -8675,6 +8695,7 @@ function V10PreviewLayout() {
           setRcasnPreviewOpen,
           setRcasnSketchPreviewOpen,
           setPipelineEventSketchPreviewOpen,
+          setNavigPreviewOpen,
           setRrisiPreviewOpen,
           setRrisiDetailPreviewOpen,
           setJtisiPreviewOpen,
@@ -8768,6 +8789,8 @@ function V10PreviewLayout() {
           generateRCONDReportBlob,
           generateRCONDSketchReportBlob,
           generatePipelineEventSketchReportBlob,
+          generateROVNavigReport,
+          generateROVNavigReportBlob,
           generateSeabedReport,
           generateSeabedReportBlob,
           generateSeabedDetailReportBlob,
