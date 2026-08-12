@@ -1163,7 +1163,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 end.copy(bottomCoords);
                 thickness = 0.2;
                 resolved = true;
-            } else if (md.associated_comp_id && code !== "VM" && !isPointNodeWeld) {
+            } else if (md.associated_comp_id && code !== "VM") {
                 if (code !== "WN") {
                     pendingAttachments.push(c);
                 }
@@ -1198,13 +1198,68 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 end.copy(start);
                 resolved = true;
             } else if (
-                code === "RS" ||
                 code === "CS" ||
-                code === "CO" ||
                 code === "CA" ||
+                code.includes("CAIS") ||
+                qIdUpper.startsWith("CS-")
+            ) {
+                // Caisson 3D Placement: Detect start node (s_node) and place top under start node weld in flush contact
+                const sNodeName = (md.s_node || md.start_node || c.s_node || "").toString().trim().toUpperCase();
+                const fNodeName = (md.f_node || md.end_node || c.f_node || "").toString().trim().toUpperCase();
+                const sLegName = (md.s_leg || md.leg || c.s_leg || "").toString().trim().toUpperCase();
+                const fLegName = (md.f_leg || md.leg || c.f_leg || "").toString().trim().toUpperCase();
+
+                const sNodePos = sNodeName ? (lookupNode(sNodeName, sLegName) || lookupNode(sNodeName, undefined)) : null;
+                const fNodePos = fNodeName ? (lookupNode(fNodeName, fLegName) || lookupNode(fNodeName, undefined)) : null;
+
+                const contactOffset = 0.275; // Half height of weld collar (0.55m) for flush contact below weld collar
+
+                if (sNodePos) {
+                    start.set(sNodePos.x, sNodePos.y - contactOffset, sNodePos.z);
+                } else if (sLegName && md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== "") {
+                    const y1 = sanitizeElevation(md.elv_1);
+                    const coords1 = getLegCoordsAtElv(sLegName, y1);
+                    start.set(coords1.x, y1 - contactOffset, coords1.z);
+                } else if (md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== "") {
+                    const y1 = sanitizeElevation(md.elv_1);
+                    start.set(0, y1 - contactOffset, 0);
+                } else {
+                    start.set(0, maxElv - contactOffset, 0);
+                }
+
+                if (fNodePos) {
+                    const y2 = (md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "")
+                        ? sanitizeElevation(md.elv_2)
+                        : fNodePos.y;
+                    end.set(fNodePos.x, y2, fNodePos.z);
+                } else if (fLegName && md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "") {
+                    const y2 = sanitizeElevation(md.elv_2);
+                    const coords2 = getLegCoordsAtElv(fLegName, y2);
+                    end.set(coords2.x, y2, coords2.z);
+                } else if (md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "") {
+                    const y2 = sanitizeElevation(md.elv_2);
+                    end.set(start.x, y2, start.z);
+                } else {
+                    end.set(start.x, seabedY, start.z);
+                }
+
+                if (end.y >= start.y) {
+                    if (md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "") {
+                        const y2 = sanitizeElevation(md.elv_2);
+                        if (y2 < start.y) end.setY(y2);
+                        else end.setY(start.y - 2.0);
+                    } else {
+                        end.setY(seabedY < start.y ? seabedY : start.y - 2.0);
+                    }
+                }
+
+                thickness = 0.30;
+                resolved = true;
+            } else if (
+                code === "RS" ||
+                code === "CO" ||
                 code.includes("RISER") ||
-                code.includes("RISR") ||
-                code.includes("CAIS")
+                code.includes("RISR")
             ) {
                 const getScaleFactor = (yVal: number) => {
                     if (isD21JT) {
@@ -1611,15 +1666,21 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             const { start: pStart, end: pEnd, thickness: pThickness, component: parentComp } = parentLayout;
             const parentCode = (parentComp?.code || "").toUpperCase();
             const parentQId = (parentComp?.q_id || "").toUpperCase();
-            const isParentVD =
-                parentCode === "VD" ||
-                parentCode === "VDM" ||
-                parentCode.includes("VD") ||
-                parentCode.includes("V-DIAG") ||
-                parentQId.includes("VD") ||
-                parentQId.includes("VDM");
+            const isParentCaisson = parentCode === "CS" || parentCode === "CA" || parentCode.includes("CAIS") || parentQId.startsWith("CS-");
+            let caissonTop = pStart.clone();
+            if (isParentCaisson) {
+                const pMd = parentComp?.metadata || {};
+                const sNodeName = (pMd.s_node || pMd.start_node || parentComp?.s_node || "").toString().trim().toUpperCase();
+                const sLegName = (pMd.s_leg || pMd.leg || parentComp?.s_leg || "").toString().trim().toUpperCase();
+                const sNodePos = sNodeName ? (lookupNode(sNodeName, sLegName) || lookupNode(sNodeName, undefined)) : null;
+                if (sNodePos) {
+                    caissonTop = sNodePos.clone();
+                } else {
+                    caissonTop = pStart.clone().add(new THREE.Vector3(0, 0.275, 0));
+                }
+            }
 
-            const direction = pEnd.clone().sub(pStart).normalize();
+            const direction = pEnd.clone().sub(isParentCaisson ? caissonTop : pStart).normalize();
 
             const anodeChildren = children.filter((c) => {
                 const code = (c.code || "").toUpperCase();
@@ -1634,7 +1695,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     let start = new THREE.Vector3();
                     let end = new THREE.Vector3();
                     const t = (idx + 1) / (anodeCount + 1);
-                    start.copy(pStart).lerp(pEnd, t);
+                    start.copy(isParentCaisson ? caissonTop : pStart).lerp(pEnd, t);
                     if (direction.lengthSq() > 0.1) {
                         end.copy(start).add(direction.clone().multiplyScalar(0.1));
                     } else {
@@ -1661,17 +1722,24 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 let end = new THREE.Vector3();
 
                 const targetY = sanitizeElevation(md.elv_1 || -parseFloat(md.depth) / 10);
-                if (Math.abs(pEnd.y - pStart.y) > 0.001) {
-                    const t = (targetY - pStart.y) / (pEnd.y - pStart.y);
+                const topRef = isParentCaisson ? caissonTop : pStart;
+                if (Math.abs(pEnd.y - topRef.y) > 0.001) {
+                    const t = (targetY - topRef.y) / (pEnd.y - topRef.y);
                     const clampedT = Math.max(0, Math.min(1, t));
-                    start.copy(pStart).lerp(pEnd, clampedT);
+                    start.copy(topRef).lerp(pEnd, clampedT);
                 } else {
-                    start.copy(pStart).add(pEnd).multiplyScalar(0.5);
+                    start.copy(topRef).add(pEnd).multiplyScalar(0.5);
                     start.setY(targetY);
                 }
 
-                if (direction.lengthSq() > 0.1) {
-                    end.copy(start).add(direction.multiplyScalar(0.1));
+                const cCode = (c.code || "").toUpperCase();
+                const cQId = (c.q_id || "").toUpperCase();
+                const isChildCaissonSupport = cCode === "WP" || cCode === "CL" || cQId.includes("SUPP") || cQId.includes("CLP");
+
+                if (isChildCaissonSupport && isParentCaisson) {
+                    end.copy(start).add(direction.clone().multiplyScalar(0.001));
+                } else if (direction.lengthSq() > 0.1) {
+                    end.copy(start).add(direction.clone().multiplyScalar(0.1));
                 } else {
                     end.copy(start);
                 }
@@ -1688,7 +1756,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 start.copy(pStart).lerp(pEnd, t);
 
                 if (direction.lengthSq() > 0.1) {
-                    end.copy(start).add(direction.multiplyScalar(0.1));
+                    end.copy(start).add(direction.clone().multiplyScalar(0.1));
                 } else {
                     end.copy(start);
                 }

@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Fender } from "./Fender";
 import { RiserGuard } from "./RiserGuard";
+import { CaissonSupport } from "./CaissonSupport";
+import { RiserClamp } from "./RiserClamp";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
     OrbitControls,
@@ -52,8 +54,8 @@ function parseRiserClampInfo(qId: string) {
     if (!qId) return null;
     const clean = qId.toUpperCase().trim();
 
-    // Matches formats like: RIS-7-SUPP-20M, RIS-2-SUPP 3M, RIS-2-SUPP-35M, RIS-2-SUPP-+3M, RIS-2-CLP-20M
-    const match = clean.match(/RIS[-_]?(\d+)[-_]?(?:SUPP|CLP|CLAMP)[-_ ]*(\+|-)?\s*(\d+(?:\.\d+)?)M?/i);
+    // Matches formats like: RIS-7-SUPP-20M, RIS-X-SUPP 6M, RIS-2-SUPP-+3M
+    const match = clean.match(/RIS[-_]?([A-Z0-9]+)[-_]?(?:SUPP|CLP|CLAMP)[-_ ]*(\+|-)?\s*(\d+(?:\.\d+)?)M?/i);
     if (!match) return null;
 
     const riserNum = match[1];
@@ -256,20 +258,30 @@ const ComponentMesh = ({
 
         // Tangent rotation angle for anode group orientation
         anodeRotY = Math.atan2(ox, oz);
-    } else if (isClamp) {
+    } 
+    
+    let riserThickness = baseThickness;
+    if (isClamp) {
         direction = new THREE.Vector3(0, 1, 0);
 
         const clampInfo = parseRiserClampInfo(component?.q_id || "");
-        if (clampInfo && allLayouts && allLayouts.length > 0) {
-            const targetRiser = allLayouts.find((l: any) => {
-                const q = (l.component?.q_id || l.q_id || l.id || "").toString().toUpperCase();
-                return (
-                    q.includes(`R${clampInfo.riserNum}-`) ||
-                    q.includes(`R${clampInfo.riserNum}_`) ||
-                    q.includes(`RISER ${clampInfo.riserNum}`) ||
-                    q.includes(`RISER-${clampInfo.riserNum}`)
-                );
-            });
+        
+        let targetRiser = null;
+        if (allLayouts && allLayouts.length > 0) {
+            if (md?.associated_comp_id) {
+                targetRiser = allLayouts.find((l: any) => l.component?.id === md.associated_comp_id);
+            }
+            if (!targetRiser && clampInfo) {
+                targetRiser = allLayouts.find((l: any) => {
+                    const q = (l.component?.q_id || l.q_id || l.id || "").toString().toUpperCase();
+                    return (
+                        q.includes(`R${clampInfo.riserNum}-`) ||
+                        q.includes(`R${clampInfo.riserNum}_`) ||
+                        q.includes(`RISER ${clampInfo.riserNum}`) ||
+                        q.includes(`RISER-${clampInfo.riserNum}`)
+                    );
+                });
+            }
 
             if (targetRiser) {
                 const rStart = new THREE.Vector3(...(targetRiser.start || targetRiser.position || [0, 0, 0]));
@@ -277,8 +289,17 @@ const ComponentMesh = ({
                 const targetMd = targetRiser.component?.metadata || targetRiser.metadata || targetRiser;
                 const { offsetStart, offsetEnd } = computeRiserOffsetEndpoints(rStart, rEnd, 0.75, 0.08, targetMd);
 
-                const t = Math.max(0, Math.min(1, (clampInfo.targetY - offsetStart.y) / (offsetEnd.y - offsetStart.y || 1)));
+                const targetY = clampInfo ? clampInfo.targetY : position.y;
+                const t = Math.max(0, Math.min(1, (targetY - offsetStart.y) / (offsetEnd.y - offsetStart.y || 1)));
                 position = offsetStart.clone().lerp(offsetEnd, t);
+                
+                if (offsetEnd.distanceTo(offsetStart) > 0.001) {
+                    direction = offsetEnd.clone().sub(offsetStart).normalize();
+                    quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+                    euler.setFromQuaternion(quaternion);
+                }
+                
+                riserThickness = targetRiser.thickness || targetRiser.component?.metadata?.thickness || baseThickness;
             }
         }
     }
@@ -613,6 +634,135 @@ const ComponentMesh = ({
         );
     }
 
+    const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
+    if (isCaissonSupport) {
+        const caissonSupportGroup = useMemo(() => {
+            let supportColor = "#facc15";
+            if (isInspectionHighlighted) {
+                if (inspectionStatus === "HAS_ANOMALY") supportColor = "#ef4444";
+                else if (inspectionStatus === "NO_ANOMALY") supportColor = "#10b981";
+                else supportColor = "#94a3b8";
+            }
+            return new CaissonSupport({
+                outerRadius: (baseThickness || 0.3) / 2 + 0.04,
+                height: 0.35,
+                lugProtrusion: 0.16,
+                lugWidth: 0.14,
+                lugHeight: 0.28,
+                color: supportColor,
+                isSelected,
+                isHovered: hovered,
+            });
+        }, [baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus]);
+
+        return (
+            <group
+                position={[position.x, position.y, position.z]}
+                rotation={euler}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClick();
+                }}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onDoubleClick) onDoubleClick();
+                }}
+                onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setHovered(true);
+                }}
+                onPointerOut={(e) => {
+                    e.stopPropagation();
+                    setHovered(false);
+                }}
+            >
+                <primitive object={caissonSupportGroup} />
+
+                {/* Click target wrapper */}
+                <mesh castShadow={false} receiveShadow={false}>
+                    <boxGeometry args={[(baseThickness || 0.3) + 0.8, 0.7, (baseThickness || 0.3) + 0.8]} />
+                    <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+
+                {showLabel && (
+                    <Html
+                        distanceFactor={15}
+                        position={[0, 0.6, 0]}
+                        center
+                    >
+                        <div
+                            className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
+                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]"
+                                : "bg-slate-900/90 text-slate-100 border-slate-700"
+                                }`}
+                        >
+                            {labelText}
+                        </div>
+                    </Html>
+                )}
+            </group>
+        );
+    }
+
+    if (isClamp) {
+        const riserClampGroup = useMemo(() => {
+            let supportColor = "#facc15";
+            if (isInspectionHighlighted) {
+                if (inspectionStatus === "HAS_ANOMALY") supportColor = "#ef4444";
+                else if (inspectionStatus === "NO_ANOMALY") supportColor = "#10b981";
+                else supportColor = "#94a3b8";
+            }
+            return new RiserClamp({
+                outerRadius: (riserThickness || 0.3) / 2 + 0.04,
+                height: 0.6,
+                flangeWidth: 0.15,
+                flangeThickness: 0.04,
+                color: supportColor,
+                isSelected,
+                isHovered: hovered,
+            });
+        }, [riserThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus]);
+
+        return (
+            <group
+                position={[position.x, position.y, position.z]}
+                rotation={euler}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClick();
+                }}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onDoubleClick) onDoubleClick();
+                }}
+                onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setHovered(true);
+                }}
+                onPointerOut={(e) => {
+                    e.stopPropagation();
+                    setHovered(false);
+                }}
+            >
+                <primitive object={riserClampGroup} />
+                
+                {/* Click target wrapper */}
+                <mesh castShadow={false} receiveShadow={false}>
+                    <boxGeometry args={[(baseThickness || 0.3) + 0.6, 0.8, (baseThickness || 0.3) + 0.6]} />
+                    <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+
+                {showLabel && (
+                    <Html distanceFactor={15} position={[0, 0.5, 0]} center>
+                        <div className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]" : "bg-slate-900/90 text-slate-100 border-slate-700"}`}>
+                            {labelText}
+                        </div>
+                    </Html>
+                )}
+            </group>
+        );
+    }
+
     return (
         <group position={[position.x, position.y, position.z]} rotation={[euler.x, euler.y, euler.z]}>
             <group
@@ -635,8 +785,6 @@ const ComponentMesh = ({
                         <sphereGeometry args={[Math.max(baseThickness / 2, 0.01), 16, 16]} />
                     ) : isAnode ? (
                         <boxGeometry args={[0.2, safeMeshLength, 0.2]} />
-                    ) : isClamp ? (
-                        <boxGeometry args={[baseThickness, 0.8, baseThickness]} />
                     ) : isWeld ? (
                         <cylinderGeometry args={[baseThickness / 2, baseThickness / 2, safeMeshLength, 32]} />
                     ) : (
@@ -649,7 +797,7 @@ const ComponentMesh = ({
                         emissive={emissiveColor}
                         emissiveIntensity={emissiveInt}
                     />
-                    {(!isAnode && !isWeld && !isClamp) && (
+                    {(!isAnode && !isWeld) && (
                         <Edges
                             threshold={20}
                             color="#0f172a"
@@ -666,12 +814,6 @@ const ComponentMesh = ({
                                 emissive={emissiveColor}
                                 emissiveIntensity={emissiveInt}
                             />
-                        </mesh>
-                    )}
-                    {isClamp && (
-                        <mesh position={[0, 0, 0]} castShadow receiveShadow>
-                            <boxGeometry args={[baseThickness + 0.35, 0.6, baseThickness + 0.35]} />
-                            <meshStandardMaterial color={isSelected ? "#2563eb" : "#f97316"} emissive={isSelected ? "#1d4ed8" : "#ea580c"} emissiveIntensity={isSelected ? 0.7 : 0.3} metalness={0.6} roughness={0.2} />
                         </mesh>
                     )}
                     {isAnode && (
@@ -1093,8 +1235,9 @@ function InstancedComponentViewer({
                 (qIdUpper.startsWith("R") && !qIdUpper.startsWith("RIS-") && !qIdUpper.startsWith("ROW"));
 
             const isClamp = code === "CL" || code.includes("CLAM") || (code === "SUPP" && qIdUpper.includes("RIS"));
+            const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
 
-            if (isFender || isRiserGuard || isRiser || isClamp) {
+            if (isFender || isRiserGuard || isRiser || isClamp || isCaissonSupport) {
                 custom.push({ ...layout, comp, code });
                 return;
             }
