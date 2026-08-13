@@ -116,6 +116,37 @@ export const generateROVNavigReport = async (
                 });
                 rawRecords = navigFiltered.length > 0 ? navigFiltered : data;
             }
+
+            // Enrich rawRecords with v_anomaly_details priority details
+            try {
+                let anomQ = supabase.from("v_anomaly_details").select("*");
+                if (jpId > 0) anomQ = anomQ.or(`jobpack_id.eq.${jpId},jobpack_id.eq.${Number(jpId) || 0}`);
+                if (sId > 0) anomQ = anomQ.or(`structure_id.eq.${sId},structure_id.eq.${Number(sId) || 0}`);
+                const { data: anomData } = await anomQ;
+                if (anomData && anomData.length > 0) {
+                    const anomMap = new Map<string, any>();
+                    for (const a of anomData) {
+                        const aId = String(a.insp_id || a.id || a.anomaly_id || "");
+                        if (aId) anomMap.set(aId, a);
+                    }
+                    rawRecords = rawRecords.map((r: any) => {
+                        const rId = String(r.insp_id || r.id || "");
+                        const matchingAnom = anomMap.get(rId);
+                        if (matchingAnom) {
+                            return {
+                                ...r,
+                                priority: matchingAnom.priority || r.priority,
+                                priority_color: matchingAnom.priority_color || r.priority_color,
+                                display_ref_no: matchingAnom.display_ref_no || r.display_ref_no,
+                                has_anomaly: true
+                            };
+                        }
+                        return r;
+                    });
+                }
+            } catch (anomErr) {
+                console.error("Error fetching v_anomaly_details in NAVIG report:", anomErr);
+            }
         } catch (err) {
             console.error("Error fetching NAVIG records for pipeline report", err);
         }
@@ -236,7 +267,18 @@ export const generateROVNavigReport = async (
         const findingFormatted = postfixes.length > 0 ? `${mainFinding} ${postfixes.join(" ")}` : mainFinding;
 
         // Anomaly Priority & Row Classification
-        const priority = idraw.anomaly_priority || idraw.priority || idraw.severity || (r.has_anomaly ? "P2" : "N/A");
+        const rawPrio = r.priority || r.anomaly_priority || idraw.anomaly_priority || idraw.priority || idraw.severity || r.anomaly_data?.priority || r.anomaly_data?.priority_code || "";
+        let priority = "N/A";
+        if (rawPrio) {
+            const pStr = String(rawPrio).trim().toUpperCase();
+            if (pStr.includes("PRIORITY 1") || pStr === "P1" || pStr === "1") priority = "PRIORITY 1";
+            else if (pStr.includes("PRIORITY 2") || pStr === "P2" || pStr === "2") priority = "PRIORITY 2";
+            else if (pStr.includes("PRIORITY 3") || pStr === "P3" || pStr === "3") priority = "PRIORITY 3";
+            else if (pStr.includes("PRIORITY 4") || pStr === "P4" || pStr === "4") priority = "PRIORITY 4";
+            else priority = pStr;
+        } else if (r.has_anomaly) {
+            priority = "PRIORITY 1";
+        }
 
         const typeUpper = String(eventTypeRaw).toUpperCase();
         const nameUpper = String(eventNameRaw).toUpperCase();
@@ -557,7 +599,7 @@ export const generateROVNavigReport = async (
             7: { cellWidth: 24, halign: "center", fontStyle: "bold" },
             8: { cellWidth: 48 },
             9: { cellWidth: "auto" },
-            10: { cellWidth: 18, halign: "center", fontStyle: "bold" }
+            10: { cellWidth: 20, halign: "center", fontStyle: "bold" }
         },
         didParseCell: (data) => {
             if (data.section === "body" && !isBlankReport && normalizedItems[data.row.index]) {
@@ -575,13 +617,13 @@ export const generateROVNavigReport = async (
                 // Anomaly Priority Column Background Color Fill
                 if (data.column.index === 10) {
                     const prioUpper = String(item.priority).toUpperCase();
-                    if (prioUpper.includes("P1") || prioUpper.includes("CRITICAL")) {
+                    if (prioUpper.includes("P1") || prioUpper.includes("PRIORITY 1") || prioUpper.includes("CRITICAL") || prioUpper === "1") {
                         data.cell.styles.fillColor = colors.p1Fill;
                         data.cell.styles.textColor = colors.p1Text;
-                    } else if (prioUpper.includes("P2") || prioUpper.includes("SERIOUS")) {
+                    } else if (prioUpper.includes("P2") || prioUpper.includes("PRIORITY 2") || prioUpper.includes("SERIOUS") || prioUpper === "2") {
                         data.cell.styles.fillColor = colors.p2Fill;
                         data.cell.styles.textColor = colors.p2Text;
-                    } else if (prioUpper.includes("P3") || prioUpper.includes("MONITOR")) {
+                    } else if (prioUpper.includes("P3") || prioUpper.includes("PRIORITY 3") || prioUpper.includes("MONITOR") || prioUpper === "3") {
                         data.cell.styles.fillColor = colors.p3Fill;
                         data.cell.styles.textColor = colors.p3Text;
                     } else {

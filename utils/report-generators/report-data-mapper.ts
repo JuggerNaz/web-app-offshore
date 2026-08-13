@@ -261,6 +261,16 @@ export const mapInspectionDataForDocx = async (
                     companySettings || {},
                     { returnBlob: true, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport, showPageNumbers: false } as any
                 ) as any;
+            } else if (templateId === 'defect-summary-pipeline' || templateId === 'findings-summary-pipeline' || templateId === 'defect-summary-pipeline-report' || templateId === 'findings-summary-pipeline-report') {
+                const { generatePipelineDefectSummaryReport } = await import("./defect-summary-pipeline-report");
+                const isFindingsReport = templateId.includes("findings");
+                pdfBlob = await generatePipelineDefectSummaryReport(
+                    jobPack,
+                    structure,
+                    sowReportNo || "",
+                    companySettings || {},
+                    { returnBlob: true, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport, showPageNumbers: false } as any
+                ) as any;
             } else if (templateId === 'defect-anomaly-report' || templateId === 'findings-report') {
                 const { generateDefectAnomalyReport } = await import("./defect-anomaly-report");
                 const isFindingsReport = templateId === "findings-report";

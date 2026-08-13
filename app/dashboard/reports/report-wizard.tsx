@@ -117,6 +117,7 @@ export const REPORT_TEMPLATES = {
     inspection: [
         { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "defect-summary-pipeline", name: "Defect Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "findings-summary-pipeline", name: "Finding Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline findings with reference numbers containing 'F' and combined span/burial events", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-summary", name: "Findings Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all findings with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
         { id: "defect-anomaly-report", name: "Defect / Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
@@ -1844,13 +1845,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return await generateDefectSummaryReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
-        // Defect Summary Report (Pipeline)
-        if (currentTemplateId === "defect-summary-pipeline" || currentTemplateId === "defect-summary-pipeline-report") {
+        // Defect Summary Report (Pipeline) & Finding Summary Report (Pipeline)
+        if (currentTemplateId === "defect-summary-pipeline" || currentTemplateId === "defect-summary-pipeline-report" || currentTemplateId === "findings-summary-pipeline" || currentTemplateId === "findings-summary-pipeline-report") {
             const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
             const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
             if (!jobPack && !selections.printBlankReport) return null;
 
-            return await generatePipelineDefectSummaryReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig as any);
+            const isFindingsReport = currentTemplateId.includes("findings");
+            const extendedConfig = {
+                ...reportConfig,
+                isFindingsReport,
+                prefix: isFindingsReport ? "F-" : ((reportConfig as any)?.prefix || "DSR-PL")
+            };
+
+            return await generatePipelineDefectSummaryReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
         // Defect / Anomaly Report / Findings Report

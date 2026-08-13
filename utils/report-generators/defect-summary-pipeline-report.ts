@@ -17,6 +17,7 @@ export interface ReportConfig {
     jobPackId?: number;
     structureId?: number;
     sowReportNo?: string;
+    isFindingsReport?: boolean;
     preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
@@ -587,6 +588,24 @@ export const generatePipelineDefectSummaryReport = async (
         return hasAnomFlag || isAnomType || Boolean(hasAnomData);
     });
 
+    const isFindingsReport = config.isFindingsReport === true || (config.prefix && config.prefix.toUpperCase().includes("F"));
+
+    if (isFindingsReport) {
+        anomalies = anomalies.filter((r: any) => {
+            if (r.is_blank) return true;
+            const refNo = (r.display_ref_no || r.ref_no || r.anomaly_ref_no || r.ref_number || "").toString().toUpperCase();
+            const fType = (r.finding_type || r.findingType || r.record_category || r.category || r.status || "").toUpperCase();
+
+            // Strictly exclude Anomaly reference numbers (e.g. A-001, A-002, / A-001)
+            const isAnomalyRef = /^[A]\d+|^A-/i.test(refNo) || refNo.includes("/ A-") || refNo.includes("/A-");
+            if (isAnomalyRef && !refNo.includes("F-") && !refNo.includes("/ F-")) {
+                return false;
+            }
+
+            return refNo.includes("F") || fType.includes("FIND");
+        });
+    }
+
     const isBlank = config.isBlankReport || config.printBlankReport || (anomalies.length === 0 && config.printBlankReport !== false);
 
     if (isBlank && anomalies.length === 0) {
@@ -647,7 +666,8 @@ export const generatePipelineDefectSummaryReport = async (
     const headerH = 14;
 
     // Report Number standard formatting
-    const prefix = config.reportNoPrefix || config.prefix || "DSR-PL";
+    const defaultPrefix = isFindingsReport ? "FSR-PL" : "DSR-PL";
+    const prefix = config.reportNoPrefix || config.prefix || defaultPrefix;
     const year = format(new Date(), "yyyy");
     const jpRef = jobPack?.name || jobPack?.id || "JP01";
     const structRef = pipelineInfo?.code || pipelineInfo?.title || structure?.title || "PIPELINE";
@@ -676,10 +696,11 @@ export const generatePipelineDefectSummaryReport = async (
         }
 
         const titleX = sx + contentWidth / 2;
+        const reportTitle = isFindingsReport ? "FINDING SUMMARY REPORT (PIPELINE)" : "DEFECT SUMMARY REPORT (PIPELINE)";
         d.setFont("helvetica", "bold");
         d.setFontSize(13);
         d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
-        d.text("DEFECT SUMMARY REPORT (PIPELINE)", titleX, sy + 6, { align: "center" });
+        d.text(reportTitle, titleX, sy + 6, { align: "center" });
 
         d.setFont("helvetica", "normal");
         d.setFontSize(8.5);
@@ -773,12 +794,13 @@ export const generatePipelineDefectSummaryReport = async (
         const gap = contentWidth * 0.05;
 
         // Draw Section Title
+        const dashTitle = isFindingsReport ? "FINDINGS STATISTICAL SUMMARY" : "ANOMALY STATISTICAL SUMMARY";
         d.setFontSize(8.5);
         d.setFont("helvetica", "bold");
         d.setFillColor(240, 243, 246);
         d.rect(margin, y, contentWidth, 6, "F");
         d.setTextColor(31, 55, 93);
-        d.text("ANOMALY STATISTICAL SUMMARY", margin + 2, y + 4.2);
+        d.text(dashTitle, margin + 2, y + 4.2);
         d.setTextColor(0, 0, 0);
 
         // --- 1. Draw Bar Chart ---
@@ -1070,7 +1092,7 @@ export const generatePipelineDefectSummaryReport = async (
             "Northing (m N)",
             "KP / Elevation",
             "Event Name",
-            "Anomaly Code",
+            isFindingsReport ? "Finding Code" : "Anomaly Code",
             "Priority",
             "Finding"
         ]],
@@ -1128,4 +1150,25 @@ export const generatePipelineDefectSummaryReport = async (
     }
 
     doc.save(`${reportNo.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`);
+};
+
+/**
+ * Main Generator for Finding Summary Report (Pipeline)
+ */
+export const generatePipelineFindingSummaryReport = async (
+    jobPack: any,
+    structure: any,
+    sowReportNo: string,
+    companySettings: CompanySettings = {},
+    config: ReportConfig = {},
+    recordsOverride?: any[]
+) => {
+    return generatePipelineDefectSummaryReport(
+        jobPack,
+        structure,
+        sowReportNo,
+        companySettings,
+        { ...config, isFindingsReport: true, prefix: config.prefix || "FSR-PL" },
+        recordsOverride
+    );
 };
