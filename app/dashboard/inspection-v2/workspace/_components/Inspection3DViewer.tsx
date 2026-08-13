@@ -101,7 +101,7 @@ const ComponentModel = ({
 
       {/* Label on Hover or Selection */}
       {(hovered || isSelected) && (
-        <Html distanceFactor={10} position={[0, 1.2, 0]} center>
+        <Html distanceFactor={10} position={[0, 1.2, 0]} center zIndexRange={[10, 0]}>
           <div
             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${
               isSelected
@@ -164,7 +164,8 @@ export function Inspection3DViewer({
 
   return (
     <div className="w-full h-full bg-blue-50 relative rounded-lg overflow-hidden border border-blue-100 shadow-inner">
-      <Canvas
+      <div className="relative z-0 w-full h-full">
+        <Canvas
         shadows
         gl={{ antialias: true }}
         onCreated={({ gl }) => {
@@ -213,6 +214,7 @@ export function Inspection3DViewer({
           color="#1e3a8a"
         />
       </Canvas>
+      </div>
 
       {/* Controls Overlay */}
       <div className="absolute bottom-4 left-4 flex flex-col gap-1 pointer-events-none">

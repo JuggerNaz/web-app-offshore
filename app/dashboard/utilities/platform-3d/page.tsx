@@ -16,8 +16,7 @@ import {
     RefreshCw,
     X,
     AlertTriangle,
-    Printer,
-    Database
+    Printer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -340,23 +339,6 @@ export default function Platform3DPage() {
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
-                        {/* WebApp 3D Connection Toggle Button */}
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setUseWebapp3dConnection(!useWebapp3dConnection)}
-                            className={cn(
-                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all shadow-xs border",
-                                useWebapp3dConnection 
-                                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60" 
-                                    : "bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
-                            )}
-                            title={useWebapp3dConnection ? "Disable DB 3D Connection (Fallback to Frontend)" : "Enable DB 3D Connection"}
-                        >
-                            <Database className="h-3.5 w-3.5" />
-                            <span>DB 3D: {useWebapp3dConnection ? "ON" : "OFF"}</span>
-                        </Button>
-
                         {/* Print Face Button */}
                         <Button
                             variant="outline"

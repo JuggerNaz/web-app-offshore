@@ -1105,7 +1105,7 @@ export function ComponentSpecDialog({
       }));
     }
   }, [isCreateMode, component, defaultCode, pageType]);
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: any) => {
     if (isCreateMode || isEditMode) {
       setFormData((prev) => ({ ...prev, [field]: value }));
     }
@@ -1585,7 +1585,7 @@ export function ComponentSpecDialog({
           )}
           <Tabs defaultValue="specifications" className="w-full">
             <TabsList
-              className={cn("grid w-full bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl", inline ? "mb-5 h-10" : "mb-8 h-12", isCreateMode ? "grid-cols-1" : "grid-cols-4")}
+              className={cn("grid w-full bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl", inline ? "mb-5 h-10" : "mb-8 h-12", isCreateMode ? "grid-cols-2" : "grid-cols-4")}
             >
               <TabsTrigger
                 value="specifications"
@@ -1593,14 +1593,14 @@ export function ComponentSpecDialog({
               >
                 Specifications
               </TabsTrigger>
+              <TabsTrigger
+                value="specifications2"
+                className={cn("rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm", inline && "h-8 rounded-lg text-[9px]")}
+              >
+                Association
+              </TabsTrigger>
               {!isCreateMode && (
                 <>
-                  <TabsTrigger
-                    value="specifications2"
-                    className={cn("rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm", inline && "h-8 rounded-lg text-[9px]")}
-                  >
-                    Association
-                  </TabsTrigger>
                   <TabsTrigger
                     value="comments"
                     className={cn("rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm", inline && "h-8 rounded-lg text-[9px]")}
@@ -3693,249 +3693,255 @@ export function ComponentSpecDialog({
               </div>
             </TabsContent>
 
-            {!isCreateMode && (
-              <>
-                {/* Association Tab */}
-                <TabsContent value="specifications2" className="space-y-4 mt-0 outline-none">
-                  {(() => {
-                    // Determine which assoc id to show: view mode uses viewAssocId (local state)
-                    const currentAssocId = isCreateMode ? formData.associated_comp_id : viewAssocId;
-                    const associatedComp = allComponents?.data?.find((c: any) => c.id === currentAssocId);
+            {/* Association Tab */}
+            <TabsContent value="specifications2" className="space-y-4 mt-0 outline-none">
+              {(() => {
+                // Determine which assoc id to show: view mode uses viewAssocId (local state)
+                const currentAssocId = isCreateMode ? formData.associated_comp_id : viewAssocId;
+                const associatedComp = allComponents?.data?.find((c: any) => c.id === currentAssocId);
 
-                    // Filter candidates: exclude current component
-                    const candidates: any[] = (allComponents?.data || []).filter(
-                      (c: any) => c.id !== component?.id
-                    );
+                // Filter candidates: exclude current component
+                const candidates: any[] = (allComponents?.data || []).filter(
+                  (c: any) => !component?.id || c.id !== component?.id
+                );
 
-                    // Smart search filter across q_id, id_no, code, description, nodes, legs, elevations
-                    const trimmed = assocSearch.trim().toLowerCase();
-                    const filtered = trimmed
-                      ? candidates.filter((c: any) => {
-                          const m = c.metadata || {};
-                          return [
-                            c.q_id,
-                            c.id_no,
-                            c.code,
-                            m.description,
-                            m.s_node,
-                            m.f_node,
-                            m.s_leg,
-                            m.f_leg,
-                            m.elv_1 !== undefined ? String(m.elv_1) : null,
-                            m.elv_2 !== undefined ? String(m.elv_2) : null,
-                            m.lvl,
-                            m.face,
-                            m.kp !== undefined ? String(m.kp) : null,
-                          ]
-                            .filter(Boolean)
-                            .some((v: any) => String(v).toLowerCase().includes(trimmed));
-                        })
-                      : candidates;
+                // Smart search filter across q_id, id_no, code, description, nodes, legs, elevations
+                const trimmed = assocSearch.trim().toLowerCase();
+                const filtered = trimmed
+                  ? candidates.filter((c: any) => {
+                      const m = c.metadata || {};
+                      return [
+                        c.q_id,
+                        c.id_no,
+                        c.code,
+                        m.description,
+                        m.s_node,
+                        m.f_node,
+                        m.s_leg,
+                        m.f_leg,
+                        m.elv_1 !== undefined ? String(m.elv_1) : null,
+                        m.elv_2 !== undefined ? String(m.elv_2) : null,
+                        m.lvl,
+                        m.face,
+                        m.kp !== undefined ? String(m.kp) : null,
+                      ]
+                        .filter(Boolean)
+                        .some((v: any) => String(v).toLowerCase().includes(trimmed));
+                    })
+                  : candidates;
 
-                    const handleSaveAssociation = async (newId: number | null) => {
-                      if (!component?.id) return;
-                      setIsSavingAssoc(true);
-                      try {
-                        const updatedMetadata = {
-                          ...(component.metadata || {}),
-                          associated_comp_id: newId,
-                        };
-                        await fetcher(`/api/structure-components/item/${component.id}`, {
-                          method: "PATCH",
-                          body: JSON.stringify({ metadata: updatedMetadata }),
-                        });
-                        setViewAssocId(newId);
-                        if (listKey) mutate(listKey);
-                        toast.success(newId ? "Association saved successfully" : "Association cleared");
-                      } catch (err) {
-                        console.error("Failed to save association:", err);
-                        toast.error("Failed to save association");
-                      } finally {
-                        setIsSavingAssoc(false);
-                      }
+                const handleSaveAssociation = async (newId: number | null) => {
+                  if (!component?.id) return;
+                  setIsSavingAssoc(true);
+                  try {
+                    const updatedMetadata = {
+                      ...(component.metadata || {}),
+                      associated_comp_id: newId,
                     };
+                    await fetcher(`/api/structure-components/item/${component.id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ metadata: updatedMetadata }),
+                    });
+                    setViewAssocId(newId);
+                    if (listKey) mutate(listKey);
+                    toast.success(newId ? "Association saved successfully" : "Association cleared");
+                  } catch (err) {
+                    console.error("Failed to save association:", err);
+                    toast.error("Failed to save association");
+                  } finally {
+                    setIsSavingAssoc(false);
+                  }
+                };
 
-                    return (
-                      <div className="space-y-6">
-                        {/* Current Association Card */}
-                        <div className="bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-6 shadow-sm">
-                          <div className="flex items-center gap-3 mb-5">
-                            <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
-                              <Link2 className="h-4 w-4 text-white" />
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Current Association</p>
-                            </div>
-                          </div>
+                return (
+                  <div className="space-y-6">
+                    {/* Current Association Card */}
+                    <div className="bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-6 shadow-sm">
+                      <div className="flex items-center gap-3 mb-5">
+                        <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+                          <Link2 className="h-4 w-4 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Current Association</p>
+                        </div>
+                      </div>
 
-                          {associatedComp ? (
-                            <div className="flex items-center gap-4">
-                              <div className="flex-1 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl p-4">
-                                <div className="flex items-start gap-4">
-                                  <div className="h-10 w-10 rounded-xl bg-blue-600/10 dark:bg-blue-400/10 flex items-center justify-center shrink-0">
-                                    <CheckCircle2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="text-lg font-black text-blue-700 dark:text-blue-300 tracking-tight">{associatedComp.q_id}</span>
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                                        {associatedComp.code || "---"}
-                                      </span>
-                                    </div>
-                                    <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">{associatedComp.id_no}</p>
-                                    {associatedComp.metadata?.description && (
-                                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">{associatedComp.metadata.description}</p>
-                                    )}
-                                    <div className="flex flex-wrap gap-3 mt-2">
-                                      {associatedComp.metadata?.s_node && (
-                                        <span className="text-[10px] text-slate-400"><span className="font-bold text-slate-600 dark:text-slate-300">Nodes:</span> {associatedComp.metadata.s_node} → {associatedComp.metadata.f_node || "?"}</span>
-                                      )}
-                                      {associatedComp.metadata?.s_leg && (
-                                        <span className="text-[10px] text-slate-400"><span className="font-bold text-slate-600 dark:text-slate-300">Legs:</span> {associatedComp.metadata.s_leg} → {associatedComp.metadata.f_leg || "?"}</span>
-                                      )}
-                                      {associatedComp.metadata?.elv_1 !== undefined && (
-                                        <span className="text-[10px] text-slate-400"><span className="font-bold text-slate-600 dark:text-slate-300">Elv:</span> {associatedComp.metadata.elv_1} / {associatedComp.metadata.elv_2 ?? "-"} m</span>
-                                      )}
-                                    </div>
-                                  </div>
+                      {associatedComp ? (
+                        <div className="flex items-center gap-4">
+                          <div className="flex-1 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl p-4">
+                            <div className="flex items-start gap-4">
+                              <div className="h-10 w-10 rounded-xl bg-blue-600/10 dark:bg-blue-400/10 flex items-center justify-center shrink-0">
+                                <CheckCircle2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-lg font-black text-blue-700 dark:text-blue-300 tracking-tight">{associatedComp.q_id}</span>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                                    {associatedComp.code || "---"}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">{associatedComp.id_no}</p>
+                                {associatedComp.metadata?.description && (
+                                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">{associatedComp.metadata.description}</p>
+                                )}
+                                <div className="flex flex-wrap gap-3 mt-2">
+                                  {associatedComp.metadata?.s_node && (
+                                    <span className="text-[10px] text-slate-400"><span className="font-bold text-slate-600 dark:text-slate-300">Nodes:</span> {associatedComp.metadata.s_node} → {associatedComp.metadata.f_node || "?"}</span>
+                                  )}
+                                  {associatedComp.metadata?.s_leg && (
+                                    <span className="text-[10px] text-slate-400"><span className="font-bold text-slate-600 dark:text-slate-300">Legs:</span> {associatedComp.metadata.s_leg} → {associatedComp.metadata.f_leg || "?"}</span>
+                                  )}
+                                  {associatedComp.metadata?.elv_1 !== undefined && (
+                                    <span className="text-[10px] text-slate-400"><span className="font-bold text-slate-600 dark:text-slate-300">Elv:</span> {associatedComp.metadata.elv_1} / {associatedComp.metadata.elv_2 ?? "-"} m</span>
+                                  )}
                                 </div>
                               </div>
-                              <button
-                                type="button"
-                                disabled={isSavingAssoc}
-                                onClick={() => handleSaveAssociation(null)}
-                                className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-500 border border-red-200/60 dark:border-red-800/40 transition-all disabled:opacity-50"
-                                title="Clear association"
-                              >
-                                {isSavingAssoc ? (
-                                  <div className="h-4 w-4 border-2 border-red-400/30 border-t-red-500 rounded-full animate-spin" />
-                                ) : (
-                                  <Unlink className="h-4 w-4" />
-                                )}
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4">
-                              <AlertCircle className="h-5 w-5 text-slate-400 shrink-0" />
-                              <span className="text-sm text-slate-400 font-medium">No component associated yet. Use the search below to link one.</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Smart Search Panel */}
-                        <div className="bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] overflow-hidden shadow-sm">
-                          <div className="p-5 border-b border-slate-100 dark:border-slate-800">
-                            <div className="flex items-center gap-3 mb-4">
-                              <div className="h-9 w-9 rounded-xl bg-slate-900 dark:bg-slate-100 flex items-center justify-center shrink-0">
-                                <SearchIcon className="h-4 w-4 text-white dark:text-slate-900" />
-                              </div>
-                              <div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Smart Component Search</p>
-                                <p className="text-xs text-slate-400">Search by Q ID, code, nodes, legs, elevations, or description</p>
-                              </div>
-                            </div>
-                            <div className="relative">
-                              <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                              <input
-                                type="text"
-                                value={assocSearch}
-                                onChange={(e) => setAssocSearch(e.target.value)}
-                                placeholder="Type Q ID, leg name, node, elevation..."
-                                className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-sm font-medium text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                              />
-                              {assocSearch && (
-                                <button
-                                  type="button"
-                                  onClick={() => setAssocSearch("")}
-                                  className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              )}
                             </div>
                           </div>
-
-                          {/* Results list */}
-                          <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-                            {filtered.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                                <SearchIcon className="h-8 w-8 mb-2 opacity-30" />
-                                <p className="text-xs font-bold uppercase tracking-widest">No components found</p>
-                                <p className="text-xs mt-1">{assocSearch ? "Try a different search term" : "No other components available"}</p>
-                              </div>
+                          <button
+                            type="button"
+                            disabled={isSavingAssoc}
+                            onClick={() => {
+                              if (isCreateMode) {
+                                handleInputChange("associated_comp_id", null);
+                              } else {
+                                handleSaveAssociation(null);
+                              }
+                            }}
+                            className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-500 border border-red-200/60 dark:border-red-800/40 transition-all disabled:opacity-50"
+                            title="Clear association"
+                          >
+                            {isSavingAssoc ? (
+                              <div className="h-4 w-4 border-2 border-red-400/30 border-t-red-500 rounded-full animate-spin" />
                             ) : (
-                              filtered.map((c: any) => {
-                                const isSelected = c.id === currentAssocId;
-                                return (
-                                  <button
-                                    key={c.id}
-                                    type="button"
-                                    disabled={isSavingAssoc}
-                                    onClick={() => {
-                                      if (isCreateMode) {
-                                        handleInputChange("associated_comp_id", c.id);
-                                      } else {
-                                        handleSaveAssociation(c.id);
-                                      }
-                                    }}
-                                    className={`w-full text-left px-5 py-3.5 border-b border-slate-100 dark:border-slate-800/60 last:border-0 transition-all flex items-center gap-4 group ${
-                                      isSelected
-                                        ? "bg-blue-50 dark:bg-blue-950/30"
-                                        : "hover:bg-slate-50 dark:hover:bg-slate-900/50"
-                                    } disabled:opacity-50`}
-                                  >
-                                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-black uppercase ${
-                                      isSelected
-                                        ? "bg-blue-600 text-white"
-                                        : "bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-700"
-                                    }`}>
-                                      {c.code || "?"}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className={`font-black text-sm ${ isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-900 dark:text-white" }`}>{c.q_id}</span>
-                                        {isSelected && (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                                            <CheckCircle2 className="h-2.5 w-2.5" /> Selected
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-                                        <span className="text-[10px] text-slate-400 font-mono">{c.id_no}</span>
-                                        {c.metadata?.s_node && <span className="text-[10px] text-slate-400">N: {c.metadata.s_node}{c.metadata.f_node ? `→${c.metadata.f_node}` : ""}</span>}
-                                        {c.metadata?.s_leg && <span className="text-[10px] text-slate-400">L: {c.metadata.s_leg}{c.metadata.f_leg ? `→${c.metadata.f_leg}` : ""}</span>}
-                                        {(c.metadata?.elv_1 !== undefined || c.metadata?.elv_2 !== undefined) && (
-                                          <span className="text-[10px] text-slate-400">Elv: {c.metadata.elv_1 ?? "-"}/{c.metadata.elv_2 ?? "-"}m</span>
-                                        )}
-                                        {c.metadata?.description && <span className="text-[10px] text-slate-400 truncate max-w-[200px]">{c.metadata.description}</span>}
-                                      </div>
-                                    </div>
-                                    {!isSelected && (
-                                      <div className="shrink-0 text-[9px] font-black uppercase tracking-widest text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {isSavingAssoc ? (
-                                          <div className="h-3.5 w-3.5 border-2 border-blue-400/30 border-t-blue-500 rounded-full animate-spin" />
-                                        ) : "Link"}
-                                      </div>
-                                    )}
-                                  </button>
-                                );
-                              })
+                              <Unlink className="h-4 w-4" />
                             )}
-                          </div>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4">
+                          <AlertCircle className="h-5 w-5 text-slate-400 shrink-0" />
+                          <span className="text-sm text-slate-400 font-medium">No component associated yet. Use the search below to link one.</span>
+                        </div>
+                      )}
+                    </div>
 
-                          {filtered.length > 0 && (
-                            <div className="px-5 py-2.5 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800">
-                              <p className="text-[10px] text-slate-400 font-bold">
-                                Showing {filtered.length} of {candidates.length} components
-                              </p>
-                            </div>
+                    {/* Smart Search Panel */}
+                    <div className="bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] overflow-hidden shadow-sm">
+                      <div className="p-5 border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="h-9 w-9 rounded-xl bg-slate-900 dark:bg-slate-100 flex items-center justify-center shrink-0">
+                            <SearchIcon className="h-4 w-4 text-white dark:text-slate-900" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Smart Component Search</p>
+                            <p className="text-xs text-slate-400">Search by Q ID, code, nodes, legs, elevations, or description</p>
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                          <input
+                            type="text"
+                            value={assocSearch}
+                            onChange={(e) => setAssocSearch(e.target.value)}
+                            placeholder="Type Q ID, leg name, node, elevation..."
+                            className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-sm font-medium text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                          />
+                          {assocSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setAssocSearch("")}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
                           )}
                         </div>
                       </div>
-                    );
-                  })()}
-                </TabsContent>
 
+                      {/* Results list */}
+                      <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                        {filtered.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                            <SearchIcon className="h-8 w-8 mb-2 opacity-30" />
+                            <p className="text-xs font-bold uppercase tracking-widest">No components found</p>
+                            <p className="text-xs mt-1">{assocSearch ? "Try a different search term" : "No other components available"}</p>
+                          </div>
+                        ) : (
+                          filtered.map((c: any) => {
+                            const isSelected = c.id === currentAssocId;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                disabled={isSavingAssoc}
+                                onClick={() => {
+                                  if (isCreateMode) {
+                                    handleInputChange("associated_comp_id", c.id);
+                                  } else {
+                                    handleSaveAssociation(c.id);
+                                  }
+                                }}
+                                className={`w-full text-left px-5 py-3.5 border-b border-slate-100 dark:border-slate-800/60 last:border-0 transition-all flex items-center gap-4 group ${
+                                  isSelected
+                                    ? "bg-blue-50 dark:bg-blue-950/30"
+                                    : "hover:bg-slate-50 dark:hover:bg-slate-900/50"
+                                } disabled:opacity-50`}
+                              >
+                                <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-black uppercase ${
+                                  isSelected
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-700"
+                                }`}>
+                                  {c.code || "?"}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`font-black text-sm ${ isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-900 dark:text-white" }`}>{c.q_id}</span>
+                                    {isSelected && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                                        <CheckCircle2 className="h-2.5 w-2.5" /> Selected
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                                    <span className="text-[10px] text-slate-400 font-mono">{c.id_no}</span>
+                                    {c.metadata?.s_node && <span className="text-[10px] text-slate-400">N: {c.metadata.s_node}{c.metadata.f_node ? `→${c.metadata.f_node}` : ""}</span>}
+                                    {c.metadata?.s_leg && <span className="text-[10px] text-slate-400">L: {c.metadata.s_leg}{c.metadata.f_leg ? `→${c.metadata.f_leg}` : ""}</span>}
+                                    {(c.metadata?.elv_1 !== undefined || c.metadata?.elv_2 !== undefined) && (
+                                      <span className="text-[10px] text-slate-400">Elv: {c.metadata.elv_1 ?? "-"}/{c.metadata.elv_2 ?? "-"}m</span>
+                                    )}
+                                    {c.metadata?.description && <span className="text-[10px] text-slate-400 truncate max-w-[200px]">{c.metadata.description}</span>}
+                                  </div>
+                                </div>
+                                {!isSelected && (
+                                  <div className="shrink-0 text-[9px] font-black uppercase tracking-widest text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {isSavingAssoc ? (
+                                      <div className="h-3.5 w-3.5 border-2 border-blue-400/30 border-t-blue-500 rounded-full animate-spin" />
+                                    ) : "Link"}
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {filtered.length > 0 && (
+                        <div className="px-5 py-2.5 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800">
+                          <p className="text-[10px] text-slate-400 font-bold">
+                            Showing {filtered.length} of {candidates.length} components
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </TabsContent>
+
+            {!isCreateMode && (
+              <>
                 {/* Comments Tab */}
                 <TabsContent value="comments" className="mt-0 outline-none">
                   <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-8">

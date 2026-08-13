@@ -114,8 +114,9 @@ const ComponentMesh = ({
     const isNode = code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND";
     const isAnode = code === "AN" || code.includes("ANOD");
     const isWeld = code === "WN";
+    const isCaissonSupportComponent = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
     const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL";
-    const isClamp = code === "CL" || code.includes("CLAM") || isRiserSupport;
+    const isClamp = (code === "CL" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupportComponent;
     const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS");
     const isRiser = !isAnode && !isRiserSupport && !isCaisson && (
         code === "RS" ||
@@ -129,7 +130,7 @@ const ComponentMesh = ({
     const defaultMeshColor = isAnode
         ? "#F8FAFC"
         : isWeld
-            ? "#d946ef"
+            ? "#cbd5e1"
             : isClamp
                 ? "#f97316"
                 : isRiser
@@ -157,7 +158,7 @@ const ComponentMesh = ({
         : (isInspectionHighlighted && inspectionStatus === "HAS_ANOMALY")
             ? "#ef4444"
             : isWeld
-                ? "#a21caf"
+                ? "#000000"
                 : isClamp
                     ? "#ea580c"
                     : "#000000";
@@ -167,7 +168,7 @@ const ComponentMesh = ({
         : (isInspectionHighlighted && inspectionStatus === "HAS_ANOMALY")
             ? 0.5
             : isWeld
-                ? 0.4
+                ? 0
                 : isClamp
                     ? 0.3
                     : 0;
@@ -475,6 +476,7 @@ const ComponentMesh = ({
                         distanceFactor={15}
                         position={[0, fenderHeight / 2 + 0.5, 0]}
                         center
+                        zIndexRange={[10, 0]}
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
@@ -619,6 +621,7 @@ const ComponentMesh = ({
                         distanceFactor={15}
                         position={[0, guardHeight / 2 + 0.5, 0]}
                         center
+                        zIndexRange={[10, 0]}
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
@@ -634,8 +637,7 @@ const ComponentMesh = ({
         );
     }
 
-    const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
-    if (isCaissonSupport) {
+    if (isCaissonSupportComponent) {
         const caissonSupportGroup = useMemo(() => {
             let supportColor = "#facc15";
             if (isInspectionHighlighted) {
@@ -689,6 +691,7 @@ const ComponentMesh = ({
                         distanceFactor={15}
                         position={[0, 0.6, 0]}
                         center
+                        zIndexRange={[10, 0]}
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
@@ -753,7 +756,7 @@ const ComponentMesh = ({
                 </mesh>
 
                 {showLabel && (
-                    <Html distanceFactor={15} position={[0, 0.5, 0]} center>
+                    <Html distanceFactor={15} position={[0, 0.5, 0]} center zIndexRange={[10, 0]}>
                         <div className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]" : "bg-slate-900/90 text-slate-100 border-slate-700"}`}>
                             {labelText}
                         </div>
@@ -887,6 +890,7 @@ const ComponentMesh = ({
                         distanceFactor={15}
                         position={[0, (isAnode ? safeMeshLength : length) / 2 + 0.5, 0]}
                         center
+                        zIndexRange={[10, 0]}
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
@@ -974,7 +978,7 @@ const FoundationMember = ({
                     </mesh>
                 )}
                 {showLabel && label && tagCornerPositions.length === 0 && (
-                    <Html distanceFactor={35} position={[0, safeLength / 2 + 1.5, 0]} center>
+                    <Html distanceFactor={35} position={[0, safeLength / 2 + 1.5, 0]} center zIndexRange={[10, 0]}>
                         <div
                             className="px-5 py-2 bg-slate-900/25 dark:bg-slate-900/30 text-white text-xl font-black rounded-full border border-white/40 dark:border-white/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.25)] pointer-events-none uppercase tracking-[0.25em] whitespace-nowrap backdrop-blur-xl transition-all"
                             style={{ backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
@@ -987,7 +991,7 @@ const FoundationMember = ({
 
             {/* Anchor leg tags directly on leg corner nodes for ALL active selected elevations */}
             {tagCornerPositions.map(({ elv, pos }) => (
-                <Html key={`tag-${label}-${elv}`} distanceFactor={35} position={pos} center>
+                <Html key={`tag-${label}-${elv}`} distanceFactor={35} position={pos} center zIndexRange={[10, 0]}>
                     <div
                         className="px-5 py-2 bg-slate-900/25 dark:bg-slate-900/30 text-white text-xl font-black rounded-full border border-white/40 dark:border-white/30 shadow-[0_8px_32px_0_rgba(0,0,0,0.25)] pointer-events-none uppercase tracking-[0.25em] whitespace-nowrap backdrop-blur-xl transition-all"
                         style={{ backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
@@ -1016,7 +1020,7 @@ const ElevationLevelPlane = ({
     return (
         <group position={[0, y, 0]}>
             {/* Interactive HTML Badge */}
-            <Html position={[32, 0, 0]} center distanceFactor={20}>
+            <Html position={[32, 0, 0]} center distanceFactor={35} zIndexRange={[10, 0]}>
                 <div
                     onClick={(e) => {
                         e.stopPropagation();
@@ -1027,16 +1031,17 @@ const ElevationLevelPlane = ({
                         isSelected ? "scale-110" : "hover:scale-105 opacity-85 hover:opacity-100"
                     )}
                 >
-                    <div className={cn("h-[1px] w-6 transition-colors", isSelected ? "bg-amber-400" : "bg-sky-400/60")} />
+                    <div className={cn("h-[2px] w-12 transition-colors", isSelected ? "bg-amber-400" : "bg-sky-400/60")} />
                     <div
                         className={cn(
-                            "px-3 py-1 rounded-xl backdrop-blur-md text-[10px] font-black tracking-wider uppercase border shadow-xl flex items-center gap-2 transition-all",
+                            "px-5 py-2 rounded-full backdrop-blur-xl text-xl font-black tracking-[0.25em] uppercase border shadow-[0_8px_32px_0_rgba(0,0,0,0.25)] flex items-center gap-3 transition-all",
                             isSelected
-                                ? "bg-amber-950/90 text-amber-300 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.4)]"
+                                ? "bg-amber-950/90 text-amber-300 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.6)]"
                                 : "bg-sky-950/80 text-sky-200 border-sky-500/40 hover:border-sky-400"
                         )}
+                        style={{ backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
                     >
-                        <span className={cn("w-2 h-2 rounded-full", isSelected ? "bg-amber-400 animate-pulse" : "bg-sky-400")} />
+                        <span className={cn("w-3 h-3 rounded-full", isSelected ? "bg-amber-400 animate-pulse" : "bg-sky-400")} />
                         <span>EL {formattedElv}</span>
                     </div>
                 </div>
@@ -1401,7 +1406,7 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#2563eb" : "#d946ef");
+            color.set(isSelected ? "#2563eb" : "#cbd5e1");
             mesh.setColorAt(i, color);
         });
 
@@ -1810,7 +1815,7 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <cylinderGeometry args={[0.5, 0.5, 1, 32]} />
-                    <meshStandardMaterial metalness={0.3} roughness={0.4} emissive="#a21caf" emissiveIntensity={0.3} />
+                    <meshStandardMaterial metalness={0.7} roughness={0.3} emissive="#000000" emissiveIntensity={0} />
                 </instancedMesh>
             )}
 
@@ -1827,7 +1832,7 @@ function InstancedComponentViewer({
                 const isSelected = selectedCompId === compId;
 
                 return (
-                    <Html key={`weld-tag-${w.id || idx}`} position={pos} center distanceFactor={18}>
+                    <Html key={`weld-tag-${w.id || idx}`} position={pos} center distanceFactor={18} zIndexRange={[10, 0]}>
                         <div
                             onClick={(evt) => {
                                 evt.stopPropagation();
@@ -1840,9 +1845,44 @@ function InstancedComponentViewer({
                                 const center = new THREE.Vector3(pos[0], pos[1], pos[2]);
                                 if (onDoubleClickComponent) onDoubleClickComponent(w.comp, center);
                             }}
-                            className={`text-[11px] font-black uppercase tracking-widest whitespace-nowrap cursor-pointer select-none transition-all -translate-x-3 -translate-y-2 [-webkit-text-stroke:0.4px_rgba(0,0,0,0.85)] ${isSelected
-                                    ? "text-orange-300 scale-125 opacity-100 z-20 [-webkit-text-stroke:0.6px_#000] [text-shadow:0_0_8px_rgba(249,115,22,0.9)]"
-                                    : "text-orange-500 opacity-90 hover:opacity-100 hover:text-orange-400 hover:scale-110"
+                            className={`text-[11px] font-black uppercase tracking-widest whitespace-nowrap cursor-pointer select-none transition-all -translate-x-3 -translate-y-2 [-webkit-text-stroke:0.5px_rgba(0,0,0,0.9)] ${isSelected
+                                    ? "text-white scale-125 opacity-100 z-20 [-webkit-text-stroke:0.7px_#000] [text-shadow:0_0_8px_rgba(255,255,255,0.9)]"
+                                    : "text-white opacity-90 hover:opacity-100 hover:scale-110"
+                                }`}
+                        >
+                            {labelText}
+                        </div>
+                    </Html>
+                );
+            })}
+
+            {showWeldNumbering && spheres.map((sph, idx) => {
+                const s = toVec3(sph.start || sph.position);
+                const pos = [s.x, s.y + 1.1, s.z] as [number, number, number];
+
+                const rawLabel = sph.comp?.q_id || sph.q_id || `N${idx + 1}`;
+                const labelText = rawLabel.replace(/^(?:WN\s*N?|N\s*)/i, "").trim() || rawLabel;
+
+                const compId = sph.comp?.id || sph.id;
+                const isSelected = selectedCompId === compId;
+
+                return (
+                    <Html key={`node-tag-${sph.id || idx}`} position={pos} center distanceFactor={18} zIndexRange={[10, 0]}>
+                        <div
+                            onClick={(evt) => {
+                                evt.stopPropagation();
+                                isDirectClickRef.current = true;
+                                if (onSelectComponent) onSelectComponent(sph.comp);
+                            }}
+                            onDoubleClick={(evt) => {
+                                evt.stopPropagation();
+                                isDirectClickRef.current = true;
+                                const center = new THREE.Vector3(pos[0], pos[1], pos[2]);
+                                if (onDoubleClickComponent) onDoubleClickComponent(sph.comp, center);
+                            }}
+                            className={`text-[11px] font-black uppercase tracking-widest whitespace-nowrap cursor-pointer select-none transition-all -translate-x-3 -translate-y-2 [-webkit-text-stroke:0.5px_rgba(0,0,0,0.9)] ${isSelected
+                                    ? "text-white scale-125 opacity-100 z-20 [-webkit-text-stroke:0.7px_#000] [text-shadow:0_0_8px_rgba(255,255,255,0.9)]"
+                                    : "text-white opacity-90 hover:opacity-100 hover:scale-110"
                                 }`}
                         >
                             {labelText}
@@ -1882,7 +1922,7 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <sphereGeometry args={[0.5, 16, 16]} />
-                    <meshStandardMaterial metalness={0.5} roughness={0.2} emissive="#a21caf" emissiveIntensity={0.3} />
+                    <meshStandardMaterial metalness={0.5} roughness={0.2} emissive="#000000" emissiveIntensity={0} />
                 </instancedMesh>
             )}
 
@@ -2020,6 +2060,7 @@ export function Structural3DViewer({
     const [resetTrigger, setResetTrigger] = useState(0);
     const [showWater, setShowWater] = useState(true);
     const [showWeldNumbering, setShowWeldNumbering] = useState(true);
+    const [showElevations, setShowElevations] = useState(true);
     const [isCameraClose, setIsCameraClose] = useState(false);
     const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
     const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
@@ -2103,7 +2144,7 @@ export function Structural3DViewer({
             const isLegComponent = code.includes("LG") || qIdUpper.includes("LEG") || dbQIdUpper.includes("LEG") || (sLegStr && sLegStr !== "N/A") || (fLegStr && fLegStr !== "N/A");
             const isMainLegWeld = isWeld && isLegComponent;
 
-            const weldColor = isWeld ? "#d946ef" : null;
+            const weldColor = isWeld ? "#cbd5e1" : null;
             const finalColor = isInspectionMode ? dbItem.inspection_color : (weldColor || dbItem.color_hex || "#64748b");
 
             let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
@@ -2556,7 +2597,8 @@ export function Structural3DViewer({
 
     return (
         <div className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative rounded-3xl overflow-hidden shadow-2xl">
-            <Canvas
+            <div className="relative z-0 w-full h-full">
+                <Canvas
                 shadows="soft"
                 gl={{ antialias: true }}
                 dpr={[1, 2]}
@@ -2598,7 +2640,7 @@ export function Structural3DViewer({
                     <CameraDistanceController onChange={setIsCameraClose} />
                     <SelectToZoom>
                         {/* Elevation Level Planes & Markers */}
-                        {availableElevations.map((elvNum) => {
+                        {showElevations && availableElevations.map((elvNum) => {
                             const isSelected = selectedElevations.includes(elvNum);
                             return (
                                 <ElevationLevelPlane
@@ -2685,7 +2727,7 @@ export function Structural3DViewer({
 
                         {/* Seabed label */}
                         <group position={[0, seabedY, 0]}>
-                            <Html position={[35, 1, 0]} center distanceFactor={20}>
+                            <Html position={[35, 1, 0]} center distanceFactor={20} zIndexRange={[10, 0]}>
                                 <div className="flex items-center gap-2">
                                     <div className="h-[1px] w-8 bg-amber-600/60" />
                                     <div className="px-2 py-0.5 bg-amber-900/80 backdrop-blur text-[9px] font-black text-amber-300 rounded border border-amber-600/40 shadow-lg whitespace-nowrap uppercase tracking-widest">
@@ -2697,7 +2739,7 @@ export function Structural3DViewer({
 
                         {/* Water line label at MSL */}
                         <group position={[0, waterSurfaceY, 0]}>
-                            <Html position={[35, 1, 0]} center distanceFactor={20}>
+                            <Html position={[35, 1, 0]} center distanceFactor={20} zIndexRange={[10, 0]}>
                                 <div className="flex items-center gap-2">
                                     <div className="h-[1px] w-8 bg-sky-400/60" />
                                     <div className="px-2 py-0.5 bg-sky-900/80 backdrop-blur text-[9px] font-black text-sky-300 rounded border border-sky-500/40 shadow-lg whitespace-nowrap uppercase tracking-widest">
@@ -2732,6 +2774,7 @@ export function Structural3DViewer({
                     position={[0, seabedY + 0.05, 0]}
                 />
             </Canvas>
+            </div>
 
             {/* Camera Focus Lock Badge Indicator */}
             {focusTargetPos && (
@@ -3100,6 +3143,15 @@ export function Structural3DViewer({
                                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                                     />
                                     <span className="text-xs font-bold text-slate-700">Node Numbers</span>
+                                </label>
+                                <label className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={showElevations}
+                                        onChange={() => setShowElevations(!showElevations)}
+                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-bold text-slate-700">Elevations</span>
                                 </label>
                             </div>
                         </div>
