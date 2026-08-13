@@ -159,8 +159,79 @@ export async function GET(request: NextRequest) {
             }
         }
 
+        // ── 3b. All Inspection Records for Range Event Pairing ──────────────────
+        let inspRecQuery = (supabase as any)
+            .from("insp_records")
+            .select("*")
+            .or(`jobpack_id.eq.${jobpackId},jobpack_id.eq.${Number(jobpackId) || 0}`)
+            .or(`structure_id.eq.${structureId},structure_id.eq.${Number(structureId) || 0}`);
+        if (sowReportNo) {
+            inspRecQuery = inspRecQuery.eq("sow_report_no", sowReportNo);
+        }
+        let { data: rawInspRecords } = await inspRecQuery.order("insp_id", { ascending: true });
+
+        // Fallback: If 0 inspection records found with exact sow_report_no filter, query without sow_report_no filter
+        if ((!rawInspRecords || rawInspRecords.length === 0) && sowReportNo) {
+            let fbInspQuery = (supabase as any)
+                .from("insp_records")
+                .select("*")
+                .or(`jobpack_id.eq.${jobpackId},jobpack_id.eq.${Number(jobpackId) || 0}`)
+                .or(`structure_id.eq.${structureId},structure_id.eq.${Number(structureId) || 0}`)
+                .order("insp_id", { ascending: true });
+            const { data: fbRecs } = await fbInspQuery;
+            if (fbRecs && fbRecs.length > 0) {
+                rawInspRecords = fbRecs;
+            }
+        }
+
+        const inspMap = new Map<any, any>();
+        for (const r of (rawInspRecords || [])) {
+            if (r.insp_id !== undefined && r.insp_id !== null) {
+                inspMap.set(r.insp_id, r);
+                inspMap.set(String(r.insp_id), r);
+                inspMap.set(Number(r.insp_id), r);
+            }
+            if (r.id !== undefined && r.id !== null) {
+                inspMap.set(r.id, r);
+                inspMap.set(String(r.id), r);
+                inspMap.set(Number(r.id), r);
+            }
+        }
+
+        const getInspRec = (a: any) => {
+            const keys = [a.id, a.insp_id, a.anomaly_id].filter(k => k !== undefined && k !== null);
+            for (const k of keys) {
+                const found = inspMap.get(k) || inspMap.get(String(k)) || inspMap.get(Number(k));
+                if (found) return found;
+            }
+            return null;
+        };
+
+        // Enrich anomalies with inspection_data, fp_kp, elevation from insp_records if missing
+        const enrichedPipelineAnomalies = pipelineAnomalies.map((a: any) => {
+            const inspRec = getInspRec(a);
+            return {
+                ...a,
+                inspection_data: a.inspection_data || inspRec?.inspection_data,
+                fp_kp: a.fp_kp ?? inspRec?.fp_kp,
+                elevation: a.elevation ?? inspRec?.elevation,
+                description: a.description || inspRec?.description
+            };
+        });
+
+        const enrichedRiserAnomalies = riserAnomalies.map((a: any) => {
+            const inspRec = getInspRec(a);
+            return {
+                ...a,
+                inspection_data: a.inspection_data || inspRec?.inspection_data,
+                fp_kp: a.fp_kp ?? inspRec?.fp_kp,
+                elevation: a.elevation ?? inspRec?.elevation,
+                description: a.description || inspRec?.description
+            };
+        });
+
         // Combine all anomalies
-        const allAnomalies = [...pipelineAnomalies, ...riserAnomalies];
+        const allAnomalies = [...enrichedPipelineAnomalies, ...enrichedRiserAnomalies];
 
         // ── 4. Priority Color Mapping ──────────────────────────────────────────
         const { data: priorityTypes } = await (supabase as any)
@@ -193,6 +264,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             data: allAnomalies,
+            all_inspection_records: rawInspRecords || [],
             pipeline_info: pipelineStruct,
             priority_colors: priorityColorMap
         });

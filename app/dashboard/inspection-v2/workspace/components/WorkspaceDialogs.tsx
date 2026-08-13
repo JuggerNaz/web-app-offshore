@@ -195,6 +195,7 @@ interface WorkspaceDialogsProps {
         divingDcasnTsPreviewOpen: boolean;
         divingDcondUwPreviewOpen: boolean;
         divingDcondTsPreviewOpen: boolean;
+        pipelineDefectSummaryPreviewOpen?: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
@@ -301,9 +302,6 @@ interface WorkspaceDialogsProps {
         setDivingDcondUwPreviewOpen: (open: boolean) => void;
         setDivingDcondTsPreviewOpen: (open: boolean) => void;
         setPipelineDefectSummaryPreviewOpen?: (open: boolean) => void;
-        pipelineDefectSummaryPreviewOpen?: boolean;
-        pipelineEventSketchPreviewOpen?: boolean;
-        navigPreviewOpen?: boolean;
         setIsReportWizardOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
         setRovCalibrationDialogOpen: (open: boolean) => void;
@@ -501,6 +499,7 @@ export function WorkspaceDialogs({
         divingAnmainPreviewOpen,
         rgviPreviewOpen,
         rcondSketchPreviewOpen,
+        pipelineDefectSummaryPreviewOpen,
         pipelineEventSketchPreviewOpen,
         navigPreviewOpen,
         showRemovalConfirm,
@@ -3396,7 +3395,7 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
-                open={setters.pipelineDefectSummaryPreviewOpen || false}
+                open={pipelineDefectSummaryPreviewOpen || false}
                 onOpenChange={(open) => setters.setPipelineDefectSummaryPreviewOpen?.(open)}
                 title="Defect Summary Report (Pipeline) Preview"
                 fileName={`Pipeline_Defect_Summary_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}

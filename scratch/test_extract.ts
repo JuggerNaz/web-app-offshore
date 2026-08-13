@@ -1,0 +1,61 @@
+import { extractFieldValue } from "../utils/report-generators/defect-summary-pipeline-report";
+
+const startRec = {
+  "insp_id": 105452,
+  "dive_job_id": null,
+  "rov_job_id": 4073,
+  "structure_id": 2,
+  "component_id": 2,
+  "component_type": "PP",
+  "jobpack_id": 591,
+  "sow_report_no": "P/2026",
+  "inspection_type_id": 30,
+  "inspection_type_code": "NAVIG",
+  "inspection_date": "2026-07-23",
+  "inspection_time": "15:37:25",
+  "tape_count_no": "2636",
+  "tape_id": 8462,
+  "elevation": 25,
+  "fp_kp": "0.418",
+  "inspection_data": {
+    "kp": "0.418",
+    "cp_fg": "",
+    "depth": "25",
+    "fp_kp": "0.418",
+    "fields": [],
+    "inspno": "INSP-00105452",
+    "str_id": "2",
+    "comp_id": "2",
+    "counter": "00:43:56",
+    "easting": "4546446",
+    "heading": "",
+    "insp_id": "105452",
+    "findings": "Free span initiation observed",
+    "northing": "5757676",
+    "cp_fg_rdg": "",
+    "insp_mode": "Pipeline",
+    "event_name": "SEABED PROFILE",
+    "event_type": "SPAN",
+    "rov_heading": "",
+    "_meta_status": "Complete",
+    "tape_count_no": "00:43:56",
+    "_meta_timecode": "00:43:56",
+    "event_position": "START",
+    "flow_direction": "Increase KP",
+    "_mgi_profile_id": 13,
+    "inspection_date": "2026-07-23",
+    "inspection_time": "15:37:25",
+    "event_description": "Pipeline free span start detected at KP 0.418",
+    "incomplete_reason": null,
+    "verification_depth": "25",
+    "inspection_location": "Pipeline",
+    "inspection_direction": "Increase KP"
+  },
+  "has_anomaly": false,
+  "status": "COMPLETED",
+  "description": ""
+};
+
+console.log("eStart:", extractFieldValue(startRec, ["easting_start", "start_easting", "easting_s", "easting", "e_coord", "x_coord", "east", "x", "EASTING"]));
+console.log("nStart:", extractFieldValue(startRec, ["northing_start", "start_northing", "northing_s", "northing", "n_coord", "y_coord", "north", "y", "NORTHING"]));
+console.log("kpStart:", extractFieldValue(startRec, ["kp_start", "start_kp", "kp_s", "kp", "fp_kp", "chainage", "location", "KP"]));

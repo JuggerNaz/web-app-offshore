@@ -60,6 +60,7 @@ import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-repo
 import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
 import { generateDivingItemReport } from "@/utils/report-generators/diving-item-report";
 import { generateDivingITMAINReport } from "@/utils/report-generators/diving-itmain-report";
+import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
 import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Types
@@ -1689,6 +1690,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             ...config, 
             returnBlob,
             isBlankReport: selections.printBlankReport ?? false,
+            jobPackId: selections.jobPackId,
+            structureId: selections.structureId,
+            sowReportNo: selections.sowReportNo,
             ...(currentTemplateId === "final-inspection-datasheet" ? { showPageNumbers: false } : {})
         };
 
@@ -1842,7 +1846,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Summary Report (Pipeline)
         if (currentTemplateId === "defect-summary-pipeline" || currentTemplateId === "defect-summary-pipeline-report") {
-            const { generatePipelineDefectSummaryReport } = await import("@/utils/report-generators/defect-summary-pipeline-report");
             const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
             const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
             if (!jobPack && !selections.printBlankReport) return null;
