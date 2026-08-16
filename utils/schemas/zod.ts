@@ -214,8 +214,8 @@ export const PipelineSchema = z.object({
 export const ElevationSchema = z.object({
   cr_date: z.string().optional().nullable(),
   cr_user: z.string().optional().nullable(),
-  elv: z.coerce.number().optional(),
-  orient: z.string().optional().nullable(),
+  elv: z.coerce.number({ invalid_type_error: "Elevation value is required" }),
+  orient: z.string({ required_error: "Orientation is required" }),
   plat_id: z.coerce.number().optional(),
   workunit: z.string().optional().nullable(),
 });

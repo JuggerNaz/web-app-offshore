@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -25,7 +25,7 @@ interface ReportConfig {
 }
 
 /**
- * ROV Boatlanding Survey Report (Portrait)
+ * ROV Boatlanding Inspection Report (Portrait)
  * Columns: Item No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
  *
  * Data is grouped by Boatlanding (BL). Each BL group starts on a new page.
@@ -90,7 +90,7 @@ export const generateROVBoatlandingReport = async (
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("ROV Boatlanding Survey Report",                                margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("Boatlanding Inspection Report (ROV)",                             margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -133,23 +133,75 @@ export const generateROVBoatlandingReport = async (
         };
 
         // ── Grouping Logic ──────────────────────────────────────────────────────
-        const idToComp: Record<number, { q_id: string, name: string, parent_id: number | null, is_bl: boolean }> = {};
+        const idToComp: Record<number, { q_id: string, name: string, code: string, parent_id: number | null, is_bl: boolean, is_main_parent: boolean }> = {};
+        const qidToCompId: Record<string, number> = {};
+
+        const isBoatlandingOrFenderComp = (c: any): boolean => {
+            if (!c) return false;
+            const qid = String(c.q_id || c.qid || "").toUpperCase();
+            const typeCode = String(c.code || c.type || c.metadata?.comp_type || c.metadata?.type || "").toUpperCase();
+            const compName = String(c.comp_name || c.name || "").toUpperCase();
+
+            // 1. Explicit Exclusions for non-Boatlanding components (Conductor Shield, Riser Guard, etc.)
+            const excludedPrefixes = ["CS_", "CS-", "RG_", "RG-", "CU_", "CU-", "SG_", "SG-", "CD_", "CD-", "LEG_", "LEG-", "MB_", "MB-", "R_"];
+            const excludedCodes = ["CS", "RG", "CU", "SG", "CD", "CON", "LEG", "MB", "RS", "JT"];
+            if (excludedCodes.includes(typeCode)) return false;
+            if (excludedPrefixes.some(p => qid.startsWith(p))) return false;
+
+            // 2. Inclusion check for Boatlanding or Boat Fender (historical data)
+            const isBLCode = ["BL", "BLTG", "BOATLANDING"].includes(typeCode);
+            const isBFCode = ["BF", "BOATFENDER", "FENDER"].includes(typeCode);
+            if (isBLCode || isBFCode) return true;
+
+            const isBLQid = qid.startsWith("BL") || qid.startsWith("BOATLANDING") || qid.startsWith("BOAT_LANDING");
+            const isBFQid = qid.startsWith("BF") || qid.startsWith("BOATFENDER") || qid.startsWith("BOAT_FENDER") || qid.startsWith("FENDER");
+            if (isBLQid || isBFQid) return true;
+
+            if (compName.includes("BOATLANDING") || compName.includes("BOAT LANDING") || compName.includes("BOAT FENDER") || compName.includes("BOATFENDER") || compName.includes("FENDER")) {
+                return true;
+            }
+
+            return false;
+        };
+
+        const isMainBoatlandingParentComp = (c: any): boolean => {
+            if (!c || !isBoatlandingOrFenderComp(c)) return false;
+            const qid = String(c.q_id || c.qid || "").toUpperCase().trim();
+            const compName = String(c.comp_name || c.name || "").toUpperCase().trim();
+
+            // Sub-component indicators in QID or component name (e.g. BL-supp-10, BL001_AN01)
+            const subKeywords = ["SUPP", "SUPPORT", "ANODE", "BRACKET", "CLAMP", "RUBBER", "BUMPER", "MEMBER", "STRUT", "BEAM", "TUBE", "LEG"];
+            if (subKeywords.some(kw => qid.includes(kw) || compName.includes(kw))) {
+                return false;
+            }
+
+            // Pattern check for sub-component QID suffixes like BL-supp-10, BL_supp_5, BL-an-01
+            if (/^[A-Z0-9]+[-_](SUPP|AN|BR|CL|RUBBER|MEMB|M|SUB|D|V|\d{2,})/i.test(qid) && !/^(BL|BF|BOAT)[-_]?\d{1,3}$/i.test(qid)) {
+                return false;
+            }
+
+            return true;
+        };
         
         const addCompToMap = (c: any) => {
             if (!c || !c.id) return;
-            const qid = (c.q_id || "").toUpperCase();
-            const typeCode = (c.code || c.metadata?.type || "").toUpperCase();
             const compName = c.comp_name || c.name || "Boatlanding";
-
-            // Group by Boatlanding (BL)
-            const isBL = qid.startsWith("BL") || typeCode === "BL" || typeCode === "BOATLANDING";
+            const isBL = isBoatlandingOrFenderComp(c);
+            const isMainParent = isMainBoatlandingParentComp(c);
+            const qidStr = String(c.q_id || "").trim();
             
-            idToComp[c.id] = {
-                q_id: c.q_id || `ID: ${c.id}`,
+            idToComp[Number(c.id)] = {
+                q_id: qidStr || `ID: ${c.id}`,
                 name: compName,
+                code: String(c.code || "").toUpperCase(),
                 parent_id: c.metadata?.parent_id || c.metadata?.comp_id_parent || c.metadata?.parent_comp_id || c.metadata?.associated_comp_id || null,
-                is_bl: isBL
+                is_bl: isBL,
+                is_main_parent: isMainParent
             };
+
+            if (qidStr) {
+                qidToCompId[qidStr.toUpperCase()] = Number(c.id);
+            }
         };
 
         // 1. Build initial map from records
@@ -178,7 +230,7 @@ export const generateROVBoatlandingReport = async (
             const aid = metadata.associated_comp_qid || metadata.associated_comp_id || metadata.parent_id || 
                         metadata.comp_id_parent || metadata.parent_comp_id || 
                         metadata.associated_id;
-            if (aid && !idToComp[Number(aid)]) missingIds.add(Number(aid));
+            if (aid && !isNaN(Number(aid)) && !idToComp[Number(aid)]) missingIds.add(Number(aid));
         });
 
         if (missingIds.size > 0) {
@@ -191,19 +243,67 @@ export const generateROVBoatlandingReport = async (
             } catch (e) {}
         }
 
-        // 4. Grouping Logic
+        // 4. Grouping Logic - Group all sub-components (like BL-supp-10) under the main parent Boatlanding (like BL001)
         const blGroups: Record<number, any[]> = {};
         records.forEach(r => {
             const comp = r.structure_components || r.component || {};
+            if (!comp || !comp.id) return;
             const metadata = comp.metadata || {};
             
-            // Get the Parent ID (using associated_comp_qid fallback to its own id)
-            const parentIdVal = metadata.associated_comp_qid || metadata.associated_comp_id || metadata.parent_id || comp.id;
-            const groupId = Number(parentIdVal);
+            // Check if record component is a main parent or a sub-component
+            let parentCompId: number | null = null;
 
-            // ONLY include if the resolved group belongs to a BL component type
-            const parentInfo = idToComp[groupId];
-            if (groupId && parentInfo?.is_bl) {
+            if (isMainBoatlandingParentComp(comp)) {
+                parentCompId = Number(comp.id);
+            } else {
+                // 1. Resolve explicit metadata parent reference
+                const rawRef = metadata.associated_comp_id || metadata.associated_comp_qid || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
+                if (rawRef) {
+                    if (typeof rawRef === "number" && idToComp[rawRef]) {
+                        parentCompId = rawRef;
+                    } else {
+                        const refStr = String(rawRef).toUpperCase().trim();
+                        if (qidToCompId[refStr]) {
+                            parentCompId = qidToCompId[refStr];
+                        } else if (!isNaN(Number(refStr)) && idToComp[Number(refStr)]) {
+                            parentCompId = Number(refStr);
+                        }
+                    }
+                }
+
+                // 2. Fallback: QID prefix matching (e.g. BL-supp-10 -> BL001 / BL01 / BL)
+                if (!parentCompId) {
+                    const qidStr = String(comp.q_id || comp.qid || "").toUpperCase().trim();
+                    const match = qidStr.match(/^(BL|BF|BOATLANDING|BOATFENDER|FENDER)[-_]?(\d{1,3})?/i);
+                    if (match) {
+                        const prefixPattern = match[0].toUpperCase();
+                        for (const key of Object.keys(qidToCompId)) {
+                            if (key === prefixPattern || key.startsWith(prefixPattern) || prefixPattern.startsWith(key)) {
+                                const cId = qidToCompId[key];
+                                if (cId && idToComp[cId] && idToComp[cId].is_main_parent) {
+                                    parentCompId = cId;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Fallback: First main parent Boatlanding/Fender found in structure
+                if (!parentCompId) {
+                    const firstMainParentId = Object.keys(idToComp).map(Number).find(id => idToComp[id]?.is_main_parent);
+                    if (firstMainParentId) {
+                        parentCompId = firstMainParentId;
+                    } else {
+                        parentCompId = Number(comp.id);
+                    }
+                }
+            }
+
+            const parentInfo = parentCompId ? idToComp[parentCompId] : null;
+            const groupId = (parentCompId && (parentInfo?.is_bl || parentInfo?.is_main_parent)) ? parentCompId : Number(comp.id);
+
+            if (groupId) {
                 if (!blGroups[groupId]) blGroups[groupId] = [];
                 blGroups[groupId].push(r);
             }
@@ -229,30 +329,36 @@ export const generateROVBoatlandingReport = async (
             const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const cpDisplay  = primaryCP !== "" && primaryCP !== null && primaryCP !== undefined
-                ? `${primaryCP} mV`
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            const additionalCPs = additionals
+                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+            const cpDisplay = cpList.length > 0
+                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
             const findingsParts: string[] = [];
 
-            // CP Additional
-            const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if (val !== "" && val !== null && val !== undefined) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    findingsParts.push(`Add. CP${loc}: ${val} mV`);
-                }
-            });
-
-            // Findings / Description
+            // 1. Findings / Description
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
             } else if (d.findings && d.findings.trim()) {
                 findingsParts.push(d.findings.trim());
             }
 
-            // Anomaly Reference
+            // 2. CP Additional
+            additionals.forEach((a: any) => {
+                const val = a.reading ?? a.cp_rdg ?? "";
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                    const loc = a.location ? ` @ ${a.location}` : "";
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                }
+            });
+
+            // 3. Anomaly Reference
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
@@ -288,7 +394,12 @@ export const generateROVBoatlandingReport = async (
             const parentComp = idToComp[parentId];
             const rawParentQid = parentComp?.q_id || `ID: ${parentId}`;
             const displayQid = rawParentQid.replace(/[.\s,;]+$/, "").trim();
-            const parentName = parentComp?.name || "Boatlanding";
+            const parentNameRaw = parentComp?.name || "";
+            const parentCode = parentComp?.code || "";
+
+            // Format title: "BOAT FENDER" for Fender historical types, "BOATLANDING" for Boatlanding types
+            const isFender = parentCode === "BF" || parentCode === "FENDER" || parentCode === "BOATFENDER" || parentNameRaw.toUpperCase().includes("FENDER");
+            const groupTypeTitle = isFender ? "BOAT FENDER" : "BOATLANDING";
 
             drawPageHeader(doc);
             const startY = drawContextRow(doc, margin + HEADER_H + 2, groupRecords);
@@ -300,7 +411,7 @@ export const generateROVBoatlandingReport = async (
             doc.rect(margin, subY, contentWidth, subH, "F");
             doc.setTextColor(255);
             doc.setFontSize(8); doc.setFont("helvetica", "bold");
-            const labelText = `${parentName.toUpperCase()} (${displayQid})`;
+            const labelText = `${groupTypeTitle} (${displayQid})`;
             doc.text(labelText, margin + 4, subY + 4.2);
             
             (doc as any)._tableStartY = subY + subH + 2;
@@ -368,7 +479,7 @@ export const generateROVBoatlandingReport = async (
                     doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                     doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                     doc.text(
-                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Boatlanding Survey Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Boatlanding Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                         margin, pageHeight - 6
                     );
                     if (config.showPageNumbers !== false) {
@@ -386,7 +497,7 @@ export const generateROVBoatlandingReport = async (
                     sigY = pageHeight - 38;
                 }
                 const sigW = contentWidth / 3;
-                const drawSigFooter = (label: string, lx: number) => {
+                const drawSigFooter = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                     doc.rect(lx, sigY, sigW - 4, 18);
                     if (!config.printFriendly) {
@@ -400,19 +511,21 @@ export const generateROVBoatlandingReport = async (
                     doc.text(label, lx + 2, sigY + 3.5);
                     doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                     doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                     doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                     doc.text("Signature:", lx + 2, sigY + 17);
                 };
-                drawSigFooter("PREPARED BY", margin);
-                drawSigFooter("REVIEWED BY", margin + sigW);
-                drawSigFooter("APPROVED BY", margin + sigW * 2);
+                drawSigFooter("PREPARED BY", margin, config?.preparedBy);
+                drawSigFooter("REVIEWED BY", margin + sigW, config?.reviewedBy);
+                drawSigFooter("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
             }
         });
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_Boatlanding_Survey_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`ROV_Boatlanding_Inspection_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ROV Boatlanding Report] Error:", err);
         throw err;

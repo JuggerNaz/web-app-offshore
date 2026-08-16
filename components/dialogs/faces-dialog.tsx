@@ -30,7 +30,7 @@ export function FacesDialog() {
   const form = useForm<z.infer<typeof FacesSchema>>({
     resolver: zodResolver(FacesSchema),
     defaultValues: {
-      workunit: "m",
+      workunit: "000",
     }
   });
 
@@ -44,6 +44,7 @@ export function FacesDialog() {
   const onSubmit = async (values: z.infer<typeof FacesSchema>) => {
     const facesObject = {
       ...values,
+      workunit: "000",
       plat_id: Number(pageId),
       cr_user: "",
     };
@@ -56,7 +57,7 @@ export function FacesDialog() {
       mutate(`/api/platform/faces/${pageId}`);
       toast.success("Structural face registered successfully");
       setOpen(false);
-      form.reset();
+      form.reset({ workunit: "000" });
     } catch (err) {
       toast.error("Failed to register faces");
     }

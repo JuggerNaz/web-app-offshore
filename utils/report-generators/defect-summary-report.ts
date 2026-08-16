@@ -2,7 +2,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
 // ─── Priority colour mapping ─────────────────────────────────────────────────
@@ -10,37 +10,107 @@ import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 // Falls back to industry-standard palette when DB has no entry.
 type ColorMap = Record<string, string>;
 
+function parseColor(colorStr?: string): [number, number, number] | null {
+    if (!colorStr) return null;
+    const str = colorStr.trim().toLowerCase();
+
+    // 1. Color Names Map
+    const colorNames: Record<string, [number, number, number]> = {
+        red: [255, 0, 0],
+        orange: [255, 165, 0],
+        yellow: [255, 255, 0],
+        green: [0, 176, 80],
+        blue: [0, 0, 255],
+        amber: [255, 165, 0],
+        purple: [128, 0, 128],
+        grey: [200, 200, 200],
+        gray: [200, 200, 200],
+        lightgrey: [220, 220, 220],
+        lightgray: [220, 220, 220],
+    };
+
+    if (colorNames[str]) {
+        return colorNames[str];
+    }
+
+    // 2. Hex color (#FF0000 or FF0000 or #F00)
+    if (str.startsWith("#") || /^[0-9a-f]{3,6}$/i.test(str)) {
+        const hex = str.replace("#", "");
+        if (hex.length === 3) {
+            const r = parseInt(hex[0] + hex[0], 16);
+            const g = parseInt(hex[1] + hex[1], 16);
+            const b = parseInt(hex[2] + hex[2], 16);
+            if (!isNaN(r) && !isNaN(g) && !isNaN(b)) return [r, g, b];
+        } else if (hex.length === 6) {
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            if (!isNaN(r) && !isNaN(g) && !isNaN(b)) return [r, g, b];
+        }
+    }
+
+    // 3. RGB comma string ("255,0,0" or "255, 0, 0" or "255,000,000")
+    if (str.includes(",")) {
+        const parts = str.split(",").map((p) => parseInt(p.trim(), 10));
+        if (parts.length === 3 && parts.every((n) => !isNaN(n) && n >= 0 && n <= 255)) {
+            return parts as [number, number, number];
+        }
+    }
+
+    return null;
+}
+
 function priorityStyle(
     priority: string,
     colorMap: ColorMap = {},
     directColor?: string
 ): { bg: [number, number, number]; text: [number, number, number] } {
-    const key = (priority || "").toLowerCase();
+    const key = (priority || "").trim().toLowerCase();
 
-    // Try direct color from record first (if provided)
-    let dbColor = directColor;
-
-    // If no direct color, try from colorMap (library lookup)
-    if (!dbColor) {
-        dbColor = colorMap[key];
-    }
-
-    if (dbColor && dbColor.includes(",")) {
-        const parts = dbColor.split(",").map((p) => parseInt(p.trim(), 10));
-        if (parts.length === 3 && parts.every((n) => !isNaN(n))) {
-            const [r, g, b] = parts as [number, number, number];
-            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-            return { bg: [r, g, b], text: lum > 140 ? [0, 0, 0] : [255, 255, 255] };
+    // 1. Try colorMap lookup from Library first (check exact key, aliases, lib_id, lib_desc)
+    let rgb: [number, number, number] | null = null;
+    if (colorMap) {
+        let mappedColor = colorMap[key];
+        if (!mappedColor) {
+            if (key === "p1" || key === "priority 1" || key === "critical" || key === "c") {
+                mappedColor = colorMap["p1"] || colorMap["priority 1"] || colorMap["critical"];
+            } else if (key === "p2" || key === "priority 2" || key === "high" || key === "h") {
+                mappedColor = colorMap["p2"] || colorMap["priority 2"] || colorMap["high"];
+            } else if (key === "p3" || key === "priority 3" || key === "medium" || key === "m") {
+                mappedColor = colorMap["p3"] || colorMap["priority 3"] || colorMap["medium"];
+            } else if (key === "observation" || key === "o" || key === "priority 5" || key === "p5") {
+                mappedColor = colorMap["observation"] || colorMap["o"];
+            } else if (key === "none") {
+                mappedColor = colorMap["none"];
+            } else if (key === "worse") {
+                mappedColor = colorMap["worse"];
+            } else if (key === "severe") {
+                mappedColor = colorMap["severe"];
+            } else if (key === "attention required" || key === "attent req") {
+                mappedColor = colorMap["attention required"] || colorMap["attent req"];
+            }
         }
+        rgb = parseColor(mappedColor);
     }
 
-    // Fallback: industry-standard palette
-    if (key === "critical" || key === "c" || key === "priority 1") return { bg: [192, 0, 0], text: [255, 255, 255] };
-    if (key === "high" || key === "h" || key === "priority 2") return { bg: [255, 102, 0], text: [255, 255, 255] };
-    if (key === "medium" || key === "m" || key === "priority 3") return { bg: [255, 192, 0], text: [0, 0, 0] };
-    if (key === "low" || key === "l" || key === "priority 4") return { bg: [146, 208, 80], text: [0, 0, 0] };
-    if (key === "observation" || key === "o" || key === "priority 5") return { bg: [189, 215, 238], text: [0, 0, 0] };
-    return { bg: [220, 220, 220], text: [0, 0, 0] };
+    // 2. Try direct color from record if no library colorMap match
+    if (!rgb) {
+        rgb = parseColor(directColor);
+    }
+
+    // 3. Industry standard fallback palette
+    if (!rgb) {
+        if (key === "critical" || key === "c" || key === "priority 1" || key === "p1") rgb = [192, 0, 0];
+        else if (key === "high" || key === "h" || key === "priority 2" || key === "p2") rgb = [255, 102, 0];
+        else if (key === "medium" || key === "m" || key === "priority 3" || key === "p3") rgb = [255, 192, 0];
+        else if (key === "low" || key === "l" || key === "priority 4" || key === "p4") rgb = [146, 208, 80];
+        else if (key === "observation" || key === "o" || key === "priority 5" || key === "p5") rgb = [255, 165, 0];
+        else rgb = [220, 220, 220];
+    }
+
+    const [r, g, b] = rgb;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    return { bg: rgb, text: lum > 140 ? [0, 0, 0] : [255, 255, 255] };
 }
 
 // Priority sort order
@@ -103,10 +173,31 @@ export const generateDefectSummaryReport = async (
         console.error("[DefectSummary] Error fetching data:", e);
     }
 
-    // Sort by priority
-    anomalies = [...anomalies].sort(
-        (a, b) => prioritySortKey(a.priority) - prioritySortKey(b.priority)
-    );
+    if (anomalies.length === 0 && (config as any).isBlankReport) {
+        anomalies = Array.from({ length: 10 }, (_, i) => ({
+            id: i + 1,
+            anomaly_ref_no: "",
+            display_ref_no: "",
+            component_qid: "",
+            elevation: "",
+            description: "",
+            findings: "",
+            rectified_remarks: "",
+            rectified: false,
+            priority: ""
+        }));
+    }
+
+    // Sort primarily by Priority, then secondarily by Anomaly Reference No. (natural alphanumeric sort)
+    anomalies = [...anomalies].sort((a, b) => {
+        const pDiff = prioritySortKey(a.priority) - prioritySortKey(b.priority);
+        if (pDiff !== 0) return pDiff;
+
+        const refA = (a.display_ref_no || a.ref_no || a.anomaly_ref_no || "").toString();
+        const refB = (b.display_ref_no || b.ref_no || b.anomaly_ref_no || "").toString();
+
+        return refA.localeCompare(refB, undefined, { numeric: true, sensitivity: "base" });
+    });
 
     // ── Logos ────────────────────────────────────────────────────────────────
     let clientLogo: any = null;
@@ -237,16 +328,20 @@ export const generateDefectSummaryReport = async (
     };
 
     const drawLegend = (d: jsPDF, y: number) => {
-        // Build legend entries ONLY from library items that exist in our map
-        const libraryLevels = Object.keys(priorityColorMap)
-            .sort((a, b) => prioritySortKey(a) - prioritySortKey(b))
-            .map(k => ({
-                label: k.charAt(0).toUpperCase() + k.slice(1),
-                key: k
-            }));
+        // Build legend entries from canonical library levels
+        const standardLegendKeys = [
+            "Priority 1",
+            "Priority 2",
+            "Priority 3",
+            "Observation",
+            "None",
+            "Worse",
+            "Severe",
+            "Attention required",
+        ];
 
         const allLevels = [
-            ...libraryLevels,
+            ...standardLegendKeys.map(k => ({ label: k, key: k })),
             { label: "Rectified (R)", key: "_rect" },
         ];
 
@@ -392,7 +487,6 @@ export const generateDefectSummaryReport = async (
         d.setFont("helvetica", "normal");
         d.setTextColor(100, 100, 100);
         d.text(`Page ${pageNum} of ${totalPages}`, pageWidth / 2, FOOTER_LINE_Y + 3.5, { align: "center" });
-        d.text(`Printed: ${new Date().toLocaleDateString("en-GB")}`, pageWidth - margin, FOOTER_LINE_Y + 3.5, { align: "right" });
         d.setTextColor(0, 0, 0);
     };
 
@@ -560,14 +654,17 @@ export const generateDefectSummaryReport = async (
     const signatoryH = 22;
     const signatoryY = pageHeight - margin - signatoryH - 10;
     const lastY = (doc as any).lastAutoTable.finalY + 4;
+    let activeSigY = signatoryY;
 
     if (lastY + signatoryH + 10 < pageHeight - margin) {
         // Fits on last page
-        drawSignatories(doc, signatoryY, contentWidth, margin, config);
+        activeSigY = signatoryY;
+        drawSignatories(doc, activeSigY, contentWidth, margin, config);
     } else {
         doc.addPage();
         drawHeader(doc);
-        drawSignatories(doc, margin + headerH + 10, contentWidth, margin, config);
+        activeSigY = margin + headerH + 10;
+        drawSignatories(doc, activeSigY, contentWidth, margin, config);
     }
 
     // ── Page numbers on all pages ────────────────────────────────────────────
@@ -577,10 +674,10 @@ export const generateDefectSummaryReport = async (
         if (config.showPageNumbers) drawFooter(doc, i, totalPages);
     }
 
-    applyWatermarkAndSignaturesGlobal(doc, config);
+    applyWatermarkAndSignaturesGlobal(doc, { ...config, sigY: activeSigY });
     if (config.returnBlob) return doc.output("blob");
     const suffix = config.isFindingsReport ? "FindingsSummary" : "DefectSummary";
-    applyWatermarkAndSignaturesGlobal(doc, config);
+    applyWatermarkAndSignaturesGlobal(doc, { ...config, sigY: activeSigY });
     doc.save(`${config.reportNoPrefix}_${suffix}.pdf`);
 };
 
@@ -605,9 +702,9 @@ function drawSignatories(doc: jsPDF, y: number, contentWidth: number, margin: nu
         doc.text(p.title, x + 2, y + 4);
         doc.setFont("helvetica", "normal");
         doc.text("Name:", x + 2, y + 9);
-        if (p.name) doc.text(p.name, x + 13, y + 9);
+        if (p.name) doc.text(p.name, x + 14, y + 9);
         doc.text("Sign:", x + 2, y + 14);
         doc.text("Date:", x + 2, y + 19);
-        if (p.date) doc.text(p.date, x + 13, y + 19);
+        if (p.date) doc.text(formatPdfDate(p.date), x + 14, y + 19);
     });
 }

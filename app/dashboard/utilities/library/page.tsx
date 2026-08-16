@@ -12,6 +12,8 @@ import {
     Plus,
     Trash2,
     RefreshCcw,
+    RotateCcw,
+    Archive,
     Edit,
     MoreVertical,
     Loader2,
@@ -227,17 +229,24 @@ function LibraryDetails({ master }: { master: LibMaster }) {
     }
 
     const [searchTerm, setSearchTerm] = useState("");
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all");
     const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-    // Fetch Items
+    // Fetch Items with include_deleted=true so archived items can be managed
     const { data: itemsData, error, isLoading, mutate: refreshItems } = useSWR(
-        master ? `/api/library/${encodeURIComponent(master.lib_code)}` : null,
+        master ? `/api/library/${encodeURIComponent(master.lib_code)}?include_deleted=true` : null,
         fetcher
     );
 
     const items: LibItem[] = itemsData?.data || [];
+    const activeCount = items.filter(i => i.lib_delete !== 1).length;
+    const archivedCount = items.filter(i => i.lib_delete === 1).length;
 
     const filteredItems = items.filter(item => {
+        const isDeleted = item.lib_delete === 1;
+        if (statusFilter === "active" && isDeleted) return false;
+        if (statusFilter === "archived" && !isDeleted) return false;
+
         // Search in all string values
         const searchStr = searchTerm.toLowerCase();
         return Object.values(item).some(val =>
@@ -252,7 +261,7 @@ function LibraryDetails({ master }: { master: LibMaster }) {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 uppercase tracking-wider">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 uppercase tracking-wider">
                                 {master.lib_code}
                             </span>
                         </div>
@@ -260,14 +269,51 @@ function LibraryDetails({ master }: { master: LibMaster }) {
                             {master.lib_name || master.lib_desc}
                         </h2>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className="relative w-full md:w-64">
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Status Filter Tabs */}
+                        <div className="flex items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                            <button
+                                onClick={() => setStatusFilter("all")}
+                                className={cn(
+                                    "px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                                    statusFilter === "all"
+                                        ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                                )}
+                            >
+                                All <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 dark:bg-slate-700 rounded-full font-mono">{items.length}</span>
+                            </button>
+                            <button
+                                onClick={() => setStatusFilter("active")}
+                                className={cn(
+                                    "px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                                    statusFilter === "active"
+                                        ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                                )}
+                            >
+                                Active <span className="text-[10px] px-1.5 py-0.2 bg-blue-50 dark:bg-blue-950 text-blue-600 rounded-full font-mono">{activeCount}</span>
+                            </button>
+                            <button
+                                onClick={() => setStatusFilter("archived")}
+                                className={cn(
+                                    "px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                                    statusFilter === "archived"
+                                        ? "bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                                )}
+                            >
+                                Archived <span className="text-[10px] px-1.5 py-0.2 bg-amber-50 dark:bg-amber-950 text-amber-600 rounded-full font-mono">{archivedCount}</span>
+                            </button>
+                        </div>
+
+                        <div className="relative w-full md:w-56">
                             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                             <Input
                                 placeholder="Search items..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-9 h-10 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-blue-500/20"
+                                className="pl-9 h-10 rounded-xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500/20"
                             />
                         </div>
                         <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl h-10 px-4 font-semibold shadow-lg shadow-blue-500/20">
@@ -300,7 +346,7 @@ function LibraryDetails({ master }: { master: LibMaster }) {
                         <div className="w-16 h-16 bg-slate-100 dark:bg-slate-900 rounded-full flex items-center justify-center mb-4 text-slate-300">
                             <Package className="w-8 h-8" />
                         </div>
-                        <p className="text-muted-foreground font-medium">No items found.</p>
+                        <p className="text-muted-foreground font-medium">No {statusFilter !== "all" ? statusFilter : ""} items found.</p>
                         <Button variant="link" onClick={() => setIsCreateOpen(true)} className="text-blue-600">Create the first one</Button>
                     </div>
                 )}
@@ -322,23 +368,25 @@ function LibraryItemRow({ item, master, onRefresh }: { item: LibItem, master: Li
     const [isLoading, setIsLoading] = useState(false);
 
     const handleSoftDelete = async () => {
-        if (!confirm("Are you sure you want to delete this item?")) return;
+        const actionText = isDeleted ? "restore" : "archive";
+        if (!confirm(`Are you sure you want to ${actionText} this item?`)) return;
         setIsLoading(true);
         try {
             const newStatus = isDeleted ? 0 : 1;
             const res = await fetch(`/api/library/${encodeURIComponent(master.lib_code)}/${encodeURIComponent(String(item.lib_id || item.lib_val))}`, {
                 method: "PUT",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ lib_delete: newStatus }),
             });
 
             if (res.ok) {
-                toast.success(isDeleted ? "Item restored" : "Item deleted");
+                toast.success(isDeleted ? "Item restored successfully!" : "Item archived successfully!");
                 onRefresh();
             } else {
-                toast.error("Failed to update status");
+                toast.error("Failed to update item status");
             }
         } catch (e) {
-            toast.error("Error updating status");
+            toast.error("Error updating item status");
         } finally {
             setIsLoading(false);
         }
@@ -346,22 +394,36 @@ function LibraryItemRow({ item, master, onRefresh }: { item: LibItem, master: Li
 
     return (
         <div className={cn(
-            "group flex items-center justify-between p-4 bg-white dark:bg-slate-950 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors",
-            isDeleted && "bg-slate-50 opacity-60 grayscale"
+            "group flex items-center justify-between p-4 transition-all relative border-l-4",
+            isDeleted
+                ? "bg-amber-50/40 dark:bg-amber-950/10 border-l-amber-500 border-b border-dashed border-slate-200 dark:border-slate-800/80"
+                : "bg-white dark:bg-slate-950 border-l-transparent border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
         )}>
             <div className="flex-1 grid grid-cols-12 gap-6 items-center">
-                <div className="col-span-3 flex items-center gap-3">
+                <div className="col-span-4 flex items-center gap-3">
                     {/* Visual Indicator / Icon */}
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 font-bold text-xs shrink-0">
+                    <div className={cn(
+                        "w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 shadow-sm transition-colors",
+                        isDeleted
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                    )}>
                         {master.lib_code.substring(0, 2)}
                     </div>
 
                     <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5 tracking-wider">ID / Code</span>
+                        <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">ID / Code</span>
+                            {isDeleted && (
+                                <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-extrabold bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 uppercase gap-1">
+                                    <Archive className="w-2.5 h-2.5" /> Archived
+                                </Badge>
+                            )}
+                        </div>
                         <div className="flex items-center gap-2">
                             <span className={cn(
                                 "font-mono text-sm font-bold truncate",
-                                isDeleted ? "text-slate-500 line-through" : "text-blue-700 dark:text-blue-400"
+                                isDeleted ? "text-slate-400 dark:text-slate-500 line-through" : "text-blue-700 dark:text-blue-400"
                             )}>
                                 {item.lib_id || item.lib_val || item.code || "—"}
                             </span>
@@ -386,39 +448,53 @@ function LibraryItemRow({ item, master, onRefresh }: { item: LibItem, master: Li
                     <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5 tracking-wider">Description</span>
                     <span className={cn(
                         "text-sm font-medium truncate",
-                        isDeleted ? "text-slate-500" : "text-slate-700 dark:text-slate-200"
+                        isDeleted ? "text-slate-400 dark:text-slate-500 line-through italic" : "text-slate-700 dark:text-slate-200"
                     )}>
                         {item.lib_desc || "—"}
                     </span>
                 </div>
                 <div className="col-span-4 flex flex-col min-w-0">
                     <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5 tracking-wider">Comments</span>
-                    <span className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                    <span className={cn(
+                        "text-sm truncate",
+                        isDeleted ? "text-slate-400 italic" : "text-slate-500 dark:text-slate-400"
+                    )}>
                         {item.lib_com || "—"}
                     </span>
                 </div>
             </div>
 
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" onClick={() => setIsEditOpen(true)} disabled={isLoading}>
-                    <Edit className="w-3.5 h-3.5" />
-                </Button>
+            <div className="flex items-center gap-2 shrink-0">
+                {isDeleted ? (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 font-bold text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 border-emerald-300 dark:border-emerald-800 rounded-xl gap-1.5 shadow-sm transition-all cursor-pointer"
+                        onClick={handleSoftDelete}
+                        disabled={isLoading}
+                        title="Restore item"
+                    >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Restore Item
+                    </Button>
+                ) : (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" onClick={() => setIsEditOpen(true)} disabled={isLoading}>
+                            <Edit className="w-3.5 h-3.5" />
+                        </Button>
 
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    className={cn(
-                        "h-8 w-8 rounded-lg",
-                        isDeleted
-                            ? "text-green-600 hover:text-green-700 hover:bg-green-50"
-                            : "text-slate-400 hover:text-red-600 hover:bg-red-50"
-                    )}
-                    onClick={handleSoftDelete}
-                    disabled={isLoading}
-                    title={isDeleted ? "Restore" : "Delete"}
-                >
-                    {isDeleted ? <RefreshCcw className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
-                </Button>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                            onClick={handleSoftDelete}
+                            disabled={isLoading}
+                            title="Archive Item"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                    </div>
+                )}
             </div>
 
             <EditItemDialog

@@ -1,4 +1,4 @@
-import { applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, Footer, PageNumber, TableOfContents } from "docx";
 import { saveAs } from "file-saver";
 

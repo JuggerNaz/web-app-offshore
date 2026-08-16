@@ -40,7 +40,7 @@ interface CompanySettings {
     logo_url?: string;
 }
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 
 const fetchContractorDetails = async (id: string): Promise<{ name: string; address: string; logoUrl?: string }> => {
     try {
@@ -439,10 +439,10 @@ export const generateJobPackSummaryReport = async (
 
             const sigWidth = (pageWidth - 20) / 3;
 
-            if (config.preparedBy.name) {
+            if (config.preparedBy?.name) {
                 doc.text("Prepared By:", 10, sigY);
                 doc.text(config.preparedBy.name, 10, sigY + 5);
-                doc.text(config.preparedBy.date || "", 10, sigY + 9);
+                doc.text(formatPdfDate(config.preparedBy.date), 10, sigY + 9);
                 doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
             }
 
@@ -450,7 +450,7 @@ export const generateJobPackSummaryReport = async (
                 const x = 10 + sigWidth;
                 doc.text("Reviewed By:", x, sigY);
                 doc.text(config.reviewedBy.name, x, sigY + 5);
-                doc.text(config.reviewedBy.date || "", x, sigY + 9);
+                doc.text(formatPdfDate(config.reviewedBy.date), x, sigY + 9);
                 doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
             }
 
@@ -458,7 +458,7 @@ export const generateJobPackSummaryReport = async (
                 const x = 10 + (sigWidth * 2);
                 doc.text("Approved By:", x, sigY);
                 doc.text(config.approvedBy.name, x, sigY + 5);
-                doc.text(config.approvedBy.date || "", x, sigY + 9);
+                doc.text(formatPdfDate(config.approvedBy.date), x, sigY + 9);
                 doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
             }
         }

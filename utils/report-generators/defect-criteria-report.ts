@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 
 // Helper to load image for PDF (reused from pdf-generator.ts logic)
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 
 interface ReportConfig {
     reportNoPrefix?: string;

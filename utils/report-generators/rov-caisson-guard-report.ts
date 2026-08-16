@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -28,7 +28,7 @@ interface ReportConfig {
  * ROV Caisson Guard Inspection Report (Portrait)
  * Columns: Item No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
  *
- * Data is grouped by Caisson Guard (SG). Each SG group starts on a new page.
+ * Data is grouped by Caisson Guard (SG / CS_GUARD). Each SG group starts on a new page.
  * Associated components (like anodes, clamps attached to SG) are clubbed with their parent SG QID.
  */
 export const generateROVCaissonGuardReport = async (
@@ -90,7 +90,7 @@ export const generateROVCaissonGuardReport = async (
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("ROV Caisson Guard Inspection Report",                             margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("Caisson Guard Inspection Report (ROV)",                             margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -141,8 +141,8 @@ export const generateROVCaissonGuardReport = async (
             const typeCode = (c.code || c.metadata?.type || "").toUpperCase();
             const compName = c.comp_name || c.name || "Caisson Guard";
 
-            // Group by Caisson Guard (SG)
-            const isSG = qid.startsWith("SG") || typeCode === "SG" || typeCode === "CAISSONGUARD";
+            // Group by Caisson Guard (SG / CS_GUARD)
+            const isSG = qid.startsWith("SG") || qid.startsWith("CS_GUARD") || qid.startsWith("CS-GUARD") || (qid.includes("GUARD") && qid.includes("CS")) || typeCode === "SG" || typeCode === "CAISSONGUARD" || (c.code || "").toUpperCase() === "SG" || compName.toUpperCase().includes("CAISSON GUARD");
             
             idToComp[c.id] = {
                 q_id: c.q_id || `ID: ${c.id}`,
@@ -229,30 +229,36 @@ export const generateROVCaissonGuardReport = async (
             const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const cpDisplay  = primaryCP !== "" && primaryCP !== null && primaryCP !== undefined
-                ? `${primaryCP} mV`
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            const additionalCPs = additionals
+                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+            const cpDisplay = cpList.length > 0
+                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
             const findingsParts: string[] = [];
 
-            // CP Additional
-            const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if (val !== "" && val !== null && val !== undefined) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    findingsParts.push(`Add. CP${loc}: ${val} mV`);
-                }
-            });
-
-            // Findings / Description
+            // 1. Findings / Description
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
             } else if (d.findings && d.findings.trim()) {
                 findingsParts.push(d.findings.trim());
             }
 
-            // Anomaly Reference
+            // 2. CP Additional
+            additionals.forEach((a: any) => {
+                const val = a.reading ?? a.cp_rdg ?? "";
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                    const loc = a.location ? ` @ ${a.location}` : "";
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                }
+            });
+
+            // 3. Anomaly Reference
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
@@ -368,7 +374,7 @@ export const generateROVCaissonGuardReport = async (
                     doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                     doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                     doc.text(
-                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Caisson Guard Inspection Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Caisson Guard Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                         margin, pageHeight - 6
                     );
                     if (config.showPageNumbers !== false) {
@@ -386,7 +392,7 @@ export const generateROVCaissonGuardReport = async (
                     sigY = pageHeight - 38;
                 }
                 const sigW = contentWidth / 3;
-                const drawSigFooter = (label: string, lx: number) => {
+                const drawSigFooter = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                     doc.rect(lx, sigY, sigW - 4, 18);
                     if (!config.printFriendly) {
@@ -400,12 +406,14 @@ export const generateROVCaissonGuardReport = async (
                     doc.text(label, lx + 2, sigY + 3.5);
                     doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                     doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                     doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                     doc.text("Signature:", lx + 2, sigY + 17);
                 };
-                drawSigFooter("PREPARED BY", margin);
-                drawSigFooter("REVIEWED BY", margin + sigW);
-                drawSigFooter("APPROVED BY", margin + sigW * 2);
+                drawSigFooter("PREPARED BY", margin, config?.preparedBy);
+                drawSigFooter("REVIEWED BY", margin + sigW, config?.reviewedBy);
+                drawSigFooter("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
             }
         });
 

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -15,17 +15,17 @@ interface ReportConfig {
     jobPackId?: number;
     structureId?: number;
     sowReportNo?: string;
-    preparedBy?: { name: string; date: string 
-    approvedBy?: { name: string; date: string };
-    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
+    preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
+    approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
 
 /**
- * ROV Anode Inspection Report (RGVI + component_type: AN)
+ * ROV Anode Inspection Report (component_type: AN)
  */
 export const generateROVAnodeReport = async (
     records: any[],
@@ -76,51 +76,49 @@ export const generateROVAnodeReport = async (
             : 'N/A';
 
         const drawHeader = (d: jsPDF) => {
-            const da = d as any;
             const headerH = 22;
             const isPF = config.printFriendly;
             
             if (isPF) {
-                da.setDrawColor(...colors.navy);
-                da.setLineWidth(0.5);
-                da.rect(margin, margin, contentWidth, headerH, 'S');
-                da.setTextColor(...colors.navy);
+                d.setDrawColor(...colors.navy);
+                d.setLineWidth(0.5);
+                d.rect(margin, margin, contentWidth, headerH, 'S');
+                d.setTextColor(...colors.navy);
             } else {
-                da.setFillColor(...colors.navy);
-                da.rect(margin, margin, contentWidth, headerH, 'F');
-                da.setTextColor(255);
+                d.setFillColor(...colors.navy);
+                d.rect(margin, margin, contentWidth, headerH, 'F');
+                d.setTextColor(255);
             }
 
             if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
             if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 4, 'left',  'center');
 
-            da.setFontSize(10); da.setFont("helvetica", "bold");
-            da.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            da.setFontSize(7); da.setFont("helvetica", "normal");
-            da.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            da.setFontSize(14); da.setFont("helvetica", "bold");
-            da.text(`ROV Anode Inspection Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.setFontSize(10); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
+            d.setFontSize(7); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
+            d.setFontSize(14); d.setFont("helvetica", "bold");
+            d.text(`Anode Inspection Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
 
-            da.setFontSize(8); da.setFont("helvetica", "normal");
-            da.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
-            const da = d as any;
             const rowH = 7;
             const tableY = y;
             const colW = contentWidth / 2;
             const isPF = config.printFriendly;
             
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
-                da.setDrawColor(...colors.border); da.setLineWidth(0.1); 
-                if (!isPF) da.setFillColor(...colors.lightGray);
-                da.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
-                if (!isPF) da.rect(x, ty, w, rowH, 'S');
+                d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
+                if (!isPF) d.setFillColor(...colors.lightGray);
+                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 
-                da.setTextColor(...colors.text); da.setFontSize(8); da.setFont("helvetica", "bold");
-                da.text(label, x + 2, ty + 4.5); da.setFont("helvetica", "normal");
-                da.text(String(value), x + 40, ty + 4.5);
+                d.setTextColor(...colors.text); d.setFontSize(8); d.setFont("helvetica", "bold");
+                d.text(label, x + 2, ty + 4.5); d.setFont("helvetica", "normal");
+                d.text(String(value), x + 40, ty + 4.5);
             };
 
             drawBox('Structure:', headerData.platformName, margin, colW, tableY);
@@ -156,8 +154,9 @@ export const generateROVAnodeReport = async (
                 
                 // Format Primary + Additional CP readings in the CP column
                 const primaryCP = d.cp_reading_mv || d.cp_rdg || '';
-                const additionalCPs = Array.isArray(d.cp_readings) 
-                    ? d.cp_readings.map((cr: any) => cr.reading).filter(Boolean) 
+                const rawAddCPs = d.cp_rdg_additional || d.cp_readings || [];
+                const additionalCPs = Array.isArray(rawAddCPs) 
+                    ? rawAddCPs.map((cr: any) => cr.reading ?? cr.cp_rdg ?? '').filter((v: any) => v !== undefined && v !== null && v !== '') 
                     : [];
                 const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
                 const cp = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
@@ -179,23 +178,27 @@ export const generateROVAnodeReport = async (
                                r.rov_job_id || r.dive_job_id || 'N/A';
 
                 const findingsLines: string[] = [];
-                if (r.description) findingsLines.push(r.description);
+
+                // 1. Description / Findings
+                if (r.description && r.description.trim()) findingsLines.push(r.description.trim());
+                
+                // 2. Additional CP details BEFORE Anomaly details
+                if (Array.isArray(rawAddCPs) && rawAddCPs.length > 0) {
+                    rawAddCPs.forEach((cr: any) => {
+                        const val = cr.reading ?? cr.cp_rdg ?? '';
+                        if ((val !== '' && val !== null && val !== undefined) || cr.location) {
+                            const unit = String(val).toLowerCase().includes('mv') || !val ? '' : ' mV';
+                            findingsLines.push(`Add. CP${cr.location ? ` @ ${cr.location}` : ''}: ${val}${unit}`);
+                        }
+                    });
+                }
+
+                // 3. Anomaly Reference & Rectified comments
                 if ((isAnomaly || isDefect) && anomalyRef) {
                     findingsLines.push(`[Reference: ${anomalyRef}]`);
                 }
                 if (isRectified) {
                     findingsLines.push(`Rectified: ${rectifiedComments || 'N/A'}`);
-                }
-                
-                // Add more details of Additional CP readings to Findings column
-                if (Array.isArray(d.cp_readings) && d.cp_readings.length > 0) {
-                    const addCpLines: string[] = ["Additional CP Readings:"];
-                    d.cp_readings.forEach((cr: any) => {
-                        if (cr.reading !== undefined || cr.location) {
-                            addCpLines.push(`• ${cr.location || 'Unknown'}: ${cr.reading ?? '-'} mV`);
-                        }
-                    });
-                    findingsLines.push(addCpLines.join('\n'));
                 }
 
                 const findings = findingsLines.length > 0 ? findingsLines.join('\n') : 'No significant findings';
@@ -235,14 +238,14 @@ export const generateROVAnodeReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Anode Inspection Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Anode Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
                     doc.text(`Page ${data.pageNumber}`, margin + contentWidth, pageHeight - 6, { align: "right" });
                 }
             }
-            });
+        });
 
         const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
@@ -253,7 +256,7 @@ export const generateROVAnodeReport = async (
                 sigY = pageHeight - 38;
             }
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
                 if (!isPF) {
@@ -267,13 +270,15 @@ export const generateROVAnodeReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
 
-            drawSig('PREPARED BY', margin);
-            drawSig('REVIEWED BY', margin + sigW);
-            drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig("PREPARED BY", margin, config?.preparedBy);
+            drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);

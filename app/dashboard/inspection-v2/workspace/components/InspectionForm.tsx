@@ -21,16 +21,21 @@ import {
     Camera, 
     CloudUpload,
     Search,
-    Loader2
+    Loader2,
+    Sparkles,
+    RefreshCw
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
 import { FindingsSuggestionEngine } from "./FindingsSuggestionEngine";
+import { createClient } from "@/utils/supabase/client";
+import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 import inspectionSpecs from "@/utils/types/inspection-types.json";
 
 interface InspectionFormProps {
+    inspMethod?: 'DIVING' | 'ROV';
     selectedComp: any;
     activeSpec: string | null;
     allInspectionTypes: any[];
@@ -86,6 +91,7 @@ interface InspectionFormProps {
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
+    inspMethod,
     selectedComp,
     activeSpec,
     allInspectionTypes,
@@ -179,6 +185,42 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     const currentDisplayCount = getCounterAsSeconds(savedTapeCount);
 
+    const activeSpecClean = String(activeSpec || '').toUpperCase().trim();
+    const activeIt = React.useMemo(() => {
+        return (allInspectionTypes || []).find((t: any) => 
+            (t.code || '').toUpperCase().trim() === activeSpecClean || 
+            (t.name || '').toUpperCase().trim() === activeSpecClean
+        );
+    }, [allInspectionTypes, activeSpecClean]);
+
+    const isRov = React.useMemo(() => {
+        const effectiveMethod = String(
+            inspMethod || 
+            headerData?.inspMethod || 
+            headerData?.jobType || 
+            (headerData?.mode === "ROV" ? "ROV" : "") ||
+            ""
+        ).toUpperCase();
+
+        if (effectiveMethod.includes("DIVING") || effectiveMethod.includes("DIVE")) {
+            return false;
+        }
+
+        if (effectiveMethod.includes("ROV")) {
+            return true;
+        }
+
+        const rovKeywords = ["ROV", "RUTWT", "RGVI", "RMG", "RSCOR", "RICMI", "RWDI"];
+        const specName = (activeIt?.name || '').toUpperCase();
+        
+        return (
+            rovKeywords.some(kw => activeSpecClean.includes(kw) || specName.includes(kw)) ||
+            activeIt?.metadata?.rov == 1 ||
+            activeIt?.metadata?.rov === "1" ||
+            activeIt?.metadata?.rov === true
+        );
+    }, [inspMethod, headerData, activeSpecClean, activeIt]);
+
     const resolvedRseabFields = React.useMemo(() => {
         if (activeSpec?.toUpperCase() !== 'RSEAB') return [];
         const localRseab = inspectionSpecs.inspectionTypes.find(t => t.code === 'RSEAB');
@@ -231,17 +273,28 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             return f;
         });
 
+        const isThicknessTaskLocal = ['RISER', 'DRISR', 'RRISI', 'RRISR', 'SZONE', 'DSZCI', 'RSZCI', 'SZCI', 'UTWTK', 'DUTWT', 'RUTWT', 'UTWT'].some(tc => activeSpecStr.includes(tc) || tc.includes(activeSpecStr));
+
         const excludedFields = [
-            'northing', 'easting', 'depth', 'cp_fg_rdg', 'rov_heading', 'flow_direction', 'insp_mode',
+            ...(isRov ? ['northing', 'easting', 'depth', 'cp_fg_rdg', 'rov_heading', 'flow_direction', 'insp_mode'] : ['northing', 'easting', 'rov_heading']),
             'verified_depth', 'verification_depth', 
             'location_northing', 'location_easting', 'inspection_date', 
             'inspection_time', 'tape_count_no', 'finding_type',
             'x', 'y', 'reference_leg', 'distance_from_leg', 'nearest_leg',
-            'dist_to_nearest_leg', 'face', 'reference_leg_id', 'nearest_leg_id'
+            'dist_to_nearest_leg', 'face', 'reference_leg_id', 'nearest_leg_id',
+            ...(isThicknessTaskLocal ? ['nominal_thickness', 'nominal_wall_thickness', 'wall_thickness', 'nom_wt', 'nom_thickness'] : [])
         ];
         const fieldsResult = jsonFields.length > 0 ? jsonFields : activeFormProps;
-        return (fieldsResult || []).filter((p: any) => p && shouldShowField(p) && !excludedFields.includes(p.name));
-    }, [activeSpec, activeFormProps, dynamicProps, selectedComp]);
+        return (fieldsResult || []).filter((p: any) => {
+            if (!p || !shouldShowField(p)) return false;
+            if (excludedFields.includes(p.name)) return false;
+            const nameClean = String(p.name || p.label || '').toLowerCase().replace(/[\s_]+/g, '');
+            if (isThicknessTaskLocal && ['nominalthickness', 'nominalwallthickness', 'wallthickness', 'nomwt', 'nomthickness'].includes(nameClean)) {
+                return false;
+            }
+            return true;
+        });
+    }, [activeSpec, activeFormProps, dynamicProps, selectedComp, isRov]);
 
     const fieldGroups = React.useMemo(() => {
         if (!resolvedFields) return null;
@@ -274,61 +327,48 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     const [lastFlaggedThreshold, setLastFlaggedThreshold] = React.useState<number | null>(null);
 
+    const getFormDepth = React.useCallback(() => {
+        const rawVal = dynamicProps?.elevation ?? dynamicProps?.depth ?? dynamicProps?.verification_depth ?? dynamicProps?.verified_depth;
+        if (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '') {
+            return String(rawVal);
+        }
+        if (selectedComp) {
+            if (selectedComp.lowestElev && selectedComp.lowestElev !== '-') return selectedComp.lowestElev;
+            if (selectedComp.depth && selectedComp.depth !== '-') return selectedComp.depth;
+        }
+        return '0';
+    }, [dynamicProps, selectedComp]);
+
+    const resolveWaterDepth = React.useCallback(() => {
+        let wDepth = Math.abs(headerData?.waterDepth || 0);
+        if (wDepth === 0 && selectedComp) {
+            const lElev = Math.abs(parseFloat(String(selectedComp.lowestElev || selectedComp.depth || '0').replace(/[^\d.-]/g, '')));
+            if (!isNaN(lElev) && lElev > 0) wDepth = lElev;
+        }
+        return wDepth;
+    }, [headerData, selectedComp]);
+
     const getInterpolatedThreshold = (vDepth: any, vUnit: string, wDepth: number, thresholds: any[]) => {
-        if (!thresholds || thresholds.length === 0) return null;
-        const vDepthStr = String(vDepth).replace(/[^\d.-]/g, '');
-        let currentDepth = Math.abs(parseFloat(vDepthStr) || 0);
-        let waterDepth = Math.abs(wDepth || 0);
-        if (waterDepth === 0 && selectedComp) {
-            const type = (selectedComp.raw?.type || String(selectedComp.name || '')).toUpperCase();
-            if (type.includes('LEG')) {
-                const lElev = parseFloat(String(selectedComp.lowestElev || '0').replace(/[^\d.-]/g, ''));
-                if (!isNaN(lElev)) waterDepth = Math.abs(lElev);
-            }
-        }
-        if (vUnit === 'ft') currentDepth *= 0.3048;
-        else if (vUnit === 'in') currentDepth *= 0.0254;
-        else if (vUnit === 'mm') currentDepth /= 1000;
-        else if (vUnit === 'cm') currentDepth /= 100;
-
-        const resolved = thresholds.map(t => {
-            let d = 0;
-            const from = String(t.from_elevation).toUpperCase().trim();
-            if (from === 'MSL') d = 0;
-            else if (from === 'MUDLINE') d = waterDepth;
-            else if (from.includes('WD')) {
-                const m = from.match(/(\d+)\/(\d+)\s*WD/i);
-                if (m && parseInt(m[2]) !== 0) d = (parseInt(m[1]) / parseInt(m[2])) * waterDepth;
-                else d = waterDepth;
-            } else d = Math.abs(parseFloat(from) || 0);
-            return { depth: d, max: t.max_thickness };
-        }).sort((a, b) => a.depth - b.depth);
-
-        if (currentDepth <= resolved[0].depth) return resolved[0].max;
-        if (currentDepth >= resolved[resolved.length - 1].depth) return resolved[resolved.length - 1].max;
-
-        for (let i = 0; i < resolved.length - 1; i++) {
-            const p1 = resolved[i];
-            const p2 = resolved[i+1];
-            if (currentDepth >= p1.depth && currentDepth <= p2.depth) {
-                const ratio = (currentDepth - p1.depth) / (p2.depth - p1.depth);
-                return p1.max + (p2.max - p1.max) * ratio;
-            }
-        }
-        return resolved[resolved.length - 1].max;
+        return calculateInterpolatedMgiThreshold(vDepth, wDepth, thresholds, vUnit);
     };
 
     React.useEffect(() => {
         if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
-        if (!activeSpec || (activeSpec.toUpperCase() !== 'MGI' && activeSpec.toUpperCase() !== 'RMGI')) return;
-        const vDepthRaw = dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+        if (!activeSpec || !['MGI', 'RMGI', 'DMGI', 'MGROW'].includes(activeSpec.toUpperCase())) return;
+        const vDepthRaw = getFormDepth();
         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
-        const waterDepth = Math.abs(headerData.waterDepth || 0);
-        const applicableMax = getInterpolatedThreshold(vDepthRaw, vDepthUnit, waterDepth, activeMGIProfile.thresholds);
+        const waterDepth = resolveWaterDepth();
+        const applicableMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
         if (applicableMax === null) return;
         const formattedThreshold = `${applicableMax.toFixed(1)}mm`;
         if (dynamicProps?.mgi_profile !== formattedThreshold && handleDynamicPropChange) {
             handleDynamicPropChange('mgi_profile', formattedThreshold);
+        }
+        if (dynamicProps?.max_allowable_thickness !== applicableMax && handleDynamicPropChange) {
+            handleDynamicPropChange('max_allowable_thickness', applicableMax);
+        }
+        if (activeMGIProfile?.id && dynamicProps?._mgi_profile_id !== activeMGIProfile.id && handleDynamicPropChange) {
+            handleDynamicPropChange('_mgi_profile_id', activeMGIProfile.id);
         }
         const thicknessFields = ['mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9'];
         const currentMaxT = Math.max(...thicknessFields.map(f => parseFloat(dynamicProps?.[f]) || 0));
@@ -450,6 +490,212 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         }
     }, [dynamicProps, activeSpec, allInspectionTypes]);
 
+    const isThicknessTask = React.useMemo(() => {
+        const code = String(activeSpec || '').toUpperCase().trim();
+        const targetCodes = [
+            'RISER', 'DRISR', 'RRISI', 'RRISR',
+            'SZONE', 'DSZCI', 'RSZCI', 'SZCI',
+            'UTWTK', 'DUTWT', 'RUTWT', 'UTWT'
+        ];
+        return targetCodes.some(tc => code.includes(tc) || tc.includes(code));
+    }, [activeSpec]);
+
+    const compNomThickness = React.useMemo(() => {
+        if (!selectedComp) return null;
+        const sources = [
+            selectedComp,
+            selectedComp.spec,
+            selectedComp.raw,
+            selectedComp.raw?.spec,
+            selectedComp.raw?.metadata,
+            selectedComp.metadata,
+            selectedComp.data
+        ];
+        const keys = [
+            'nom_wt',
+            'nominal_wall_thickness',
+            'nominal_thickness',
+            'wall_thickness',
+            'nom_thickness',
+            'wt',
+            'nominal_wt',
+            'wt_nom',
+            'design_wt',
+            'pipe_wt',
+            'thickness'
+        ];
+
+        for (const src of sources) {
+            if (!src) continue;
+            for (const k of keys) {
+                const val = src[k];
+                if (val !== undefined && val !== null && val !== '' && val !== '-') {
+                    const num = parseFloat(String(val));
+                    if (!isNaN(num) && num > 0) {
+                        return num;
+                    }
+                }
+            }
+        }
+        return null;
+    }, [selectedComp]);
+
+    const activeNomThk = React.useMemo(() => {
+        const raw = dynamicProps?.nominal_thickness || 
+                    dynamicProps?.nominal_wall_thickness || 
+                    dynamicProps?.wall_thickness || 
+                    dynamicProps?.nom_wt || 
+                    compNomThickness || 
+                    0;
+        const num = parseFloat(String(raw));
+        return (!isNaN(num) && num > 0) ? num : 0;
+    }, [dynamicProps, compNomThickness]);
+
+    const calc12PctVal = activeNomThk > 0 ? parseFloat((activeNomThk * 0.125).toFixed(3)) : null;
+    const calc25PctVal = activeNomThk > 0 ? parseFloat((activeNomThk * 0.25).toFixed(3)) : null;
+
+    const utStatusInfo = React.useMemo(() => {
+        if (!activeNomThk || activeNomThk <= 0) return null;
+
+        const readings: number[] = [];
+        const r3 = parseFloat(dynamicProps?.ut_3_o_clock); if (!isNaN(r3) && r3 > 0) readings.push(r3);
+        const r6 = parseFloat(dynamicProps?.ut_6_o_clock); if (!isNaN(r6) && r6 > 0) readings.push(r6);
+        const r9 = parseFloat(dynamicProps?.ut_9_o_clock); if (!isNaN(r9) && r9 > 0) readings.push(r9);
+        const r12 = parseFloat(dynamicProps?.ut_12_o_clock); if (!isNaN(r12) && r12 > 0) readings.push(r12);
+        if (Array.isArray(dynamicProps?.ut_readings_additional)) {
+            dynamicProps.ut_readings_additional.forEach((item: any) => {
+                const addR = parseFloat(item.reading);
+                if (!isNaN(addR) && addR > 0) readings.push(addR);
+            });
+        }
+
+        const minRaw = dynamicProps?.min_reading;
+        if (minRaw !== undefined && minRaw !== null && minRaw !== '') {
+            const parsedMin = parseFloat(String(minRaw));
+            if (!isNaN(parsedMin) && parsedMin > 0) readings.push(parsedMin);
+        }
+
+        if (readings.length === 0) return null;
+
+        const minReading = Math.min(...readings);
+        const thicknessLoss = Math.max(0, activeNomThk - minReading);
+        const lossPercentage = (thicknessLoss / activeNomThk) * 100;
+
+        let status: 'ACCEPTABLE' | 'DEGRADED' | 'CRITICAL';
+        let statusLabel: string;
+        let badgeColor: string;
+        let textColor: string;
+        let bgCard: string;
+
+        if (lossPercentage >= 25) {
+            status = 'CRITICAL';
+            statusLabel = `>= 25% Loss (Critical Anomaly)`;
+            badgeColor = `bg-rose-600 text-white border-rose-700`;
+            textColor = `text-rose-700 dark:text-rose-300`;
+            bgCard = `bg-rose-50/90 dark:bg-rose-950/50 border-rose-300 dark:border-rose-900`;
+        } else if (lossPercentage >= 12.5) {
+            status = 'DEGRADED';
+            statusLabel = `>= 12.5% Loss (Degraded)`;
+            badgeColor = `bg-amber-500 text-white border-amber-600`;
+            textColor = `text-amber-800 dark:text-amber-300`;
+            bgCard = `bg-amber-50/90 dark:bg-amber-950/50 border-amber-300 dark:border-amber-900`;
+        } else {
+            status = 'ACCEPTABLE';
+            statusLabel = `< 12.5% Loss (Acceptable)`;
+            badgeColor = `bg-emerald-600 text-white border-emerald-700`;
+            textColor = `text-emerald-700 dark:text-emerald-300`;
+            bgCard = `bg-emerald-50/90 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-900`;
+        }
+
+        return {
+            minReading,
+            thicknessLoss: parseFloat(thicknessLoss.toFixed(2)),
+            lossPercentage: parseFloat(lossPercentage.toFixed(2)),
+            status,
+            statusLabel,
+            badgeColor,
+            textColor,
+            bgCard
+        };
+    }, [activeNomThk, dynamicProps?.ut_3_o_clock, dynamicProps?.ut_6_o_clock, dynamicProps?.ut_9_o_clock, dynamicProps?.ut_12_o_clock, dynamicProps?.min_reading, dynamicProps?.ut_readings_additional]);
+
+    // Synchronize nominal wall thickness from selected component spec if not set
+    React.useEffect(() => {
+        if (!isEditing && (isThicknessTask || compNomThickness) && handleDynamicPropChange) {
+            if (compNomThickness && compNomThickness > 0) {
+                const curNt = parseFloat(dynamicProps?.nominal_thickness || dynamicProps?.nominal_wall_thickness || dynamicProps?.wall_thickness || dynamicProps?.nom_wt || '');
+                if (isNaN(curNt) || curNt === 0) {
+                    handleDynamicPropChange('nominal_thickness', compNomThickness);
+                    handleDynamicPropChange('nominal_wall_thickness', compNomThickness);
+                    handleDynamicPropChange('wall_thickness', compNomThickness);
+                    handleDynamicPropChange('nom_wt', compNomThickness);
+                }
+            }
+        }
+    }, [selectedComp, isThicknessTask, compNomThickness, isEditing]);
+
+    // Keep calculated 12.5% and 25% thresholds synced in dynamicProps
+    React.useEffect(() => {
+        if (isThicknessTask && activeNomThk > 0 && handleDynamicPropChange) {
+            if (calc12PctVal !== null && parseFloat(dynamicProps?.nom_wt_12_percent) !== calc12PctVal) {
+                handleDynamicPropChange('nom_wt_12_percent', calc12PctVal);
+            }
+            if (calc25PctVal !== null && parseFloat(dynamicProps?.nom_wt_25_percent) !== calc25PctVal) {
+                handleDynamicPropChange('nom_wt_25_percent', calc25PctVal);
+            }
+        }
+    }, [isThicknessTask, activeNomThk, calc12PctVal, calc25PctVal]);
+
+    // Auto-flag Anomaly for Physical Damages / Loss >= 25% of Nominal Thickness
+    React.useEffect(() => {
+        if (!isThicknessTask || activeNomThk <= 0 || calc25PctVal === null || calc12PctVal === null) return;
+
+        const damageDepthRaw = dynamicProps?.damage_depth || 
+                               dynamicProps?.depth_of_damage || 
+                               dynamicProps?.max_depth || 
+                               dynamicProps?.pit_depth || 
+                               dynamicProps?.pitting_depth || 
+                               dynamicProps?.indentation_depth || 
+                               dynamicProps?.corrosion_depth || 
+                               dynamicProps?.metal_loss_depth || 
+                               0;
+        const damageDepth = parseFloat(String(damageDepthRaw)) || 0;
+        const wtLoss = parseFloat(String(dynamicProps?.wall_thickness_loss || 0)) || 0;
+
+        let utwtLoss = 0;
+        const minReadingRaw = dynamicProps?.min_reading;
+        if (minReadingRaw !== undefined && minReadingRaw !== null && minReadingRaw !== '') {
+            const minReading = parseFloat(String(minReadingRaw));
+            if (!isNaN(minReading) && minReading > 0 && minReading < activeNomThk) {
+                utwtLoss = activeNomThk - minReading;
+            }
+        }
+
+        const maxObservedLoss = Math.max(damageDepth, wtLoss, utwtLoss);
+
+        if (maxObservedLoss >= calc25PctVal) {
+            if (findingType !== 'Anomaly') {
+                setFindingType('Anomaly');
+                setAnomalyData((prev: any) => ({
+                    ...prev,
+                    defectCode: prev.defectCode || 'Physical Damage / Metal Loss',
+                    description: `Breached 25% Nominal Wall Thickness threshold (${calc25PctVal.toFixed(2)}mm / 25%). Measured damage/wall loss depth: ${maxObservedLoss.toFixed(2)}mm.`,
+                    priority: 'Anomalous'
+                }));
+                toast.warning(`25% Nominal Thickness Threshold Breached (${calc25PctVal.toFixed(2)}mm)!`, {
+                    description: `Observed loss/depth: ${maxObservedLoss.toFixed(2)}mm (>= 25% of ${activeNomThk}mm). Switched to Anomaly.`
+                });
+            }
+        } else if (maxObservedLoss >= calc12PctVal && maxObservedLoss < calc25PctVal) {
+            if (findingType !== 'Anomaly' && findingType !== 'Finding') {
+                setFindingType('Finding');
+                toast.info(`12.5% Nominal Thickness Threshold Reached (${calc12PctVal.toFixed(2)}mm)`, {
+                    description: `Observed loss/depth: ${maxObservedLoss.toFixed(2)}mm (>= 12.5% of ${activeNomThk}mm).`
+                });
+            }
+        }
+    }, [isThicknessTask, activeNomThk, calc12PctVal, calc25PctVal, dynamicProps?.damage_depth, dynamicProps?.depth_of_damage, dynamicProps?.max_depth, dynamicProps?.pit_depth, dynamicProps?.pitting_depth, dynamicProps?.indentation_depth, dynamicProps?.corrosion_depth, dynamicProps?.metal_loss_depth, dynamicProps?.wall_thickness_loss, dynamicProps?.min_reading]);
+
     React.useEffect(() => {
         if (!isEditing && selectedComp && handleDynamicPropChange && Array.isArray(activeFormProps)) {
             const hasNominalDiameter = activeFormProps.some((p: any) => String(p.name || p.label || '').toLowerCase().replace(/[\s_]+/g, '').includes('nominaldiameter'));
@@ -462,14 +708,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 if (compDia !== undefined && compDia !== null && compDia !== "" && compDia !== "-") handleDynamicPropChange('nominal_diameter', compDia);
             }
             if (hasNominalThickness) {
-                const compThk = selectedComp?.nominal_thickness || selectedComp?.nominal_wall_thickness || selectedComp?.raw?.nominal_thickness || selectedComp?.raw?.nominal_wall_thickness || selectedComp?.wall_thickness || selectedComp?.raw?.wall_thickness || selectedComp?.thickness;
+                const compThk = compNomThickness || selectedComp?.nominal_thickness || selectedComp?.nominal_wall_thickness || selectedComp?.raw?.nominal_thickness || selectedComp?.raw?.nominal_wall_thickness || selectedComp?.wall_thickness || selectedComp?.raw?.wall_thickness || selectedComp?.thickness;
                 if (compThk !== undefined && compThk !== null && compThk !== "" && compThk !== "-") {
                     if (dynamicProps?.nominal_thickness === undefined || dynamicProps?.nominal_thickness === null || dynamicProps?.nominal_thickness === "") handleDynamicPropChange('nominal_thickness', compThk);
                     if (dynamicProps?.nominal_wall_thickness === undefined || dynamicProps?.nominal_wall_thickness === null || dynamicProps?.nominal_wall_thickness === "") handleDynamicPropChange('nominal_wall_thickness', compThk);
                 }
             }
         }
-    }, [selectedComp, activeSpec, activeFormProps, isEditing]);
+    }, [selectedComp, activeSpec, activeFormProps, isEditing, compNomThickness]);
 
     React.useEffect(() => {
         if (!isEditing && activeSpec?.toUpperCase() === 'RSEAB' && handleDynamicPropChange) {
@@ -513,9 +759,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     <span className="truncate max-w-[340px] sm:max-w-md opacity-90">{(() => {
                         const codeClean = (activeSpec || '').toUpperCase().trim();
                         const jsonSpec = (inspectionSpecs?.inspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
-                        if (jsonSpec?.name) return jsonSpec.name;
-                        const specObj = (allInspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean) || (allInspectionTypes || []).find((t: any) => (t.name || '').toUpperCase().trim() === codeClean);
-                        return (specObj?.name && specObj.name.toUpperCase() !== specObj.code?.toUpperCase()) ? specObj.name : (jsonSpec?.name || activeSpec);
+                        let rawName = jsonSpec?.name;
+                        if (!rawName) {
+                            const specObj = (allInspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean) || (allInspectionTypes || []).find((t: any) => (t.name || '').toUpperCase().trim() === codeClean);
+                            rawName = (specObj?.name && specObj.name.toUpperCase() !== specObj.code?.toUpperCase()) ? specObj.name : (jsonSpec?.name || activeSpec);
+                        }
+                        return (rawName || '').replace(/^ROV\s+/i, '');
                     })()}</span>
                     {onChangeTaskClick && (
                         <button onClick={onChangeTaskClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">Change</button>
@@ -531,13 +780,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     </div>
                     <div className="flex items-center gap-1">
                         {onPrintReport && (findingType === 'Anomaly' || findingType === 'Finding') && (
-                            <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Print Report"><Printer className="w-3.5 h-3.5" /></button>
+                            <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Print Report"><Printer className="w-3.5 h-3.5" /></button>
                         )}
                         {isEditing && onDeleteRecord && (
                             <button onClick={onDeleteRecord} className="p-1 hover:bg-red-500/20 bg-black/10 rounded transition text-red-200 hover:text-red-100" title="Delete Record"><Trash2 className="w-3.5 h-3.5" /></button>
                         )}
-                        <button onClick={() => setCompSpecDialogOpen(true)} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Component Specifications"><Info className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => resetForm()} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:text-white" title="Cancel/Close"><X className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setCompSpecDialogOpen(true)} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Component Specifications"><Info className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => resetForm()} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Cancel/Close"><X className="w-3.5 h-3.5" /></button>
                     </div>
                 </div>
             </div>
@@ -580,8 +829,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                  <div className="h-8 px-1.5 flex items-center text-[10px] font-bold bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50 rounded-md text-slate-500 dark:text-slate-400 truncate">{selectedComp.startElev}→{selectedComp.endElev}</div>
                                              </div>
                                         )}
-                                         {(() => {
-                                             const findField = (name: string) => activeFormProps?.find((p: any) => p && p.name === name);
+                                        {isRov && (() => {
+                                             const findField = (name: string) => 
+                                                activeFormProps?.find((p: any) => p && p.name === name);
                                              const northingField = findField('northing');
                                              const eastingField = findField('easting');
                                              const depthField = findField('depth');
@@ -631,13 +881,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                               }} placeholder="Enter Heading" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
                                                           )}
                                                       </div>
-                                                     {flowField && (
+                                                     {flowField && headerData?.structureType === 'pipeline' && (
                                                          <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
                                                              <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Inspection Flow</span>
                                                              {renderInspectionField(flowField, 'primary')}
                                                          </div>
                                                      )}
-                                                     {modeField && (
+                                                     {modeField && headerData?.structureType === 'pipeline' && (
                                                          <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
                                                              <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Inspection On</span>
                                                              {renderInspectionField(modeField, 'primary')}
@@ -661,6 +911,97 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     </div>
                                 </div>
                                 
+                                {isThicknessTask && (
+                                    <div className="p-3 border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-blue-50/40 dark:from-slate-900/60 dark:to-blue-950/20 rounded-xl space-y-2 my-2 shadow-sm">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                                <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                                                Nominal Thickness & Safety Thresholds (12.5% & 25%)
+                                            </span>
+                                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono">
+                                                {compNomThickness ? "Auto-synced from Component Spec" : "Manual Input Enabled"}
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-0.5">
+                                            {/* Card 1: Nominal Wall Thickness Input */}
+                                            <div className="flex flex-col gap-1 p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs">
+                                                <label className="text-[9px] font-extrabold uppercase text-slate-500 flex items-center justify-between">
+                                                    <span>Nominal Wall Thickness</span>
+                                                    {compNomThickness && <span className="text-[8px] text-blue-600 dark:text-blue-400 font-bold">Spec</span>}
+                                                </label>
+                                                <div className="flex items-center gap-1">
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={dynamicProps?.nominal_thickness !== undefined ? dynamicProps.nominal_thickness : (dynamicProps?.nominal_wall_thickness !== undefined ? dynamicProps.nominal_wall_thickness : (dynamicProps?.wall_thickness !== undefined ? dynamicProps.wall_thickness : (compNomThickness || '')))}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            handleDynamicPropChange?.('nominal_thickness', val);
+                                                            handleDynamicPropChange?.('nominal_wall_thickness', val);
+                                                            handleDynamicPropChange?.('wall_thickness', val);
+                                                            handleDynamicPropChange?.('nom_wt', val);
+                                                        }}
+                                                        placeholder="Enter Nom. WT"
+                                                        className="h-8 text-xs font-black font-mono bg-slate-50 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-blue-700 dark:text-blue-300 focus-visible:ring-blue-500"
+                                                    />
+                                                    <span className="text-[10px] font-bold text-slate-400 pr-1">mm</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Card 2: 12.5% Nominal Wall Thickness (Non-Editable / Amber) */}
+                                            <div className="flex flex-col gap-1 p-2 rounded-lg bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 shadow-2xs">
+                                                <label className="text-[9px] font-extrabold uppercase text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                                                    <span>12.5% Nominal Thickness</span>
+                                                    <span className="px-1 py-0.2 text-[8px] bg-amber-200/60 dark:bg-amber-900/80 rounded font-bold">Read-Only</span>
+                                                </label>
+                                                <div className="flex items-center justify-between h-8 px-2 rounded-md bg-white/80 dark:bg-slate-900/80 border border-amber-200/60 dark:border-amber-900/40">
+                                                    <span className="font-mono text-xs font-black text-amber-700 dark:text-amber-300">
+                                                        {calc12PctVal !== null ? `${calc12PctVal} mm` : '—'}
+                                                    </span>
+                                                    <span className="text-[9px] font-bold text-amber-600/70 dark:text-amber-400/70">12.5%</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Card 3: 25% Nominal Wall Thickness (Non-Editable / Red) */}
+                                            <div className="flex flex-col gap-1 p-2 rounded-lg bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 shadow-2xs">
+                                                <label className="text-[9px] font-extrabold uppercase text-rose-800 dark:text-rose-300 flex items-center justify-between">
+                                                    <span>25% Nominal Thickness</span>
+                                                    <span className="px-1 py-0.2 text-[8px] bg-rose-200/60 dark:bg-rose-900/80 rounded font-bold">Read-Only</span>
+                                                </label>
+                                                <div className="flex items-center justify-between h-8 px-2 rounded-md bg-white/80 dark:bg-slate-900/80 border border-rose-200/60 dark:border-rose-900/40">
+                                                    <span className="font-mono text-xs font-black text-rose-700 dark:text-rose-300">
+                                                        {calc25PctVal !== null ? `${calc25PctVal} mm` : '—'}
+                                                    </span>
+                                                    <span className="text-[9px] font-bold text-rose-600/70 dark:text-rose-400/70">25.0%</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Card 4: Entered UT Status & Loss % */}
+                                            <div className={`flex flex-col gap-1 p-2 rounded-lg ${utStatusInfo ? utStatusInfo.bgCard : 'bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800'} shadow-2xs transition-all`}>
+                                                <label className="text-[9px] font-extrabold uppercase flex items-center justify-between text-slate-600 dark:text-slate-400">
+                                                    <span>Entered UT Status</span>
+                                                    {utStatusInfo && <span className={`px-1.5 py-0.2 text-[8px] rounded font-black uppercase shadow-2xs ${utStatusInfo.badgeColor}`}>{utStatusInfo.status}</span>}
+                                                </label>
+                                                <div className="flex items-center justify-between h-8 px-2 rounded-md bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800">
+                                                    {utStatusInfo ? (
+                                                        <>
+                                                            <span className={`font-mono text-xs font-black ${utStatusInfo.textColor}`}>
+                                                                {utStatusInfo.minReading}mm <span className="text-[9px] opacity-75 font-bold">(-{utStatusInfo.thicknessLoss}mm)</span>
+                                                            </span>
+                                                            <span className={`text-[10px] font-black font-mono ${utStatusInfo.textColor}`}>
+                                                                {utStatusInfo.lossPercentage}% Loss
+                                                            </span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-slate-400 italic">Enter UT Readings</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {activeSpec?.toUpperCase() === 'RSEAB' && (
                                     <div className="col-span-full space-y-3 mb-4">
                                         <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">Graphical Seabed Plot <span className="text-[9px] font-normal text-muted-foreground ml-2">(Drag to persist X/Y)</span></label>
@@ -741,10 +1082,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     const softFields = mgiFields.filter((p: any) => p && p.groupRow === 'soft');
                                     const profileField = mgiFields.find((p: any) => p && p.type === 'mgi_profile_display');
                                     const resolveApplicableMax = () => {
-                                        const vDepthRaw = dynamicProps?.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+                                        const vDepthRaw = getFormDepth();
                                         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
-                                        const waterDepth = Math.abs(headerData.waterDepth || 0);
-                                        return getInterpolatedThreshold(vDepthRaw, vDepthUnit, waterDepth, activeMGIProfile?.thresholds);
+                                        const waterDepth = resolveWaterDepth();
+                                        return calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile?.thresholds, vDepthUnit);
                                     };
 
                                     return (
@@ -1239,8 +1580,18 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         <select value={anomalyData.priority} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, priority: e.target.value }))} className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-semibold dark:text-slate-200 ${ringClass}`}><option value="">Select Priority</option>{priorities.map(p => (<option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>))}</select>
                                     </div>
                                     <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
-                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Reference No</label>
-                                        <div className="relative"><input ref={refInputRef} type="text" value={anomalyData.referenceNo} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, referenceNo: e.target.value }))} onFocus={() => setPrevRefNo(anomalyData.referenceNo)} onBlur={async (e) => { const isValid = await validateAnomalyRef(e.target.value); if (!isValid) setTimeout(() => refInputRef.current?.focus(), 10); }} placeholder="Enter reference no..." className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-mono font-bold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`} /></div>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Reference No</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAnomalyData((prev: any) => ({ ...prev, referenceNo: "" }))}
+                                                className="text-[9px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-1 cursor-pointer transition-colors"
+                                                title="Auto-generate next reference number"
+                                            >
+                                                <Sparkles className="w-2.5 h-2.5" /> Auto-Gen
+                                            </button>
+                                        </div>
+                                        <div className="relative"><input ref={refInputRef} type="text" value={anomalyData.referenceNo} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, referenceNo: e.target.value }))} onFocus={() => setPrevRefNo(anomalyData.referenceNo)} onBlur={async (e) => { const isValid = await validateAnomalyRef(e.target.value); if (!isValid) setTimeout(() => refInputRef.current?.focus(), 10); }} placeholder="Auto-generating..." className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-mono font-bold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`} /></div>
                                     </div>
                                     <div className="space-y-1.5 flex-grow min-w-full">
                                         <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Recommendation</label>

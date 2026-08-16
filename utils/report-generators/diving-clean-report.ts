@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -82,7 +82,7 @@ export const generateDivingCLEANReport = async (
             d.setFontSize(7); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10, { align: "center" });
             d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text("Diving Cleaning Inspection Report", margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.text("Cleaning Inspection Report (Diving)", margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
         };
@@ -93,7 +93,7 @@ export const generateDivingCLEANReport = async (
             d.setDrawColor(...colors.border); d.setLineWidth(0.2);
             d.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
             d.text(
-                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Diving CLEAN Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Cleaning Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                 margin, pageHeight - 6
             );
             if (config.showPageNumbers !== false) {
@@ -256,7 +256,7 @@ export const generateDivingCLEANReport = async (
 
                 const sigY = pageHeight - margin - 24; 
 
-                const drawSig = (label: string, lx: number) => {
+                const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                     doc.rect(lx, sigY, sigW - 4, 18);
                     if (!isPF) {
@@ -270,13 +270,15 @@ export const generateDivingCLEANReport = async (
                     doc.text(label, lx + 2, sigY + 3.5);
                     doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                     doc.text("Name:", lx + 2, sigY + 10);
+                    if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                     doc.text("Date:", lx + 2, sigY + 13.5);
+                    if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                     doc.text("Signature:", lx + 2, sigY + 17);
                 };
 
-                drawSig("PREPARED BY", margin);
-                drawSig("REVIEWED BY", margin + sigW);
-                drawSig("APPROVED BY", margin + sigW * 2);
+                drawSig("PREPARED BY", margin, config?.preparedBy);
+                drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+                drawSig("APPROVED BY", margin + sigW * 2, config?.approvedBy);
             }
 
             // Draw footers on all pages

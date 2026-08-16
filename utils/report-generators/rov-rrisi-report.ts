@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -245,25 +245,71 @@ export const generateROVRRISIReport = async (
                 doc.setLineWidth(rWidth * 0.2); doc.setDrawColor(220, 230, 240); 
                 const o = -rWidth * 0.15; if (isV) doc.line(x1 + o, y1, x2 + o, y2); else doc.line(x1, y1 + o, x2, y2 + o);
             };
-            drawP(cX, eToY(designStart), cX, bY, true);
-            const endX = cX + bRadius; 
-            if (!isStraight) {
-                const drawC = (color: [number, number, number], width: number, off: number) => {
-                    const segs = 20; let lx = cX + off; let ly = bY;
-                    const cx = cX + off; const cy = bY; const ex = endX; const ey = pipeY + off;
-                    doc.setDrawColor(...color); doc.setLineWidth(width);
-                    for (let j = 1; j <= segs; j++) {
-                        const t = j / segs;
-                        const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * cx + Math.pow(t, 2) * ex;
-                        const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * ey + Math.pow(t, 2) * ey;
-                        doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
+            if (rType === 'I') {
+                let itubeEndElev = designEnd;
+                let foundElv2: number | null = null;
+                recordsInGroup.forEach(r => {
+                    const meta = r.structure_components?.metadata || r.component?.metadata || {};
+                    const inspData = r.inspection_data || {};
+                    const val = meta.elv_2 ?? meta.ELV_2 ?? meta.end_elevation ?? r.structure_components?.elv_2 ?? r.structure_components?.end_elevation ?? inspData.elv_2 ?? inspData.end_elevation;
+                    if (val != null && !isNaN(parseFloat(String(val)))) {
+                        foundElv2 = parseFloat(String(val));
                     }
-                };
-                drawC([120, 130, 150], rWidth, 0); drawC([160, 175, 195], rWidth * 0.7, 0); drawC([220, 230, 240], rWidth * 0.2, -rWidth * 0.15);
-            }
-            if (rType !== 'J' && rType !== 'I') {
-                drawP(endX, pipeY, gX + gW - 5, pipeY, false);
-                doc.setFontSize(6); doc.setTextColor(120, 130, 150); doc.text("PIPELINE", endX + 10, pipeY + 8);
+                });
+                if (foundElv2 != null) itubeEndElev = foundElv2;
+
+                const pipeTopY = eToY(designStart);
+                const pipeBottomY = eToY(itubeEndElev);
+                drawP(cX, pipeTopY, cX, pipeBottomY, true);
+
+                const rx = rWidth / 2;
+                const ry = 2.5;
+
+                // Oval Base Fill
+                doc.setFillColor(180, 195, 210);
+                doc.ellipse(cX, pipeBottomY, rx, ry, 'F');
+
+                // Grill Mesh Bars
+                doc.setDrawColor(...colors.navy);
+                doc.setLineWidth(0.35);
+                doc.line(cX - 2, pipeBottomY - 1.8, cX - 2, pipeBottomY + 1.8);
+                doc.line(cX, pipeBottomY - 2.5, cX, pipeBottomY + 2.5);
+                doc.line(cX + 2, pipeBottomY - 1.8, cX + 2, pipeBottomY + 1.8);
+                doc.line(cX - 3.8, pipeBottomY, cX + 3.8, pipeBottomY);
+
+                // Oval Rim Border
+                doc.setDrawColor(...colors.navy);
+                doc.setLineWidth(0.6);
+                doc.ellipse(cX, pipeBottomY, rx, ry, 'S');
+
+                // Leader line and Callout
+                doc.setDrawColor(...colors.navy);
+                doc.setLineWidth(0.3);
+                doc.line(cX + rx + 1, pipeBottomY, cX + rx + 6, pipeBottomY);
+
+                doc.setFontSize(5.5); doc.setTextColor(...colors.navy); doc.setFont("helvetica", "bold");
+                doc.text(`TERMINATOR GRILL (${itubeEndElev.toFixed(1)}m)`, cX + rx + 7, pipeBottomY + 1.5);
+            } else {
+                drawP(cX, eToY(designStart), cX, bY, true);
+                const endX = cX + bRadius; 
+                if (!isStraight) {
+                    const drawC = (color: [number, number, number], width: number, off: number) => {
+                        const segs = 20; let lx = cX + off; let ly = bY;
+                        const cx = cX + off; const cy = bY; const ex = endX; const ey = pipeY + off;
+                        doc.setDrawColor(...color); doc.setLineWidth(width);
+                        for (let j = 1; j <= segs; j++) {
+                            const t = j / segs;
+                            const tx = Math.pow(1 - t, 2) * cx + 2 * (1 - t) * t * cx + Math.pow(t, 2) * ex;
+                            const ty = Math.pow(1 - t, 2) * cy + 2 * (1 - t) * t * ey + Math.pow(t, 2) * ey;
+                            doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
+                        }
+                    };
+                    drawC([120, 130, 150], rWidth, 0); drawC([160, 175, 195], rWidth * 0.7, 0); drawC([220, 230, 240], rWidth * 0.2, -rWidth * 0.15);
+                }
+                if ((rType as string) !== 'J' && (rType as string) !== 'I') {
+                    drawP(endX, pipeY, gX + gW - 5, pipeY, false);
+                    doc.setFontSize(6); doc.setTextColor(120, 130, 150); doc.text("PIPELINE", endX + 10, pipeY + 8);
+                }
             }
 
             // Scale
@@ -339,15 +385,39 @@ export const generateROVRRISIReport = async (
                     const isAnom = r.has_anomaly || anoms.length > 0;
                     const c = r.structure_components || {};
                     const isClamp = c.code === 'CL' || rd.clamp_type || c.q_id?.includes('SUPP') || c.q_id?.includes('CLP');
-                    let findings = r.description || 'No significant findings';
-                    if (isClamp) findings = `Clamp: ${c.q_id || 'N/A'}\n${findings}`;
+
+                    const primaryCP = rd.cp_rdg ?? rd.cp_reading_mv ?? rd.cp ?? "";
+                    const additionals: any[] = Array.isArray(rd.cp_rdg_additional) ? rd.cp_rdg_additional : (Array.isArray(rd.cp_readings) ? rd.cp_readings : []);
+                    const additionalCPs = additionals
+                        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+                    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+                    const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+
+                    let findingsParts: string[] = [];
+                    if (isClamp) findingsParts.push(`Clamp: ${c.q_id || 'N/A'}`);
+                    if (r.description && r.description.trim()) findingsParts.push(r.description.trim());
+
+                    additionals.forEach((a: any) => {
+                        const val = a.reading ?? a.cp_rdg ?? "";
+                        if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                            const loc = a.location ? ` @ ${a.location}` : "";
+                            const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                            findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                        }
+                    });
+
                     if (isAnom && anoms.length > 0) {
-                        findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`).join('\n');
+                        findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`));
                     }
-                    if (r.insp_rov_jobs?.job_no) findings += `\n[Dive: ${r.insp_rov_jobs.job_no}]`;
+                    if (r.insp_rov_jobs?.job_no) findingsParts.push(`[Dive: ${r.insp_rov_jobs.job_no}]`);
+
+                    const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
+
                     return [
                         { content: r.elevation ? `${r.elevation}m` : (rd.riser_item || 'N/A'), styles: { fontStyle: 'bold' } },
-                        { content: rd.cp_rdg ?? rd.cp ?? '-', styles: { halign: 'center' } },
+                        { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
                 }),
@@ -370,7 +440,7 @@ export const generateROVRRISIReport = async (
                 sigY = pageHeight - 38;
             }
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
                 if (!config.printFriendly) {
@@ -384,13 +454,15 @@ export const generateROVRRISIReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
 
-            drawSig('PREPARED BY', margin);
-            drawSig('REVIEWED BY', margin + sigW);
-            drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig("PREPARED BY", margin, config?.preparedBy);
+            drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
         }
 
         // --- Finalize Page Numbers ---

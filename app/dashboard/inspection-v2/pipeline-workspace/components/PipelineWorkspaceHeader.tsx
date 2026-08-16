@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ArrowLeft, Settings, HelpCircle, LogOut } from "lucide-react";
+import { ArrowLeft, Settings, HelpCircle, LogOut, Globe } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ interface HeaderProps {
   jobpackName?: string;
   sowReportNo?: string;
   onOpenSettings?: () => void;
+  onOpenGeodetic?: () => void;
 }
 
 export function PipelineWorkspaceHeader({
@@ -29,7 +30,8 @@ export function PipelineWorkspaceHeader({
   vesselName = "MV JUGGERNAUT",
   jobpackName = "",
   sowReportNo = "Pipeline Scope",
-  onOpenSettings
+  onOpenSettings,
+  onOpenGeodetic
 }: HeaderProps) {
   return (
     <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800">
@@ -97,6 +99,19 @@ export function PipelineWorkspaceHeader({
             <span className="text-[10px] font-bold text-cyan-400">{timeStr}</span>
           </div>
         </div>
+
+        {onOpenGeodetic && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenGeodetic}
+            className="bg-blue-950/40 border-blue-800/60 text-blue-300 hover:bg-blue-900/60 hover:text-white h-8 text-[11px] font-bold gap-1.5"
+            title="Geodetic Parameters"
+          >
+            <Globe className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">Geodetic</span>
+          </Button>
+        )}
 
         <Button
           variant="outline"

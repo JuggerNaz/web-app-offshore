@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -24,16 +24,24 @@ export interface ReportConfig {
     showPageNumbers: boolean;
     returnBlob?: boolean;
     inspectionId?: number;
+    anomalyId?: number;
     printFriendly?: boolean;
     prefix?: string;
     isFindingsReport?: boolean;
     showSignatures?: boolean;
 }
 
-const loadImage = (url: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
+interface LoadedImageData {
+    data: string;
+    width: number;
+    height: number;
+    aspect: number;
+}
+
+const loadImage = (url: string): Promise<LoadedImageData | null> => {
+    return new Promise((resolve) => {
         if (!url || typeof url !== 'string' || !url.trim()) {
-            resolve("");
+            resolve(null);
             return;
         }
         const img = new Image();
@@ -42,24 +50,32 @@ const loadImage = (url: string): Promise<string> => {
             console.warn(`Image loading timed out (5s limit) in defect-anomaly-report for URL: ${url}`);
             img.onload = null;
             img.onerror = null;
-            resolve("");
+            resolve(null);
         }, 5000);
         img.onload = () => {
             clearTimeout(timeout);
             const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
+            const w = img.naturalWidth || img.width || 800;
+            const h = img.naturalHeight || img.height || 600;
+            canvas.width = w;
+            canvas.height = h;
             const ctx = canvas.getContext("2d");
             if (ctx) {
                 ctx.drawImage(img, 0, 0);
-                resolve(canvas.toDataURL("image/jpeg"));
+                const aspect = h > 0 ? w / h : 1.333;
+                resolve({
+                    data: canvas.toDataURL("image/jpeg", 0.95),
+                    width: w,
+                    height: h,
+                    aspect
+                });
             } else {
-                reject(new Error("Canvas context is null"));
+                resolve(null);
             }
         };
-        img.onerror = (e) => {
+        img.onerror = () => {
             clearTimeout(timeout);
-            resolve("");
+            resolve(null);
         };
         img.src = url;
     });
@@ -83,9 +99,11 @@ export const generateDefectAnomalyReport = async (
     try {
         let url = `/api/reports/anomaly-report?`;
 
-        // If specific inspection ID is requested, PRIORITIZE it and ignore broader filters 
-        // to avoid mismatch on jobpack/sow_report_no during direct print
-        if (config.inspectionId) {
+        // If specific anomaly ID or inspection ID is requested, PRIORITIZE it and ignore broader filters 
+        // to print strictly that single anomaly record!
+        if (config.anomalyId) {
+            url += `anomaly_id=${config.anomalyId}&`;
+        } else if (config.inspectionId) {
             url += `inspection_id=${config.inspectionId}&`;
         } else {
             if (jobPack?.id && jobPack.id !== "0") url += `jobpack_id=${jobPack.id}&`;
@@ -276,16 +294,38 @@ export const generateDefectAnomalyReport = async (
     };
 
     if (anomalies.length === 0) {
-        drawHeader(doc);
-        doc.setFontSize(12);
-        const noDataMsg = config.isFindingsReport ? "No findings found." : "No anomalies found.";
-        doc.text(noDataMsg, pageWidth / 2, 80, { align: "center" });
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        if (config.returnBlob) return doc.output("blob");
-        const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
-        applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
-        return;
+        if ((config as any).isBlankReport) {
+            anomalies = [{
+                priority: "PRIORITY 2",
+                display_ref_no: "",
+                field_name: "",
+                structure_name: "",
+                sow_report_no: config.reportNoPrefix || "",
+                inspection_date: null,
+                tape_no: "",
+                video_ref: "",
+                diver_name: "",
+                rov_machine: "",
+                rov_name: "",
+                component_qid: "",
+                elevation: "",
+                description: "",
+                findings: "",
+                rectified_remarks: "",
+                rectified: false
+            }];
+        } else {
+            drawHeader(doc);
+            doc.setFontSize(12);
+            const noDataMsg = config.isFindingsReport ? "No findings found." : "No anomalies found.";
+            doc.text(noDataMsg, pageWidth / 2, 80, { align: "center" });
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            if (config.returnBlob) return doc.output("blob");
+            const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
+            applyWatermarkAndSignaturesGlobal(doc, config);
+            doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
+            return;
+        }
     }
 
     let globalPage = 1;
@@ -529,65 +569,92 @@ export const generateDefectAnomalyReport = async (
         // Removed redundant text as requested
 
         const images = record.attachments || [];
-        const processedImages: { data: string; att: any }[] = [];
+        const processedImages: { data: string; att: any; aspect: number }[] = [];
 
-        // Load images while maintaining association with their metadata
+        // Load images while maintaining association with their metadata and aspect ratio
         for (const att of images) {
             if (!att.path) continue;
             const bucket = att.bucket_id || "attachments";
             const url = `/api/attachment/download?path=${encodeURIComponent(att.path)}&bucket=${bucket}`;
             try {
-                const data = await loadImage(url);
-                if (data) {
+                const imgRes = await loadImage(url);
+                if (imgRes && imgRes.data) {
                     // Robust meta parsing
                     let meta = att.meta || {};
                     if (typeof meta === 'string') {
                         try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
                     }
-                    processedImages.push({ data, att: { ...att, meta } });
+                    processedImages.push({ data: imgRes.data, att: { ...att, meta }, aspect: imgRes.aspect });
                 }
             } catch (e) {
                 console.warn("Failed to load image for report", att.name);
             }
         }
 
-        // Define Footer Height
-        const footerH = 25; // Compact height
+        // Define Footer Height for Signatories Box
+        const footerH = 22; // Compact signatory height (22mm)
+        const footerY = pageHeight - margin - footerH; // 260mm
 
         if (processedImages.length > 0) {
-            let availableH = (pageHeight - margin - footerH - 10) - lastY;
-
             for (let j = 0; j < processedImages.length; j++) {
-                const { data: imgData, att: attObj } = processedImages[j];
+                const { data: imgData, att: attObj, aspect: imgAspect } = processedImages[j];
                 const meta = attObj.meta || {};
                 const title = meta.title || attObj.name || `Attachment ${j + 1}`;
                 const description = meta.description || "";
 
-                const imgW = contentWidth - 10;
-
-                // Content Preparation - Centered look (no labels as requested)
-                const titleText = title.toUpperCase();
-                const splitDesc = doc.splitTextToSize(description || `Photo ${j + 1}`, imgW - 10);
-
-                // Heights
+                const maxBoxWidth = contentWidth; // 180mm
                 const headerH_box = 8;
-                const footerH_box = (splitDesc.length * 4) + 6;
-                const minImgH = 40;
+                const splitDesc = doc.splitTextToSize(description || `Photo ${j + 1}`, maxBoxWidth - 10);
+                const footerH_box = description ? (splitDesc.length * 4) + 6 : 8;
 
-                // Check page jump
-                if (availableH < (headerH_box + footerH_box + minImgH + 10)) {
+                const maxYForContent = footerY - 4; // 256mm max for content box
+                let availableH = maxYForContent - lastY;
+
+                const aspect = imgAspect && imgAspect > 0 ? imgAspect : (4 / 3);
+
+                // Check remaining photos in queue to optimize multi-photo page density
+                const remainingPhotos = processedImages.length - j;
+                const isFreshPage = lastY <= (margin + headerH + 12);
+
+                // If on a fresh page and there are 2 or more photos, target ~82mm per photo so BOTH fit on 1 page!
+                let targetMaxH = (isFreshPage && remainingPhotos >= 2) ? 82 : 105;
+
+                let maxPhotoSpace = availableH - headerH_box - footerH_box - 8;
+                let photoH = Math.min(targetMaxH, maxPhotoSpace);
+                let photoW = photoH * aspect;
+
+                // Ensure photo width doesn't exceed container width
+                if (photoW > maxBoxWidth - 10) {
+                    photoW = maxBoxWidth - 10;
+                    photoH = photoW / aspect;
+                }
+
+                // Minimum height threshold for a legible inspection photo (60mm):
+                // If remaining space on current page is too small (photoH < 60mm),
+                // cleanly add a page break so photos render at FULL/BALANCED size on the next page!
+                if (photoH < 60) {
                     doc.addPage();
                     globalPage++;
                     drawHeader(doc);
                     lastY = margin + headerH + 10;
-                    availableH = (pageHeight - margin - footerH - 10) - lastY;
+                    availableH = maxYForContent - lastY;
+
+                    // On the new fresh page: fit 2 photos per page if 2+ photos remain
+                    const isNewFresh = true;
+                    targetMaxH = (isNewFresh && remainingPhotos >= 2) ? 82 : 105;
+
+                    maxPhotoSpace = availableH - headerH_box - footerH_box - 8;
+                    photoH = Math.min(targetMaxH, maxPhotoSpace);
+                    photoW = photoH * aspect;
+                    if (photoW > maxBoxWidth - 10) {
+                        photoW = maxBoxWidth - 10;
+                        photoH = photoW / aspect;
+                    }
                 }
 
-                // Target Image Height (Landscape preferred)
-                let targetImgH = Math.min(availableH - headerH_box - footerH_box - 10, imgW * 0.7);
-                const totalBlockH = headerH_box + targetImgH + footerH_box;
+                const totalBlockH = headerH_box + photoH + footerH_box + 4; // Total container box height
 
-                // 1. Draw Container Box
+                // 1. Draw Container Box (Full width)
                 doc.setDrawColor(200, 200, 200);
                 doc.setLineWidth(0.2);
                 doc.rect(margin, lastY, contentWidth, totalBlockH);
@@ -598,28 +665,29 @@ export const generateDefectAnomalyReport = async (
                 doc.setFontSize(8);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(31, 55, 93);
-                doc.text(titleText, pageWidth / 2, lastY + 5.5, { align: "center" });
+                doc.text(title.toUpperCase(), pageWidth / 2, lastY + 5.5, { align: "center" });
 
-                // 3. Draw Image
-                doc.addImage(imgData, "JPEG", margin + 5, lastY + headerH_box + 2, imgW, targetImgH - 4);
+                // 3. Draw Image (Centered horizontally within container box)
+                const imgX = margin + (contentWidth - photoW) / 2;
+                const imgY = lastY + headerH_box + 2;
+                doc.addImage(imgData, "JPEG", imgX, imgY, photoW, photoH);
 
                 // 4. Draw Footer for Description (Centered)
-                const footerY_pos = lastY + headerH_box + targetImgH;
+                const footerY_pos = lastY + headerH_box + photoH + 4;
                 doc.setFontSize(8);
                 doc.setTextColor(60, 60, 60);
-                doc.setFont("helvetica", "normal");
 
                 if (description) {
-                    doc.text(splitDesc, pageWidth / 2, footerY_pos + 4, { align: "center" });
+                    doc.setFont("helvetica", "normal");
+                    doc.text(splitDesc, pageWidth / 2, footerY_pos + 3, { align: "center" });
                 } else {
                     doc.setFont("helvetica", "italic");
-                    doc.text(`Photo ${j + 1}`, pageWidth / 2, footerY_pos + 4, { align: "center" });
+                    doc.text(`Photo ${j + 1}`, pageWidth / 2, footerY_pos + 3, { align: "center" });
                 }
 
                 // Update Y for next photo
-                const blockGap = 10;
+                const blockGap = 8;
                 lastY += totalBlockH + blockGap;
-                availableH -= (totalBlockH + blockGap);
             }
         }
         // Draw Signatories at the bottom of the current page (or new page if no space)
@@ -629,9 +697,6 @@ export const generateDefectAnomalyReport = async (
         // Define Signatory Footer function to be called on each page or just the last?
         // User requested "footer part". Usually implies on the report page.
         // Let's add it to the LAST page of the anomaly (where photos end).
-
-        // const footerH = 30; // Already defined as 25 above
-        const footerY = pageHeight - margin - footerH;
 
         // Check if we need a new page for footer if content overlapped?
         // Photos logic uses availableH. We should reduce availableH to reserve space for footer.
@@ -658,26 +723,23 @@ export const generateDefectAnomalyReport = async (
 
                 // Title
                 doc.setFont("helvetica", "bold");
-                doc.text(p.title, x + 2, y + 3);
+                doc.text(p.title, x + 2, y + 4);
 
-                // Name Label
+                // Labels & Values
                 doc.setFont("helvetica", "normal");
                 doc.text("Name:", x + 2, y + 9);
-                if (p.name) doc.text(p.name, x + 12, y + 9);
+                if (p.name) doc.text(p.name, x + 14, y + 9);
 
-                // Sign Label
-                doc.text("Sign:", x + 2, y + 15);
+                doc.text("Sign:", x + 2, y + 14);
 
-                // Date Label
-                doc.text("Date:", x + 2, y + 21);
-                if (p.date) doc.text(p.date, x + 12, y + 21);
+                doc.text("Date:", x + 2, y + 19);
+                if (p.date) doc.text(formatPdfDate(p.date), x + 14, y + 19);
             });
         };
 
-        // Draw Signatories at the bottom of the current page (or new page if no space)
+        // Draw Signatories at the bottom of the current page (or new page if space is exceeded)
         if (config.showSignatures !== false) {
-            const sigY_needed = pageHeight - margin - footerH;
-            if (lastY > sigY_needed - 5) {
+            if (lastY > footerY - 1) {
                 doc.addPage();
                 drawHeader(doc);
             }

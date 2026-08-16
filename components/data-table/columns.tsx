@@ -586,7 +586,7 @@ export const jobpacks: ColumnDef<Jobpack>[] = [
   },
 ];
 
-function JobpackActions({ row }: { row: any }) {
+export function JobpackActions({ row }: { row: any }) {
   const item = row.original;
   const metadata = item.metadata as any || {};
   const structureStatus = metadata.structure_status || {};

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -33,7 +33,7 @@ export const generateROVSZCIReport = async (
     config: ReportConfig
 ) => {
     try {
-        const doc = new jsPDF({ orientation: "landscape" }); // Landscape for better width with clock positions
+        const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 12;
@@ -97,7 +97,7 @@ export const generateROVSZCIReport = async (
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`ROV Splash Zone Inspection Report`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.text(`Splash Zone Inspection Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
             
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
@@ -173,23 +173,34 @@ export const generateROVSZCIReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
 
+                // Construct CP Display (Primary + Additional CP)
+                const primaryCP = d.cp_rdg || d.cp || '';
+                const addCP = d.cp_rdg_additional || d.cp_additional || d.cp_readings || [];
+                const additionalCPs = Array.isArray(addCP)
+                    ? addCP.map((cr: any) => cr.reading ?? cr.cp_rdg ?? '').filter((v: any) => v !== undefined && v !== null && v !== '')
+                    : [];
+                const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
+                const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+
                 // Construct findings
                 let findingsParts: string[] = [];
-                if (r.description) findingsParts.push(r.description);
+                if (r.description && r.description.trim()) findingsParts.push(r.description.trim());
                 
-                // Add Additional CP
-                const addCP = d.cp_rdg_additional || d.cp_additional || [];
+                // Add Additional CP details
                 if (Array.isArray(addCP)) {
                     addCP.forEach((item: any) => {
-                        if (item.reading) findingsParts.push(`Add. CP: ${item.reading}mV${item.location ? ` (${item.location})` : ''}`);
+                        const val = item.reading ?? item.cp_rdg ?? '';
+                        if (val !== '' || item.location) {
+                            findingsParts.push(`Add. CP${item.location ? ` @ ${item.location}` : ''}: ${val} mV`);
+                        }
                     });
                 }
 
-                // Add Additional UT
+                // Add Additional UT details
                 const addUT = d.ut_readings_additional || d.ut_additional || [];
                 if (Array.isArray(addUT)) {
                     addUT.forEach((item: any) => {
-                        if (item.reading) findingsParts.push(`Add. UT: ${item.reading}mm${item.location ? ` (${item.location})` : ''}`);
+                        if (item.reading) findingsParts.push(`Add. UT${item.location ? ` @ ${item.location}` : ''}: ${item.reading} mm`);
                     });
                 }
 
@@ -205,7 +216,7 @@ export const generateROVSZCIReport = async (
                 return [
                     idx + 1,
                     qid,
-                    d.cp_rdg || d.cp || '-',
+                    cpDisplay,
                     d.ut_12_o_clock || '-',
                     d.ut_3_o_clock || '-',
                     d.ut_6_o_clock || '-',
@@ -255,7 +266,7 @@ export const generateROVSZCIReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV Splash Zone Inspection Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Splash Zone Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
@@ -273,7 +284,7 @@ export const generateROVSZCIReport = async (
                 sigY = pageHeight - 38;
             }
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
                 if (!isPF) {
@@ -287,13 +298,15 @@ export const generateROVSZCIReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
 
-            drawSig('PREPARED BY', margin);
-            drawSig('REVIEWED BY', margin + sigW);
-            drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig('PREPARED BY', margin, config?.preparedBy);
+            drawSig('REVIEWED BY', margin + sigW, config?.reviewedBy);
+            drawSig('APPROVED BY', margin + (sigW * 2), config?.approvedBy);
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);

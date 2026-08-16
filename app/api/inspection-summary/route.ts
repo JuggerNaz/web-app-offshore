@@ -489,7 +489,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             Object.entries(anodeDepletionBuckets).filter(([, v]) => v > 0)
         );
 
-        // ─── 6. SELECTED ANODE INSPECTION (SANI/RSANI) ────────────────────────
+        // ─── 6. SELECTED ANODE INSPECTION (SANI/RSANI) & MAINTENANCE (ANMAIN) ─
         const saniRecords = rawRecords.filter((r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === "SANI" || code === "RSANI";
@@ -497,6 +497,38 @@ export const GET = withTenant(async (request, { companyId }) => {
         const saniTotal = saniRecords.length;
         const saniRov = saniRecords.filter((r: any) => !!r.rov_job_id).length;
         const saniDive = saniRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
+
+        // Anode Maintenance (ANMAIN) Analysis
+        const anmainRecords = rawRecords.filter((r: any) => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            return code === "ANMAIN" || code === "ANODE_MAINT";
+        });
+        const anmainTotal = anmainRecords.length;
+        let anmainReplaced = 0;
+        let anmainInstalled = 0;
+        let anmainMaintenanceCount = 0;
+
+        anmainRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const repVal = d.replaced;
+            const repInstalled = d.replaced_installed;
+            
+            const isReplaced = 
+                repVal === true || 
+                repVal === "true" ||
+                repVal === "1" ||
+                repVal === 1 ||
+                String(repVal || "").toLowerCase() === "yes font-bold" ||
+                String(repVal || "").toLowerCase() === "yes" ||
+                String(repVal || "").toLowerCase() === "replaced" ||
+                String(repInstalled || "").toLowerCase().includes("replace");
+
+            if (isReplaced) {
+                anmainReplaced++;
+            } else {
+                anmainMaintenanceCount++;
+            }
+        });
 
         // ─── 7. CP READINGS ───────────────────────────────────────────────────
         // Scan ALL inspection records for cp readings — every inspection type that
@@ -1010,6 +1042,9 @@ export const GET = withTenant(async (request, { companyId }) => {
         const inspTypeBreakdown: Record<string, { name: string; count: number; rov: number; dive: number; anomaly: number; finding: number }> = {};
         records.forEach((r: any) => {
             const code = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+            if (!isPipelineStructure && (code.toUpperCase() === "PL_CO" || code.toUpperCase() === "PLCO")) {
+                return;
+            }
             const name = formatInspectionTypeName(r.inspection_type?.name) || code;
             if (!inspTypeBreakdown[code]) {
                 inspTypeBreakdown[code] = { name, count: 0, rov: 0, dive: 0, anomaly: 0, finding: 0 };
@@ -1046,24 +1081,74 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
+        // Fetch library descriptions for COMPGRP (Component Groups) to ensure full component names
+        const { data: compLibData } = await (supabase as any)
+            .from("u_lib_list")
+            .select("lib_desc, workunit, lib_code, lib_id")
+            .or("lib_code.eq.COMPGRP,lib_code.eq.COMP_TYP,lib_code.eq.COMPONENT_TYPE");
+
+        const libCodeNameMap: Record<string, string> = {};
+        if (compLibData && Array.isArray(compLibData)) {
+            compLibData.forEach((item: any) => {
+                if (item.workunit && item.lib_desc) {
+                    libCodeNameMap[String(item.workunit).toUpperCase().trim()] = item.lib_desc;
+                }
+                if (item.lib_code && item.lib_desc) {
+                    libCodeNameMap[String(item.lib_code).toUpperCase().trim()] = item.lib_desc;
+                }
+            });
+        }
+
         const COMPONENT_TYPE_NAMES: Record<string, string> = {
             "RS": "Riser",
             "CD": "Conductor",
             "CA": "Caisson",
             "RG": "Riser Guard",
             "BL": "Boat Landing",
+            "BO": "Boat Landing",
             "AN": "Anode",
             "SD": "Seabed Debris",
             "LG": "Leg",
+            "LEG": "Leg",
             "MB": "Member",
             "PL": "Pipeline",
             "SH": "Sheave",
             "CP": "Cathodic Protection",
-            "CL": "Clamp"
+            "CL": "Clamp",
+            "CS": "Conductor Support",
+            "CF": "Conductor Guide Frame",
+            "FD": "Fender",
+            "HD": "Horizontal Diagonal Member",
+            "HM": "Horizontal Member",
+            "VM": "Vertical Member",
+            "VD": "Vertical Diagonal Member",
+            "IT": "Item / Appurtenance",
+            "WN": "Weld Node",
+            "WP": "Support Weld",
+            "CU": "Conductor Guide",
+            "SG": "Safety Gate",
+            "BB": "Boat Bumper",
+            "BR": "Bracing",
+            "DK": "Deck",
+            "FW": "Fairlead",
+            "FWD": "Fairlead",
+            "JK": "Jacket",
+            "ST": "Stiffener",
+            "TR": "Truss",
+            "WB": "Wellhead",
+            "GR": "Guard Rail",
+            "ND": "Node",
+            "PA": "Pad Eye",
+            "PT": "Protection Structure",
+            "RL": "Railing",
+            "VS": "Vent Stack",
+            "WK": "Walkway",
+            "LA": "Ladder",
+            "PG": "Pile Guide"
         };
         const getComponentTypeName = (code: string) => {
             const uc = (code || "").toUpperCase().trim();
-            return COMPONENT_TYPE_NAMES[uc] || uc || "Other";
+            return COMPONENT_TYPE_NAMES[uc] || libCodeNameMap[uc] || uc || "Other";
         };
 
         const componentSummary: Record<string, Record<string, {
@@ -1076,14 +1161,28 @@ export const GET = withTenant(async (request, { companyId }) => {
             }>
         }>> = {};
 
-        // 1. Initialize from SOW items (to capture any pending items)
-        allSowItems.forEach((item: any) => {
-            const dbComp = compMap.get(item.component_id);
-            const compTypeRaw = item.component_type || dbComp?.code || "Other";
-            const compType = getComponentTypeName(compTypeRaw);
+        // 1. Initialize from SOW items for selected SOW Report (to capture pending items)
+        sowItemsToProcess.forEach((item: any) => {
+            const dbComp = compMap.get(item.component_id) || qidMap.get(String(item.component_qid || "").trim().toUpperCase());
+            
+            // Derive component code: dbComp.code -> item.component_type -> qid prefix (e.g. CGF -> CF)
+            let rawCode = dbComp?.code || item.component_type || "";
+            if (!rawCode && item.component_qid) {
+                const qidUpper = String(item.component_qid).trim().toUpperCase();
+                const prefix = qidUpper.split(/[\/\-_0-9]/)[0];
+                rawCode = prefix;
+            }
+            if (rawCode === "CGF") rawCode = "CF";
+
+            const compType = getComponentTypeName(rawCode || "Other");
             const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
             const inspCode = item.inspection_code || "UNKNOWN";
             
+            // Skip pipeline-only inspection types on platform structure
+            if (!isPipelineStructure && (inspCode.toUpperCase() === "PL_CO" || inspCode.toUpperCase() === "PLCO")) {
+                return;
+            }
+
             if (!componentSummary[compType]) {
                 componentSummary[compType] = {};
             }
@@ -1107,13 +1206,25 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
-        // 2. Populate from actual inspection records
-        rawRecords.forEach((r: any) => {
+        // 2. Populate from actual inspection records for the current SOW Report
+        records.forEach((r: any) => {
             const comp = r.structure_components || {};
-            const compTypeRaw = r.component_type || comp.code || "Other";
-            const compType = getComponentTypeName(compTypeRaw);
+            let rawCode = comp.code || r.component_type || "";
             const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
+            if (!rawCode && qid) {
+                const qidUpper = String(qid).trim().toUpperCase();
+                const prefix = qidUpper.split(/[\/\-_0-9]/)[0];
+                rawCode = prefix;
+            }
+            if (rawCode === "CGF") rawCode = "CF";
+
+            const compType = getComponentTypeName(rawCode || "Other");
             const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+
+            // Ignore pipeline-only inspection types on platform structures
+            if (!isPipelineStructure && (inspCode.toUpperCase() === "PL_CO" || inspCode.toUpperCase() === "PLCO")) {
+                return;
+            }
 
             if (!componentSummary[compType]) {
                 componentSummary[compType] = {};
@@ -1355,6 +1466,12 @@ export const GET = withTenant(async (request, { companyId }) => {
                     depletionBuckets: cleanDepletionBuckets,
                     // anode_condition breakdown
                     conditionCounts: anodeConditionCounts,
+                },
+                anodeMaintenance: {
+                    total: anmainTotal,
+                    replaced: anmainReplaced,
+                    installed: anmainInstalled,
+                    maintenanceCount: anmainMaintenanceCount,
                 },
                 sani: { total: saniTotal, rov: saniRov, dive: saniDive },
                 cp: {

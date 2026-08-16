@@ -16,12 +16,50 @@ interface StepInspectionProps {
     isSubmitting: boolean;
 }
 
+const isInspectionInScope = (insp: any, isTopsideActive: boolean, isSubseaActive: boolean) => {
+    if (insp.is_active === false || insp.is_active === 0 || insp.is_active === "false" || insp.is_active === "0") {
+        return false;
+    }
+    if ((isTopsideActive && isSubseaActive) || (!isTopsideActive && !isSubseaActive)) {
+        return true;
+    }
+    const meta = insp.metadata || {};
+    const code = (insp.code || "").toUpperCase();
+    const name = (insp.name || "").toLowerCase();
+
+    const metaTopside = meta.topside === 1 || meta.topside === "1" || meta.topside === true;
+    const metaSubsea = meta.subsea === 1 || meta.subsea === "1" || meta.subsea === true;
+
+    if (metaTopside && !metaSubsea) return isTopsideActive;
+    if (metaSubsea && !metaTopside) return isSubseaActive;
+    if (metaTopside && metaSubsea) return true;
+
+    const scopeStr = String(meta.scope || meta.location || "").toLowerCase();
+    if (scopeStr.includes("topside") || scopeStr.includes("above_water") || scopeStr.includes("above water")) return isTopsideActive;
+    if (scopeStr.includes("subsea") || scopeStr.includes("underwater") || scopeStr.includes("below water")) return isSubseaActive;
+
+    const isExplicitTopside = name.includes("above water") || name.includes("topside") || code.endsWith("-TS") || code === "HSTAT" || code === "EDDYC" || code === "FLOOD";
+    if (isExplicitTopside) return isTopsideActive;
+
+    const isROV = meta.rov === 1 || meta.rov === "1" || meta.rov === true;
+    const isDiving = meta.diving === 1 || meta.diving === "1" || meta.diving === true;
+    const isSubseaByDefault = isROV || isDiving || code.startsWith("R") || code.startsWith("D") || name.includes("subsea") || name.includes("underwater") || name.includes("seabed") || name.includes("scour") || name.includes("anode") || name.includes("fmd") || name.includes("riser");
+
+    if (isSubseaByDefault) return isSubseaActive;
+    return true;
+};
+
 export function StepInspection({ state, updateState, onNext, onBack, isSubmitting }: StepInspectionProps) {
     // 1. Fetch Data
     const { data: structuresData } = useSWR("/api/structures", fetcher);
     const { data: inspTypesData } = useSWR("/api/inspection-types", fetcher);
 
-    const inspTypes = inspTypesData?.data || [];
+    const isTopsideScope = !!state?.scope?.topside;
+    const isSubseaScope = !!state?.scope?.subsea;
+
+    const inspTypes = (inspTypesData?.data || []).filter((t: any) => 
+        isInspectionInScope(t, isTopsideScope, isSubseaScope)
+    );
 
     // State for local UI
     const [structureSearch, setStructureSearch] = useState("");

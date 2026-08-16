@@ -38,7 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/utils/supabase/client";
-import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SummaryData {
@@ -86,6 +85,12 @@ interface SummaryData {
     dive: number;
     depletionBuckets: Record<string, number>;
     conditionCounts: Record<string, number>;
+  };
+  anodeMaintenance?: {
+    total: number;
+    replaced: number;
+    installed: number;
+    maintenanceCount: number;
   };
   sani: { total: number; rov: number; dive: number };
   cp: {
@@ -288,6 +293,107 @@ function MultiSegmentBar({
 }
 
 // Per-inspection-type accent colour palette (cycles through 10 hues)
+const COMPONENT_TYPE_FULL_NAMES: Record<string, string> = {
+  "RS": "Riser",
+  "CD": "Conductor",
+  "CA": "Caisson",
+  "RG": "Riser Guard",
+  "BL": "Boat Landing",
+  "BO": "Boat Landing",
+  "AN": "Anode",
+  "SD": "Seabed Debris",
+  "LG": "Leg",
+  "LEG": "Leg",
+  "MB": "Member",
+  "PL": "Pipeline",
+  "SH": "Sheave",
+  "CP": "Cathodic Protection",
+  "CL": "Clamp",
+  "CS": "Conductor Support",
+  "CF": "Conductor Guide Frame",
+  "FD": "Fender",
+  "HD": "Horizontal Diagonal Member",
+  "HM": "Horizontal Member",
+  "VM": "Vertical Member",
+  "VD": "Vertical Diagonal Member",
+  "IT": "Item / Appurtenance",
+  "WN": "Weld Node",
+  "WP": "Support Weld",
+  "CU": "Conductor Guide",
+  "SG": "Safety Gate",
+  "BB": "Boat Bumper",
+  "BR": "Bracing",
+  "DK": "Deck",
+  "FW": "Fairlead",
+  "FWD": "Fairlead",
+  "JK": "Jacket",
+  "ST": "Stiffener",
+  "TR": "Truss",
+  "WB": "Wellhead"
+};
+
+function formatComponentTypeName(code: string): string {
+  if (!code) return "Other";
+  const uc = code.toUpperCase().trim();
+  return COMPONENT_TYPE_FULL_NAMES[uc] || code;
+}
+
+const INSPECTION_TYPE_NAMES: Record<string, string> = {
+  "BSINS": "Bolted Support Inspection (Diving)",
+  "CLEAN": "Cleaning Inspection",
+  "CPSURV": "CP Survey / Cathodic Protection",
+  "CVINS": "Close Visual Inspection (Diving)",
+  "RCASN": "Caisson Inspection (ROV)",
+  "DCASN": "Caisson Inspection (Diving)",
+  "RGVI": "General Visual Inspection (ROV)",
+  "DGVI": "General Visual Inspection (Diving)",
+  "RRISI": "Riser Inspection (ROV)",
+  "DRISI": "Riser Inspection (Diving)",
+  "UTWTK": "UT Wall Thickness Inspection",
+  "DUTWT": "UT Wall Thickness Inspection (Diving)",
+  "RUTWT": "UT Wall Thickness Inspection (ROV)",
+  "RSZCI": "Splash Zone Close Visual Inspection (ROV)",
+  "DSZCI": "Splash Zone Close Visual Inspection (Diving)",
+  "SZONE": "Splash Zone Inspection",
+  "RCOND": "Conductor Inspection (ROV)",
+  "DCOND": "Conductor Inspection (Diving)",
+  "RMGI": "Marine Growth Inspection (ROV)",
+  "DMGI": "Marine Growth Inspection (Diving)",
+  "RFMD": "Flooded Member Detection (ROV)",
+  "DFMD": "Flooded Member Detection (Diving)",
+  "RSCOR": "Scour Inspection (ROV)",
+  "DSCOR": "Scour Inspection (Diving)",
+  "RSWNI": "Structural Weld & Node Inspection (ROV)",
+  "DSWNI": "Structural Weld & Node Inspection (Diving)",
+  "RSANI": "Anode Inspection (ROV)",
+  "ANMAIN": "Anode Maintenance Inspection",
+  "CPCLB": "CP Contact / Stab Calibration",
+  "UTCLB": "UT Thickness Calibration",
+  "ACFMC": "ACFM Crack Inspection (Diving)",
+  "PLCO": "Pipeline Crossing Inspection",
+  "GVINS": "General Visual Inspection (Diving)",
+  "MPINS": "Magnetic Particle Inspection (Diving)"
+};
+
+function formatInspectionTypeName(name: string | null | undefined): string {
+  if (!name) return "";
+  const uc = name.toUpperCase().trim();
+  if (INSPECTION_TYPE_NAMES[uc]) return INSPECTION_TYPE_NAMES[uc];
+  
+  // 1. Fix common mislabeled UT names (casing)
+  let formatted = name.replace(/\bUt\b/g, "UT");
+  
+  // 2. Normalize "UT Thickness" to "UT Wall Thickness"
+  if (formatted === "UT Thickness") return "UT Wall Thickness";
+  
+  // 3. Remove "ROV " or "DIVING " prefixes if it's for UT Wall Thickness
+  if (formatted.includes("UT Wall Thickness")) {
+    formatted = formatted.replace(/^(ROV|DIVING)\s+/, "");
+  }
+  
+  return formatted;
+}
+
 const TYPE_ACCENT_PALETTE = [
   {
     bg: "rgba(59,130,246,0.12)",
@@ -478,7 +584,7 @@ function InspTypeCard({
                   <div className="flex items-center gap-2">
                     <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isCompExpanded ? "rotate-90" : ""}`} />
                     <span className="text-[11px] font-black uppercase text-slate-300">
-                      {compType}
+                      {formatComponentTypeName(compType)}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -1060,9 +1166,15 @@ export function InspectionSummaryPanel({
               </div>
             )}
             <button
-              onClick={handlePrintPipelineSummary}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600/30 border border-blue-500/40 text-blue-300 hover:text-white hover:bg-blue-600/50 transition-all text-xs font-bold shadow-sm"
-              title="Print Summary Report"
+              onClick={() => {
+                if (isPipelineMode) {
+                  handlePrintPipelineSummary();
+                } else {
+                  window.dispatchEvent(new CustomEvent("open-platform-summary-report"));
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 border border-cyan-500/50 text-white hover:from-cyan-500 hover:to-blue-500 transition-all text-xs font-black shadow-md shadow-cyan-900/40"
+              title="Print Platform Summary Report (Preview & Export PDF)"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print Report</span>
@@ -1470,8 +1582,24 @@ export function InspectionSummaryPanel({
               <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl p-4 space-y-3">
                 {Object.entries(data.componentSummary).map(([compType, qids]) => {
                   const isCompExpanded = !!expandedCompTypes[compType];
-                  const qidCount = Object.keys(qids).length;
+
+                  // Gather all unique inspection types present across QIDs for this component group
+                  const allInspTypes = Array.from(new Set(
+                    Object.values(qids).flatMap(q => Object.keys(q.inspectionTypes))
+                  )).filter(it => isPipelineMode || (it.toUpperCase() !== "PL_CO" && it.toUpperCase() !== "PLCO")).sort();
+
+                  // Filter QIDs to only include those with active/valid inspection tasks for displayed columns
+                  const visibleQidEntries = Object.entries(qids).filter(([_, qidData]) => {
+                    return allInspTypes.some(it => {
+                      const counts = qidData.inspectionTypes[it];
+                      return counts && (counts.completed > 0 || counts.incomplete > 0 || counts.anomaly > 0 || counts.pending > 0);
+                    });
+                  });
+
+                  const qidCount = visibleQidEntries.length;
                   const totalInspectionsForType = Object.values(qids).reduce((acc, q) => acc + q.totalRecords, 0);
+
+                  if (qidCount === 0 && totalInspectionsForType === 0) return null;
 
                   return (
                     <div key={compType} className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
@@ -1483,7 +1611,7 @@ export function InspectionSummaryPanel({
                         <div className="flex items-center gap-2">
                           <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${isCompExpanded ? "rotate-90" : ""}`} />
                           <span className="text-[12px] font-black uppercase tracking-wider text-white">
-                            {compType}
+                            {formatComponentTypeName(compType)}
                           </span>
                           <Badge variant="secondary" className="text-[9px] font-bold h-4 px-1.5 bg-slate-800 text-slate-300">
                             {qidCount} QID{qidCount !== 1 ? "s" : ""}
@@ -1494,79 +1622,115 @@ export function InspectionSummaryPanel({
                         </div>
                       </button>
 
-                      {/* QIDs list under Component Type (Level 2) */}
+                      {/* Pivot Table Format for Component QIDs */}
                       {isCompExpanded && (
-                        <div className="border-t border-slate-800/60 divide-y divide-slate-800/40 bg-slate-950/20 px-3 py-2 space-y-2">
-                          {Object.entries(qids).map(([qid, qidData]) => {
-                            const qidKey = `${compType}_${qid}`;
-                            const isQIDExpanded = !!expandedQIDs[qidKey];
-                            
-                            return (
-                              <div key={qid} className="border border-slate-800/40 rounded-lg overflow-hidden bg-slate-900/20">
-                                <button
-                                  onClick={() => setExpandedQIDs(prev => ({ ...prev, [qidKey]: !prev[qidKey] }))}
-                                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-800/40 transition-colors text-left"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isQIDExpanded ? "rotate-90" : ""}`} />
-                                    <span className="text-[11px] font-bold text-slate-200 font-mono">
-                                      {qid}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Badge className="text-[9px] font-black bg-blue-500/10 text-blue-400 border border-blue-500/20 h-4.5 px-1.5">
-                                      {qidData.totalRecords} Inspected
-                                    </Badge>
-                                  </div>
-                                </button>
+                          <div className="border-t border-slate-800/80 bg-slate-950/60 overflow-x-auto p-3">
+                            <table className="w-full text-left text-xs border-collapse min-w-[600px]">
+                              <thead>
+                                <tr className="border-b border-slate-800 bg-slate-900/90 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                  <th className="py-2.5 px-3 rounded-tl-lg">Component QID</th>
+                                  {allInspTypes.map(it => (
+                                    <th
+                                      key={it}
+                                      className="py-2.5 px-3 text-center cursor-help transition-colors hover:text-cyan-300"
+                                      title={`${it}: ${formatInspectionTypeName(it)}`}
+                                    >
+                                      {it}
+                                    </th>
+                                  ))}
+                                  <th className="py-2.5 px-3 text-right rounded-tr-lg">Total Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/40">
+                                {visibleQidEntries.map(([qid, qidData]) => {
+                                  const totalCompl = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.completed, 0);
+                                  const totalIncompl = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.incomplete, 0);
+                                  const totalAnom = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.anomaly, 0);
+                                  const totalPend = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.pending, 0);
 
-                                {/* Inspection Types Drill-down (Level 3) */}
-                                {isQIDExpanded && (
-                                  <div className="px-3 pb-3 pt-1 border-t border-slate-800/40 bg-slate-950/40">
-                                    <div className="grid grid-cols-1 gap-2 mt-1">
-                                      {Object.entries(qidData.inspectionTypes).map(([inspType, counts]) => (
-                                        <div key={inspType} className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg bg-slate-900/60 border border-slate-800/40 gap-2">
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="text-[10px] font-black uppercase text-slate-300 tracking-wider">
-                                              {inspType}
-                                            </span>
-                                          </div>
-                                          
-                                          {/* Status breakdown metrics */}
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {counts.completed > 0 && (
-                                              <Badge className="text-[9px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded">
-                                                Complete: {counts.completed}
-                                              </Badge>
-                                            )}
-                                            {counts.incomplete > 0 && (
-                                              <Badge className="text-[9px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                                                Incomplete: {counts.incomplete}
-                                              </Badge>
-                                            )}
-                                            {counts.anomaly > 0 && (
-                                              <Badge className="text-[9px] font-black bg-red-500/10 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded">
-                                                Anomaly: {counts.anomaly}
-                                              </Badge>
-                                            )}
-                                            {counts.pending > 0 && (
-                                              <Badge className="text-[9px] font-black bg-slate-700/30 text-slate-400 border border-slate-700/30 px-1.5 py-0.5 rounded">
-                                                Pending: {counts.pending}
-                                              </Badge>
-                                            )}
-                                            {counts.completed === 0 && counts.incomplete === 0 && counts.anomaly === 0 && counts.pending === 0 && (
-                                              <span className="text-[9px] font-bold text-slate-500 italic">No records</span>
-                                            )}
-                                          </div>
+                                  return (
+                                    <tr key={qid} className="hover:bg-slate-900/50 transition-colors">
+                                      {/* QID */}
+                                      <td className="py-2 px-3 font-mono font-bold text-slate-200 text-[11px] whitespace-nowrap">
+                                        {qid}
+                                      </td>
+
+                                      {/* Inspection Type Columns (Pivot Cells) */}
+                                      {allInspTypes.map(it => {
+                                        const counts = qidData.inspectionTypes[it];
+                                        if (!counts) {
+                                          return (
+                                            <td key={it} className="py-2 px-3 text-center text-[10px] text-slate-600">
+                                              -
+                                            </td>
+                                          );
+                                        }
+
+                                        const fullName = formatInspectionTypeName(it);
+
+                                        return (
+                                          <td key={it} className="py-2 px-3 text-center">
+                                            <div className="flex items-center justify-center gap-1 flex-wrap">
+                                              {counts.completed > 0 && (
+                                                <Badge
+                                                  title={`${fullName}: ${counts.completed} Completed Inspection(s)`}
+                                                  className="text-[8.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0 cursor-help"
+                                                >
+                                                  ✓ {counts.completed}
+                                                </Badge>
+                                              )}
+                                              {counts.incomplete > 0 && (
+                                                <Badge
+                                                  title={`${fullName}: ${counts.incomplete} Incomplete Inspection(s)`}
+                                                  className="text-[8.5px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 px-1.5 py-0 cursor-help"
+                                                >
+                                                  ⚠ {counts.incomplete}
+                                                </Badge>
+                                              )}
+                                              {counts.anomaly > 0 && (
+                                                <Badge
+                                                  title={`${fullName}: ${counts.anomaly} Anomaly/Defect(s) Reported`}
+                                                  className="text-[8.5px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 px-1.5 py-0 cursor-help"
+                                                >
+                                                  ▲ {counts.anomaly}
+                                                </Badge>
+                                              )}
+                                              {counts.pending > 0 && (
+                                                <Badge
+                                                  title={`${fullName}: ${counts.pending} Pending Task(s)`}
+                                                  className="text-[8.5px] font-bold bg-slate-800 text-slate-400 border border-slate-700/50 px-1.5 py-0 cursor-help"
+                                                >
+                                                  … {counts.pending}
+                                                </Badge>
+                                              )}
+                                              {counts.completed === 0 && counts.incomplete === 0 && counts.anomaly === 0 && counts.pending === 0 && (
+                                                <span className="text-[10px] text-slate-600">-</span>
+                                              )}
+                                            </div>
+                                          </td>
+                                        );
+                                      })}
+
+                                      {/* Total Status Summary */}
+                                      <td className="py-2 px-3 text-right whitespace-nowrap">
+                                        <div className="flex items-center justify-end gap-1">
+                                          {qidData.totalRecords > 0 ? (
+                                            <Badge className="text-[9px] font-black bg-blue-500/10 text-cyan-300 border border-blue-500/20 px-2 py-0.5">
+                                              {qidData.totalRecords} Inspected
+                                            </Badge>
+                                          ) : (
+                                            <Badge className="text-[9px] font-medium bg-slate-800/80 text-slate-400 border-none px-2 py-0.5">
+                                              Pending
+                                            </Badge>
+                                          )}
                                         </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
                       )}
                     </div>
                   );
@@ -1926,6 +2090,43 @@ export function InspectionSummaryPanel({
                     </div>
                   </div>
                 )}
+                {/* Anode Maintenance Details (ANMAIN) — 2 Options: Replaced & Maintenance Counts */}
+                {data?.anodeMaintenance && data.anodeMaintenance.total > 0 && (
+                  <div className="border-t border-slate-700/40 pt-3">
+                    <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span>Anode Maintenance</span>
+                        <span className="text-[8px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                          ANMAIN
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-black text-slate-300">
+                        Total: {data.anodeMaintenance.total}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                        <div className="text-xl font-black text-emerald-400">
+                          {data.anodeMaintenance.replaced}
+                        </div>
+                        <div className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider mt-0.5">
+                          Replaced Count
+                        </div>
+                      </div>
+
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center">
+                        <div className="text-xl font-black text-amber-400">
+                          {data.anodeMaintenance.maintenanceCount}
+                        </div>
+                        <div className="text-[9px] font-bold text-amber-500 uppercase tracking-wider mt-0.5">
+                          Maintenance Count
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Selected Anode Inspection (SANI / RSANI) — shown inside anode card when data exists */}
                 {sani && sani.total > 0 && (
                   <div className="border-t border-slate-700/40 pt-3">

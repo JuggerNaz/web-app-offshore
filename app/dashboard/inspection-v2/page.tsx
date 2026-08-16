@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ClipboardCheck, LifeBuoy, Bot, ChevronRight, Building2, Search, ChevronDown, Check, AlertTriangle, CheckCircle2, AlertCircle, HelpCircle } from "lucide-react";
+import { ClipboardCheck, LifeBuoy, Bot, ChevronRight, Building2, Search, ChevronDown, Check, AlertTriangle, CheckCircle2, AlertCircle, HelpCircle, Activity } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
@@ -287,26 +287,74 @@ export default function InspectionLanding() {
             (item) => item.status === "pending" || !item.status
         );
 
-        // Map items to methods using registry
         let rovDone = 0;
         let diveDone = 0;
+        let fieldJoints = 0;
+        let anodes = 0;
+        let spans = 0;
+        let burials = 0;
+        let crossings = 0;
+        let cpReadings = 0;
 
-        completedItems.forEach((item) => {
-            const code = item.inspection_code;
-            const registryEntry = (inspectionRegistry as any)?.inspectionTypes?.find(
-                (t: any) => t.code === code
-            );
-            const methods = registryEntry?.methods || [];
-            
-            if (methods.includes("ROV")) {
-                rovDone++;
+        currentReportItems.forEach((item) => {
+            const code = String(item.inspection_code || "").toUpperCase();
+            const desc = String(item.scope_description || item.notes || "").toUpperCase();
+            const status = String(item.status || "").toLowerCase();
+
+            if (status === "completed" || code.startsWith("R") || code.startsWith("D")) {
+                if (code.startsWith("R")) rovDone++;
+                else if (code.startsWith("D")) diveDone++;
+                else rovDone++;
             }
-            if (methods.includes("DIVING")) {
-                diveDone++;
-            }
+
+            if (code.includes("FJ") || desc.includes("JOINT") || desc.includes("FIELD JOINT")) fieldJoints++;
+            if (code.includes("AN") || desc.includes("ANODE")) anodes++;
+            if (code.includes("SPAN") || desc.includes("FREE SPAN") || desc.includes("SPAN")) spans++;
+            if (code.includes("BUR") || desc.includes("BURIAL") || desc.includes("BURIED")) burials++;
+            if (code.includes("CROSS") || desc.includes("CROSSING")) crossings++;
+            if (code.includes("CP") || desc.includes("CP")) cpReadings++;
         });
 
-        const completionPercentage = Math.round((completedItems.length / total) * 100);
+        const isPipeline = selectedStructureData?.type === "pipeline";
+
+        // Pipeline length progress calculations (in km)
+        let totalPipelineLength = parseFloat((selectedStructureData as any)?.metadata?.length_km || (selectedStructureData as any)?.length_km || "10.000") || 10.000;
+        let inspectedLength = 0;
+        let skippedLength = 0;
+        let pendingLength = totalPipelineLength;
+
+        if (isPipeline) {
+            let minKp = Infinity;
+            let maxKp = -Infinity;
+
+            currentReportItems.forEach((item) => {
+                const status = String(item.status || "").toLowerCase();
+                const rawKp = parseFloat(item.metadata?.kp || item.kp || "0");
+                if (!isNaN(rawKp) && rawKp > 0) {
+                    if (rawKp < minKp) minKp = rawKp;
+                    if (rawKp > maxKp) maxKp = rawKp;
+                }
+
+                if (status === "incomplete" || status === "skipped") {
+                    const skipLen = parseFloat(item.metadata?.skipped_length || "0") || 0.250;
+                    skippedLength += skipLen;
+                }
+            });
+
+            if (minKp !== Infinity && maxKp !== -Infinity && maxKp >= minKp) {
+                inspectedLength = maxKp - minKp;
+            }
+            if (inspectedLength === 0 && completedItems.length > 0) {
+                inspectedLength = completedItems.length * 0.5;
+            }
+
+            if (inspectedLength > totalPipelineLength) totalPipelineLength = inspectedLength;
+            pendingLength = Math.max(0, totalPipelineLength - inspectedLength - skippedLength);
+        }
+
+        const completionPercentage = isPipeline
+            ? (totalPipelineLength > 0 ? Math.min(100, Math.round((inspectedLength / totalPipelineLength) * 100)) : 100)
+            : Math.round((completedItems.length / total) * 100);
 
         return {
             total,
@@ -315,9 +363,21 @@ export default function InspectionLanding() {
             pending: pendingItems.length,
             rovDone,
             diveDone,
+            fieldJoints,
+            anodes,
+            spans,
+            burials,
+            crossings,
+            spansCrossings: spans + crossings,
+            cpReadings,
+            totalPipelineLength,
+            inspectedLength,
+            skippedLength,
+            pendingLength,
             completionPercentage,
+            isPipeline,
         };
-    }, [selectedSOWData, rawSowItems]);
+    }, [selectedSOWData, rawSowItems, selectedStructureData]);
 
     async function loadJobPacks() {
         try {
@@ -1021,9 +1081,16 @@ export default function InspectionLanding() {
                         {sowReportStats ? (
                             <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-805 bg-white dark:bg-slate-950 shadow-md space-y-4 transition-all duration-300 animate-in fade-in slide-in-from-top-2">
                                 <div className="flex items-center justify-between">
-                                    <h3 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
-                                        Inspection Progress Summary
-                                    </h3>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
+                                            {selectedStructureData?.type === "pipeline" ? "Pipeline Progress Summary" : "Inspection Progress Summary"}
+                                        </h3>
+                                        {selectedStructureData?.type === "pipeline" && (
+                                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                                                PIPELINE
+                                            </span>
+                                        )}
+                                    </div>
                                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                                         {selectedSOWData?.report_number}
                                     </span>
@@ -1050,32 +1117,43 @@ export default function InspectionLanding() {
                                     <div className="p-3 rounded-xl bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                                            Completed
+                                            {sowReportStats.isPipeline ? "Inspected Pipeline Length" : "Completed"}
                                         </span>
                                         <div className="mt-1">
                                             <span className="text-xl font-black text-slate-900 dark:text-white">
-                                                {sowReportStats.completed}
+                                                {sowReportStats.isPipeline ? `${sowReportStats.inspectedLength.toFixed(3)} km` : sowReportStats.completed}
                                             </span>
-                                            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-600 ml-1">
-                                                / {sowReportStats.total}
-                                            </span>
+                                            {!sowReportStats.isPipeline && (
+                                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-600 ml-1">
+                                                    / {sowReportStats.total}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[9px] font-semibold text-slate-500 flex flex-col gap-0.5">
-                                            <div className="flex justify-between">
-                                                <span>ROV:</span>
-                                                <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.rovDone}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Diving:</span>
-                                                <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.diveDone}</span>
-                                            </div>
+                                            {sowReportStats.isPipeline ? (
+                                                <div className="flex justify-between">
+                                                    <span>Total Length:</span>
+                                                    <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.totalPipelineLength.toFixed(3)} km</span>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="flex justify-between">
+                                                        <span>ROV:</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.rovDone}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Diving:</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.diveDone}</span>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
 
                                     <div className="p-3 rounded-xl bg-slate-55/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <AlertTriangle className="h-3 w-3 text-amber-500" />
-                                            Anomalies
+                                            {selectedStructureData?.type === "pipeline" ? "Pipeline Anomalies" : "Anomalies"}
                                         </span>
                                         <div className="mt-1">
                                             <span className={`text-xl font-black ${anomalyCount > 0 ? "text-amber-500" : "text-slate-900 dark:text-white"}`}>
@@ -1083,37 +1161,72 @@ export default function InspectionLanding() {
                                             </span>
                                         </div>
                                         <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium mt-1">
-                                            Reported findings
+                                            {selectedStructureData?.type === "pipeline" ? "Pipeline findings & defects" : "Reported findings"}
                                         </span>
                                     </div>
+
+                                    {selectedStructureData?.type === "pipeline" && (
+                                        <div className="col-span-2 p-3 rounded-xl bg-cyan-50/40 dark:bg-cyan-950/20 border border-cyan-100 dark:border-cyan-900/40 shadow-sm">
+                                            <span className="text-[11px] font-bold text-cyan-900 dark:text-cyan-300 flex items-center gap-1 mb-2">
+                                                <Activity className="h-3.5 w-3.5 text-cyan-500" />
+                                                Pipeline Inspection Features Breakdown
+                                            </span>
+                                            <div className="grid grid-cols-6 gap-1.5 text-center">
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[8.5px] text-slate-500 dark:text-slate-400 font-medium truncate">Field Joints</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.fieldJoints}</p>
+                                                </div>
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[8.5px] text-slate-500 dark:text-slate-400 font-medium truncate">Anodes</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.anodes}</p>
+                                                </div>
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[8.5px] text-slate-500 dark:text-slate-400 font-medium truncate">Spans</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.spans}</p>
+                                                </div>
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[8.5px] text-slate-500 dark:text-slate-400 font-medium truncate">Burials</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.burials}</p>
+                                                </div>
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[8.5px] text-slate-500 dark:text-slate-400 font-medium truncate">Crossings</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.crossings}</p>
+                                                </div>
+                                                <div className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-cyan-200/50 dark:border-cyan-800/40">
+                                                    <p className="text-[8.5px] text-slate-500 dark:text-slate-400 font-medium truncate">CP Readings</p>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5">{sowReportStats.cpReadings}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="p-3 rounded-xl bg-slate-55/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <AlertCircle className="h-3 w-3 text-rose-500" />
-                                            Incomplete
+                                            {sowReportStats.isPipeline ? "Skipped Line Length" : "Incomplete"}
                                         </span>
                                         <div className="mt-1">
-                                            <span className={`text-xl font-black ${sowReportStats.incomplete > 0 ? "text-rose-500" : "text-slate-900 dark:text-white"}`}>
-                                                {sowReportStats.incomplete}
+                                            <span className={`text-xl font-black ${(sowReportStats.isPipeline ? sowReportStats.skippedLength > 0 : sowReportStats.incomplete > 0) ? "text-rose-500" : "text-slate-900 dark:text-white"}`}>
+                                                {sowReportStats.isPipeline ? `${sowReportStats.skippedLength.toFixed(3)} km` : sowReportStats.incomplete}
                                             </span>
                                         </div>
                                         <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium mt-1">
-                                            Needs attention
+                                            {sowReportStats.isPipeline ? "Skipped / Incomplete part" : "Needs attention"}
                                         </span>
                                     </div>
 
                                     <div className="p-3 rounded-xl bg-slate-55/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <HelpCircle className="h-3 w-3 text-slate-400" />
-                                            Pending
+                                            {sowReportStats.isPipeline ? "Balance to Inspect" : "Pending"}
                                         </span>
                                         <div className="mt-1">
                                             <span className="text-xl font-black text-slate-900 dark:text-white">
-                                                {sowReportStats.pending}
+                                                {sowReportStats.isPipeline ? `${sowReportStats.pendingLength.toFixed(3)} km` : sowReportStats.pending}
                                             </span>
                                         </div>
                                         <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium mt-1">
-                                            Not yet started
+                                            {sowReportStats.isPipeline ? "Pending length to inspect" : "Not yet started"}
                                         </span>
                                     </div>
                                 </div>

@@ -28,7 +28,7 @@ export function LevelDialog() {
   const form = useForm<z.infer<typeof LevelSchema>>({
     resolver: zodResolver(LevelSchema),
     defaultValues: {
-      workunit: "m",
+      workunit: "000",
     }
   });
 
@@ -40,6 +40,7 @@ export function LevelDialog() {
   const onSubmit = async (values: z.infer<typeof LevelSchema>) => {
     const levelObject = {
       ...values,
+      workunit: "000",
       plat_id: pageId,
       cr_user: "",
     };
@@ -52,7 +53,7 @@ export function LevelDialog() {
       mutate(`/api/platform/level/${pageId}`);
       toast.success("Structural level created successfully");
       setOpen(false);
-      form.reset();
+      form.reset({ workunit: "000" });
     } catch (error) {
       toast.error("Failed to create level");
     }
@@ -118,15 +119,6 @@ export function LevelDialog() {
                   ftype="select"
                 />
               </div>
-
-              <FormFieldWrap
-                label="Work Unit"
-                name="workunit"
-                form={form}
-                placeholder="m"
-                ftype="normal"
-                maxLength="3"
-              />
             </div>
 
             <div className="flex justify-end pt-4 gap-3">

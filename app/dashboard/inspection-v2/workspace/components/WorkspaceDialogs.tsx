@@ -108,6 +108,14 @@ interface WorkspaceDialogsProps {
         mPreviewOpen: boolean;
         rmgiPreviewOpen: boolean;
         fmdPreviewOpen: boolean;
+        divingFmdPreviewOpen?: boolean;
+        divingMeasuPreviewOpen?: boolean;
+        divingRrisiPreviewOpen?: boolean;
+        divingRrisiDetailPreviewOpen?: boolean;
+        divingJtisiPreviewOpen?: boolean;
+        divingJtisiDetailPreviewOpen?: boolean;
+        divingItisiPreviewOpen?: boolean;
+        divingItisiDetailPreviewOpen?: boolean;
         utwtPreviewOpen: boolean;
         szciPreviewOpen: boolean;
         isGalleryOpen: boolean;
@@ -127,6 +135,8 @@ interface WorkspaceDialogsProps {
         divingAnmainPreviewOpen: boolean;
         rgviPreviewOpen: boolean;
         rcondSketchPreviewOpen: boolean;
+        pipelineEventSketchPreviewOpen?: boolean;
+        navigPreviewOpen?: boolean;
         showRemovalConfirm: boolean;
         editingRecordId: number | null;
         pendingReclass: any;
@@ -178,11 +188,14 @@ interface WorkspaceDialogsProps {
         divingMgiPreviewOpen: boolean;
         divingAcfmcPreviewOpen: boolean;
         divingPlcoPreviewOpen: boolean;
+        divingItemReportPreviewOpen?: boolean;
+        divingItmainReportPreviewOpen?: boolean;
         rovRwdiPreviewOpen: boolean;
         divingDcasnUwPreviewOpen: boolean;
         divingDcasnTsPreviewOpen: boolean;
         divingDcondUwPreviewOpen: boolean;
         divingDcondTsPreviewOpen: boolean;
+        pipelineDefectSummaryPreviewOpen?: boolean;
         calibrationDialogOpen: boolean;
 
         rovCalibrationDialogOpen: boolean;
@@ -215,6 +228,14 @@ interface WorkspaceDialogsProps {
         setMPreviewOpen: (open: boolean) => void;
         setRmgiPreviewOpen: (open: boolean) => void;
         setFmdPreviewOpen: (open: boolean) => void;
+        setDivingFmdPreviewOpen?: (open: boolean) => void;
+        setDivingMeasuPreviewOpen?: (open: boolean) => void;
+        setDivingRrisiPreviewOpen?: (open: boolean) => void;
+        setDivingRrisiDetailPreviewOpen?: (open: boolean) => void;
+        setDivingJtisiPreviewOpen?: (open: boolean) => void;
+        setDivingJtisiDetailPreviewOpen?: (open: boolean) => void;
+        setDivingItisiPreviewOpen?: (open: boolean) => void;
+        setDivingItisiDetailPreviewOpen?: (open: boolean) => void;
         setUtwtPreviewOpen: (open: boolean) => void;
         setSzciPreviewOpen: (open: boolean) => void;
         setIsGalleryOpen: (open: boolean) => void;
@@ -231,6 +252,8 @@ interface WorkspaceDialogsProps {
         setDivingAnmainPreviewOpen: (open: boolean) => void;
         setRgviPreviewOpen: (open: boolean) => void;
         setRcondSketchPreviewOpen: (open: boolean) => void;
+        setPipelineEventSketchPreviewOpen?: (open: boolean) => void;
+        setNavigPreviewOpen?: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
         setPendingReclass: (val: any) => void;
         setShowTaskSelector: (open: boolean) => void;
@@ -271,14 +294,16 @@ interface WorkspaceDialogsProps {
         setDivingMgiPreviewOpen: (open: boolean) => void;
         setDivingAcfmcPreviewOpen: (open: boolean) => void;
         setDivingPlcoPreviewOpen: (open: boolean) => void;
+        setDivingItemReportPreviewOpen?: (open: boolean) => void;
+        setDivingItmainReportPreviewOpen?: (open: boolean) => void;
         setRovRwdiPreviewOpen: (open: boolean) => void;
         setDivingDcasnUwPreviewOpen: (open: boolean) => void;
         setDivingDcasnTsPreviewOpen: (open: boolean) => void;
         setDivingDcondUwPreviewOpen: (open: boolean) => void;
         setDivingDcondTsPreviewOpen: (open: boolean) => void;
+        setPipelineDefectSummaryPreviewOpen?: (open: boolean) => void;
         setIsReportWizardOpen: (open: boolean) => void;
         setCalibrationDialogOpen: (open: boolean) => void;
-
         setRovCalibrationDialogOpen: (open: boolean) => void;
         setReportConfig: (cfg: any) => void;
     };
@@ -287,6 +312,7 @@ interface WorkspaceDialogsProps {
     
     // Handlers
     handlers: {
+        generatePipelineEventSketchReport?: () => void;
         handleEditEventSave: (time: string, action: string, eventTime: string) => void;
         handleSaveTapeEdit: () => void;
         handleRegisterAnomaly: () => void;
@@ -297,11 +323,20 @@ interface WorkspaceDialogsProps {
         handleExternalFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
         handleLinkToRecord: (file: any) => void;
         syncDeploymentState: () => void;
+        fetchDeployments?: () => void;
         queryClient: any;
         generateAnomalyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateFMDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingFMDReport?: () => void;
+        generateDivingFMDReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingMEASUReport?: () => void;
+        generateDivingMEASUReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingRRISIReport?: () => void;
+        generateDivingRRISIReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingRRISIDetailReport?: () => void;
+        generateDivingRRISIDetailReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTWTReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZCIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRGReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -330,6 +365,11 @@ interface WorkspaceDialogsProps {
         generateRCASNSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRCONDSketchReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generatePipelineEventSketchReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generatePipelineDefectSummaryReport?: () => void;
+        generatePipelineDefectSummaryReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateROVNavigReport?: () => void;
+        generateROVNavigReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSeabedReport: (templateId?: string) => Promise<void>;
         generateSeabedReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSeabedDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -349,6 +389,7 @@ interface WorkspaceDialogsProps {
         generateMPINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTWTKReport: () => void;
         generateUTWTKReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateJobPackSummaryReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -356,15 +397,31 @@ interface WorkspaceDialogsProps {
         generateDivingMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingACFMCReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingPLCOReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingItemReport?: () => void;
+        generateDivingItemReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingITMAINReport?: () => void;
+        generateDivingITMAINReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateROVRWDIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCASNUWReport: () => void;
         generateDivingDCASNUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCASNTSReport: () => void;
         generateDivingDCASNTSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCASNReport: () => void;
+        generateDivingDCASNReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCONDUWReport: () => void;
         generateDivingDCONDUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCONDTSReport: () => void;
         generateDivingDCONDTSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingDCONDReport: () => void;
+        generateDivingDCONDReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingJTISIReport?: () => void;
+        generateDivingJTISIReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingJTISIDetailReport?: () => void;
+        generateDivingJTISIDetailReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingITISIReport?: () => void;
+        generateDivingITISIReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingITISIDetailReport?: () => void;
+        generateDivingITISIDetailReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
     };
 
     
@@ -415,6 +472,14 @@ export function WorkspaceDialogs({
         previewRecord,
         mPreviewOpen,
         fmdPreviewOpen,
+        divingFmdPreviewOpen,
+        divingMeasuPreviewOpen,
+        divingRrisiPreviewOpen,
+        divingRrisiDetailPreviewOpen,
+        divingJtisiPreviewOpen,
+        divingJtisiDetailPreviewOpen,
+        divingItisiPreviewOpen,
+        divingItisiDetailPreviewOpen,
         utwtPreviewOpen,
         szciPreviewOpen,
         isGalleryOpen,
@@ -434,6 +499,9 @@ export function WorkspaceDialogs({
         divingAnmainPreviewOpen,
         rgviPreviewOpen,
         rcondSketchPreviewOpen,
+        pipelineDefectSummaryPreviewOpen,
+        pipelineEventSketchPreviewOpen,
+        navigPreviewOpen,
         showRemovalConfirm,
         editingRecordId,
         pendingReclass,
@@ -485,6 +553,8 @@ export function WorkspaceDialogs({
         divingMgiPreviewOpen,
         divingAcfmcPreviewOpen,
         divingPlcoPreviewOpen,
+        divingItemReportPreviewOpen,
+        divingItmainReportPreviewOpen,
         rovRwdiPreviewOpen,
         divingDcasnUwPreviewOpen,
         divingDcasnTsPreviewOpen,
@@ -516,6 +586,10 @@ export function WorkspaceDialogs({
         setMPreviewOpen,
         setRmgiPreviewOpen,
         setFmdPreviewOpen,
+        setDivingFmdPreviewOpen,
+        setDivingMeasuPreviewOpen,
+        setDivingRrisiPreviewOpen,
+        setDivingRrisiDetailPreviewOpen,
         setUtwtPreviewOpen,
         setSzciPreviewOpen,
         setIsGalleryOpen,
@@ -532,6 +606,8 @@ export function WorkspaceDialogs({
         setDivingAnmainPreviewOpen,
         setRgviPreviewOpen,
         setRcondSketchPreviewOpen,
+        setPipelineEventSketchPreviewOpen,
+        setNavigPreviewOpen,
         setShowRemovalConfirm,
         setPendingReclass,
         setShowTaskSelector,
@@ -572,6 +648,8 @@ export function WorkspaceDialogs({
         setDivingMgiPreviewOpen,
         setDivingAcfmcPreviewOpen,
         setDivingPlcoPreviewOpen,
+        setDivingItemReportPreviewOpen,
+        setDivingItmainReportPreviewOpen,
         setRovRwdiPreviewOpen,
         setDivingDcasnUwPreviewOpen,
         setDivingDcasnTsPreviewOpen,
@@ -593,6 +671,7 @@ export function WorkspaceDialogs({
         handleExternalFileUpload,
         handleLinkToRecord,
         syncDeploymentState,
+        fetchDeployments,
         queryClient,
         generateAnomalyReportBlob,
         generateMGIReportBlob,
@@ -620,6 +699,9 @@ export function WorkspaceDialogs({
         generateRCASNSketchReportBlob,
         generateRCONDReportBlob,
         generateRCONDSketchReportBlob,
+        generatePipelineEventSketchReportBlob,
+        generateROVNavigReport,
+        generateROVNavigReportBlob,
         generateSeabedReport,
         generateSeabedReportBlob,
         generateSeabedDetailReportBlob,
@@ -639,6 +721,7 @@ export function WorkspaceDialogs({
         generateMPINSReportBlob,
         generateUTWTKReport,
         generateUTWTKReportBlob,
+        generateJobPackSummaryReportBlob,
         generateSZONEReportBlob,
         generateCPCLBReportBlob,
         generateUTCLBReportBlob,
@@ -651,10 +734,14 @@ export function WorkspaceDialogs({
         generateDivingDCASNUWReportBlob,
         generateDivingDCASNTSReport,
         generateDivingDCASNTSReportBlob,
+        generateDivingDCASNReport,
+        generateDivingDCASNReportBlob,
         generateDivingDCONDUWReport,
         generateDivingDCONDUWReportBlob,
         generateDivingDCONDTSReport,
-        generateDivingDCONDTSReportBlob
+        generateDivingDCONDTSReportBlob,
+        generateDivingDCONDReport,
+        generateDivingDCONDReportBlob
     } = handlers;
 
 
@@ -686,7 +773,14 @@ export function WorkspaceDialogs({
     // Wizard step and template state lifted up to control back-routing from preview dialogs
     const [wizardStep, setWizardStep] = React.useState(1);
     const [wizardSelectedTemplate, setWizardSelectedTemplate] = React.useState<any>(null);
+    const [platformSummaryPreviewOpen, setPlatformSummaryPreviewOpen] = React.useState(false);
     const isReturningFromPreview = React.useRef(false);
+
+    React.useEffect(() => {
+        const handleOpenSummary = () => setPlatformSummaryPreviewOpen(true);
+        window.addEventListener("open-platform-summary-report", handleOpenSummary);
+        return () => window.removeEventListener("open-platform-summary-report", handleOpenSummary);
+    }, []);
 
     React.useEffect(() => {
         if (isReportWizardOpen) {
@@ -733,7 +827,11 @@ export function WorkspaceDialogs({
                         onOpenChange={setIsDiveSetupOpen}
                         onJobCreated={(job: any) => {
                             setIsDiveSetupOpen(false);
-                            window.location.reload();
+                            if (fetchDeployments) {
+                                fetchDeployments();
+                            } else {
+                                syncDeploymentState();
+                            }
                         }}
                     />
                 ) : (
@@ -746,7 +844,11 @@ export function WorkspaceDialogs({
                         onOpenChange={setIsDiveSetupOpen}
                         onJobCreated={(job: any) => {
                             setIsDiveSetupOpen(false);
-                            window.location.reload();
+                            if (fetchDeployments) {
+                                fetchDeployments();
+                            } else {
+                                syncDeploymentState();
+                            }
                         }}
                     />
                 )
@@ -2240,6 +2342,9 @@ export function WorkspaceDialogs({
                             sowRecordId={sowId ? Number(sowId) : null}
                             sowIdFull={sowIdFull}
                             sowReportNo={headerData?.sowReportNo}
+                            jobpackName={headerData?.jobpackName}
+                            structureName={headerData?.platformName}
+                            vessel={headerData?.vessel}
                             rovJob={activeDep || undefined}
                             tapeId={tapeId?.toString()}
                             tapeCounter={vidTimer?.toString()} 
@@ -2326,6 +2431,94 @@ export function WorkspaceDialogs({
                 title="ROV FMD Survey Report Preview" 
                 fileName={`ROV_FMD_Report_${headerData.sowReportNo}`} 
                 generateReport={handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingFmdPreviewOpen} 
+                onOpenChange={setDivingFmdPreviewOpen || setFmdPreviewOpen} 
+                title="Flooded Member Inspection Report (Diving) Preview" 
+                fileName={`Diving_FMD_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingFMDReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingMeasuPreviewOpen} 
+                onOpenChange={setDivingMeasuPreviewOpen || setFmdPreviewOpen} 
+                title="Measurement Dimensional Survey Report (Diving) Preview" 
+                fileName={`Diving_MEASU_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingMEASUReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingRrisiPreviewOpen} 
+                onOpenChange={setDivingRrisiPreviewOpen || setFmdPreviewOpen} 
+                title="Riser Inspection Report with Sketch (Diving) Preview" 
+                fileName={`Diving_Riser_Sketch_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingRRISIReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingRrisiDetailPreviewOpen} 
+                onOpenChange={(setters as any).setDivingRrisiDetailPreviewOpen || setFmdPreviewOpen} 
+                title="Riser Inspection Summary Report (Diving) Preview" 
+                fileName={`Diving_Riser_Summary_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingRRISIDetailReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingJtisiPreviewOpen} 
+                onOpenChange={(setters as any).setDivingJtisiPreviewOpen || setFmdPreviewOpen} 
+                title="J-Tube Inspection Report with Sketch (Diving) Preview" 
+                fileName={`Diving_JTube_Sketch_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingJTISIReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingJtisiDetailPreviewOpen} 
+                onOpenChange={(setters as any).setDivingJtisiDetailPreviewOpen || setFmdPreviewOpen} 
+                title="J-Tube Inspection Summary Report (Diving) Preview" 
+                fileName={`Diving_JTube_Summary_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingJTISIDetailReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingItisiPreviewOpen} 
+                onOpenChange={(setters as any).setDivingItisiPreviewOpen || setFmdPreviewOpen} 
+                title="I-Tube Inspection Report with Sketch (Diving) Preview" 
+                fileName={`Diving_ITube_Sketch_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingITISIReportBlob || handlers.generateFMDReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={!!divingItisiDetailPreviewOpen} 
+                onOpenChange={(setters as any).setDivingItisiDetailPreviewOpen || setFmdPreviewOpen} 
+                title="I-Tube Inspection Summary Report (Diving) Preview" 
+                fileName={`Diving_ITube_Summary_Report_${headerData.sowReportNo}`} 
+                generateReport={handlers.generateDivingITISIDetailReportBlob || handlers.generateFMDReportBlob} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2579,6 +2772,28 @@ export function WorkspaceDialogs({
                 title="ROV Conductor Sketch Report Preview" 
                 fileName={`ROV_Conductor_Sketch_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRCONDSketchReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={pipelineEventSketchPreviewOpen || false} 
+                onOpenChange={setPipelineEventSketchPreviewOpen || (() => {})} 
+                title="Pipeline Navigation Event Sketch Report Preview" 
+                fileName={`Pipeline_Event_Sketch_Report_${headerData.sowReportNo}`} 
+                generateReport={generatePipelineEventSketchReportBlob || (async () => {})} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={navigPreviewOpen || false} 
+                onOpenChange={setNavigPreviewOpen || (() => {})} 
+                title="Pipeline Visual Inspection Report Preview" 
+                fileName={`Pipeline_Visual_Inspection_Report_${headerData.sowReportNo}`} 
+                generateReport={generateROVNavigReportBlob || (async () => {})} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2851,6 +3066,18 @@ export function WorkspaceDialogs({
 
             <ReportPreviewDialog
                 reportConfig={reportConfig}
+                onBack={() => setPlatformSummaryPreviewOpen(false)}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={platformSummaryPreviewOpen} 
+                onOpenChange={setPlatformSummaryPreviewOpen} 
+                title="Platform Jobpack Inspection Summary Report Preview" 
+                fileName={`Platform_Summary_Report_${headerData.sowReportNo || 'SUMMARY'}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={handlers.generateJobPackSummaryReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
@@ -3032,10 +3259,20 @@ export function WorkspaceDialogs({
                     generateDivingAnodeReport: () => setters.setDivingAnodePreviewOpen(true),
                     generateDivingACFMCReport: () => setters.setDivingAcfmcPreviewOpen(true),
                     generateDivingPLCOReport: () => setters.setDivingPlcoPreviewOpen(true),
+                    generateDivingItemReport: () => setters.setDivingItemReportPreviewOpen ? setters.setDivingItemReportPreviewOpen(true) : handlers.generateDivingItemReport?.(),
+                    generateDivingITMAINReport: () => setters.setDivingItmainReportPreviewOpen ? setters.setDivingItmainReportPreviewOpen(true) : handlers.generateDivingITMAINReport?.(),
                     generateROVRWDIReport: () => setters.setRovRwdiPreviewOpen(true),
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
                     generateFMDReport: () => setters.setFmdPreviewOpen(true),
+                    generateDivingFMDReport: () => setters.setDivingFmdPreviewOpen ? setters.setDivingFmdPreviewOpen(true) : setters.setFmdPreviewOpen(true),
+                    generateDivingMEASUReport: () => setters.setDivingMeasuPreviewOpen ? setters.setDivingMeasuPreviewOpen(true) : setters.setFmdPreviewOpen(true),
+                    generateDivingRRISIReport: () => setters.setDivingRrisiPreviewOpen ? setters.setDivingRrisiPreviewOpen(true) : handlers.generateDivingRRISIReport?.(),
+                    generateDivingRRISIDetailReport: () => setters.setDivingRrisiDetailPreviewOpen ? setters.setDivingRrisiDetailPreviewOpen(true) : handlers.generateDivingRRISIDetailReport?.(),
+                    generateDivingJTISIReport: () => setters.setDivingJtisiPreviewOpen ? setters.setDivingJtisiPreviewOpen(true) : handlers.generateDivingJTISIReport?.(),
+                    generateDivingJTISIDetailReport: () => setters.setDivingJtisiDetailPreviewOpen ? setters.setDivingJtisiDetailPreviewOpen(true) : handlers.generateDivingJTISIDetailReport?.(),
+                    generateDivingITISIReport: () => setters.setDivingItisiPreviewOpen ? setters.setDivingItisiPreviewOpen(true) : handlers.generateDivingITISIReport?.(),
+                    generateDivingITISIDetailReport: () => setters.setDivingItisiDetailPreviewOpen ? setters.setDivingItisiDetailPreviewOpen(true) : handlers.generateDivingITISIDetailReport?.(),
                     generateUTWTReport: () => setters.setUtwtPreviewOpen(true),
                     generateMGIReport: () => setters.setMPreviewOpen(true),
                     generateRMGIReport: () => setters.setRmgiPreviewOpen(true),
@@ -3053,14 +3290,19 @@ export function WorkspaceDialogs({
                     generateRCASNSketchReport: () => setters.setRcasnSketchPreviewOpen(true),
                     generateRCONDReport: () => setters.setRcondPreviewOpen(true),
                     generateRCONDSketchReport: () => setters.setRcondSketchPreviewOpen(true),
+                    generatePipelineEventSketchReport: () => setters.setPipelineEventSketchPreviewOpen ? setters.setPipelineEventSketchPreviewOpen(true) : handlers.generatePipelineEventSketchReport?.(),
+                    generateROVNavigReport: () => setters.setNavigPreviewOpen ? setters.setNavigPreviewOpen(true) : handlers.generateROVNavigReport?.(),
+                    generatePipelineDefectSummaryReport: () => setters.setPipelineDefectSummaryPreviewOpen ? setters.setPipelineDefectSummaryPreviewOpen(true) : handlers.generatePipelineDefectSummaryReport?.(),
                     generateBLReport: () => setters.setBlPreviewOpen(true),
                     generateRGReport: () => setters.setRgPreviewOpen(true),
                     generateSGReport: () => setters.setSgPreviewOpen(true),
                     generateCUReport: () => setters.setCuPreviewOpen(true),
                     generateDivingDCASNUWReport: () => setters.setDivingDcasnUwPreviewOpen(true),
                     generateDivingDCASNTSReport: () => setters.setDivingDcasnTsPreviewOpen(true),
+                    generateDivingDCASNReport: () => handlers.generateDivingDCASNReport(),
                     generateDivingDCONDUWReport: () => setters.setDivingDcondUwPreviewOpen(true),
                     generateDivingDCONDTSReport: () => setters.setDivingDcondTsPreviewOpen(true),
+                    generateDivingDCONDReport: () => handlers.generateDivingDCONDReport(),
                     generateSeabedReport: (templateId: string) => generateSeabedReport(templateId),
                     generateSeabedDetailReport: () => setters.setSeabedDetailPreviewOpen(true),
                     generateSeabedGasDetailReport: () => setters.setSeabedGasDetailPreviewOpen(true),
@@ -3093,10 +3335,30 @@ export function WorkspaceDialogs({
                             case 'DANODE': setters.setDivingAnodePreviewOpen(true); break;
                             case 'ACFMC': setters.setDivingAcfmcPreviewOpen(true); break;
                             case 'PL_CO': setters.setDivingPlcoPreviewOpen(true); break;
+                            case 'PL_IC':
+                            case 'ITEM': setters.setDivingItemReportPreviewOpen?.(true); break;
+                            case 'ITMAIN': setters.setDivingItmainReportPreviewOpen?.(true); break;
                             case 'RWDI': setters.setRovRwdiPreviewOpen(true); break;
                             case 'PHOTO': setters.setPhotographyPreviewOpen(true); break;
                             case 'PLOG': setters.setPhotographyLogPreviewOpen(true); break;
-                            case 'FMD': setters.setFmdPreviewOpen(true); break;
+                            case 'DFMD':
+                            case 'FLOOD': setters.setDivingFmdPreviewOpen ? setters.setDivingFmdPreviewOpen(true) : setters.setFmdPreviewOpen(true); break;
+                            case 'MEASU':
+                            case 'DMSR':
+                            case 'MEASUREMENT':
+                            case 'DMEAS': setters.setDivingMeasuPreviewOpen ? setters.setDivingMeasuPreviewOpen(true) : setters.setFmdPreviewOpen(true); break;
+                            case 'DRRISI':
+                            case 'DRISI':
+                            case 'RSURV':
+                            case 'DRSER':
+                            case 'DRSI': setters.setDivingRrisiPreviewOpen ? setters.setDivingRrisiPreviewOpen(true) : setters.setFmdPreviewOpen(true); break;
+                            case 'FMD': 
+                                if (inspMethod === 'DIVING' && setters.setDivingFmdPreviewOpen) {
+                                    setters.setDivingFmdPreviewOpen(true);
+                                } else {
+                                    setters.setFmdPreviewOpen(true);
+                                }
+                                break;
                             case 'UTWT': setters.setUtwtPreviewOpen(true); break;
                             case 'MGI': setters.setMPreviewOpen(true); break;
                             case 'RMGI': setters.setRmgiPreviewOpen(true); break;
@@ -3114,8 +3376,83 @@ export function WorkspaceDialogs({
                             case 'RG': setters.setRgPreviewOpen(true); break;
                             case 'SG': setters.setSgPreviewOpen(true); break;
                             case 'CU': setters.setCuPreviewOpen(true); break;
+                            case 'PIPE-EVT-S':
+                            case 'PIPE_EVT_S':
+                            case 'PIPELINE_EVENT_SKETCH': setters.setPipelineEventSketchPreviewOpen?.(true); break;
+                            case 'DSR-PL':
+                            case 'DSR_PL':
+                            case 'DEFECT_SUMMARY_PIPELINE':
+                            case 'defect_summary_pipeline': setters.setPipelineDefectSummaryPreviewOpen?.(true); break;
                             default: toast.error("No preview available for type " + code);
                         }
+                    }
+                }}
+            />
+
+            {/* ── DEFECT SUMMARY REPORT (PIPELINE) PREVIEW DIALOG ────────────── */}
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={pipelineDefectSummaryPreviewOpen || false}
+                onOpenChange={(open) => setters.setPipelineDefectSummaryPreviewOpen?.(open)}
+                title="Defect Summary Report (Pipeline) Preview"
+                fileName={`Pipeline_Defect_Summary_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                generateReport={async (pf, ss) => {
+                    if (handlers.generatePipelineDefectSummaryReportBlob) {
+                        return await handlers.generatePipelineDefectSummaryReportBlob(pf, ss);
+                    }
+                }}
+            />
+
+            {/* ── PIPELINE EVENT LIST SKETCH REPORT PREVIEW DIALOG ────────────── */}
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={pipelineEventSketchPreviewOpen || false}
+                onOpenChange={(open) => setPipelineEventSketchPreviewOpen?.(open)}
+                title="Pipeline Event List Sketch Report Preview"
+                fileName={`Pipeline_Event_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                generateReport={async (pf, ss) => {
+                    if (generatePipelineEventSketchReportBlob) {
+                        return await generatePipelineEventSketchReportBlob(pf, ss);
+                    }
+                }}
+            />
+
+            {/* ── ITEM INSPECTION REPORT (DIVING) PREVIEW DIALOG ────────────── */}
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingItemReportPreviewOpen || false}
+                onOpenChange={(open) => setDivingItemReportPreviewOpen?.(open)}
+                title="Diving Item Inspection Report (PL_IC) Preview"
+                fileName={`Diving_Item_Inspection_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                generateReport={async (pf, ss) => {
+                    if (handlers.generateDivingItemReportBlob) {
+                        return await handlers.generateDivingItemReportBlob(pf, ss);
+                    }
+                }}
+            />
+
+            {/* ── ITEM MAINTENANCE REPORT (DIVING) PREVIEW DIALOG ────────────── */}
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={divingItmainReportPreviewOpen || false}
+                onOpenChange={(open) => setDivingItmainReportPreviewOpen?.(open)}
+                title="Diving Item Maintenance Inspection Report (ITMAIN) Preview"
+                fileName={`Diving_Item_Maintenance_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
+                generateReport={async (pf, ss) => {
+                    if (handlers.generateDivingITMAINReportBlob) {
+                        return await handlers.generateDivingITMAINReportBlob(pf, ss);
                     }
                 }}
             />

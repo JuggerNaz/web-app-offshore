@@ -184,7 +184,7 @@ export function DiverLogPanel({
                 (inspMethod === "DIVING" && currentMovement === diveActionsList[0]?.label)
               }
               variant="outline"
-              className="flex-1 h-8 text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 border-slate-300 dark:border-slate-800 hover:text-slate-700 dark:hover:text-slate-200 bg-white dark:bg-slate-900 shadow-sm"
+              className="flex-1 h-8 text-[11px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-950/60 bg-rose-50 dark:bg-rose-950/30 shadow-2xs"
             >
               <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Rollback
             </Button>
@@ -193,7 +193,7 @@ export function DiverLogPanel({
               <Button
                 onClick={handleMovementNext}
                 disabled={currentMovement === diveActionsList[diveActionsList.length - 1]?.label}
-                className="flex-[1.5] h-8 text-[11px] font-black uppercase tracking-wider bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm"
+                className="flex-[1.5] h-8 text-[11px] font-black uppercase tracking-wider bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white shadow-md shadow-blue-500/20"
               >
                 {currentMovement === "Awaiting Deployment"
                   ? "Next"
@@ -215,7 +215,7 @@ export function DiverLogPanel({
                         setIsDiveSetupForNew(true);
                         setIsDiveSetupOpen(true);
                       }}
-                      className="flex-[1.5] h-8 text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-1"
+                      className="flex-[1.5] h-8 text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" /> New ROV Dive
                     </Button>
@@ -226,7 +226,7 @@ export function DiverLogPanel({
                   return (
                     <Button
                       disabled
-                      className="flex-[1.5] h-8 text-[11px] font-black uppercase tracking-wider bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm"
+                      className="flex-[1.5] h-8 text-[11px] font-black uppercase tracking-wider bg-gradient-to-r from-blue-600 to-indigo-600 text-white opacity-80"
                     >
                       Completed <ArrowRight className="w-3.5 h-3.5 ml-1" />
                     </Button>
@@ -239,7 +239,7 @@ export function DiverLogPanel({
                   return (
                     <Button
                       onClick={() => handleMovementLog && handleMovementLog(options[0])}
-                      className={`flex-[1.5] h-8 font-black uppercase bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm flex items-center justify-center min-w-0 ${
+                      className={`flex-[1.5] h-8 font-black uppercase bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white shadow-md shadow-blue-500/20 flex items-center justify-center min-w-0 ${
                         isLong 
                           ? "text-[9px] tracking-tighter px-1.5 leading-tight whitespace-normal text-center" 
                           : "text-[11px] tracking-wider whitespace-nowrap"
@@ -254,7 +254,7 @@ export function DiverLogPanel({
                 return (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button className="flex-[1.5] h-8 text-[11px] font-black uppercase tracking-wider bg-[#2563eb] hover:bg-blue-700 text-white shadow-sm">
+                      <Button className="flex-[1.5] h-8 text-[11px] font-black uppercase tracking-wider bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white shadow-md shadow-blue-500/20">
                         Next Action... <ChevronDown className="w-3.5 h-3.5 ml-1 shrink-0" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -263,7 +263,7 @@ export function DiverLogPanel({
                         <DropdownMenuItem
                           key={opt}
                           onClick={() => handleMovementLog && handleMovementLog(opt)}
-                          className="text-[11px] font-bold uppercase tracking-wider cursor-pointer py-2"
+                          className="text-[11px] font-bold uppercase tracking-wider cursor-pointer py-2 text-blue-600 dark:text-blue-400 font-mono"
                         >
                           Select: {opt}
                         </DropdownMenuItem>

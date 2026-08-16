@@ -1,7 +1,8 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
     company_name?: string;
@@ -53,7 +54,7 @@ export const generateROVMGIGraphReport = async (
 
         const recordsByQid: Record<string, any[]> = {};
         records.forEach(r => {
-            const qid = r.structure_components?.q_id || "Unassigned";
+            const qid = r.structure_components?.q_id || r.component?.q_id || "Unassigned";
             if (!recordsByQid[qid]) recordsByQid[qid] = [];
             recordsByQid[qid].push(r);
         });
@@ -69,11 +70,22 @@ export const generateROVMGIGraphReport = async (
             text: [30, 41, 59] as [number, number, number],
             actual: [20, 184, 166] as [number, number, number], // Teal
             limit: [128, 0, 0] as [number, number, number],    // Maroon
+            etLine: [59, 130, 246] as [number, number, number],  // Blue
             anomaly: [220, 38, 38] as [number, number, number],  // Red
             rectified: [22, 163, 74] as [number, number, number], // Green
         };
 
-        const drawPremiumHeader = async (d: jsPDF, qid: string) => {
+        // ── Pre-load logos ──────────────────────────────────────────────────────
+        let companyLogo: any = null;
+        let contractorLogo: any = null;
+        if (companySettings.logo_url) {
+            try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
+        }
+        if (headerData.contractorLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        }
+
+        const drawPremiumHeader = (d: jsPDF, qid: string) => {
             const headerH = 22;
             const isPF = config.printFriendly;
             
@@ -89,23 +101,13 @@ export const generateROVMGIGraphReport = async (
             }
 
             // 1. Company Logo (Right)
-            if (companySettings.logo_url) {
-                try {
-                    const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                    if (logoData) {
-                        drawLogo(d, logoData, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
-                    }
-                } catch (e) {}
+            if (companyLogo) {
+                drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
             }
 
             // 2. Contractor Logo (Left)
-            if (headerData.contractorLogoUrl) {
-                try {
-                    const logoData = await loadLogoWithTransparency(headerData.contractorLogoUrl);
-                    if (logoData) {
-                        drawLogo(d, logoData, 16, 16, margin + 4, margin + 3, 'left', 'center');
-                    }
-                } catch (e) {}
+            if (contractorLogo) {
+                drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
             }
 
             d.setFontSize(8); d.setFont("helvetica", "bold");
@@ -113,7 +115,7 @@ export const generateROVMGIGraphReport = async (
             d.setFontSize(7); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
             d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`ROV MGI Survey Report`, margin + (contentWidth/2), margin + 18, { align: 'center' });
+            d.text(`Marine Growth Graph Report (ROV)`, margin + (contentWidth/2), margin + 18, { align: 'center' });
         };
 
         const drawPremiumContext = (d: jsPDF, y: number, qid: string) => {
@@ -175,25 +177,27 @@ export const generateROVMGIGraphReport = async (
         for (let i = 0; i < sortedQids.length; i++) {
             const qid = sortedQids[i];
             if (i > 0) doc.addPage();
-            await drawPremiumHeader(doc, qid);
+            drawPremiumHeader(doc, qid);
             const tableY = drawPremiumContext(doc, margin + 22 + 2, qid);
 
             const qidRecords = recordsByQid[qid].sort((a,b) => resolveDepth(b.elevation) - resolveDepth(a.elevation));
-            const plotPoints: { x: number, y: number, h: number, limitX: number, actualX: number }[] = [];
+            const plotPoints: { page: number; x: number; y: number; h: number; limitX: number; actualX: number }[] = [];
+            const pagesRulerDrawn = new Set<number>();
 
             const tableData = qidRecords.map(r => {
                 const elev = resolveDepth(r.elevation);
                 const d = r.inspection_data || {};
                 let limit = 0;
-                if (d.mgi_profile) {
+                if (thresholdList && thresholdList.length > 0) {
+                    const absElev = Math.abs(elev);
+                    const wDepth = Math.abs(headerData.waterDepth || 0);
+                    const interpolated = calculateInterpolatedMgiThreshold(absElev, wDepth, thresholdList);
+                    if (interpolated !== null) {
+                        limit = parseFloat(interpolated.toFixed(1));
+                    }
+                }
+                if (limit === 0 && d.mgi_profile) {
                     limit = parseFloat(String(d.mgi_profile).replace(/[^\d.]/g, '')) || 0;
-                } else {
-                    const t = thresholdList.find((th: any) => {
-                        const from = resolveDepth(th.from_elevation);
-                        const to = resolveDepth(th.to_elevation);
-                        return Math.abs(elev) >= Math.min(Math.abs(from), Math.abs(to)) && Math.abs(elev) <= Math.max(Math.abs(from), Math.abs(to));
-                    });
-                    limit = t ? parseFloat(t.max_thickness) : 0;
                 }
                 const hList = ['mgi_hard_thickness_at_12','mgi_hard_thickness_at_3','mgi_hard_thickness_at_6','mgi_hard_thickness_at_9'];
                 const sList = ['mgi_soft_thickness_at_12','mgi_soft_thickness_at_3','mgi_soft_thickness_at_6','mgi_soft_thickness_at_9'];
@@ -231,58 +235,45 @@ export const generateROVMGIGraphReport = async (
                 };
             });
 
-        const isPF = config.printFriendly;
+            const isPF = config.printFriendly;
 
-        autoTable(doc, {
-            startY: tableY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6 },
-            head: [
-                [
-                    { content: 'Depth (m)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Integrated Profile (mm)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Coverage % (H/S)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'MGI READINGS (mm) - CLOCK POSITIONS', colSpan: 8, styles: { halign: 'center', fillColor: isPF ? [240,240,240] : colors.teal, textColor: isPF ? colors.text : 255, cellPadding: 1 } },
-                    { content: 'Max Allowable (mm)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Inspection Findings', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } }
+            autoTable(doc, {
+                startY: tableY,
+                margin: { left: margin, right: margin, top: margin + 22 + 17 + 4 },
+                rowPageBreak: 'avoid',
+                head: [
+                    [
+                        { content: 'Depth (m)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                        { content: 'Integrated Profile (mm)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                        { content: 'Coverage % (H/S)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                        { content: 'MGI READINGS (mm) - CLOCK POSITIONS', colSpan: 8, styles: { halign: 'center', fillColor: isPF ? [240,240,240] : colors.teal, textColor: isPF ? colors.text : 255, cellPadding: 1 } },
+                        { content: 'Max Allowable (mm)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                        { content: 'Inspection Findings', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } }
+                    ],
+                    [
+                        { content: 'HARD', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold' } },
+                        { content: 'SOFT', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold' } }
+                    ],
+                    [
+                        { content: '12H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
+                        { content: '3H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
+                        { content: '6H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
+                        { content: '9H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
+                        { content: '12S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
+                        { content: '3S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
+                        { content: '6S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
+                        { content: '9S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } }
+                    ]
                 ],
-                [
-                    { content: 'HARD', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold' } },
-                    { content: 'SOFT', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold' } }
-                ],
-                [
-                    { content: '12H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                    { content: '3H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                    { content: '6H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                    { content: '9H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                    { content: '12S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                    { content: '3S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                    { content: '6S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                    { content: '9S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } }
-                ]
-            ],
                 body: tableData.map(row => {
-                    const isAnomaly = row.maxInRow > row.limit && row.limit > 0;
-                    
-                    const formatReading = (v: any, isHard: boolean) => {
-                        const numeric = parseFloat(v);
-                        if (!isNaN(numeric) && numeric > 0) {
-                            if (isAnomaly && isHard && numeric === row.maxHard) {
-                                return { content: `${v}`, styles: { fontStyle: 'bold', textColor: colors.anomaly } };
-                            }
-                            if (numeric === row.maxInRow) {
-                                return { content: `${v}`, styles: { fontStyle: 'bold', textColor: colors.teal } };
-                            }
-                        }
-                        return v;
-                    };
-
+                    const formatReading = (v: any) => String(v ?? '-');
                     return [
                         `${row.depth.toFixed(1)}m`,
                         '',
                         `${row.hCov}% / ${row.sCov}%`,
-                        ...row.h.map(v => formatReading(v, true)),
-                        ...row.s.map(v => formatReading(v, false)),
-                        { content: `${row.limit}mm`, styles: { fontStyle: 'bold', textColor: colors.limit } },
+                        ...row.h.map(v => formatReading(v)),
+                        ...row.s.map(v => formatReading(v)),
+                        `${row.limit}mm`,
                         row.findings
                     ];
                 }),
@@ -293,12 +284,39 @@ export const generateROVMGIGraphReport = async (
                     if (data.section === 'body') {
                         const row = tableData[data.row.index];
                         if (row) {
-                            if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
-                                data.cell.styles.textColor = colors.anomaly;
+                            const colIdx = data.column.index;
+                            const rawCell = data.cell.raw as any;
+                            const cellText = String(rawCell?.content ?? rawCell ?? '').trim();
+                            const numericVal = parseFloat(cellText);
+
+                            // MGI Clock Position Reading Columns (Columns 3 to 10)
+                            if (colIdx >= 3 && colIdx <= 10) {
+                                if (!isNaN(numericVal) && numericVal > 0 && numericVal === row.maxInRow) {
+                                    // Highlight the exact reading used for the Teal graph line!
+                                    data.cell.styles.fillColor = [204, 251, 241]; // Light Teal Mint background
+                                    data.cell.styles.textColor = [15, 118, 110];   // Dark Teal text
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else {
+                                    data.cell.styles.textColor = colors.text;
+                                    data.cell.styles.fontStyle = 'normal';
+                                }
+                            }
+                            // Max Allowable Column (Column 11)
+                            else if (colIdx === 11) {
+                                // Match the Maroon Max Allowable graph line!
+                                data.cell.styles.fillColor = [254, 242, 242]; // Light Maroon/Red background
+                                data.cell.styles.textColor = [153, 27, 27];   // Dark Maroon text
                                 data.cell.styles.fontStyle = 'bold';
-                            } else if (row.isRectified) {
-                                data.cell.styles.textColor = colors.rectified;
-                                data.cell.styles.fontStyle = 'bold';
+                            }
+                            // Other Columns: Depth (0), Coverage (2), Findings (12)
+                            else {
+                                if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
+                                    data.cell.styles.textColor = colors.anomaly;
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else if (row.isRectified) {
+                                    data.cell.styles.textColor = colors.rectified;
+                                    data.cell.styles.fontStyle = 'bold';
+                                }
                             }
                         }
                     }
@@ -310,61 +328,102 @@ export const generateROVMGIGraphReport = async (
                     11: { cellWidth: 20, halign: 'center' }, 12: { cellWidth: 'auto' }
                 },
                 didDrawCell: (data) => {
-                    if (data.section === 'body' && data.column.index === 1) {
+                    if (data.section === 'head' && data.column.index === 1 && data.row.index === 0) {
+                        const { x, y, width, height } = data.cell;
+                        const xRatio = width / GRAPH_MAX_MM;
+                        doc.setFontSize(4.5);
+                        doc.setFont("helvetica", "bold");
+                        if (isPF) {
+                            doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+                        } else {
+                            doc.setTextColor(255, 255, 255);
+                        }
+
+                        // Legend at top of graph header cell
+                        const legY = y + 2.5;
+                        doc.setDrawColor(...colors.limit); doc.setLineWidth(0.4);
+                        doc.line(x + 2, legY, x + 7, legY);
+                        doc.setFillColor(...colors.limit); doc.circle(x + 4.5, legY, 0.35, 'F');
+                        doc.text("Max Allow", x + 8.5, legY + 1);
+
+                        doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
+                        doc.line(x + 26, legY, x + 31, legY);
+                        doc.setFillColor(...colors.actual); doc.circle(x + 29.5, legY, 0.35, 'F');
+                        doc.text("Max Growth", x + 32.5, legY + 1);
+
+                        doc.setDrawColor(...colors.etLine); doc.setLineWidth(0.5);
+                        doc.setLineDashPattern([1, 1], 0);
+                        doc.line(x + 52, legY, x + 57, legY);
+                        doc.setLineDashPattern([], 0);
+                        doc.setFillColor(...colors.etLine); doc.circle(x + 54.5, legY, 0.35, 'F');
+                        doc.text("ET (Dashed)", x + 58.5, legY + 1);
+
+                        for (let g = 0; g <= GRAPH_MAX_MM; g += 50) {
+                            const gx = x + (g * xRatio);
+                            const isMajor = g % 100 === 0;
+                            doc.setDrawColor(isPF ? 100 : 255);
+                            doc.setLineWidth(isMajor ? 0.2 : 0.1);
+                            doc.line(gx, y + height - (isMajor ? 2.5 : 1.5), gx, y + height);
+                            doc.text(`${g}`, gx, y + height - (isMajor ? 3 : 2), { align: 'center' });
+                        }
+                        doc.setFont("helvetica", "normal");
+                    } else if (data.section === 'body' && data.column.index === 1) {
                         const { x, y, width, height } = data.cell;
                         const row = tableData[data.row.index];
                         if (row) {
                             const xRatio = width / GRAPH_MAX_MM;
                             doc.setLineWidth(0.05); doc.setDrawColor(245);
-                            for (let g = 0; g <= GRAPH_MAX_MM; g += 10) { if (g % 100 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height); }
-                            doc.setDrawColor(230); doc.setLineWidth(0.1);
-                            for (let g = 0; g <= GRAPH_MAX_MM; g += 100) {
+                            for (let g = 0; g <= GRAPH_MAX_MM; g += 10) { if (g % 50 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height); }
+                            doc.setLineWidth(0.08); doc.setDrawColor(220, 220, 220);
+                            for (let g = 50; g <= GRAPH_MAX_MM; g += 100) {
                                 const gx = x + (g * xRatio); doc.line(gx, y, gx, y + height);
-                                if (data.row.index === 0) { 
-                                    doc.setFontSize(6); 
-                                    if (isPF) {
-                                        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-                                    } else {
-                                        doc.setTextColor(255);
-                                    }
-                                    doc.text(`${g}`, gx, y - 3, { align: 'center' }); 
-                                }
                             }
-                            plotPoints.push({ x, y: y + (height / 2), h: height, limitX: x + (row.limit * xRatio), actualX: x + (row.maxInRow * xRatio) });
+                            doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.15);
+                            for (let g = 0; g <= GRAPH_MAX_MM; g += 100) {
+                                const gx = x + (g * xRatio); 
+                                doc.line(gx, y, gx, y + height);
+                            }
+                            plotPoints.push({ page: data.pageNumber, x, y: y + (height / 2), h: height, limitX: x + (row.limit * xRatio), actualX: x + (row.maxInRow * xRatio) });
                         }
                     }
                 },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) {
-                        // For MGI report, we need to pass the QID to the header.
-                        // We'll use the last known QID from the loop or just generic.
                         drawPremiumHeader(doc, qid);
+                        drawPremiumContext(doc, margin + 22 + 2, qid);
                     }
-                   if (plotPoints.length > 0) {
-                        const first = plotPoints[0];
-                        const last = plotPoints[plotPoints.length - 1];
+                    const pagePoints = plotPoints.filter(p => p.page === data.pageNumber);
+                    if (pagePoints.length > 0) {
+                        const first = pagePoints[0];
+                        const last = pagePoints[pagePoints.length - 1];
+
+                        const allPrevPoints = plotPoints.filter(p => p.page < data.pageNumber);
+                        const prevLast = allPrevPoints.length > 0 ? allPrevPoints[allPrevPoints.length - 1] : null;
+
+                        const startLimitX = prevLast ? prevLast.limitX : first.limitX;
+                        const startActualX = prevLast ? prevLast.actualX : first.actualX;
 
                         // 1. Max Allowable (Maroon)
                         doc.setDrawColor(...colors.limit); doc.setLineWidth(0.3);
-                        doc.moveTo(first.limitX, first.y - (first.h / 2)); // Start at top edge
-                        for (let p = 0; p < plotPoints.length; p++) doc.lineTo(plotPoints[p].limitX, plotPoints[p].y);
-                        doc.lineTo(last.limitX, last.y + (last.h / 2)); // End at bottom edge
+                        doc.moveTo(startLimitX, first.y - (first.h / 2));
+                        for (let p = 0; p < pagePoints.length; p++) doc.lineTo(pagePoints[p].limitX, pagePoints[p].y);
+                        doc.lineTo(last.limitX, last.y + (last.h / 2));
                         doc.stroke();
 
                         // 2. Actual Reading (Teal)
                         doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
-                        doc.moveTo(first.actualX, first.y - (first.h / 2));
-                        for (let p = 0; p < plotPoints.length; p++) doc.lineTo(plotPoints[p].actualX, plotPoints[p].y);
+                        doc.moveTo(startActualX, first.y - (first.h / 2));
+                        for (let p = 0; p < pagePoints.length; p++) doc.lineTo(pagePoints[p].actualX, pagePoints[p].y);
                         doc.lineTo(last.actualX, last.y + (last.h / 2));
                         doc.stroke();
 
-                        plotPoints.forEach(p => { doc.setFillColor(...colors.actual); doc.circle(p.actualX, p.y, 0.4, 'F'); });
-                   }
+                        pagePoints.forEach(p => { doc.setFillColor(...colors.actual); doc.circle(p.actualX, p.y, 0.4, 'F'); });
+                    }
                 }
             });
 
         }
-        
+
         const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
         if (config.showSignatures !== false) {
             let sigY = pageHeight - 32;
@@ -374,7 +433,7 @@ export const generateROVMGIGraphReport = async (
                 sigY = pageHeight - 32;
             }
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); 
                 doc.rect(lx, sigY, sigW - 5, 18);
                 if (!config.printFriendly) {
@@ -387,17 +446,18 @@ export const generateROVMGIGraphReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
-            drawSig('PREPARED BY', margin); 
-            drawSig('REVIEWED BY', margin + sigW); 
-            drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig("PREPARED BY", margin, config?.preparedBy); 
+            drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy); 
+            drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`ROV_MGI_Summary_${(config?.reportNoPrefix || headerData?.sowReportNo)}.pdf`);
         return;
     } catch (e) {

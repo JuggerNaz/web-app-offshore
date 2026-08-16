@@ -8,12 +8,15 @@ import {
     Plus,
     Trash2,
     RefreshCcw,
+    RotateCcw,
+    Archive,
     Edit,
     Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
     Dialog,
     DialogContent,
@@ -31,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 // Types
 interface LibMaster {
@@ -63,6 +67,7 @@ interface ComboOptions {
 
 export function LibraryComboDetails({ master }: { master: LibMaster }) {
     const [searchTerm, setSearchTerm] = useState("");
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all");
     const [isCreateOpen, setIsCreateOpen] = useState(false);
 
     // Fetch combo items
@@ -78,6 +83,9 @@ export function LibraryComboDetails({ master }: { master: LibMaster }) {
     );
 
     const comboItems: ComboItem[] = comboData?.data || [];
+    const activeCount = comboItems.filter(i => i.lib_delete !== 1).length;
+    const archivedCount = comboItems.filter(i => i.lib_delete === 1).length;
+
     const options: ComboOptions = optionsData?.data || {
         code1_options: [],
         code2_options: [],
@@ -96,6 +104,10 @@ export function LibraryComboDetails({ master }: { master: LibMaster }) {
     );
 
     const filteredItems = comboItems.filter(item => {
+        const isDeleted = item.lib_delete === 1;
+        if (statusFilter === "active" && isDeleted) return false;
+        if (statusFilter === "archived" && !isDeleted) return false;
+
         const searchStr = searchTerm.toLowerCase();
         const code1Desc = code1Map.get(item.code_1) || item.code_1;
         const code2Desc = code2Map.get(item.code_2) || item.code_2;
@@ -111,14 +123,51 @@ export function LibraryComboDetails({ master }: { master: LibMaster }) {
     return (
         <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="px-6 py-4 border-b flex justify-between items-center gap-4">
+            <div className="px-6 py-4 border-b flex flex-wrap justify-between items-center gap-4">
                 <div>
                     <h2 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
                         {master.lib_name || master.lib_desc}
                     </h2>
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="relative w-60">
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Status Filter Tabs */}
+                    <div className="flex items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                        <button
+                            onClick={() => setStatusFilter("all")}
+                            className={cn(
+                                "px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                                statusFilter === "all"
+                                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                            )}
+                        >
+                            All <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 dark:bg-slate-700 rounded-full font-mono">{comboItems.length}</span>
+                        </button>
+                        <button
+                            onClick={() => setStatusFilter("active")}
+                            className={cn(
+                                "px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                                statusFilter === "active"
+                                    ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                            )}
+                        >
+                            Active <span className="text-[10px] px-1.5 py-0.2 bg-blue-50 dark:bg-blue-950 text-blue-600 rounded-full font-mono">{activeCount}</span>
+                        </button>
+                        <button
+                            onClick={() => setStatusFilter("archived")}
+                            className={cn(
+                                "px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                                statusFilter === "archived"
+                                    ? "bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                            )}
+                        >
+                            Archived <span className="text-[10px] px-1.5 py-0.2 bg-amber-50 dark:bg-amber-950 text-amber-600 rounded-full font-mono">{archivedCount}</span>
+                        </button>
+                    </div>
+
+                    <div className="relative w-56">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Search combinations..."
@@ -159,7 +208,7 @@ export function LibraryComboDetails({ master }: { master: LibMaster }) {
                     </div>
                 ) : (
                     <div className="text-center py-20 border-2 border-dashed rounded-xl">
-                        <p className="text-muted-foreground">No combinations found.</p>
+                        <p className="text-muted-foreground">No {statusFilter !== "all" ? statusFilter : ""} combinations found.</p>
                         <Button variant="link" onClick={() => setIsCreateOpen(true)}>Create the first one</Button>
                     </div>
                 )}
@@ -202,58 +251,75 @@ function ComboItemRow({
     const [isLoading, setIsLoading] = useState(false);
 
     const handleSoftDelete = async () => {
-        if (!confirm("Are you sure you want to delete this combination?")) return;
+        const actionText = isDeleted ? "restore" : "archive";
+        if (!confirm(`Are you sure you want to ${actionText} this combination?`)) return;
         setIsLoading(true);
         try {
             const newStatus = isDeleted ? 0 : 1;
             const res = await fetch(`/api/library/combo/${encodeURIComponent(master.lib_code)}/${item.code_1}-${item.code_2}`, {
                 method: "PUT",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ lib_delete: newStatus }),
             });
 
             if (res.ok) {
-                toast.success(isDeleted ? "Combination restored" : "Combination deleted");
+                toast.success(isDeleted ? "Combination restored successfully!" : "Combination archived successfully!");
                 onRefresh();
             } else {
-                toast.error("Failed to update status");
+                toast.error("Failed to update combination status");
             }
         } catch (e) {
-            toast.error("Error updating status");
+            toast.error("Error updating combination status");
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <div className={`
-            relative group flex items-center justify-between p-4 rounded-lg border-2 transition-all cursor-pointer
-            ${isDeleted
-                ? "bg-red-50 dark:bg-red-950/10 border-red-200 dark:border-red-900/30 hover:border-red-300"
-                : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-blue-400 hover:shadow-md hover:bg-blue-50/30 dark:hover:bg-blue-950/20"}
-            ${isEditOpen ? "border-blue-500 shadow-lg ring-2 ring-blue-200 dark:ring-blue-900/50" : ""}
-        `}>
+        <div className={cn(
+            "relative group flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer",
+            isDeleted
+                ? "bg-amber-50/40 dark:bg-amber-950/10 border-amber-300 dark:border-amber-900/40 border-dashed"
+                : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-blue-400 hover:shadow-md hover:bg-blue-50/30 dark:hover:bg-blue-950/20",
+            isEditOpen && "border-blue-500 shadow-lg ring-2 ring-blue-200 dark:ring-blue-900/50"
+        )}>
             {/* Left border indicator */}
-            <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg transition-all ${isEditOpen
-                ? "bg-blue-500"
-                : "bg-transparent group-hover:bg-blue-400"
-                }`} />
-            <div className="flex-1 grid grid-cols-12 gap-4 items-center">
+            <div className={cn(
+                "absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl transition-all",
+                isDeleted
+                    ? "bg-amber-500"
+                    : isEditOpen ? "bg-blue-500" : "bg-transparent group-hover:bg-blue-400"
+            )} />
+            <div className="flex-1 grid grid-cols-12 gap-4 items-center pl-2">
                 <div className="col-span-4 flex flex-col">
-                    <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">{code1Label}</span>
-                    <span className={`text-sm font-semibold ${isDeleted ? "text-red-700 dark:text-red-400 line-through" : "text-blue-700 dark:text-blue-400"}`}>
+                    <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[10px] uppercase text-slate-400 font-bold">{code1Label}</span>
+                        {isDeleted && (
+                            <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-extrabold bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 uppercase gap-1">
+                                <Archive className="w-2.5 h-2.5" /> Archived
+                            </Badge>
+                        )}
+                    </div>
+                    <span className={cn(
+                        "text-sm font-semibold",
+                        isDeleted ? "text-slate-400 dark:text-slate-500 line-through" : "text-blue-700 dark:text-blue-400"
+                    )}>
                         {item.code_1}
                     </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                    <span className={cn("text-xs", isDeleted ? "text-slate-400 italic" : "text-slate-500 dark:text-slate-400")}>
                         {code1Map.get(item.code_1) || "—"}
                     </span>
                 </div>
                 <div className="col-span-4 flex items-center gap-2">
                     <div className="flex flex-col flex-1">
                         <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">{code2Label}</span>
-                        <span className={`text-sm font-semibold ${isDeleted ? "text-red-700 dark:text-red-400 line-through" : "text-blue-700 dark:text-blue-400"}`}>
+                        <span className={cn(
+                            "text-sm font-semibold",
+                            isDeleted ? "text-slate-400 dark:text-slate-500 line-through" : "text-blue-700 dark:text-blue-400"
+                        )}>
                             {item.code_2}
                         </span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                        <span className={cn("text-xs", isDeleted ? "text-slate-400 italic" : "text-slate-500 dark:text-slate-400")}>
                             {code2Map.get(item.code_2) || "—"}
                         </span>
                     </div>
@@ -269,27 +335,45 @@ function ComboItemRow({
                 </div>
                 <div className="col-span-4 flex flex-col">
                     <span className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">Comments</span>
-                    <span className={`text-sm ${isDeleted ? "text-red-400" : "text-slate-500 dark:text-slate-400"} truncate`}>
+                    <span className={cn(
+                        "text-sm truncate",
+                        isDeleted ? "text-slate-400 italic" : "text-slate-500 dark:text-slate-400"
+                    )}>
                         {item.lib_com || "—"}
                     </span>
                 </div>
             </div>
 
-            <div className="flex items-center gap-2 opacity-100 transition-opacity">
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-blue-600" onClick={() => setIsEditOpen(true)} disabled={isLoading}>
-                    <Edit className="w-4 h-4" />
-                </Button>
-
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    className={`h-8 w-8 ${isDeleted ? "text-green-600 hover:text-green-700 hover:bg-green-50" : "text-slate-400 hover:text-red-600 hover:bg-red-50"}`}
-                    onClick={handleSoftDelete}
-                    disabled={isLoading}
-                    title={isDeleted ? "Restore" : "Delete"}
-                >
-                    {isDeleted ? <RefreshCcw className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
-                </Button>
+            <div className="flex items-center gap-2 shrink-0">
+                {isDeleted ? (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 font-bold text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 border-emerald-300 dark:border-emerald-800 rounded-xl gap-1.5 shadow-sm transition-all cursor-pointer"
+                        onClick={handleSoftDelete}
+                        disabled={isLoading}
+                        title="Restore combination"
+                    >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Restore Item
+                    </Button>
+                ) : (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-blue-600" onClick={() => setIsEditOpen(true)} disabled={isLoading}>
+                            <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                            onClick={handleSoftDelete}
+                            disabled={isLoading}
+                            title="Archive Combination"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </Button>
+                    </div>
+                )}
             </div>
 
             <EditComboDialog

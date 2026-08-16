@@ -9,6 +9,7 @@ import inspectionSpecs from "@/utils/types/inspection-types.json";
 import { InspectionForm } from "../../components/InspectionForm";
 
 interface InspectionFormPanelProps {
+  inspMethod?: "DIVING" | "ROV";
   selectedComp: any;
   editingRecordId: number | null;
   activeSpec: string | null;
@@ -67,6 +68,7 @@ interface InspectionFormPanelProps {
 }
 
 export function InspectionFormPanel({
+  inspMethod,
   selectedComp,
   editingRecordId,
   activeSpec,
@@ -150,9 +152,12 @@ export function InspectionFormPanel({
                   if (!activeSpec) return "NO SPEC";
                   const codeClean = activeSpec.toUpperCase().trim();
                   const jsonSpec = (inspectionSpecs?.inspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
-                  if (jsonSpec?.name) return jsonSpec.name;
-                  const specObj = (allInspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
-                  return specObj?.name || activeSpec;
+                  let rawName = jsonSpec?.name;
+                  if (!rawName) {
+                    const specObj = (allInspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
+                    rawName = specObj?.name || activeSpec;
+                  }
+                  return (rawName || '').replace(/^ROV\s+/i, '');
                 })()}
               </Badge>
               <button onClick={resetForm} className="p-1 hover:bg-slate-800 rounded transition-colors text-slate-400 hover:text-white" title="Close / Reset">
@@ -173,7 +178,8 @@ export function InspectionFormPanel({
                 <div className="w-full max-w-lg space-y-3">
                   {(selectedComp.taskStatuses || []).map((ts: any) => {
                     const isCompleted = ts.status === 'completed';
-                    const specName = allInspectionTypes?.find(t => t.code === ts.code)?.name || ts.code;
+                    const rawSpecName = allInspectionTypes?.find(t => t.code === ts.code)?.name || ts.code;
+                    const specName = (rawSpecName || '').replace(/^ROV\s+/i, '');
 
                     return (
                       <div key={ts.code} className="flex items-center gap-3 group">
@@ -229,6 +235,7 @@ export function InspectionFormPanel({
               </div>
             ) : (
               <InspectionForm
+                inspMethod={inspMethod}
                 activeMGIProfile={activeMGIProfile}
                 selectedComp={selectedComp}
                 activeSpec={activeSpec}

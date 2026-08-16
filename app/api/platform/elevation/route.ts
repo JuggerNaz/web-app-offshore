@@ -40,6 +40,63 @@ export async function POST(request: Request, context: any) {
   return NextResponse.json({ comment: data });
 }
 
+export async function PUT(request: Request) {
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
+  const body = await request.json();
+  const { plat_id, old_elv, elv, orient } = body;
+
+  if (plat_id === undefined || old_elv === undefined || elv === undefined) {
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  const platIdNum = Number(plat_id);
+  const oldElvNum = Number(old_elv);
+  const newElvNum = Number(elv);
+
+  // 1. Update str_elv record
+  const { data, error } = await supabase
+    .from("str_elv")
+    .update({ elv: newElvNum, orient, workunit: "000" })
+    .eq("plat_id", platIdNum)
+    .eq("elv", oldElvNum)
+    .select();
+
+  if (error) {
+    console.error("Failed to update elevation:", error.message);
+    return NextResponse.json({ error: error.message || "Failed to update elevation" }, { status: 500 });
+  }
+
+  // 2. Cascade update to str_level if elv value changed
+  if (oldElvNum !== newElvNum) {
+    console.log(`Cascade updating str_level for plat_id ${platIdNum}: ${oldElvNum} -> ${newElvNum}`);
+    
+    // Update elv_from in str_level
+    const { error: errFrom } = await supabase
+      .from("str_level")
+      .update({ elv_from: newElvNum })
+      .eq("plat_id", platIdNum)
+      .eq("elv_from", oldElvNum);
+
+    if (errFrom) {
+      console.error("Error cascade updating str_level elv_from:", errFrom.message);
+    }
+
+    // Update elv_to in str_level
+    const { error: errTo } = await supabase
+      .from("str_level")
+      .update({ elv_to: newElvNum })
+      .eq("plat_id", platIdNum)
+      .eq("elv_to", oldElvNum);
+
+    if (errTo) {
+      console.error("Error cascade updating str_level elv_to:", errTo.message);
+    }
+  }
+
+  return NextResponse.json({ data });
+}
+
 export async function DELETE(request: Request, context: any) {
   const body = await request.json();
 

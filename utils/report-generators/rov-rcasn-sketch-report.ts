@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -176,7 +176,7 @@ export const generateROVCasnSketchReport = async (
             if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
             d.setFontSize(9); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
             d.setFontSize(7); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10, { align: 'center' });
-            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text("ROV Caisson Survey (Sketch) Report", margin + contentWidth/2, margin + 17, { align: 'center' });
+            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text("Caisson Survey (Sketch) Report (ROV)", margin + contentWidth/2, margin + 17, { align: 'center' });
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
@@ -285,31 +285,39 @@ export const generateROVCasnSketchReport = async (
             };
             drawP(cX, pipeStartY, pipeEndY);
 
-            // 2. Draw Oval Terminator at the bottom
+            // 2. Draw Oval Terminator at the bottom (flattened oval matching pipeline graphic width)
             const rx = rWidth / 2;
-            const ry = rWidth * 0.4;
+            const ry = rWidth * 0.32; // Oval radius: rx = 6 (width = 12), ry = 3.84 (height = 7.68)
             const termY = pipeEndY; 
             
             doc.setDrawColor(50, 50, 50); doc.setLineWidth(0.8);
-            doc.setFillColor(160, 175, 195); // Match pipe color
+            doc.setFillColor(160, 175, 195); // Match pipe fill color
             doc.ellipse(cX, termY, rx, ry, 'FD');
             
-            // Grill lines inside the oval terminator
-            doc.setLineWidth(0.2);
+            // Full Grill Mesh lines inside the oval terminator (clipped to ellipse boundaries)
+            doc.setLineWidth(0.3);
             doc.setDrawColor(40, 40, 40);
-            // Horizontal lines
-            doc.line(cX - rx * 0.6, termY + ry * 0.4, cX + rx * 0.6, termY + ry * 0.4);
-            doc.line(cX - rx * 0.8, termY + ry * 0.7, cX + rx * 0.8, termY + ry * 0.7);
             
-            // Vertical lines (downward only from pipe end)
-            doc.line(cX, pipeEndY, cX, pipeEndY + ry);
-            doc.line(cX - rx * 0.4, termY, cX - rx * 0.4, termY + ry * 0.9);
-            doc.line(cX + rx * 0.4, termY, cX + rx * 0.4, termY + ry * 0.9);
+            // Horizontal grill lines
+            const hRatios = [-0.5, 0, 0.5];
+            hRatios.forEach(r => {
+                const dy = ry * r;
+                const dx = rx * Math.sqrt(Math.max(0, 1 - (dy / ry) ** 2));
+                doc.line(cX - dx, termY + dy, cX + dx, termY + dy);
+            });
+            
+            // Vertical grill lines
+            const vRatios = [-0.6, -0.2, 0.2, 0.6];
+            vRatios.forEach(r => {
+                const dx = rx * r;
+                const dy = ry * Math.sqrt(Math.max(0, 1 - (dx / rx) ** 2));
+                doc.line(cX + dx, termY - dy, cX + dx, termY + dy);
+            });
             
             doc.setFontSize(6); doc.setTextColor(50, 50, 50);
-            doc.text(terminatorQid, cX + rx + 2, termY + ry);
+            doc.text(terminatorQid, cX + rx + 3, termY + 1);
             if (!isNaN(terminatorElev)) {
-                doc.text(`${terminatorElev}m`, cX + rx + 2, termY + ry + 2.5);
+                doc.text(`${terminatorElev}m`, cX + rx + 3, termY + 3.5);
             }
 
             // Scale
@@ -387,14 +395,38 @@ export const generateROVCasnSketchReport = async (
                     const anoms = r.insp_anomalies || [];
                     const isAnom = r.has_anomaly || anoms.length > 0;
                     const c = r.structure_components || {};
-                    let findings = r.description || 'No significant findings';
+
+                    const primaryCP = rd.cp_rdg ?? rd.cp_reading_mv ?? rd.cp ?? "";
+                    const additionals: any[] = Array.isArray(rd.cp_rdg_additional) ? rd.cp_rdg_additional : (Array.isArray(rd.cp_readings) ? rd.cp_readings : []);
+                    const additionalCPs = additionals
+                        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+                    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+                    const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+
+                    let findingsParts: string[] = [];
+                    if (r.description && r.description.trim()) findingsParts.push(r.description.trim());
+
+                    additionals.forEach((a: any) => {
+                        const val = a.reading ?? a.cp_rdg ?? "";
+                        if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                            const loc = a.location ? ` @ ${a.location}` : "";
+                            const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                            findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                        }
+                    });
+
                     if (isAnom && anoms.length > 0) {
-                        findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`).join('\n');
+                        findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`));
                     }
-                    if (r.insp_rov_jobs?.job_no) findings += `\n[Dive: ${r.insp_rov_jobs.job_no}]`;
+                    if (r.insp_rov_jobs?.job_no) findingsParts.push(`[Dive: ${r.insp_rov_jobs.job_no}]`);
+
+                    const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
+
                     return [
                         { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold' } },
-                        { content: rd.cp_rdg ?? rd.cp ?? '-', styles: { halign: 'center' } },
+                        { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
                 }),
@@ -417,7 +449,7 @@ export const generateROVCasnSketchReport = async (
                 sigY = pageHeight - 38;
             }
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name: string; date: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
                 if (!config.printFriendly) {
@@ -431,13 +463,15 @@ export const generateROVCasnSketchReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
 
-            drawSig('PREPARED BY', margin);
-            drawSig('REVIEWED BY', margin + sigW);
-            drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig('PREPARED BY', margin, config?.preparedBy);
+            drawSig('REVIEWED BY', margin + sigW, config?.reviewedBy);
+            drawSig('APPROVED BY', margin + (sigW * 2), config?.approvedBy);
         }
 
         const totalPages = doc.getNumberOfPages();

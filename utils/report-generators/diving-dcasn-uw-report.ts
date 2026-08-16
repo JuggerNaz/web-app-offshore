@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -221,8 +221,25 @@ export const generateDivingDCASNUWReport = async (
         }
 
         const formatFindings = (r: any) => {
+            const d = r.inspection_data || {};
             const parts: string[] = [];
-            if (r.description?.trim()) parts.push(r.description.trim());
+            if (r.description?.trim()) {
+                parts.push(r.description.trim());
+            } else if (d.findings?.trim()) {
+                parts.push(d.findings.trim());
+            }
+
+            // CP Additional
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            additionals.forEach((a: any) => {
+                const val = a.reading ?? a.cp_rdg ?? "";
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                    const loc = a.location ? ` @ ${a.location}` : "";
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    parts.push(`Add. CP${loc}: ${val}${unit}`);
+                }
+            });
+
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) parts.push(`Ref: ${anomRef}`);
@@ -472,8 +489,16 @@ export const generateDivingDCASNUWReport = async (
                     const qid = r.structure_components?.q_id || r.component?.q_id || "—";
                     const elev = r.elevation ?? d.elevation ?? "—";
                     const diveNo = r.insp_dive_jobs?.job_no || r.dive_job_id || "—";
-                    const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-                    const cpDisplay = cpVal !== "" ? `${cpVal} mV` : "—";
+                    const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
+                    const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+                    const additionalCPs = additionals
+                        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+                    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+                    const cpDisplay = cpList.length > 0
+                        ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
+                        : "—";
                     const anodeCond = d.anode_condition ?? d.component_condition ?? "—";
                     const mg = (d.marine_growth ?? [
                         d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
@@ -653,7 +678,7 @@ export const generateDivingDCASNUWReport = async (
                     sigY = pageHeight - 38;
                 }
                 const sigW = contentWidth / 3;
-                const drawSigFooter = (label: string, lx: number) => {
+                const drawSigFooter = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                     doc.rect(lx, sigY, sigW - 4, 18);
                     if (!config.printFriendly) {
@@ -667,12 +692,14 @@ export const generateDivingDCASNUWReport = async (
                     doc.text(label, lx + 2, sigY + 3.5);
                     doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                     doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                     doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                     doc.text("Signature:", lx + 2, sigY + 17);
                 };
-                drawSigFooter("PREPARED BY", margin);
-                drawSigFooter("REVIEWED BY", margin + sigW);
-                drawSigFooter("APPROVED BY", margin + sigW * 2);
+                drawSigFooter("PREPARED BY", margin, config?.preparedBy);
+                drawSigFooter("REVIEWED BY", margin + sigW, config?.reviewedBy);
+                drawSigFooter("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
             }
 
             // Footer Bottom Text

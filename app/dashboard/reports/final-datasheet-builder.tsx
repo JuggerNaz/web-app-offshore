@@ -36,25 +36,24 @@ const TOC_SECTIONS = [
       { id: "component-spec", name: "Component Data Sheet", mode: "General" }
   ]},
   { id: 2, name: "General Visual Inspection", templates: [
-      { id: "rov-rgvi-report", name: "ROV GVI Report (RGVI)", mode: "ROV" },
-      { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
+      { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
-      { id: "rov-cp-report", name: "ROV CP Survey Report", mode: "ROV" },
-      { id: "diving-cpclb-report", name: "Diving CP Calibration Report", mode: "Diving" }
+      { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 4, name: "Flooded Member Detection", templates: [
-      { id: "fmd-report", name: "ROV FMD Survey Report", mode: "ROV" }
+      { id: "fmd-report", name: "FMD Survey Report (ROV)", mode: "ROV" }
   ]},
   { id: 5, name: "Attachment Inspection (Conductor, Caisson, Boatlanding)", templates: [
-      { id: "rov-rcond-report", name: "ROV Conductor Survey Report", mode: "ROV" },
-      { id: "rov-rcasn-report", name: "ROV Caisson Survey Report", mode: "ROV" },
-      { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", mode: "ROV" },
-      { id: "rov-rg-report", name: "ROV Riser Guard Survey Report", mode: "ROV" },
-      { id: "rov-sg-report", name: "ROV Caisson Guard Survey Report", mode: "ROV" },
-      { id: "rov-cu-report", name: "ROV Conductor Guard Survey Report", mode: "ROV" },
-      { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", mode: "ROV" },
-      { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" }
+      { id: "rov-rcond-report", name: "Conductor Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-rcasn-report", name: "Caisson Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-bl-report", name: "Boatlanding Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-rg-report", name: "Riser Guard Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-sg-report", name: "Caisson Guard Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-cu-report", name: "Conductor Guard Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-rcond-sketch-report", name: "Conductor Survey (Sketch) Report (ROV)", mode: "ROV" },
+      { id: "rov-rcasn-sketch-report", name: "Caisson Survey (Sketch) Report (ROV)", mode: "ROV" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
       { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
@@ -65,18 +64,18 @@ const TOC_SECTIONS = [
       { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
-      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },
-      { id: "diving-szone-report", name: "Diving Splash Zone Inspection", mode: "Diving" }
+      { id: "szci-report", name: "Splash Zone Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
-      { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", mode: "ROV" },
-      { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", mode: "ROV" }
+      { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-anode-rsani-report", name: "Selected Anode Report (ROV)", mode: "ROV" }
   ]},
   { id: 9, name: "Marine Growth Survey", templates: [
-      { id: "mgi-report", name: "ROV MGI Survey Report", mode: "ROV" }
+      { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", mode: "ROV" }
   ]},
   { id: 10, name: "Base Level Survey (Scour Survey)", templates: [
-      { id: "rov-scour-report", name: "ROV Scour Survey Report", mode: "ROV" }
+      { id: "rov-scour-report", name: "Scour Survey Report (ROV)", mode: "ROV" }
   ]},
   { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
       { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
@@ -88,16 +87,16 @@ const TOC_SECTIONS = [
       { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [
-      { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }
+      { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", mode: "ROV" }
   ] },
   { id: 13, name: "Additional Wall Thickness Inspection", templates: [
-      { id: "utwt-report", name: "ROV UT Thickness Report", mode: "ROV" }
+      { id: "utwt-report", name: "UT Thickness Report (ROV)", mode: "ROV" }
   ]},
   { id: 14, name: "Maintenance", templates: [] },
   { id: 15, name: "Cleaning Inspection", templates: [] },
   { id: 16, name: "Photography", templates: [
-      { id: "rov-photo-report", name: "ROV Photography Report", mode: "ROV" },
-      { id: "rov-photo-log-report", name: "ROV Photography Log Report", mode: "ROV" }
+      { id: "rov-photo-report", name: "Photography Report (ROV)", mode: "ROV" },
+      { id: "rov-photo-log-report", name: "Photography Log Report (ROV)", mode: "ROV" }
   ]},
   { id: 17, name: "Video", templates: [
       { id: "video-log-report", name: "Video Log Report", mode: "General" },

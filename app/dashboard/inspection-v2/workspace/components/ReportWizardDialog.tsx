@@ -37,6 +37,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 interface ReportTemplate {
     id: string;
@@ -49,14 +50,79 @@ interface ReportTemplate {
     available: boolean;
 }
 
+export const isSGRecord = (r: any) => {
+    const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+    const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
+    return qid.startsWith("SG") || qid.startsWith("CS_GUARD") || qid.startsWith("CS-GUARD") || (qid.includes("GUARD") && qid.includes("CS")) || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG" || compCode === "CS_GUARD" || compName.includes("CAISSON GUARD");
+};
+
+export const isCURecord = (r: any) => {
+    const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+    const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
+    return qid.startsWith("CU") || qid.startsWith("CD_GUARD") || qid.startsWith("CD-GUARD") || (qid.includes("GUARD") && (qid.includes("CD") || qid.includes("COND"))) || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU" || compCode === "CD_GUARD" || compName.includes("CONDUCTOR GUARD");
+};
+
+export const isRGRecord = (r: any) => {
+    const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+    const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+    const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
+    return typeCode === "RGVI" || qid.startsWith("RG") || qid.startsWith("RISG") || qid.startsWith("RISER_GUARD") || qid.startsWith("RISER-GUARD") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD" || compCode === "RG" || compCode === "RISG" || compName.includes("RISER GUARD");
+};
+
+export const isBLRecord = (r: any) => {
+    if (!r) return false;
+    const comp = r.structure_components || r.component || {};
+    const qid = String(comp.q_id || comp.qid || "").toUpperCase();
+    const typeCode = String(r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+    const compCode = String(comp.code || comp.metadata?.comp_type || "").toUpperCase();
+    const compName = String(comp.comp_name || comp.name || "").toUpperCase();
+
+    // 1. Explicit Exclusions for non-Boatlanding components (Conductor Shield, Riser Guard, etc.)
+    const excludedPrefixes = ["CS_", "CS-", "RG_", "RG-", "CU_", "CU-", "SG_", "SG-", "CD_", "CD-", "LEG_", "LEG-", "MB_", "MB-", "R_"];
+    const excludedCodes = ["CS", "RG", "CU", "SG", "CD", "CON", "LEG", "MB", "RS", "JT"];
+    if (excludedCodes.includes(compCode)) return false;
+    if (excludedPrefixes.some(p => qid.startsWith(p))) return false;
+
+    // 2. Check Boatlanding or Boat Fender code / QID / name
+    const isBLCode = ["BL", "BLTG", "BOATLANDING"].includes(compCode) || ["BL", "BLTG", "BOATLANDING", "RBLTG", "DBLTG"].includes(typeCode);
+    const isBFCode = ["BF", "BOATFENDER", "FENDER"].includes(compCode);
+    if (isBLCode || isBFCode) return true;
+
+    const isBLQid = qid.startsWith("BL") || qid.startsWith("BOATLANDING") || qid.startsWith("BOAT_LANDING");
+    const isBFQid = qid.startsWith("BF") || qid.startsWith("BOATFENDER") || qid.startsWith("BOAT_FENDER") || qid.startsWith("FENDER");
+    if (isBLQid || isBFQid) return true;
+
+    if (compName.includes("BOATLANDING") || compName.includes("BOAT LANDING") || compName.includes("BOAT FENDER") || compName.includes("BOATFENDER") || compName.includes("FENDER")) {
+        return true;
+    }
+
+    return false;
+};
+
 export function getMatchingRecordsForTemplate(templateOrId: any, records: any[]): any[] {
-    if (!templateOrId) return [];
+    if (!templateOrId || !Array.isArray(records)) return [];
 
-    const templateId = typeof templateOrId === "object" ? templateOrId.id : templateOrId;
-    const templateCode = (typeof templateOrId === "object" ? templateOrId.code : templateOrId) || "";
+    let templateIdStr = "";
+    let templateCodeStr = "";
 
-    const idLower = templateId.toLowerCase();
-    const codeUpper = templateCode.toUpperCase();
+    if (typeof templateOrId === "string") {
+        templateIdStr = templateOrId;
+        templateCodeStr = templateOrId;
+    } else if (typeof templateOrId === "object" && templateOrId !== null) {
+        templateIdStr = String(templateOrId.id || templateOrId.code || templateOrId.name || "");
+        templateCodeStr = String(templateOrId.code || templateOrId.id || "");
+    } else {
+        templateIdStr = String(templateOrId || "");
+        templateCodeStr = String(templateOrId || "");
+    }
+
+    const idLower = templateIdStr.toLowerCase();
+    const codeUpper = templateCodeStr.toUpperCase();
 
     const hasCode = (r: any, codes: string[]) => {
         const rCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
@@ -84,9 +150,10 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
     // 2. Generic/All-Records templates
     const allRecordsTemplates = [
         'findings', 'photo', 'video_log', 'diver_log', 'compliance', 
-        'jp_summary', 'sow_report', 'struct_over', 'exec_sum', 'insp_report'
+        'jp_summary', 'sow_report', 'struct_over', 'exec_sum', 'insp_report',
+        'pipeline_event_sketch_report', 'pipe-evt-s', 'pipe_evt_s', 'pipeline_event_sketch'
     ];
-    if (allRecordsTemplates.includes(idLower) || allRecordsTemplates.includes(templateCode.toLowerCase())) {
+    if (allRecordsTemplates.includes(idLower) || allRecordsTemplates.includes(templateCodeStr.toLowerCase())) {
         return records;
     }
 
@@ -218,16 +285,16 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
             return records.filter(r => hasCode(r, ['RCOND', 'RCON', 'DCOND', 'DCON']));
         case 'BL':
         case 'BOATLANDING':
-            return records.filter(r => hasCode(r, ['BL', 'BOATLANDING']));
+            return records.filter(r => isBLRecord(r));
         case 'RG':
         case 'RISERGUARD':
-            return records.filter(r => hasCode(r, ['RG', 'RISERGUARD']));
+            return records.filter(r => isRGRecord(r));
         case 'SG':
         case 'CAISSONGUARD':
-            return records.filter(r => hasCode(r, ['SG', 'CAISSONGUARD']));
+            return records.filter(r => isSGRecord(r));
         case 'CU':
         case 'CONDUCTORGUARD':
-            return records.filter(r => hasCode(r, ['CU', 'CONDUCTORGUARD']));
+            return records.filter(r => isCURecord(r));
         case 'GVINS':
             return records.filter(r => hasCode(r, ['GVINS']));
         case 'BSINS':
@@ -246,6 +313,8 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
             return records.filter(r => hasCode(r, ['ACFMC']));
         case 'PL_CO':
             return records.filter(r => hasCode(r, ['PL_CO']));
+        case 'ITMAIN':
+            return records.filter(r => hasCode(r, ['ITMAIN']));
         case 'ANMAIN':
             return records.filter(r => hasCode(r, ['ANMAIN']));
         default:
@@ -256,7 +325,7 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
                 return (
                     rCode === codeUpper ||
                     rCode === idLower.toUpperCase() ||
-                    rTypeId === templateId
+                    rTypeId === templateIdStr
                 );
             });
     }
@@ -292,18 +361,26 @@ interface ReportWizardDialogProps {
         generateDivingANMAINReport: () => void;
         generateDivingDCASNUWReport: () => void;
         generateDivingDCASNTSReport: () => void;
+        generateDivingDCASNReport: () => void;
         generateDivingDCONDUWReport: () => void;
         generateDivingDCONDTSReport: () => void;
+        generateDivingDCONDReport: () => void;
         generateUTCLBReport: () => void;
         generateAnodeReport: () => void;
         generateAnodeRsaniReport: () => void;
         generateDivingAnodeReport: () => void;
         generateDivingACFMCReport: () => void;
         generateDivingPLCOReport: () => void;
+        generateDivingItemReport?: () => void;
+        generateDivingITMAINReport?: () => void;
         generatePhotographyReport: () => void;
         generateROVRWDIReport: () => void;
         generatePhotographyLogReport: () => void;
         generateFMDReport: () => void;
+        generateDivingFMDReport?: () => void;
+        generateDivingMEASUReport?: () => void;
+        generateDivingRRISIReport?: () => void;
+        generateDivingRRISIDetailReport?: () => void;
         generateUTWTReport: () => void;
         generateMGIReport: () => void;
         generateRMGIReport: () => void;
@@ -317,10 +394,17 @@ interface ReportWizardDialogProps {
         generateJTISIDetailReport: () => void;
         generateITISIReport: () => void;
         generateITISIDetailReport: () => void;
+        generateDivingJTISIReport?: () => void;
+        generateDivingJTISIDetailReport?: () => void;
+        generateDivingITISIReport?: () => void;
+        generateDivingITISIDetailReport?: () => void;
         generateRCASNReport: () => void;
         generateRCASNSketchReport: () => void;
         generateRCONDReport: () => void;
         generateRCONDSketchReport: () => void;
+        generatePipelineEventSketchReport?: () => void;
+        generateROVNavigReport?: () => void;
+        generatePipelineDefectSummaryReport?: () => void;
         generateBLReport: () => void;
         generateRGReport: () => void;
         generateSGReport: () => void;
@@ -452,84 +536,131 @@ export function ReportWizardDialog({
 
         const baseTemplates: ReportTemplate[] = [
             // ── INSPECTION REPORTS (ROV) ───────────────────────────────────────────
-            { id: 'rgvi', code: 'RGVI', name: 'General Visual (GVI)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
-            { id: 'cp_rov', code: 'CP', name: 'CP Survey Report', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
-            { id: 'rswni_rov', code: 'RSWNI', name: 'ROV Selected Node Report', description: 'Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSWNIReport, available: hasRecords(['RSWNI', 'SWNI']) },
-            { id: 'rov_ricmi_report', code: 'RICMI', name: 'ROV Inclinometer Survey Report', description: 'Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRICMIReport, available: hasRecords(['RICMI']) },
-            { id: 'anode_rov', code: 'ANODE', name: 'ROV Anode Inspection Report (RGVI)', description: 'Detailed depletion measurements and attachment status (excluding RSANI).', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeReport, available: currentRecords.some(r => {
+            { id: 'rgvi', code: 'RGVI', name: 'General Visual Inspection (ROV)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
+            { id: 'cp_rov', code: 'CP', name: 'CP Survey Report (ROV)', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
+            { id: 'rswni_rov', code: 'RSWNI', name: 'Selected Node Report (ROV)', description: 'Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSWNIReport, available: hasRecords(['RSWNI', 'SWNI']) },
+            { id: 'rov_ricmi_report', code: 'RICMI', name: 'Inclinometer Survey Report (ROV)', description: 'Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRICMIReport, available: hasRecords(['RICMI']) },
+            { id: 'anode_rov', code: 'ANODE', name: 'Anode Inspection Report (ROV)', description: 'Detailed depletion measurements and attachment status (excluding RSANI).', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                 const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
                 return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
             }) },
-            { id: 'anode_rsani_rov', code: 'RSANI', name: 'ROV Selected Anode Report (SANI)', description: 'ROV Selected Anode Close Visual Inspection (CVI) Report (SANI) with depletion measurements and CP readings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeRsaniReport, available: currentRecords.some(r => {
+            { id: 'anode_rsani_rov', code: 'RSANI', name: 'Selected Anode Report (ROV)', description: 'Selected Anode Close Visual Inspection (CVI) Report (RSANI) with depletion measurements and CP readings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeRsaniReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                 return typeCode === 'RSANI' && compCode === 'AN';
             }) },
-            { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: true },
-            { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey', description: 'Flooded Member Detection using ultrasonic or gamma methods.', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
-            { id: 'utwt_rov', code: 'RUTWT', name: 'UTWT Survey', description: 'Ultrasonic Wall Thickness measurements of members.', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT']) },
-            { id: 'seabed_rov', code: 'RSEAB', name: 'Seabed Survey Inspection Sketch Report (ROV)', description: 'General unfiltered Seabed GUI maps showing all debris, craters, and gas seepages.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('rov-seabed-report'), available: hasRecords(['RSEAB', 'SEABED']) },
-            { id: 'seabed_rov_debris_sketch', code: 'RSEAB', name: 'Seabed Survey Debris Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with debris items marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
-            { id: 'seabed_rov_gas_sketch', code: 'RSEAB', name: 'Seabed Survey Gas Seepage Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with gas seepages marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-gas'), available: hasRecords(['RSEAB', 'SEABED']) },
-            { id: 'seabed_rov_crater_sketch', code: 'RSEAB', name: 'Seabed Survey Crater Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with craters marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-crater'), available: hasRecords(['RSEAB', 'SEABED']) },
-            { id: 'seabed_rov_detail', code: 'RSEAB', name: 'Seabed Survey Debris Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Debris inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
-            { id: 'seabed_rov_gas_detail', code: 'RSEAB', name: 'Seabed Survey Gas Seepage Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Gas Seepage inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedGasDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
-            { id: 'seabed_rov_crater_detail', code: 'RSEAB', name: 'Seabed Survey Crater Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Crater inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedCraterDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
-            { id: 'rwdi', code: 'RWDI', name: 'ROV Water Depth Inspection Report', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
-            { id: 'mgi_rov', code: 'RMGI', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
+            { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report (ROV)', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: true },
+            { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey Report (ROV)', description: 'Flooded Member Detection summary report with QID, Elevation, Dive and Tape details', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
+            { id: 'utwt_rov', code: 'RUTWT', name: 'UT Thickness Report (ROV)', description: 'Detailed ROV UT wall thickness report with 4 clock positions and elevation reference', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT']) },
+            { id: 'seabed_rov', code: 'RSEAB-SKETCH', name: 'Seabed Survey Inspection Sketch Report (ROV)', description: 'General unfiltered Seabed GUI maps showing all debris, craters, and gas seepages.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('rov-seabed-report'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_debris_sketch', code: 'RSEAB-DEBRIS', name: 'Seabed Survey Debris Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with debris items marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_gas_sketch', code: 'RSEAB-GAS', name: 'Seabed Survey Gas Seepage Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with gas seepages marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-gas'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_crater_sketch', code: 'RSEAB-CRATER', name: 'Seabed Survey Crater Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with craters marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-crater'), available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_detail', code: 'RSEAB-DET-DEBRIS', name: 'Seabed Survey Debris Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Debris inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_gas_detail', code: 'RSEAB-DET-GAS', name: 'Seabed Survey Gas Seepage Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Gas Seepage inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedGasDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'seabed_rov_crater_detail', code: 'RSEAB-DET-CRATER', name: 'Seabed Survey Crater Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Crater inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedCraterDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
+            { id: 'rwdi', code: 'RWDI', name: 'Water Depth Inspection Report (ROV)', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
+            { id: 'mgi_rov', code: 'RMGI-GRAPH', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI']) },
-            { id: 'szci_rov', code: 'RSZCI', name: 'ROV Splash Zone (SZCI)', description: 'ROV Splash Zone inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
-            { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
-            { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch v2', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'szci_rov', code: 'RSZCI', name: 'Splash Zone Inspection Report (ROV)', description: 'Splash zone wall thickness and CP inspection summary with clock positions', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
+            { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report (ROV)', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch Report v2 (ROV)', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
             { id: 'rrisi_rov', code: 'RRISI', name: 'Riser Survey Inspection Sketch Report (ROV)', description: 'ROV Riser inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
-            { id: 'rrisi_detail_rov', code: 'RRISI', name: 'Riser Inspection Report (ROV)', description: 'Detailed portrait Riser inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIDetailReport, available: hasRecords(['RRISI']) },
+            { id: 'rrisi_detail_rov', code: 'RRISI-DETAIL', name: 'Riser Inspection Report (ROV)', description: 'Detailed portrait Riser inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIDetailReport, available: hasRecords(['RRISI']) },
             { id: 'jtisi_rov', code: 'JTISI', name: 'J-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI', 'RRISI']) },
-            { id: 'jtisi_detail_rov', code: 'JTISI', name: 'J-Tube Inspection Report (ROV)', description: 'Detailed portrait J-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIDetailReport, available: hasRecords(['JTISI', 'RRISI']) },
+            { id: 'jtisi_detail_rov', code: 'JTISI-DETAIL', name: 'J-Tube Inspection Report (ROV)', description: 'Detailed portrait J-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIDetailReport, available: hasRecords(['JTISI', 'RRISI']) },
             { id: 'itisi_rov', code: 'ITISI', name: 'I-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI', 'RRISI']) },
-            { id: 'itisi_detail_rov', code: 'ITISI', name: 'I-Tube Inspection Report (ROV)', description: 'Detailed portrait I-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIDetailReport, available: hasRecords(['ITISI', 'RRISI']) },
-            { id: 'rcasn_rov', code: 'RCASN', name: 'ROV Caisson Report (RCASN)', description: 'ROV Caisson Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNReport, available: hasRecords(['RCASN']) },
-            { id: 'rcasn_sketch_rov', code: 'RCASN-S', name: 'ROV Caisson Sketch Report', description: 'ROV Caisson Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNSketchReport, available: hasRecords(['RCASN']) },
-            { id: 'rcond_rov', code: 'RCOND', name: 'ROV Conductor Report (RCOND)', description: 'ROV Conductor Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDReport, available: hasRecords(['RCOND', 'RCON']) },
-            { id: 'rcond_sketch_rov', code: 'RCOND-S', name: 'ROV Conductor Sketch Report', description: 'ROV Conductor Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDSketchReport, available: hasRecords(['RCOND', 'RCON']) },
-            { id: 'bl_rov', code: 'BL', name: 'ROV Boatlanding Report (BL)', description: 'ROV Boatlanding Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateBLReport, available: hasRecords(['BL', 'BOATLANDING']) },
-            { id: 'rg_rov', code: 'RG', name: 'ROV Riser Guard Report (RG)', description: 'ROV Riser Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGReport, available: hasRecords(['RG', 'RISERGUARD']) },
-            { id: 'sg_rov', code: 'SG', name: 'ROV Caisson Guard Report (SG)', description: 'ROV Caisson Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSGReport, available: hasRecords(['SG', 'CAISSONGUARD']) },
-            { id: 'cu_rov', code: 'CU', name: 'ROV Conductor Guard Report (CU)', description: 'ROV Conductor Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCUReport, available: hasRecords(['CU', 'CONDUCTORGUARD']) },
+            { id: 'itisi_detail_rov', code: 'ITISI-DETAIL', name: 'I-Tube Inspection Report (ROV)', description: 'Detailed portrait I-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIDetailReport, available: hasRecords(['ITISI', 'RRISI']) },
+            { id: 'rcasn_rov', code: 'RCASN', name: 'Caisson Inspection Report (ROV)', description: 'ROV Caisson Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNReport, available: hasRecords(['RCASN']) },
+            { id: 'rcasn_sketch_rov', code: 'RCASN-S', name: 'Caisson Sketch Report (ROV)', description: 'ROV Caisson Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNSketchReport, available: hasRecords(['RCASN']) },
+            { id: 'rcond_rov', code: 'RCOND', name: 'Conductor Inspection Report (ROV)', description: 'ROV Conductor Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDReport, available: hasRecords(['RCOND', 'RCON']) },
+            { id: 'rcond_sketch_rov', code: 'RCOND-S', name: 'Conductor Sketch Report (ROV)', description: 'ROV Conductor Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDSketchReport, available: hasRecords(['RCOND', 'RCON']) },
+            { id: 'pipeline_event_sketch_report', code: 'PIPE-EVT-S', name: 'Pipeline Event List Sketch Report', description: 'Landscape Pipeline Navigation event list sketch report with graphical KP pipeline elevation profile, span/burial profiles, geodetic header, and matched event table.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePipelineEventSketchReport || (() => {}), available: true },
+            { id: 'rov_navig_report', code: 'NAVIG', name: 'Pipeline Visual Inspection Report', description: 'Landscape Pipeline Visual Inspection Report for inspection type NAVIG — Item No., Date, Time, Easting, Northing, KP, Depth, CP Reading, Event Name, Finding & Anomaly Priority.', mode: 'ROV', category: 'Inspection', handler: (handlers as any).generateROVNavigReport || (() => {}), available: true },
+            { id: 'defect_summary_pipeline', code: 'DSR-PL', name: 'Defect Summary Report (Pipeline)', description: 'Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding.', mode: 'BOTH', category: 'Inspection', handler: (handlers as any).generatePipelineDefectSummaryReport || handlers.generateFullInspectionReport, available: true },
+            { id: 'findings_summary_pipeline', code: 'FSR-PL', name: 'Finding Summary Report (Pipeline)', description: 'Priority-ordered summary of pipeline findings with reference numbers containing "F" and combined span/burial events.', mode: 'BOTH', category: 'Inspection', handler: (handlers as any).generatePipelineFindingSummaryReport || (handlers as any).generatePipelineDefectSummaryReport || handlers.generateFullInspectionReport, available: true },
+            { id: 'bl_rov', code: 'BL', name: 'Boatlanding Inspection Report (ROV)', description: 'ROV Boatlanding Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateBLReport, available: currentRecords.some(r => isBLRecord(r)) },
+            { id: 'rg_rov', code: 'RG', name: 'Riser Guard Inspection Report (ROV)', description: 'ROV Riser Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGReport, available: currentRecords.some(r => isRGRecord(r)) },
+            { id: 'sg_rov', code: 'SG', name: 'Caisson Guard Inspection Report (ROV)', description: 'ROV Caisson Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSGReport, available: currentRecords.some(r => isSGRecord(r)) },
+            { id: 'cu_rov', code: 'CU', name: 'Conductor Guard Inspection Report (ROV)', description: 'ROV Conductor Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCUReport, available: currentRecords.some(r => isCURecord(r)) },
 
             // ── INSPECTION REPORTS (DIVING) ────────────────────────────────────────
-            { id: 'dgvi', code: 'DGVI', name: 'Diver GVI', description: 'Diver visual assessment of structural integrity.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['DGVI']) },
-            { id: 'gvins', code: 'GVINS', name: 'Diving GVI (GVINS)', description: 'General visual inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateGVINSReport, available: hasRecords(['GVINS']) },
-            { id: 'bsins', code: 'BSINS', name: 'Diving Bolted Support (BSINS)', description: 'Detailed bolted support inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateBSINSReport, available: hasRecords(['BSINS']) },
-            { id: 'cvins', code: 'CVINS', name: 'Diving Close Visual (CVINS)', description: 'Close visual inspection report with findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCVINSReport, available: hasRecords(['CVINS']) },
-            { id: 'clean', code: 'CLEAN', name: 'Diving Cleaning (CLEAN)', description: 'Cleaning inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCLEANReport, available: hasRecords(['CLEAN']) },
-            { id: 'mpins', code: 'MPINS', name: 'Diving Magnetic Particle (MPINS)', description: 'Detailed magnetic particle inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateMPINSReport, available: hasRecords(['MPINS']) },
-            { id: 'utwtk', code: 'UTWTK', name: 'Diving UT Wall Thickness (UTWTK)', description: 'UT Wall Thickness Inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTWTKReport, available: hasRecords(['UTWTK', 'DUTWT']) },
-            { id: 'szone', code: 'SZONE', name: 'Diving Splash Zone (SZONE)', description: 'Splash zone wall thickness and CP inspection summary with grouped clock positions', mode: 'DIVING', category: 'Inspection', handler: handlers.generateSZONEReport, available: hasRecords(['SZONE', 'DSZCI']) },
-            { id: 'diver_log', code: 'DIVLOG', name: 'Diver Log Report', description: 'Chronological diver activities and findings per dive.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: true },
-            { id: 'acfmc', code: 'ACFMC', name: 'ACFM', description: 'Landscape Diving ACFM Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingACFMCReport, available: hasRecords(['ACFMC']) },
-            { id: 'plco', code: 'PL_CO', name: 'Diving Coating Damage Inspection', description: 'Landscape Diving Coating Damage Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingPLCOReport, available: hasRecords(['PL_CO']) },
-            { id: 'cp_div', code: 'CP', name: 'Diving CP Survey', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
-            { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
-            { id: 'mgi_div', code: 'DMGI', name: 'Diving Marine Growth (DMGI)', description: 'Diving Marine Growth Inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMGIReport, available: hasRecords(['DMGI', 'MGROW']) },
-            { id: 'diving_anmain_report', code: 'ANMAIN', name: 'Diving Anode Maintenance Report (ANMAIN)', description: 'Landscape Anode Maintenance Inspection Report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingANMAINReport, available: hasRecords(['ANMAIN']) },
-            { id: 'diving-dcasn-uw-report', code: 'DCASN-UW', name: 'Caisson Inspection Underwater Diving', description: 'Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNUWReport, available: currentRecords.some(r => {
+            { id: 'gvins', code: 'GVINS', name: 'General Visual Inspection Report (Diving)', description: 'General visual inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateGVINSReport, available: hasRecords(['GVINS', 'DGVI']) },
+            { id: 'diving-item-report', code: 'PL_IC', name: 'Item Inspection Report (Diving)', description: 'Portrait Item Inspection report (Diving) with QID, Elevation, Dive No., CP, Item Type, Description, and Findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingItemReport || handlers.generateFullInspectionReport, available: hasRecords(['PL_IC', 'ITEM']) },
+            { id: 'diving-itmain-report', code: 'ITMAIN', name: 'Item Maintenance Inspection Report (Diving)', description: 'Portrait Item Maintenance Inspection report (Diving) with QID, Elevation, Dive No., Angle, Dim 1, Dim 2, Dim 3, and Findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingITMAINReport || handlers.generateFullInspectionReport, available: hasRecords(['ITMAIN']) },
+            { id: 'bsins', code: 'BSINS', name: 'Bolted Support Inspection (Diving)', description: 'Detailed bolted support inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateBSINSReport, available: hasRecords(['BSINS']) },
+            { id: 'cvins', code: 'CVINS', name: 'Close Visual Inspection (Diving)', description: 'Close visual inspection report with findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCVINSReport, available: hasRecords(['CVINS']) },
+            { id: 'clean', code: 'CLEAN', name: 'Cleaning Inspection (Diving)', description: 'Cleaning inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCLEANReport, available: hasRecords(['CLEAN']) },
+            { id: 'mpins', code: 'MPINS', name: 'Magnetic Particle Inspection (Diving)', description: 'Detailed magnetic particle inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateMPINSReport, available: hasRecords(['MPINS']) },
+            { id: 'utwtk', code: 'UTWTK', name: 'UT Wall Thickness Inspection (Diving)', description: 'UT Wall Thickness Inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTWTKReport, available: hasRecords(['UTWTK', 'DUTWT']) },
+            { id: 'szone', code: 'SZONE', name: 'Splash Zone Inspection (Diving)', description: 'Splash zone wall thickness and CP inspection summary with grouped clock positions', mode: 'DIVING', category: 'Inspection', handler: handlers.generateSZONEReport, available: hasRecords(['SZONE', 'DSZCI']) },
+            { id: 'diver_log', code: 'DIVLOG', name: 'Diver Log Report (Diving)', description: 'Chronological diver activities and findings per dive.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: true },
+            { id: 'acfmc', code: 'ACFMC', name: 'ACFM Crack Inspection (Diving)', description: 'Landscape Diving ACFM Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingACFMCReport, available: hasRecords(['ACFMC']) },
+            { id: 'plco', code: 'PL_CO', name: 'Coating Damage Inspection (Diving)', description: 'Landscape Diving Coating Damage Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingPLCOReport, available: hasRecords(['PL_CO']) },
+            { id: 'cp_div', code: 'CP', name: 'CP Survey Report (Diving)', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
+            { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration Report (Diving)', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
+            { id: 'fmd_div', code: 'DFMD', name: 'Flooded Member Inspection Report (Diving)', description: 'Flooded Member Inspection report (Diving) with QID, Elevation, Dive No., Flooded, Grouted, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingFMDReport || handlers.generateFMDReport, available: hasRecords(['DFMD', 'FLOOD', 'FMD']) },
+            { id: 'measu_div', code: 'MEASU', name: 'Measurement Dimensional Survey Report (Diving)', description: 'Measurement Dimensional Survey report (Diving) with QID, Elevation, Dive No., Type, Unit, Result, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMEASUReport || handlers.generateFullInspectionReport, available: hasRecords(['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS']) },
+            { id: 'rrisi_div', code: 'DRRISI', name: 'Riser Inspection Report with Sketch (Diving)', description: 'Riser Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingRRISIReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'RRISI'].includes(code) || (qid.startsWith('R') && !qid.startsWith('RISG'));
+            }) },
+            { id: 'rrisi_detail_div', code: 'DRRISI-DET', name: 'Riser Inspection Summary Report without Sketch (Diving)', description: 'Riser Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingRRISIDetailReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'RRISI'].includes(code) || (qid.startsWith('R') && !qid.startsWith('RISG'));
+            }) },
+            { id: 'jtisi_div', code: 'DJTISI', name: 'J-Tube Inspection Report with Sketch (Diving)', description: 'J-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingJTISIReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DJTISI', 'JTISI'].includes(code) || qid.startsWith('J');
+            }) },
+            { id: 'jtisi_detail_div', code: 'DJTISI-DET', name: 'J-Tube Inspection Summary Report without Sketch (Diving)', description: 'J-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingJTISIDetailReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DJTISI', 'JTISI'].includes(code) || qid.startsWith('J');
+            }) },
+            { id: 'itisi_div', code: 'DITISI', name: 'I-Tube Inspection Report with Sketch (Diving)', description: 'I-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingITISIReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DITISI', 'ITISI'].includes(code) || qid.startsWith('I');
+            }) },
+            { id: 'itisi_detail_div', code: 'DITISI-DET', name: 'I-Tube Inspection Summary Report without Sketch (Diving)', description: 'I-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingITISIDetailReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {
+                const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const qid = (r.structure_components?.q_id || r.q_id || "").toUpperCase();
+                return ['DITISI', 'ITISI'].includes(code) || qid.startsWith('I');
+            }) },
+            { id: 'mgi_div', code: 'DMGI', name: 'Marine Growth Inspection (Diving)', description: 'Diving Marine Growth Inspection report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMGIReport, available: hasRecords(['DMGI', 'MGROW']) },
+            { id: 'diving_anmain_report', code: 'ANMAIN', name: 'Anode Maintenance Inspection Report (Diving)', description: 'Landscape Anode Maintenance Inspection Report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingANMAINReport, available: hasRecords(['ANMAIN']) },
+            { id: 'diving-dcasn-uw-report', code: 'DCASN-UW', name: 'Caisson Inspection Underwater (Diving)', description: 'Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNUWReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
             }) },
-            { id: 'diving-dcasn-ts-report', code: 'DCASN-TS', name: 'Caisson Inspection Above Water Diving', description: 'Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNTSReport, available: currentRecords.some(r => {
+            { id: 'diving-dcasn-ts-report', code: 'DCASN-TS', name: 'Caisson Inspection Above Water (Diving)', description: 'Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNTSReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
             }) },
-            { id: 'diving-dcond-uw-report', code: 'DCOND-UW', name: 'Conductor Inspection Underwater Diving', description: 'Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDUWReport, available: currentRecords.some(r => {
+            { id: 'diving-dcasn-report', code: 'DCASN', name: 'Caisson Inspection (Diving)', description: 'Portrait combined Caisson inspection report (Above & Underwater) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCASNReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CS' || compCode.startsWith('CS-') || compCode.startsWith('CS_'));
+            }) },
+            { id: 'diving-dcond-uw-report', code: 'DCOND-UW', name: 'Conductor Inspection Underwater (Diving)', description: 'Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDUWReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
             }) },
-            { id: 'diving-dcond-ts-report', code: 'DCOND-TS', name: 'Conductor Inspection Above Water Diving', description: 'Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDTSReport, available: currentRecords.some(r => {
+            { id: 'diving-dcond-ts-report', code: 'DCOND-TS', name: 'Conductor Inspection Above Water (Diving)', description: 'Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDTSReport, available: currentRecords.some(r => {
+                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                const compCode = (r.structure_components?.code || "").toUpperCase();
+                return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
+            }) },
+            { id: 'diving-dcond-report', code: 'DCOND', name: 'Conductor Inspection (Diving)', description: 'Portrait combined Conductor inspection report (Above & Underwater) combining GVINS, CVINS, CPSURV, UTWTK.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingDCONDReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || "").toUpperCase();
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
@@ -551,15 +682,20 @@ export function ReportWizardDialog({
             { id: 'exec_sum', code: 'EXEC', name: 'Executive Summary', description: 'High-level management summary of the entire operation.', mode: 'BOTH', category: 'Final', handler: handlers.generateFullInspectionReport, available: true },
         ];
 
-        // Add dynamic reports
+        // Base codes already handled by primary baseTemplates
+        const baseCodesSet = new Set(baseTemplates.map(b => b.code.toUpperCase()));
+        const extraExcludedCodes = ['PL_IC', 'ITEM', 'ITMAIN', 'RCASN', 'DCASN', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RRISI', 'DRISI', 'SZONE', 'SZCI', 'RSZCI', 'DSZCI', 'SEABED', 'RSEAB', 'MGROW', 'RMGI', 'DMGI', 'FMD', 'RFMD', 'DFMD', 'UTWT', 'RUTWT', 'DUTWT', 'UTWTK', 'SCOUR', 'RSCOR', 'DSCOR', 'BOATLANDING', 'BL', 'RISERGUARD', 'RG', 'CAISSONGUARD', 'SG', 'CONDUCTORGUARD', 'CU', 'RSANI', 'ANODE', 'ANOD', 'PL_AN', 'ANMAIN', 'CP', 'CPCLB', 'UTCLB', 'ACFMC', 'PL_CO', 'RWDI', 'RICMI', 'RSWNI', 'SWNI', 'JTISI', 'ITISI', 'GVINS', 'DGVI', 'RGVI', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'INSP', 'DEFECT', 'FINDINGS', 'ANOM', 'PHOTO', 'COMP', 'JP_SUM', 'SOW_REP', 'STR_OVR', 'EXEC'];
+        extraExcludedCodes.forEach(c => baseCodesSet.add(c));
+
+        // Add dynamic reports (excluding any codes covered by base templates)
         const dynamicReports: ReportTemplate[] = allInspectionTypes.filter(t => 
-            !['RGVI', 'DGVI', 'GVINS', 'BSINS', 'CVINS', 'CLEAN', 'SZONE', 'RSEAB', 'RMGI', 'DMGI', 'RFMD', 'DFMD', 'RSZCI', 'DSZCI', 'RUTWT', 'DUTWT', 'RSCOR', 'DSCOR', 'RRISI', 'DRISI', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RG', 'SG', 'CU', 'BL', 'RISERGUARD', 'CAISSONGUARD', 'CONDUCTORGUARD', 'RSANI'].includes(t.code) &&
+            !baseCodesSet.has((t.code || "").toUpperCase()) &&
             currentRecords.some(r => (r.inspection_type_id === t.id || r.inspection_type_code === t.code))
         ).map(t => ({
             id: t.id,
             code: t.code,
-            name: t.name,
-            description: `Dynamic report for ${t.name} records.`,
+            name: formatInspectionTypeName(t.name),
+            description: `Dynamic report for ${formatInspectionTypeName(t.name)} records.`,
             mode: (t.code.startsWith('R') && t.code.length > 2) ? 'ROV' : (t.code.startsWith('D') && t.code.length > 2) ? 'DIVING' : 'BOTH',
             category: 'Inspection',
             handler: () => handlers.generateInspectionReportByType(t.id),
@@ -568,8 +704,8 @@ export function ReportWizardDialog({
 
         const combined = [...baseTemplates, ...dynamicReports];
         const unique: ReportTemplate[] = [];
-        const seenNames = new Set<string>();
-        const seenIds = new Set<string>();
+        const seenKeys = new Set<string>();
+
         for (const t of combined) {
             let updatedName = t.name.trim();
             
@@ -592,11 +728,18 @@ export function ReportWizardDialog({
                 updatedName = `${updatedName} (Diving)`;
             }
             
-            const nameKey = updatedName.toLowerCase();
+            const normalizedName = updatedName.toLowerCase()
+                .replace(/report/g, "")
+                .replace(/inspection/g, "")
+                .replace(/summary/g, "")
+                .replace(/[^a-z0-9]/g, "");
+
+            const nameModeKey = `${normalizedName}_${t.mode.toLowerCase()}`;
             const idKey = String(t.id).toLowerCase();
-            if (!seenNames.has(nameKey) && !seenIds.has(idKey)) {
-                seenNames.add(nameKey);
-                seenIds.add(idKey);
+
+            if (!seenKeys.has(nameModeKey) && !seenKeys.has(idKey)) {
+                seenKeys.add(nameModeKey);
+                seenKeys.add(idKey);
                 unique.push({
                     ...t,
                     name: updatedName
