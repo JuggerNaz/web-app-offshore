@@ -99,6 +99,7 @@ import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-an
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
 import { generateROVMGIGraphReport } from "@/utils/report-generators/rov-mgi-report";
 import { generateROVFMDReport } from "@/utils/report-generators/rov-fmd-report";
+import { generateDivingFMDReport } from "@/utils/report-generators/diving-fmd-report";
 import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report";
 import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
@@ -181,6 +182,7 @@ import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
 import { InspectionSummaryPanel } from "./components/InspectionSummaryPanel";
+import { GeodeticParametersDialog } from "../pipeline-workspace/components/GeodeticParametersDialog";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
 import { resolveInspectionType } from "@/utils/inspection-schema";
@@ -203,6 +205,8 @@ import { EventsTablePanel } from "./_components/panels/EventsTablePanel";
 import { ComponentListPanel } from "./_components/panels/ComponentListPanel";
 import { PipelineEventMenuPanel } from "./_components/panels/PipelineEventMenuPanel";
 import { HistoryDataPanel } from "./_components/panels/HistoryDataPanel";
+import { PipelineInspectionInfoPanel } from "./_components/panels/PipelineInspectionInfoPanel";
+import { QuickShortcutsPanel } from "./_components/panels/QuickShortcutsPanel";
 
 
 export default function WorkspaceV2Page() {
@@ -269,6 +273,7 @@ function V10PreviewLayout() {
   const [isPipelineMapOpen, setIsPipelineMapOpen] = useState(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [isReportWizardOpen, setIsReportWizardOpen] = useState(false);
+  const [isGeodeticDialogOpen, setIsGeodeticDialogOpen] = useState(false);
 
   // Pipeline Preset Settings (Direction & Location Scope)
   const [inspectionDirection, setInspectionDirection] = useState<"Increase KP" | "Reverse KP">(() => {
@@ -398,12 +403,35 @@ function V10PreviewLayout() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    const stripPipelinePanelsFromLayout = (node: any): any => {
+      if (!node) return null;
+      if (node.component === "inspectionInfo" || node.component === "quickShortcuts") {
+        return null;
+      }
+      if (Array.isArray(node.children)) {
+        const filteredChildren = node.children
+          .map(stripPipelinePanelsFromLayout)
+          .filter(Boolean);
+        if (filteredChildren.length === 0 && node.type === "tabset") {
+          return null;
+        }
+        return { ...node, children: filteredChildren };
+      }
+      return node;
+    };
+
     const savedLayout = localStorage.getItem("inspection-workspace-layout-v2");
     if (savedLayout && savedLayout !== "[object Object]" && savedLayout.startsWith("{")) {
       try {
         let parsed = JSON.parse(savedLayout);
         if (typeof parsed === 'string') {
           parsed = JSON.parse(parsed);
+        }
+        if (!isPipeline && parsed && parsed.layout) {
+          parsed.layout = stripPipelinePanelsFromLayout(parsed.layout);
+          if (Array.isArray(parsed.borders)) {
+            parsed.borders = parsed.borders.map(stripPipelinePanelsFromLayout).filter(Boolean);
+          }
         }
         if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
           console.log("[DEBUG] Restoring layout from storage", parsed);
@@ -490,21 +518,31 @@ function V10PreviewLayout() {
             children: [
               {
                 type: "tabset",
-                weight: 30,
+                weight: 25,
                 children: [
                   { type: "tab", name: "Captured Events", component: "events" },
                 ],
               },
               {
                 type: "tabset",
-                weight: 35,
+                weight: 30,
                 children: [
-                  { type: "tab", name: "Event Menu", component: "components" },
+                  { type: "tab", name: isPipeline ? "Event Menu" : "Component List", component: "components" },
                 ],
               },
+              ...(isPipeline ? [
+                {
+                  type: "tabset" as const,
+                  weight: 22,
+                  children: [
+                    { type: "tab" as const, name: "Inspection Info", component: "inspectionInfo" },
+                    { type: "tab" as const, name: "Quick Log", component: "quickShortcuts" },
+                  ],
+                }
+              ] : []),
               {
                 type: "tabset",
-                weight: 35,
+                weight: 23,
                 children: [
                   { type: "tab", name: "History Data", component: "history" },
                 ],
@@ -530,15 +568,22 @@ function V10PreviewLayout() {
   }, []);
 
   // Track closed floating panels so user can reopen individually
-  const allWorkspacePanels = useMemo(() => [
-    { id: "opsLog", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log" },
-    { id: "videoLog", name: "Video Log" },
-    { id: "videoPreview", name: "Photo / Video Grab" },
-    { id: "form", name: "Inspection Form" },
-    { id: "events", name: "Captured Events" },
-    { id: "components", name: isPipeline ? "Event Menu" : "Component List" },
-    { id: "history", name: "History Data" },
-  ], [inspMethod, isPipeline]);
+  const allWorkspacePanels = useMemo(() => {
+    const list = [
+      { id: "opsLog", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log" },
+      { id: "videoLog", name: "Video Log" },
+      { id: "videoPreview", name: "Photo / Video Grab" },
+      { id: "form", name: "Inspection Form" },
+      { id: "events", name: "Captured Events" },
+      { id: "components", name: isPipeline ? "Event Menu" : "Component List" },
+      { id: "history", name: "History Data" },
+    ];
+    if (isPipeline) {
+      list.push({ id: "inspectionInfo", name: "Inspection Info" });
+      list.push({ id: "quickShortcuts", name: "Quick Log" });
+    }
+    return list;
+  }, [inspMethod, isPipeline]);
 
   const closedPanels = useMemo(() => {
     if (!layoutModel) return [];
@@ -988,7 +1033,7 @@ function V10PreviewLayout() {
   const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<string[]>([]);
 
   // Drawing Tools state
-  const [currentTool, setCurrentTool] = useState<DrawingTool>("pen");
+  const [currentTool, setCurrentTool] = useState<DrawingTool>("select");
   const [currentColor, setCurrentColor] = useState("#ef4444");
   const [lineWidth, setLineWidth] = useState(3);
   const [showDrawingTools, setShowDrawingTools] = useState(false);
@@ -998,6 +1043,8 @@ function V10PreviewLayout() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const drawingObjectsRef = useRef<any[]>([]);
+  const overlayManagerRef = useRef<CanvasOverlayManager | null>(null);
 
   const handleExternalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1115,33 +1162,57 @@ function V10PreviewLayout() {
   });
   const [prevRefNo, setPrevRefNo] = useState("");
 
-  const validateAnomalyRef = async (newRef: string) => {
-    if (!newRef || newRef === prevRefNo) return true;
+  const extractBaseSeq = (refStr: string) => {
+    if (!refStr) return "";
+    const clean = refStr.trim();
+    const match = clean.match(/^(.+?\/\s*[AF]-\d{3})/i);
+    if (match) return match[1].trim().toUpperCase();
+    return clean.replace(/[A-Z0-9_-]+$/, "").trim().toUpperCase();
+  };
 
-    // Strip postfixes for fuzzy matching
-    const baseNew = newRef.replace(/[AR]$/, "").trim();
+  const validateAnomalyRef = async (newRef: string) => {
+    if (!newRef || newRef.trim() === "" || newRef.trim() === prevRefNo.trim()) return true;
+
+    const trimmedNew = newRef.trim();
+    const targetBaseSeq = extractBaseSeq(trimmedNew);
+    const currentRecordBaseSeq = extractBaseSeq(prevRefNo);
 
     try {
       const { data: allAnoms } = await supabase
         .from("insp_anomalies")
-        .select("anomaly_id, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
+        .select("anomaly_id, anomaly_ref_no, inspection_id, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
         .eq("insp_records.structure_id", parseInt(structureId || "0"))
         .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"))
         .eq("insp_records.sow_report_no", headerData.sowReportNo);
 
       if (allAnoms) {
-        // Find if any existing anomaly (other than one we might be editing) shares the same base ref
-        const isDuplicate = allAnoms.some(a => {
-           // We ignore the match if it's the exact same string AND we are in an edit session
-           // (Though strictly speaking, we check against prevRefNo above)
-           const baseExisting = (a.anomaly_ref_no || "").replace(/[AR]$/, "").trim();
-           return baseExisting === baseNew;
-        });
+        for (const a of allAnoms) {
+          if (editingRecordId && a.inspection_id === editingRecordId) continue;
 
-        if (isDuplicate) {
-          toast.error(`Duplicate Reference No: "${newRef}" conflicts with an existing sequence. Rolling back.`);
-          setAnomalyData(prev => ({ ...prev, referenceNo: prevRefNo }));
-          return false;
+          const existingRef = (a.anomaly_ref_no || "").trim();
+          const existingBaseSeq = extractBaseSeq(existingRef);
+
+          // 1. Check exact full reference string duplicate match
+          if (existingRef.toLowerCase() === trimmedNew.toLowerCase()) {
+            toast.error(`Duplicate Reference No: "${newRef}" already exists on another record.`);
+            setAnomalyData((prev) => ({ ...prev, referenceNo: prevRefNo }));
+            return false;
+          }
+
+          // 2. Check base sequence conflict:
+          // A-003, A-003A, and A-003R share the same base sequence (A-003).
+          // If sequence A-003 belongs to another existing record, block reassigning it to this record.
+          if (
+            targetBaseSeq &&
+            existingBaseSeq &&
+            targetBaseSeq === existingBaseSeq &&
+            targetBaseSeq !== currentRecordBaseSeq
+          ) {
+            const shortBase = targetBaseSeq.split("/").pop()?.trim() || targetBaseSeq;
+            toast.error(`Reference sequence "${shortBase}" already belongs to an existing record (${existingRef}). You cannot reassign sequence numbers that belong to other records.`);
+            setAnomalyData((prev) => ({ ...prev, referenceNo: prevRefNo }));
+            return false;
+          }
         }
       }
       return true;
@@ -1539,41 +1610,56 @@ function V10PreviewLayout() {
     }
   }, [isPipeline, headerData, selectedComp, componentsSow, allInspectionTypes, activeSpec]);
 
-  // AUTO-GENERATE ANOMALY REFERENCE NO WHEN TYPE CHANGES
+  // AUTO-GENERATE ANOMALY / FINDING REFERENCE NO WHEN TYPE CHANGES OR WHEN MISSING
   useEffect(() => {
-    if ((findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo && structureId && headerData?.sowReportNo) {
+    if ((findingType === "Anomaly" || findingType === "Finding") && structureId) {
       const isAnomaly = findingType === "Anomaly";
       const category = isAnomaly ? "ANOMALY" : "FINDING";
       const prefix = isAnomaly ? "A" : "F";
+      const targetPrefix = `/ ${prefix}-`;
 
-      const generateRef = async () => {
-        try {
-          const { data: allAnoms } = await supabase
-            .from("insp_anomalies")
-            .select("sequence_no, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
-            .eq("insp_records.structure_id", parseInt(structureId || "0"))
-            .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"))
-            .eq("insp_records.sow_report_no", headerData.sowReportNo);
+      const currentRef = anomalyData?.referenceNo || "";
+      const isWrongPrefix = currentRef.length > 0 && !currentRef.includes(targetPrefix);
+      const isMissingRef = !currentRef || currentRef.trim() === "";
 
-          let vMaxSeq = 0;
-          if (allAnoms) {
-            for (const a of allAnoms) {
-              const refCategory = a.anomaly_ref_no?.includes(` / ${prefix}-`) ? category : (isAnomaly ? "FINDING" : "ANOMALY");
-              if (refCategory === category && a.sequence_no > vMaxSeq) {
-                vMaxSeq = a.sequence_no;
+      if (isMissingRef || isWrongPrefix) {
+        const generateRef = async () => {
+          try {
+            let query = supabase
+              .from("insp_anomalies")
+              .select("sequence_no, anomaly_ref_no, insp_records!inner(structure_id, jobpack_id, sow_report_no)")
+              .eq("insp_records.structure_id", parseInt(structureId || "0"))
+              .eq("insp_records.jobpack_id", parseInt(jobPackId || "0"));
+
+            if (headerData?.sowReportNo) {
+              query = query.eq("insp_records.sow_report_no", headerData.sowReportNo);
+            }
+
+            const { data: allAnoms } = await query;
+
+            let vMaxSeq = 0;
+            if (allAnoms) {
+              for (const a of allAnoms) {
+                const refCategory = a.anomaly_ref_no?.includes(` / ${prefix}-`) ? category : (isAnomaly ? "FINDING" : "ANOMALY");
+                if (refCategory === category && (a.sequence_no || 0) > vMaxSeq) {
+                  vMaxSeq = a.sequence_no;
+                }
               }
             }
+            const seq = vMaxSeq + 1;
+            const structLabel = headerData?.platformName || headerData?.structureName || selectedComp?.name || selectedComp?.str_name || "REF";
+            const baseRef = `${new Date().getFullYear()} / ${structLabel} / ${prefix}-${seq.toString().padStart(3, "0")}`;
+            const finalRef = anomalyData?.rectify ? baseRef + "R" : baseRef;
+
+            setAnomalyData((prev: any) => ({ ...prev, referenceNo: finalRef }));
+          } catch (e) {
+            console.error("[AnomalyRef] Failed to pre-generate ref:", e);
           }
-          const seq = vMaxSeq + 1;
-          const baseRef = `${new Date().getFullYear()} / ${headerData.platformName || "REF"} / ${prefix}-${seq.toString().padStart(3, "0")}`;
-          setAnomalyData(prev => ({ ...prev, referenceNo: baseRef }));
-        } catch (e) {
-          console.error("[AnomalyRef] Failed to pre-generate ref:", e);
-        }
-      };
-      generateRef();
+        };
+        generateRef();
+      }
     }
-  }, [findingType, structureId, headerData?.sowReportNo, jobPackId, headerData?.platformName]);
+  }, [findingType, anomalyData?.referenceNo, anomalyData?.rectify, structureId, headerData?.sowReportNo, jobPackId, headerData?.platformName, selectedComp]);
 
   const {
     previewOpen,
@@ -1672,8 +1758,48 @@ function V10PreviewLayout() {
     generateRMGIReportBlob,
     rmgiPreviewOpen,
     setRmgiPreviewOpen,
+    divingFmdPreviewOpen,
+    setDivingFmdPreviewOpen,
+    divingMeasuPreviewOpen,
+    setDivingMeasuPreviewOpen,
+    divingRrisiPreviewOpen,
+    setDivingRrisiPreviewOpen,
+    divingRrisiDetailPreviewOpen,
+    setDivingRrisiDetailPreviewOpen,
+    divingJtisiPreviewOpen,
+    setDivingJtisiPreviewOpen,
+    divingJtisiDetailPreviewOpen,
+    setDivingJtisiDetailPreviewOpen,
+    divingItisiPreviewOpen,
+    setDivingItisiPreviewOpen,
+    divingItisiDetailPreviewOpen,
+    setDivingItisiDetailPreviewOpen,
+    divingItemReportPreviewOpen,
+    setDivingItemReportPreviewOpen,
+    divingItmainReportPreviewOpen,
+    setDivingItmainReportPreviewOpen,
+    generateDivingItemReport,
+    generateDivingItemReportBlob,
+    generateDivingITMAINReport,
+    generateDivingITMAINReportBlob,
     generateFMDReport,
     generateFMDReportBlob,
+    generateDivingFMDReport,
+    generateDivingFMDReportBlob,
+    generateDivingMEASUReport,
+    generateDivingMEASUReportBlob,
+    generateDivingRRISIReport,
+    generateDivingRRISIReportBlob,
+    generateDivingRRISIDetailReport,
+    generateDivingRRISIDetailReportBlob,
+    generateDivingJTISIReport,
+    generateDivingJTISIReportBlob,
+    generateDivingJTISIDetailReport,
+    generateDivingJTISIDetailReportBlob,
+    generateDivingITISIReport,
+    generateDivingITISIReportBlob,
+    generateDivingITISIDetailReport,
+    generateDivingITISIDetailReportBlob,
     generateSZCIReport,
     generateSZCIReportBlob,
     generateUTWTReport,
@@ -1724,6 +1850,18 @@ function V10PreviewLayout() {
     generateRCONDReportBlob,
     generateRCONDSketchReport,
     generateRCONDSketchReportBlob,
+    generatePipelineEventSketchReport,
+    generatePipelineEventSketchReportBlob,
+    pipelineEventSketchPreviewOpen,
+    setPipelineEventSketchPreviewOpen,
+    pipelineDefectSummaryPreviewOpen,
+    setPipelineDefectSummaryPreviewOpen,
+    generatePipelineDefectSummaryReport,
+    generatePipelineDefectSummaryReportBlob,
+    generateROVNavigReport,
+    generateROVNavigReportBlob,
+    navigPreviewOpen,
+    setNavigPreviewOpen,
     generateSeabedReport,
     generateSeabedReportBlob,
     generateSeabedDetailReport,
@@ -1752,6 +1890,7 @@ function V10PreviewLayout() {
     generateMPINSReportBlob,
     generateUTWTKReport,
     generateUTWTKReportBlob,
+    generateJobPackSummaryReportBlob,
     generateSZONEReport,
     generateSZONEReportBlob,
     generateCPCLBReport,
@@ -1789,6 +1928,10 @@ function V10PreviewLayout() {
     generateDivingDCONDUWReportBlob,
     generateDivingDCONDTSReport,
     generateDivingDCONDTSReportBlob,
+    generateDivingDCASNReport,
+    generateDivingDCASNReportBlob,
+    generateDivingDCONDReport,
+    generateDivingDCONDReportBlob,
 
     generateInspectionReportByType,
     generateFullInspectionReport,
@@ -2400,37 +2543,6 @@ function V10PreviewLayout() {
     fetchHeaderInfo();
   }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam, router]);
 
-  useEffect(() => {
-    if ((findingType === "Anomaly" || findingType === "Finding") && !anomalyData.referenceNo) {
-      const fetchPreviewRef = async () => {
-        const category = findingType === "Anomaly" ? "ANOMALY" : "FINDING";
-        const prefix = findingType === "Anomaly" ? "A" : "F";
-
-        const { data: sequenceData } = await supabase.rpc("get_next_record_sequence", {
-          p_structure_id: parseInt(structureId || "0"),
-          p_jobpack_id: parseInt(jobPackId || "0"),
-          p_report_no: headerData.sowReportNo,
-          p_category: category,
-        });
-
-        const seq = sequenceData || 1;
-        let baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, "0")}`;
-        if (anomalyData.rectify) baseRef += "R";
-        setAnomalyData((prev) => ({ ...prev, referenceNo: baseRef }));
-      };
-      fetchPreviewRef();
-    }
-  }, [
-    findingType,
-    anomalyData.rectify,
-    editingRecordId,
-    structureId,
-    jobPackId,
-    headerData.platformName,
-    headerData.sowReportNo,
-    supabase,
-  ]);
-
   const parseDbDate = useCallback((dateString?: string | null): Date => {
     if (!dateString) return new Date();
     try {
@@ -2444,62 +2556,106 @@ function V10PreviewLayout() {
     }
   }, []);
 
+  const openFloatingWindow = async (title: string, defaultWidth = 1000, defaultHeight = 600) => {
+    let win: Window | null = null;
+
+    // Check if Chrome Document Picture-in-Picture API is available and not currently occupied by another floating panel
+    const dpip = (window as any).documentPictureInPicture;
+    if (dpip && typeof dpip.requestWindow === "function" && !dpip.window) {
+      try {
+        win = await dpip.requestWindow({
+          width: defaultWidth,
+          height: defaultHeight,
+        });
+      } catch (err) {
+        console.warn("Document PiP request failed, using popup window fallback:", err);
+      }
+    }
+
+    // Fallback to standard multi-window popout via window.open if PiP is occupied or unsupported
+    if (!win) {
+      const left = Math.max(0, Math.floor((window.screen.width - defaultWidth) / 2));
+      const top = Math.max(0, Math.floor((window.screen.height - defaultHeight) / 2));
+      win = window.open(
+        "about:blank",
+        `popout_${title.replace(/\s+/g, "_")}_${Date.now()}`,
+        `width=${defaultWidth},height=${defaultHeight},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
+      );
+    }
+
+    if (!win) {
+      toast.error("Could not open floating window. Please check browser popup blocker permissions.");
+      return null;
+    }
+
+    // Copy stylesheets (both link tags and inline style tags)
+    Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
+      try {
+        win!.document.head.appendChild(stylesheet.cloneNode(true));
+      } catch (e) {}
+    });
+
+    // Copy dynamic CSS rules generated at runtime
+    Array.from(document.styleSheets).forEach((sheet) => {
+      try {
+        if (sheet.cssRules) {
+          const newStyle = win!.document.createElement("style");
+          Array.from(sheet.cssRules).forEach((rule) => {
+            newStyle.appendChild(win!.document.createTextNode(rule.cssText));
+          });
+          win!.document.head.appendChild(newStyle);
+        }
+      } catch (e) {}
+    });
+
+    // Sync dark mode configuration and base classes
+    const isDark = document.documentElement.classList.contains("dark");
+    if (isDark) {
+      win.document.documentElement.classList.add("dark");
+    }
+    win.document.body.className = document.body.className;
+
+    const bg = isDark ? "#0b0f19" : "#ffffff";
+    const text = isDark ? "#f8fafc" : "#0f172a";
+
+    win.document.title = title;
+    win.document.head.insertAdjacentHTML(
+      "beforeend",
+      `<style>
+        html, body { 
+          height: 100% !important;
+          width: 100% !important;
+          margin: 0 !important; 
+          padding: 0 !important; 
+          overflow: hidden !important; 
+          background: ${bg} !important; 
+          color: ${text} !important; 
+          font-family: system-ui, -apple-system, sans-serif !important; 
+        }
+        * {
+          box-sizing: border-box;
+        }
+      </style>`
+    );
+
+    return win;
+  };
+
   const handlePopoutCapturedEvents = async () => {
-    if (!("documentPictureInPicture" in window)) {
-      toast.error("Floating window is not supported in this browser. Please use Chrome or Edge.");
+    if (capturedEventsPipWindow) {
+      capturedEventsPipWindow.close();
+      setCapturedEventsPipWindow(null);
       return;
     }
 
-    try {
-      if (capturedEventsPipWindow) {
-        capturedEventsPipWindow.close();
-        return;
-      }
+    const win = await openFloatingWindow("Captured Events", 1100, 650);
+    if (!win) return;
 
-      const pip = await (window as any).documentPictureInPicture.requestWindow({
-        width: 1000,
-        height: 600,
-      });
+    setCapturedEventsPipWindow(win);
 
-      // Copy stylesheets (both link tags and inline styles) to the new window
-      Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
-        pip.document.head.appendChild(stylesheet.cloneNode(true));
-      });
-
-      // Sync dark mode configuration and base classes
-      const isDark = document.documentElement.classList.contains("dark");
-      if (isDark) {
-        pip.document.documentElement.classList.add("dark");
-      }
-      pip.document.body.className = document.body.className;
-
-      const bg = isDark ? "#0b0f19" : "#ffffff";
-      const text = isDark ? "#f8fafc" : "#0f172a";
-
-      // Add basic HTML structure overlay with matching theme color
-      pip.document.head.insertAdjacentHTML(
-        "beforeend",
-        `<style>
-          body { 
-            margin: 0; 
-            padding: 0; 
-            overflow: hidden; 
-            background: ${bg} !important; 
-            color: ${text} !important; 
-            font-family: system-ui, -apple-system, sans-serif; 
-          }
-        </style>`
-      );
-
-      setCapturedEventsPipWindow(pip);
-
-      pip.addEventListener("pagehide", () => {
-        setCapturedEventsPipWindow(null);
-      });
-    } catch (error) {
-      console.error("Failed to open captured events floating window:", error);
-      toast.error("Failed to open floating window");
-    }
+    const cleanup = () => setCapturedEventsPipWindow(null);
+    win.addEventListener("pagehide", cleanup);
+    win.addEventListener("beforeunload", cleanup);
   };
 
   const handleDeleteTape = async (tapeIdToDelete: number) => {
@@ -3009,40 +3165,21 @@ function V10PreviewLayout() {
     }
   };
 
-  // Maintain stream and overlay when mounting/unmounting or PiP
+  // Maintain stream overlay
   useEffect(() => {
     if (streamActive && previewStream && videoRef.current) {
       videoRef.current.srcObject = previewStream;
     }
-
-    let om: CanvasOverlayManager | null = null;
-    if (streamActive && canvasRef.current) {
-      // Check if the current manager is already bound to this canvas
-      if (overlayManager && overlayManager.getCanvas() === canvasRef.current) {
-        overlayManager.setTool(currentTool);
-        overlayManager.setColor(currentColor);
-        overlayManager.setLineWidth(lineWidth);
-        return;
-      }
-
-      // Capture existing objects if we're replacing an old manager
-      const existingObjects = overlayManager ? overlayManager.getObjects() : [];
-
-      om = new CanvasOverlayManager(canvasRef.current);
-      om.setTool(currentTool);
-      om.setColor(currentColor);
-      om.setLineWidth(lineWidth);
-      if (existingObjects.length > 0) {
-        om.setObjects(existingObjects);
-      }
-      setOverlayManager(om);
-    }
-  }, [pipWindow, streamActive, previewStream, currentTool, currentColor, lineWidth]);
+  }, [pipWindow, streamActive, previewStream]);
 
   const stopStream = () => {
     if (previewStream) {
       previewStream.getTracks().forEach((t) => t.stop());
       setPreviewStream(null);
+    }
+    if (overlayManagerRef.current) {
+      overlayManagerRef.current.destroy();
+      overlayManagerRef.current = null;
     }
     if (overlayManager) {
       overlayManager.destroy();
@@ -3205,55 +3342,15 @@ function V10PreviewLayout() {
       return;
     }
 
-    const pip = (window as any).documentPictureInPicture;
-    if (!pip) {
-      // Fallback to standard video PiP if Document PiP not supported
-      if (videoRef.current) {
-        try {
-          if ("requestPictureInPicture" in (videoRef.current as any)) {
-            (videoRef.current as any).requestPictureInPicture();
-          } else {
-            toast.info(
-              "Standard PiP not supported. Try using Chrome for advanced floating controls."
-            );
-          }
-        } catch (err) {
-          console.error("PiP failed", err);
-        }
-      }
-      return;
-    }
+    const win = await openFloatingWindow("Photo / Video Grab", 960, 600);
+    if (!win) return;
 
-    try {
-      const pw = await pip.requestWindow({
-        width: 320,
-        height: 480,
-      });
+    win.document.body.style.background = "#000";
+    setPipWindow(win);
 
-      // Copy stylesheets (both link tags and inline styles) to the new window
-      Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).forEach((stylesheet) => {
-        pw.document.head.appendChild(stylesheet.cloneNode(true));
-      });
-
-      // Handle background
-      // Handle background and height for full-screen stretching
-      pw.document.documentElement.style.height = "100%";
-      pw.document.body.style.height = "100%";
-      pw.document.body.style.background = "#000";
-      pw.document.body.style.margin = "0";
-      pw.document.body.style.overflow = "hidden";
-      pw.document.body.style.display = "flex";
-      pw.document.body.style.flexDirection = "column";
-
-      pw.addEventListener("pagehide", () => {
-        setPipWindow(null);
-      });
-
-      setPipWindow(pw);
-    } catch (err) {
-      console.error("Failed to open Document PiP", err);
-      toast.error("Could not open floating window.");
-    }
+    const cleanup = () => setPipWindow(null);
+    win.addEventListener("pagehide", cleanup);
+    win.addEventListener("beforeunload", cleanup);
   };
 
   const handleLinkToRecord = (file: (typeof recordedFiles)[0]) => {
@@ -4545,143 +4642,145 @@ function V10PreviewLayout() {
     headerData.sowReportNo,
   ]);
 
-  // Handle method switch overriding deps
-  useEffect(() => {
-    async function fetchDeps() {
-      setIsFetchingDeps(true);
-      setIsReadyForComps(false);
-      // Clear current states when switching modes
-      setDeployments([]);
-      setActiveDep(null);
-      setCurrentRecords([]);
-      setVideoEvents([]);
-      setJobTapes([]);
-      setSelectedComp(null);
-      setActiveSpec(null);
-      setVidState("IDLE");
-      setVidTimer(0);
-      setTapeNo("");
-      setTapeId(null);
-      setCurrentMovement("Awaiting Deployment");
-      setDiveStartTime(null);
-      setDiveEndTime(null);
-      setRequiredSpec(null);
-      setRequiredProps({});
-      setRequiredRecordId(null);
+  const fetchDeployments = useCallback(async () => {
+    setIsFetchingDeps(true);
+    setIsReadyForComps(false);
 
-      if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) {
-        setIsFetchingDeps(false);
-        setIsReadyForComps(true);
-        return;
+    if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) {
+      setIsFetchingDeps(false);
+      setIsReadyForComps(true);
+      return;
+    }
+
+    try {
+      const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
+      const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
+
+      console.log(
+        `[fetchDeps] Starting fetch from ${table} | jobpack: ${queryJobPackId} | structure: ${structureId}`
+      );
+
+      // Use the primary key column for ordering (created_at / cr_date may not exist)
+      const idCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+
+      let query = supabase
+        .from(table)
+        .select("*")
+        .eq("jobpack_id", queryJobPackId)
+        .order(idCol, { ascending: false });
+
+      if (structureId && !isNaN(Number(structureId))) {
+        query = query.eq("structure_id", Number(structureId));
       }
 
-      try {
-        const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
-        const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
+      const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
 
-        console.log(
-          `[fetchDeps] Starting fetch from ${table} | jobpack: ${queryJobPackId} | structure: ${structureId}`
+      let recQuery = supabase
+        .from("insp_records")
+        .select(targetColumn)
+        .eq("jobpack_id", queryJobPackId)
+        .eq("structure_id", Number(structureId))
+        .not(targetColumn, "is", null)
+        .limit(20); // Check for potential orphans
+
+      // Execute primary deployment query and records fallback query in parallel
+      const [primaryRes, recJobsRes] = await Promise.all([
+        query,
+        recQuery,
+      ]);
+
+      let results = primaryRes.data || [];
+      if (primaryRes.error) {
+        console.warn("[fetchDeps] Primary fetch error:", primaryRes.error.message);
+        results = [];
+      }
+
+      const recJobs = recJobsRes.data;
+      const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
+
+      if (recJobs && recJobs.length > 0) {
+        const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
+          (id) => !existingJobIds.has(id)
         );
 
-        // Use the primary key column for ordering (created_at / cr_date may not exist)
-        const idCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-
-        let query = supabase
-          .from(table)
-          .select("*")
-          .eq("jobpack_id", queryJobPackId)
-          .order(idCol, { ascending: false });
-
-        if (structureId && !isNaN(Number(structureId))) {
-          query = query.eq("structure_id", Number(structureId));
+        if (orphanedJobIds.length > 0) {
+          console.log("[fetchDeps] Merging orphaned job IDs from records:", orphanedJobIds);
+          const virtualJobs = orphanedJobIds.map((jid) => ({
+            [targetColumn]: jid,
+            dive_no: `Legacy-${jid}`,
+            diver_name: "Legacy Records",
+            status: "COMPLETED",
+            is_legacy: true,
+          }));
+          results = [...results, ...virtualJobs];
         }
-
-        const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
-
-        let recQuery = supabase
-          .from("insp_records")
-          .select(targetColumn)
-          .eq("jobpack_id", queryJobPackId)
-          .eq("structure_id", Number(structureId))
-          .not(targetColumn, "is", null)
-          .limit(20); // Check for potential orphans
-
-        // Execute primary deployment query and records fallback query in parallel
-        const [primaryRes, recJobsRes] = await Promise.all([
-          query,
-          recQuery,
-        ]);
-
-        let results = primaryRes.data || [];
-        if (primaryRes.error) {
-          console.warn("[fetchDeps] Primary fetch error:", primaryRes.error.message);
-          results = [];
-        }
-
-        const recJobs = recJobsRes.data;
-        const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
-
-        if (recJobs && recJobs.length > 0) {
-          const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
-            (id) => !existingJobIds.has(id)
-          );
-
-          if (orphanedJobIds.length > 0) {
-            console.log("[fetchDeps] Merging orphaned job IDs from records:", orphanedJobIds);
-            const virtualJobs = orphanedJobIds.map((jid) => ({
-              [targetColumn]: jid,
-              dive_no: `Legacy-${jid}`,
-              diver_name: "Legacy Records",
-              status: "COMPLETED",
-              is_legacy: true,
-            }));
-            results = [...results, ...virtualJobs];
-          }
-        }
-
-        if (results.length > 0) {
-          console.log(`[fetchDeps] Mapping ${results.length} results from ${table}`);
-          const mapped = results.map((d) => {
-            // CRITICAL: Ensure we get the numeric ID for lookups
-            const rawId = d.dive_job_id || d.rov_job_id || d.id;
-            const idStr = String(rawId);
-
-            // jobNo: Prefer dive_no/deployment_no for display
-            let jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
-
-            // Add legacy indicator if applicable
-            if ((d as any).is_legacy) {
-              jNo = `Legacy-${rawId}`;
-            }
-
-            // name: Prefer diver_name/rov_system for display
-            const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
-
-            const dDate = d.created_at || d.date || d.dive_date || d.start_date || d.start_time;
-            console.log(`[fetchDeps] Mapped: No=${jNo}, Name=${dName}, ID=${idStr}, Date=${dDate}`);
-            return { id: idStr, jobNo: jNo, name: dName, created_at: dDate, raw: d };
-          });
-          setDeployments(mapped);
-
-          // If we have a saved selection or just pick the first
-          setActiveDep(mapped[0]);
-          console.log(
-            `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
-          );
-        } else {
-          console.warn("[fetchDeps] No deployment records found.");
-          setDeployments([]);
-          setActiveDep(null);
-        }
-      } catch (err) {
-        console.error("[fetchDeps] Critical error in fetchDeps:", err);
-      } finally {
-        setIsFetchingDeps(false);
-        setIsReadyForComps(true);
       }
+
+      if (results.length > 0) {
+        console.log(`[fetchDeps] Mapping ${results.length} results from ${table}`);
+        const mapped = results.map((d) => {
+          // CRITICAL: Ensure we get the numeric ID for lookups
+          const rawId = d.dive_job_id || d.rov_job_id || d.id;
+          const idStr = String(rawId);
+
+          // jobNo: Prefer dive_no/deployment_no for display
+          let jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
+
+          // Add legacy indicator if applicable
+          if ((d as any).is_legacy) {
+            jNo = `Legacy-${rawId}`;
+          }
+
+          // name: Prefer diver_name/rov_system for display
+          const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
+
+          const dDate = d.created_at || d.date || d.dive_date || d.start_date || d.start_time;
+          console.log(`[fetchDeps] Mapped: No=${jNo}, Name=${dName}, ID=${idStr}, Date=${dDate}`);
+          return { id: idStr, jobNo: jNo, name: dName, created_at: dDate, raw: d };
+        });
+        setDeployments(mapped);
+
+        // Set the newly created or latest deployment as active smoothly
+        setActiveDep(mapped[0]);
+        console.log(
+          `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
+        );
+      } else {
+        console.warn("[fetchDeps] No deployment records found.");
+        setDeployments([]);
+        setActiveDep(null);
+      }
+    } catch (err) {
+      console.error("[fetchDeps] Critical error in fetchDeps:", err);
+    } finally {
+      setIsFetchingDeps(false);
+      setIsReadyForComps(true);
     }
-    fetchDeps();
-  }, [inspMethod, jobPackId, structureId, headerData.sowReportNo, supabase]);
+  }, [inspMethod, jobPackId, structureId, supabase]);
+
+  // Handle method switch overriding deps
+  useEffect(() => {
+    // Clear current states when switching modes
+    setDeployments([]);
+    setActiveDep(null);
+    setCurrentRecords([]);
+    setVideoEvents([]);
+    setJobTapes([]);
+    setSelectedComp(null);
+    setActiveSpec(null);
+    setVidState("IDLE");
+    setVidTimer(0);
+    setTapeNo("");
+    setTapeId(null);
+    setCurrentMovement("Awaiting Deployment");
+    setDiveStartTime(null);
+    setDiveEndTime(null);
+    setRequiredSpec(null);
+    setRequiredProps({});
+    setRequiredRecordId(null);
+
+    fetchDeployments();
+  }, [fetchDeployments]);
 
   // Replacement: useQuery for SOW and Component Data
   const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
@@ -5722,19 +5821,22 @@ function V10PreviewLayout() {
         });
       }
 
+      const isPipe = isPipeline || headerData.structureType === "pipeline";
       const activeProps: Record<string, any> = {
         ...dynamicProps,
         ...currentDataAcq,
-        flow_direction: dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection,
-        insp_mode: dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation,
-        inspection_direction: dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection,
-        inspection_location: dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation,
       };
+      if (isPipe) {
+        activeProps.flow_direction = dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection;
+        activeProps.insp_mode = dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation;
+        activeProps.inspection_direction = dynamicProps?.flow_direction || dynamicProps?.inspection_direction || inspectionDirection;
+        activeProps.inspection_location = dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation;
+      }
 
       // Apply synchronous auto-calculations to guarantee computed fields are saved 
       // even if the user clicks 'Save' before the React useEffect finishes its cycle.
       const specStr = String(activeSpec || '').toUpperCase();
-      if (['UTWTK', 'RUTWT', 'DUTWT', 'SZONE', 'RSZCI', 'DSZCI'].includes(specStr)) {
+      if (['UTWTK', 'RUTWT', 'DUTWT', 'SZONE', 'RSZCI', 'DSZCI', 'RISER', 'DRISR', 'RRISI', 'RRISR', 'SZCI', 'UTWT'].some(c => specStr.includes(c))) {
         const readings: number[] = [];
         const r3 = parseFloat(activeProps.ut_3_o_clock); if (!isNaN(r3)) readings.push(r3);
         const r6 = parseFloat(activeProps.ut_6_o_clock); if (!isNaN(r6)) readings.push(r6);
@@ -5760,7 +5862,7 @@ function V10PreviewLayout() {
             if (isNaN(min)) min = 0;
         }
 
-        const ntRaw = activeProps.nominal_thickness;
+        const ntRaw = activeProps.nominal_thickness || activeProps.nominal_wall_thickness || activeProps.wall_thickness || activeProps.nom_wt;
         const nt = (ntRaw === undefined || ntRaw === null || ntRaw === "") ? 0 : parseFloat(ntRaw);
         const safeNt = isNaN(nt) ? 0 : nt;
 
@@ -5768,6 +5870,8 @@ function V10PreviewLayout() {
         let pctLoss = 0;
         if (safeNt > 0) {
             pctLoss = (loss / safeNt) * 100;
+            activeProps.nom_wt_12_percent = parseFloat((safeNt * 0.12).toFixed(3));
+            activeProps.nom_wt_25_percent = parseFloat((safeNt * 0.25).toFixed(3));
         }
 
         activeProps.wall_thickness_loss = parseFloat(loss.toFixed(2));
@@ -5808,7 +5912,7 @@ function V10PreviewLayout() {
       }
 
       // Synchronous auto-calculation for MGI Profile threshold
-      if (['MGI', 'RMGI'].includes(specStr) && activeMGIProfile && activeMGIProfile.thresholds?.length > 0) {
+      if (['MGI', 'RMGI', 'DMGI', 'MGROW'].includes(specStr) && activeMGIProfile && activeMGIProfile.thresholds?.length > 0) {
           const vDepthRaw = activeProps.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
           const vDepthUnit = activeProps.verification_depth_unit || 'm';
           const waterDepth = Math.abs(headerData.waterDepth || 0);
@@ -5830,6 +5934,7 @@ function V10PreviewLayout() {
              
              if (foundThreshold !== null) {
                  activeProps.mgi_profile = `${foundThreshold.toFixed(1)}mm`;
+                 activeProps.max_allowable_thickness = foundThreshold;
              }
           }
       }
@@ -5905,8 +6010,6 @@ function V10PreviewLayout() {
           : (selectedComp.raw?.code || selectedComp.raw?.metadata?.comp_type || selectedComp.raw?.metadata?.type || null),
         jobpack_id: jobPackId ? parseInt(jobPackId) : null,
         sow_report_no: headerData.sowReportNo || null,
-        flow_direction: activeProps.flow_direction || inspectionDirection,
-        insp_mode: activeProps.insp_mode || inspectionLocation,
         inspection_type_id: (isPipeline || headerData.structureType === "pipeline" || (activeSpec || "").toUpperCase() === "NAVIG")
           ? (it?.id && it.id !== 1 ? it.id : 30)
           : (it?.id || null),
@@ -6171,8 +6274,8 @@ function V10PreviewLayout() {
           finalSeq = seq;
 
           // If user manually edited the reference, use it. Otherwise generate default.
-          if (anomalyData.referenceNo) {
-            autoRefNo = anomalyData.referenceNo;
+          if (anomalyData.referenceNo && anomalyData.referenceNo.trim() !== "") {
+            autoRefNo = anomalyData.referenceNo.trim();
           } else {
             const baseRef = `${new Date().getFullYear()} / ${headerData.platformName} / ${prefix}-${seq.toString().padStart(3, "0")}`;
             if (anomalyData.rectify) {
@@ -6182,12 +6285,16 @@ function V10PreviewLayout() {
             }
           }
         } else {
-          // Postfix logic for amendment/rectification
-          let baseRef = (existingAnomaly.anomaly_ref_no || "").replace(/[AR]$/, "");
-          if (anomalyData.rectify) {
-            autoRefNo = baseRef + "R";
+          // Honor user manual edit if present; otherwise fallback to postfix logic
+          if (anomalyData.referenceNo && anomalyData.referenceNo.trim() !== "") {
+            autoRefNo = anomalyData.referenceNo.trim();
           } else {
-            autoRefNo = baseRef + "A";
+            let baseRef = (existingAnomaly.anomaly_ref_no || "").replace(/[AR]$/, "");
+            if (anomalyData.rectify) {
+              autoRefNo = baseRef + "R";
+            } else {
+              autoRefNo = baseRef + "A";
+            }
           }
         }
 
@@ -6297,10 +6404,17 @@ function V10PreviewLayout() {
         })
       );
 
-      resetForm();
+      const isEditSession = Boolean(editingRecordId);
 
-      // Notification for record save
-      toast.success(editingRecordId ? "Record updated" : "Record committed");
+      if (isEditSession) {
+        toast.success("Inspection record updated successfully!");
+        setAnomalyData((prev: any) => ({ ...prev, referenceNo: finalAutoRefNo }));
+        setPrevRefNo(finalAutoRefNo);
+        setIsCommitting(false);
+      } else {
+        toast.success("Inspection record saved successfully!");
+        resetForm();
+      }
 
       // Define background process
       const processAttachments = async () => {
@@ -7100,6 +7214,149 @@ function V10PreviewLayout() {
     }
   };
 
+  // Shared pipeline event select handler – used by both PipelineEventMenuPanel and QuickShortcutsPanel
+  const handlePipelineEventSelect = useCallback(async (evtData: {
+    eventName: string; eventType: string; eventPosition?: string; actionName?: string;
+    eventCategory: string; description: string; eventDescription?: string; findingType?: string;
+    findings?: string; kp?: string | number; kpSource?: "ROV_DATA_STRING" | "CALCULATED";
+    northing?: string; easting?: string; depth?: string; cp_fg?: string; cp_fg_rdg?: string;
+    heading?: string; rov_heading?: string;
+  }) => {
+    if (!manualOverride) {
+      if (!activeDep?.id || activeDep?.id === "AWAITING") {
+        toast.error("Cannot capture event: Active Dive No. / ROV Job is required in Live Mode.");
+        return;
+      }
+      if (!tapeId || !tapeNo || vidState !== "RECORDING") {
+        toast.error("Cannot capture event: Active Video Tape and active Video Log recording are required in Live Mode.");
+        return;
+      }
+    }
+
+    const currentCounter = formatTime(vidTimer);
+    const navigSpec = allInspectionTypes.find(
+      (t: any) => t.id === 30 || (t.code && (t.code === "NAVIG" || t.code === "RNAVIG")) || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
+    );
+    const specCode = navigSpec?.code || "NAVIG";
+    const specId = (navigSpec?.id && navigSpec.id !== 1) ? navigSpec.id : 30;
+    setActiveSpec(specCode);
+
+    let targetComp = selectedComp;
+    if (!targetComp) {
+      targetComp = (componentsSow && componentsSow.length > 0) ? componentsSow[0] : null;
+    }
+
+    if (!targetComp && (isPipeline || headerData.structureType === "pipeline") && structureId) {
+      try {
+        const parsedStructId = parseInt(structureId);
+        const { data: existingComps } = await supabase
+          .from("structure_components")
+          .select("id, q_id, name, type")
+          .eq("structure_id", parsedStructId)
+          .limit(1);
+
+        if (existingComps && existingComps.length > 0) {
+          targetComp = { id: existingComps[0].id, q_id: existingComps[0].q_id || headerData.structureName || "PIPELINE-01", name: existingComps[0].name || headerData.structureName || "Pipeline Main Line", type: existingComps[0].type || "PIPELINE" };
+          setSelectedComp(targetComp);
+        } else {
+          const { data: createdComp, error: createErr } = await supabase
+            .from("structure_components")
+            .insert({ structure_id: parsedStructId, q_id: headerData.structureName || "PIPELINE-01", name: headerData.structureName || "Pipeline Main Line", type: "PIPELINE" })
+            .select("id, q_id, name, type").single();
+          if (!createErr && createdComp) { targetComp = createdComp; setSelectedComp(targetComp); }
+        }
+      } catch (compErr) {
+        console.warn("[handlePipelineEventSelect] Auto-creating Pipeline component warning:", compErr);
+      }
+    }
+
+    if (!targetComp?.id || targetComp.id === 999999) {
+      toast.error("Cannot save inspection event: A registered Component is required.");
+      return;
+    }
+
+    const validCompId = targetComp.id;
+    const validCompType = (isPipeline || headerData.structureType === "pipeline")
+      ? "PP"
+      : (targetComp?.raw?.code || targetComp?.raw?.metadata?.comp_type || targetComp?.type || "PP");
+
+    const now = new Date();
+    const formattedDate = now.toISOString().split("T")[0];
+    const formattedTime = now.toTimeString().split(" ")[0];
+
+    const eventProps = {
+      event_name: evtData.eventName, event_type: evtData.eventType,
+      event_position: evtData.eventPosition || evtData.actionName || evtData.eventCategory,
+      event_description: evtData.eventDescription || evtData.description,
+      findings: evtData.findings || "",
+      inspection_date: formattedDate, inspection_time: formattedTime,
+      flow_direction: inspectionDirection, insp_mode: inspectionLocation,
+      inspection_direction: inspectionDirection, inspection_location: inspectionLocation,
+      kp: evtData.kp || headerData.kp || "0.0000",
+      fp_kp: evtData.kp || headerData.kp || "0.0000",
+      northing: evtData.northing || "", easting: evtData.easting || "",
+      depth: evtData.depth || "", verification_depth: evtData.depth || "",
+      cp_fg_rdg: evtData.cp_fg_rdg || evtData.cp_fg || "",
+      cp_fg: evtData.cp_fg_rdg || evtData.cp_fg || "",
+      rov_heading: evtData.rov_heading || evtData.heading || "",
+      heading: evtData.rov_heading || evtData.heading || "",
+      tape_count_no: currentCounter, counter: currentCounter, _meta_timecode: currentCounter,
+    };
+
+    setDynamicProps((prev: any) => ({ ...prev, ...eventProps }));
+
+    try {
+      const userRes = await supabase.auth.getUser();
+      const user = userRes?.data?.user;
+      const evAny = evtData as any;
+      const isAnomaly = Boolean(evAny?.isAnomaly || evAny?.hasAnomaly || String(evAny?.status || "").toUpperCase() === "ANOMALY");
+
+      const recordPayload: Record<string, any> = {
+        company_id: activeCompanyId,
+        [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep?.id ? Number(activeDep.id) : null,
+        structure_id: structureId ? parseInt(structureId) : null,
+        component_id: validCompId,
+        component_type: validCompType,
+        jobpack_id: jobPackId ? parseInt(jobPackId) : null,
+        sow_report_no: headerData.sowReportNo || null,
+        inspection_type_id: specId,
+        inspection_type_code: specCode,
+        inspection_date: formattedDate, inspection_time: formattedTime,
+        status: isAnomaly ? "Anomaly" : "COMPLETED",
+        has_anomaly: isAnomaly,
+        tape_id: tapeId || null, tape_count_no: vidTimer,
+        elevation: eventProps.depth || null,
+        fp_kp: parseFloat(String(eventProps.kp)) || 0,
+        cr_user: user?.id || "system",
+        cr_date: now.toISOString(),
+        inspection_data: eventProps,
+      };
+
+      const { data: newRecord, error: insErr } = await supabase
+        .from("insp_records").insert(recordPayload).select("insp_id").single();
+
+      if (insErr) {
+        console.error("[handlePipelineEventSelect] Error inserting insp_records row:", insErr);
+        toast.error(`Event captured, but database insert failed: ${insErr.message}`);
+      } else if (newRecord) {
+        setEditingRecordId(newRecord.insp_id);
+        syncDeploymentState();
+        queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
+        queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+        toast.success(`Event captured & record #${newRecord.insp_id} created: ${evtData.eventName} > ${evtData.eventType}`);
+      }
+    } catch (err: any) {
+      console.error("[handlePipelineEventSelect] Unexpected error:", err);
+      toast.error(`Event captured locally: ${evtData.eventName}`);
+    }
+  }, [
+    manualOverride, activeDep, tapeId, tapeNo, vidState, vidTimer, formatTime,
+    allInspectionTypes, selectedComp, componentsSow, isPipeline, headerData, structureId,
+    supabase, inspectionDirection, inspectionLocation, activeCompanyId, inspMethod,
+    jobPackId, setDynamicProps, setActiveSpec, setSelectedComp, setEditingRecordId,
+    syncDeploymentState, queryClient,
+  ]);
+
 
   const layoutFactory = useCallback((node: TabNode) => {
     const component = node.getComponent();
@@ -7232,14 +7489,23 @@ function V10PreviewLayout() {
             onPopOut={handlePopOutStream}
             onStopStream={() => setStreamActive(false)}
             pipActive={!!pipWindow}
+            pipWindow={pipWindow}
             formatTime={formatTime}
             showDrawingTools={showDrawingTools}
             setShowDrawingTools={setShowDrawingTools}
+            currentTool={currentTool}
+            setCurrentTool={setCurrentTool}
+            currentColor={currentColor}
+            setCurrentColor={setCurrentColor}
+            lineWidth={lineWidth}
+            setLineWidth={setLineWidth}
+            overlayManager={overlayManager}
           />
         );
       case "form":
         return (
           <InspectionFormPanel
+            inspMethod={inspMethod}
             selectedComp={selectedComp}
             editingRecordId={editingRecordId}
             activeSpec={activeSpec}
@@ -7474,8 +7740,6 @@ function V10PreviewLayout() {
                     component_type: validCompType,
                     jobpack_id: jobPackId ? parseInt(jobPackId) : null,
                     sow_report_no: headerData.sowReportNo || null,
-                    flow_direction: inspectionDirection,
-                    insp_mode: inspectionLocation,
                     inspection_type_id: specId,
                     inspection_type_code: specCode,
                     inspection_date: formattedDate,
@@ -7548,6 +7812,26 @@ function V10PreviewLayout() {
             historicalRecords={historicalRecords}
             historyLoading={historyLoading}
             handleEditRecord={handleEditRecord}
+          />
+        );
+      case "inspectionInfo":
+        if (!isPipeline) return null;
+        return (
+          <PipelineInspectionInfoPanel
+            currentKp={headerData?.kp || "0.000"}
+            inspectionDirection={inspectionDirection}
+            inspectionLocation={inspectionLocation}
+            totalPipelineLength={selectedComp?.raw?.metadata?.length || selectedComp?.raw?.length || (headerData as any)?.totalLength || 0}
+            unitSystem={unitSystem}
+          />
+        );
+      case "quickShortcuts":
+        if (!isPipeline) return null;
+        return (
+          <QuickShortcutsPanel
+            onSelectEvent={handlePipelineEventSelect}
+            currentKp={headerData?.kp || "0.000"}
+            inspMethod={inspMethod}
           />
         );
       default:
@@ -7660,6 +7944,9 @@ function V10PreviewLayout() {
     handleComponentSelection,
     structureId,
     unitSystem,
+    inspectionDirection,
+    inspectionLocation,
+    selectedComp,
   ]);
 
   // --- AUTO-EDIT FROM URL PARAMETERS ---
@@ -7739,6 +8026,7 @@ function V10PreviewLayout() {
         generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
         generateRCONDReport={() => setRcondPreviewOpen(true)}
         generateRCONDSketchReport={() => setRcondSketchPreviewOpen(true)}
+        generatePipelineEventSketchReport={() => setPipelineEventSketchPreviewOpen(true)}
         generateBLReport={() => setBlPreviewOpen(true)}
         generateRGReport={generateRGReport}
         generateSGReport={generateSGReport}
@@ -7749,13 +8037,23 @@ function V10PreviewLayout() {
         jobPackId={jobPackId}
         structureId={structureId}
         onSummaryOpen={() => setIsSummaryOpen(true)}
+        onOpenGeodetic={() => setIsGeodeticDialogOpen(true)}
         setIsReportWizardOpen={setIsReportWizardOpen}
         onResetLayout={handleResetLayout}
         closedPanels={closedPanels}
         onRestorePanel={handleRestorePanel}
       />
 
-      {/* ── INSPECTION SUMMARY PANEL ───────────────────────────────────────── */}
+      {/* -- GEODETIC PARAMETERS DIALOG -------------------------------------- */}
+      <GeodeticParametersDialog
+        open={isGeodeticDialogOpen}
+        onOpenChange={setIsGeodeticDialogOpen}
+        jobpackId={jobPackId}
+        structureId={structureId}
+        jobpackName={headerData?.jobpackName || headerData?.platformName}
+      />
+
+      {/* -- INSPECTION SUMMARY PANEL ----------------------------------------- */}
       <InspectionSummaryPanel
         open={isSummaryOpen}
         onClose={() => setIsSummaryOpen(false)}
@@ -8239,6 +8537,10 @@ function V10PreviewLayout() {
           mPreviewOpen,
           rmgiPreviewOpen,
           fmdPreviewOpen,
+          divingFmdPreviewOpen,
+          divingMeasuPreviewOpen,
+          divingRrisiPreviewOpen,
+          divingRrisiDetailPreviewOpen,
           utwtPreviewOpen,
           szciPreviewOpen,
           isGalleryOpen,
@@ -8258,6 +8560,9 @@ function V10PreviewLayout() {
           divingAnmainPreviewOpen,
           rgviPreviewOpen,
           rcondSketchPreviewOpen,
+          pipelineDefectSummaryPreviewOpen,
+          pipelineEventSketchPreviewOpen,
+          navigPreviewOpen,
           showRemovalConfirm,
           editingRecordId,
           pendingReclass,
@@ -8314,6 +8619,12 @@ function V10PreviewLayout() {
           divingDcasnTsPreviewOpen,
           divingDcondUwPreviewOpen,
           divingDcondTsPreviewOpen,
+          divingJtisiPreviewOpen,
+          divingJtisiDetailPreviewOpen,
+          divingItisiPreviewOpen,
+          divingItisiDetailPreviewOpen,
+          divingItemReportPreviewOpen,
+          divingItmainReportPreviewOpen,
           isReportWizardOpen,
           reportConfig,
           seabedTemplateType,
@@ -8341,6 +8652,16 @@ function V10PreviewLayout() {
           setMPreviewOpen,
           setRmgiPreviewOpen,
           setFmdPreviewOpen,
+          setDivingFmdPreviewOpen,
+          setDivingMeasuPreviewOpen,
+          setDivingRrisiPreviewOpen,
+          setDivingRrisiDetailPreviewOpen,
+          setDivingJtisiPreviewOpen,
+          setDivingJtisiDetailPreviewOpen,
+          setDivingItisiPreviewOpen,
+          setDivingItisiDetailPreviewOpen,
+          setDivingItemReportPreviewOpen,
+          setDivingItmainReportPreviewOpen,
           setUtwtPreviewOpen,
           setSzciPreviewOpen,
           setIsGalleryOpen,
@@ -8378,6 +8699,9 @@ function V10PreviewLayout() {
           setRcondPreviewOpen,
           setRcasnPreviewOpen,
           setRcasnSketchPreviewOpen,
+          setPipelineDefectSummaryPreviewOpen,
+          setPipelineEventSketchPreviewOpen,
+          setNavigPreviewOpen,
           setRrisiPreviewOpen,
           setRrisiDetailPreviewOpen,
           setJtisiPreviewOpen,
@@ -8416,11 +8740,28 @@ function V10PreviewLayout() {
           handleExternalFileUpload,
           handleLinkToRecord,
           syncDeploymentState,
+          fetchDeployments,
           queryClient,
           generateAnomalyReportBlob,
           generateMGIReportBlob,
           generateRMGIReportBlob,
           generateFMDReportBlob,
+          generateDivingFMDReport,
+          generateDivingFMDReportBlob,
+          generateDivingMEASUReport,
+          generateDivingMEASUReportBlob,
+          generateDivingRRISIReport,
+          generateDivingRRISIReportBlob,
+          generateDivingRRISIDetailReport,
+          generateDivingRRISIDetailReportBlob,
+          generateDivingJTISIReport,
+          generateDivingJTISIReportBlob,
+          generateDivingJTISIDetailReport,
+          generateDivingJTISIDetailReportBlob,
+          generateDivingITISIReport,
+          generateDivingITISIReportBlob,
+          generateDivingITISIDetailReport,
+          generateDivingITISIDetailReportBlob,
           generateUTWTReportBlob,
           generateSZCIReportBlob,
           generateRGReportBlob,
@@ -8444,11 +8785,20 @@ function V10PreviewLayout() {
           generateROVRICMIReportBlob,
           generateDivingANMAINReport,
           generateDivingANMAINReportBlob,
+          generateDivingItemReport,
+          generateDivingItemReportBlob,
+          generateDivingITMAINReport,
+          generateDivingITMAINReportBlob,
           generateRGVIReportBlob,
           generateRCASNReportBlob,
           generateRCASNSketchReportBlob,
           generateRCONDReportBlob,
           generateRCONDSketchReportBlob,
+          generatePipelineEventSketchReportBlob,
+          generatePipelineDefectSummaryReport,
+          generatePipelineDefectSummaryReportBlob,
+          generateROVNavigReport,
+          generateROVNavigReportBlob,
           generateSeabedReport,
           generateSeabedReportBlob,
           generateSeabedDetailReportBlob,
@@ -8468,6 +8818,7 @@ function V10PreviewLayout() {
           generateMPINSReportBlob,
           generateUTWTKReport,
           generateUTWTKReportBlob,
+          generateJobPackSummaryReportBlob,
           generateSZONEReportBlob,
           generateCPCLBReportBlob,
           generateUTCLBReportBlob,
@@ -8480,10 +8831,14 @@ function V10PreviewLayout() {
           generateDivingDCASNUWReportBlob,
           generateDivingDCASNTSReport,
           generateDivingDCASNTSReportBlob,
+          generateDivingDCASNReport,
+          generateDivingDCASNReportBlob,
           generateDivingDCONDUWReport,
           generateDivingDCONDUWReportBlob,
           generateDivingDCONDTSReport,
           generateDivingDCONDTSReportBlob,
+          generateDivingDCONDReport,
+          generateDivingDCONDReportBlob,
         }}
         refs={{
           fileInputRef,

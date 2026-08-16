@@ -24,10 +24,14 @@ import {
     Search,
     X,
     LayoutGrid,
-    List
+    List,
+    Compass
 } from "lucide-react";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
+import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -36,7 +40,7 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { jsPDF } from "jspdf";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { generateWorkScopeReport } from "@/utils/report-generators/work-scope-report";
@@ -54,6 +58,9 @@ import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anod
 import { generateDivingMGIReport } from "@/utils/report-generators/diving-mgi-report";
 import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
 import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anmain-report";
+import { generateDivingItemReport } from "@/utils/report-generators/diving-item-report";
+import { generateDivingITMAINReport } from "@/utils/report-generators/diving-itmain-report";
+import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
 import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Types
@@ -85,6 +92,7 @@ interface SelectionState {
     planningId: string;
     procedureId: string;
     sowReportNo: string;
+    printBlankReport?: boolean;
 }
 
 // Report Templates Definition
@@ -107,8 +115,9 @@ export const REPORT_TEMPLATES = {
         { id: "planning-overview", name: "Planning Overview", icon: FileText, description: "Complete planning documentation", requires: ["planning"] },
     ],
     inspection: [
-        { id: "inspection-report", name: "Inspection Report", icon: CheckSquare, description: "Detailed inspection findings and results", requires: ["jobpack"] },
         { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "defect-summary-pipeline", name: "Defect Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "findings-summary-pipeline", name: "Finding Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline findings with reference numbers containing 'F' and combined span/burial events", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-summary", name: "Findings Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all findings with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
         { id: "defect-anomaly-report", name: "Defect / Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
@@ -124,50 +133,64 @@ export const REPORT_TEMPLATES = {
         { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", icon: FileCheck, description: "Detailed portrait tabular Seabed Survey Crater inspection report with anomalies and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", icon: FileBarChart, description: "Marine Growth Graph Report (ROV) RMGI with Graph", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", icon: FileBarChart, description: "Marine Growth Inspection Report (ROV) RMGI Standard Table", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "fmd-report", name: "ROV FMD Survey Report", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "szci-report", name: "ROV Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "utwt-report", name: "ROV UT Thickness Report", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "fmd-report", name: "FMD Survey Report (ROV)", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "szci-report", name: "Splash Zone Inspection Report (ROV)", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "utwt-report", name: "UT Thickness Report (ROV)", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-scour-report", name: "ROV Scour Survey Report", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (CVI) summary (SANI) with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-cp-report",    name: "ROV CP Survey Report",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-ricmi-report", name: "ROV Inclinometer Survey Report", icon: FileBarChart, description: "Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-selected-node-report", name: "ROV Selected Node Report", icon: FileText, description: "Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rgvi-report",  name: "ROV GVI Report (RGVI)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rcasn-report", name: "ROV Caisson Survey Report",    icon: FileBarChart, description: "Portrait Caisson Survey report — grouped by Caisson with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rcond-report", name: "ROV Conductor Survey Report",  icon: FileBarChart, description: "Portrait Conductor Survey report — grouped by Conductor (CD) with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Caisson inspection with graphical elevation profiles and terminator sketch", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", icon: FileBarChart, description: "Detailed ROV Conductor inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", icon: FileBarChart, description: "Portrait Boatlanding Survey report — grouped by Boatlanding (BL) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rg-report", name: "ROV Riser Guard Survey Report", icon: FileBarChart, description: "Portrait Riser Guard Survey report — grouped by Riser Guard (RG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-sg-report", name: "ROV Caisson Guard Survey Report", icon: FileBarChart, description: "Portrait Caisson Guard Survey report — grouped by Caisson Guard (SG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-cu-report", name: "ROV Conductor Guard Survey Report", icon: FileBarChart, description: "Portrait Conductor Guard Survey report — grouped by Conductor Guard (CU) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-photo-report", name: "ROV Photography Report", icon: Eye, description: "Portrait report displaying all photos attached to inspections in a 2x3 grid with descriptions", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-photo-log-report", name: "ROV Photography Log Report", icon: Eye, description: "Portrait report displaying a tabular log of all photos attached to inspections", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-gvins-report", name: "Diving GVI Report (GVINS)", icon: FileBarChart, description: "Portrait Diving General Visual Inspection report — marine growth, condition, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-bsins-report", name: "Diving Bolted Support Inspection", icon: FileBarChart, description: "Detailed bolted support inspection (BSINS) report with Member, Brace, and Appurtenance specifics.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-cvins-report", name: "Diving Close Visual Inspection", icon: FileBarChart, description: "Close visual inspection (CVINS) report with detailed findings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-clean-report", name: "Diving Cleaning Inspection", icon: FileBarChart, description: "Cleaning inspection (CLEAN) report with surface condition and methods.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-mpins-report", name: "Diving Magnetic Particle Inspection", icon: FileBarChart, description: "Detailed magnetic particle inspection (MPINS) report with clock readings and segmentation.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-utwtk-report", name: "Diving UT Wall Thickness Inspection", icon: FileBarChart, description: "UT Wall Thickness Inspection (UTWTK) report with clock readings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-szone-report", name: "Diving Splash Zone Inspection", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with grouped clock positions", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-cpclb-report", name: "Diving CP Calibration Report", icon: FileBarChart, description: "CP calibration in water survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-utclb-report", name: "Diving UT Calibration Report", icon: FileBarChart, description: "UT calibration survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-mgi-report", name: "Diving Marine Growth Inspection Graph Report", icon: FileBarChart, description: "Diving marine growth thickness vs allowable thresholds with graphical elevation profile", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-acfmc-report", name: "Diving ACFMC Inspection", icon: FileBarChart, description: "Landscape Diving ACFM Survey report — Chord/Weld/Brace, direction of travel, clock position, page, probe number, and findings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-plco-report", name: "Diving Coating Damage Inspection", icon: FileBarChart, description: "Landscape Diving Coating Damage Survey report — Surface Condition, CP Reading, Length, Width, Assessment, and findings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-anmain-report", name: "Diving Anode Maintenance Report (ANMAIN)", icon: FileBarChart, description: "Landscape Anode Maintenance Inspection Report (ANMAIN) with QID, Elevation, Dive No., Anode Type, Installed Date, Replaced/Installed, Position, Life, and findings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report", icon: FileBarChart, description: "Portrait ROV Water Depth Inspection report — QID, elevation, dive number, water depth, and findings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater Diving", icon: FileBarChart, description: "Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water Diving", icon: FileBarChart, description: "Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater Diving", icon: FileBarChart, description: "Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water Diving", icon: FileBarChart, description: "Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-scour-report", name: "Scour Survey Report (ROV)", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-rsani-report", name: "Selected Anode Report (ROV)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (CVI) summary (SANI) with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-cp-report",    name: "CP Survey Report (ROV)",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-ricmi-report", name: "Inclinometer Survey Report (ROV)", icon: FileBarChart, description: "Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", icon: FileText, description: "Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rgvi-report",  name: "General Visual Inspection Report (ROV)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcasn-report", name: "Caisson Survey Report (ROV)",    icon: FileBarChart, description: "Portrait Caisson Survey report — grouped by Caisson with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcond-report", name: "Conductor Survey Report (ROV)",  icon: FileBarChart, description: "Portrait Conductor Survey report — grouped by Conductor (CD) with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcasn-sketch-report", name: "Caisson Survey (Sketch) Report (ROV)", icon: FileBarChart, description: "Detailed ROV Caisson inspection with graphical elevation profiles and terminator sketch", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rcond-sketch-report", name: "Conductor Survey (Sketch) Report (ROV)", icon: FileBarChart, description: "Detailed ROV Conductor inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "pipeline-event-sketch-report", name: "Pipeline Event List Sketch Report", icon: Compass, description: "Landscape Pipeline Navigation event list sketch report with graphical KP pipeline elevation profile, span/burial profiles, geodetic header, and matched event table", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-navig-report", name: "Pipeline Visual Inspection Report", icon: FileBarChart, description: "Landscape Pipeline Visual Inspection Report for inspection type NAVIG — Item No., Date, Time, Easting, Northing, KP, Depth, CP Reading, Event Name, Finding & Anomaly Priority", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-bl-report", name: "Boatlanding Survey Report (ROV)", icon: FileBarChart, description: "Portrait Boatlanding Survey report — grouped by Boatlanding (BL) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rg-report", name: "Riser Guard Survey Report (ROV)", icon: FileBarChart, description: "Portrait Riser Guard Survey report — grouped by Riser Guard (RG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-sg-report", name: "Caisson Guard Survey Report (ROV)", icon: FileBarChart, description: "Portrait Caisson Guard Survey report — grouped by Caisson Guard (SG) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-cu-report", name: "Conductor Guard Survey Report (ROV)", icon: FileBarChart, description: "Portrait Conductor Guard Survey report — grouped by Conductor Guard (CU) with associated components clubbed", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-photo-report", name: "Photography Report (ROV)", icon: Eye, description: "Portrait report displaying all photos attached to inspections in a 2x3 grid with descriptions", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-photo-log-report", name: "Photography Log Report (ROV)", icon: Eye, description: "Portrait report displaying a tabular log of all photos attached to inspections", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", icon: FileBarChart, description: "Portrait Diving General Visual Inspection report — marine growth, condition, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-bsins-report", name: "Bolted Support Inspection (Diving)", icon: FileBarChart, description: "Detailed bolted support inspection (BSINS) report with Member, Brace, and Appurtenance specifics.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-cvins-report", name: "Close Visual Inspection (Diving)", icon: FileBarChart, description: "Close visual inspection (CVINS) report with detailed findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-clean-report", name: "Cleaning Inspection (Diving)", icon: FileBarChart, description: "Cleaning inspection (CLEAN) report with surface condition and methods.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-mpins-report", name: "Magnetic Particle Inspection (Diving)", icon: FileBarChart, description: "Detailed magnetic particle inspection (MPINS) report with clock readings and segmentation.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", icon: FileBarChart, description: "UT Wall Thickness Inspection (UTWTK) report with clock readings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with grouped clock positions", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", icon: FileBarChart, description: "CP calibration in water survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-utclb-report", name: "UT Calibration Report (Diving)", icon: FileBarChart, description: "UT calibration survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-mgi-report", name: "Marine Growth Inspection Graph Report (Diving)", icon: FileBarChart, description: "Diving marine growth thickness vs allowable thresholds with graphical elevation profile", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-acfmc-report", name: "ACFM Inspection (Diving)", icon: FileBarChart, description: "Landscape Diving ACFM Survey report — Chord/Weld/Brace, direction of travel, clock position, page, probe number, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-plco-report", name: "Coating Damage Inspection (Diving)", icon: FileBarChart, description: "Landscape Diving Coating Damage Survey report — Surface Condition, CP Reading, Length, Width, Assessment, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-anmain-report", name: "Anode Maintenance Inspection Report (Diving)", icon: FileBarChart, description: "Landscape Anode Maintenance Inspection Report (ANMAIN) with QID, Elevation, Dive No., Anode Type, Installed Date, Replaced/Installed, Position, Life, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rwdi-report", name: "Water Depth Inspection Report (ROV)", icon: FileBarChart, description: "Portrait ROV Water Depth Inspection report — QID, elevation, dive number, water depth, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater (Diving)", icon: FileBarChart, description: "Portrait Caisson underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water (Diving)", icon: FileBarChart, description: "Portrait Caisson topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcasn-report", name: "Caisson Inspection (Diving)", icon: FileBarChart, description: "Portrait combined Caisson inspection report (Above & Underwater) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater (Diving)", icon: FileBarChart, description: "Portrait Conductor underwater inspection report (< 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water (Diving)", icon: FileBarChart, description: "Portrait Conductor topside inspection report (>= 0 elevation) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-dcond-report", name: "Conductor Inspection (Diving)", icon: FileBarChart, description: "Portrait combined Conductor inspection report (Above & Underwater) combining GVINS, CVINS, CPSURV, UTWTK.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-fmd-report", name: "Flooded Member Inspection Report (Diving)", icon: FileText, description: "Portrait Flooded Member Inspection report (Diving) — QID, Elevation, Dive No., Flooded, Grouted, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-measu-report", name: "Measurement Dimensional Survey Report (Diving)", icon: FileText, description: "Portrait Measurement Dimensional Survey report (Diving) — QID, Elevation, Dive No., Type, Unit, Result, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-rrisi-report", name: "Riser Inspection Report with Sketch (Diving)", icon: FileText, description: "Portrait Riser Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-rrisi-detail-report", name: "Riser Inspection Summary Report without Sketch (Diving)", icon: FileText, description: "Portrait Riser Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-jtisi-report", name: "J-Tube Inspection Report with Sketch (Diving)", icon: FileText, description: "Portrait J-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-jtisi-detail-report", name: "J-Tube Inspection Summary Report without Sketch (Diving)", icon: FileText, description: "Portrait J-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-itisi-report", name: "I-Tube Inspection Report with Sketch (Diving)", icon: FileText, description: "Portrait I-Tube Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-itisi-detail-report", name: "I-Tube Inspection Summary Report without Sketch (Diving)", icon: FileText, description: "Portrait I-Tube Survey summary report (Diving) without Sketch — QID, Elevation, Dive No., CP, UT, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-item-report", name: "Item Inspection Report (Diving)", icon: FileBarChart, description: "Portrait Item Inspection report (Diving) — QID, Elevation, Dive No., CP, Item Type, Description, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-itmain-report", name: "Item Maintenance Inspection Report (Diving)", icon: FileBarChart, description: "Portrait Item Maintenance report (Diving) — QID, Elevation, Dive No., Angle, Dim 1, Dim 2, Dim 3, and findings.", requires: ["jobpack", "structure", "sow_report"] },
     ],
 
     final_report: [
@@ -184,41 +207,44 @@ const TOC_SECTIONS = [
       { id: "technical-specs", name: "Technical Specifications", mode: "General" }
   ]},
   { id: 2, name: "General Visual Inspection", templates: [
-      { id: "rov-rgvi-report", name: "ROV GVI Report (RGVI)", mode: "ROV" },
-      { id: "diving-gvins-report", name: "Diving GVI Report (GVINS)", mode: "Diving" },
-      { id: "diving-bsins-report", name: "Diving Bolted Support Inspection (BSINS)", mode: "Diving" },
-      { id: "diving-cvins-report", name: "Diving Close Visual Inspection (CVINS)", mode: "Diving" },
-      { id: "diving-clean-report", name: "Diving Cleaning Inspection (CLEAN)", mode: "Diving" },
-      { id: "diving-mpins-report", name: "Diving Magnetic Particle Inspection (MPINS)", mode: "Diving" },
-      { id: "diving-utwtk-report", name: "Diving UT Wall Thickness Inspection (UTWTK)", mode: "Diving" },
-      { id: "diving-acfmc-report", name: "Diving ACFMC Inspection (ACFMC)", mode: "Diving" },
-      { id: "diving-plco-report", name: "Diving Coating Damage Inspection (PL_CO)", mode: "Diving" },
-      { id: "diving-anmain-report", name: "Diving Anode Maintenance Report (ANMAIN)", mode: "Diving" },
-      { id: "rov-rwdi-report", name: "ROV Water Depth Inspection Report (RWDI)", mode: "ROV" },
-      { id: "rov-ricmi-report", name: "ROV Inclinometer Reading Inspection Report (RICMI)", mode: "ROV" },
-      { id: "inspection-report", name: "General Inspection Report", mode: "Diving" }
+      { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", mode: "Diving" },
+      { id: "diving-item-report", name: "Item Inspection Report (Diving)", mode: "Diving" },
+      { id: "diving-itmain-report", name: "Item Maintenance Inspection Report (Diving)", mode: "Diving" },
+      { id: "diving-bsins-report", name: "Bolted Support Inspection (Diving)", mode: "Diving" },
+      { id: "diving-cvins-report", name: "Close Visual Inspection (Diving)", mode: "Diving" },
+      { id: "diving-clean-report", name: "Cleaning Inspection (Diving)", mode: "Diving" },
+      { id: "diving-mpins-report", name: "Magnetic Particle Inspection (Diving)", mode: "Diving" },
+      { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", mode: "Diving" },
+      { id: "diving-acfmc-report", name: "ACFM Inspection (Diving)", mode: "Diving" },
+      { id: "diving-plco-report", name: "Coating Damage Inspection (Diving)", mode: "Diving" },
+      { id: "diving-anmain-report", name: "Anode Maintenance Inspection Report (Diving)", mode: "Diving" },
+      { id: "rov-rwdi-report", name: "Water Depth Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }
   ]},
 
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
-      { id: "rov-cp-report", name: "ROV CP Survey Report", mode: "ROV" },
-      { id: "diving-cpclb-report", name: "Diving CP Calibration Report", mode: "Diving" }
+      { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 4, name: "Flooded Member Detection", templates: [
-      { id: "fmd-report", name: "ROV FMD Survey Report", mode: "ROV" }
+      { id: "fmd-report", name: "FMD Survey Report (ROV)", mode: "ROV" }
   ]},
   { id: 5, name: "Attachment Inspection (Conductor, Caisson, Boatlanding)", templates: [
-      { id: "rov-rcond-report", name: "ROV Conductor Survey Report", mode: "ROV" },
-      { id: "rov-rcasn-report", name: "ROV Caisson Survey Report", mode: "ROV" },
-      { id: "rov-bl-report", name: "ROV Boatlanding Survey Report", mode: "ROV" },
-      { id: "rov-rg-report", name: "ROV Riser Guard Survey Report", mode: "ROV" },
-      { id: "rov-sg-report", name: "ROV Caisson Guard Survey Report", mode: "ROV" },
-      { id: "rov-cu-report", name: "ROV Conductor Guard Survey Report", mode: "ROV" },
-      { id: "rov-rcond-sketch-report", name: "ROV Conductor Survey (Sketch) Report", mode: "ROV" },
-      { id: "rov-rcasn-sketch-report", name: "ROV Caisson Survey (Sketch) Report", mode: "ROV" },
-      { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater Diving", mode: "Diving" },
-      { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water Diving", mode: "Diving" },
-      { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater Diving", mode: "Diving" },
-      { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water Diving", mode: "Diving" }
+      { id: "rov-rcond-report", name: "Conductor Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-rcasn-report", name: "Caisson Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-bl-report", name: "Boatlanding Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-rg-report", name: "Riser Guard Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-sg-report", name: "Caisson Guard Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-cu-report", name: "Conductor Guard Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-rcond-sketch-report", name: "Conductor Survey (Sketch) Report (ROV)", mode: "ROV" },
+      { id: "rov-rcasn-sketch-report", name: "Caisson Survey (Sketch) Report (ROV)", mode: "ROV" },
+      { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater (Diving)", mode: "Diving" },
+      { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water (Diving)", mode: "Diving" },
+      { id: "diving-dcasn-report", name: "Caisson Inspection (Diving)", mode: "Diving" },
+      { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater (Diving)", mode: "Diving" },
+      { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water (Diving)", mode: "Diving" },
+      { id: "diving-dcond-report", name: "Conductor Inspection (Diving)", mode: "Diving" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
       { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
@@ -229,23 +255,24 @@ const TOC_SECTIONS = [
       { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
-      { id: "szci-report", name: "ROV Splash Zone Inspection", mode: "ROV" },
-      { id: "diving-szone-report", name: "Diving Splash Zone Inspection", mode: "Diving" }
+      { id: "szci-report", name: "Splash Zone Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
-      { id: "rov-anode-report", name: "ROV Anode Inspection Report (RGVI)", mode: "ROV" },
-      { id: "rov-anode-rsani-report", name: "ROV Selected Anode Report (SANI)", mode: "ROV" },
-      { id: "diving-anode-report", name: "Diving Selected Anode Report", mode: "Diving" }
+      { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-anode-rsani-report", name: "Selected Anode Report (ROV)", mode: "ROV" },
+      { id: "diving-anode-report", name: "Selected Anode Report (Diving)", mode: "Diving" }
   ]},
   { id: 9, name: "Marine Growth Survey", templates: [
       { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", mode: "ROV" },
       { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", mode: "ROV" },
-      { id: "diving-mgi-report", name: "Diving Marine Growth Inspection Graph Report", mode: "Diving" }
+      { id: "diving-mgi-report", name: "Marine Growth Inspection Graph Report (Diving)", mode: "Diving" }
   ]},
   { id: 10, name: "Base Level Survey (Scour Survey)", templates: [
-      { id: "rov-scour-report", name: "ROV Scour Survey Report", mode: "ROV" }
+      { id: "rov-scour-report", name: "Scour Survey Report (ROV)", mode: "ROV" }
   ]},
-  { id: 11, name: "Debris Survey (Seabed Survey)", templates: [
+  { id: 11, name: "Pipeline Navigation & Seabed Event Survey", templates: [
+      { id: "pipeline-event-sketch-report", name: "Pipeline Event List Sketch Report", mode: "General" },
       { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
       { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", mode: "General" },
       { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", mode: "General" },
@@ -255,20 +282,20 @@ const TOC_SECTIONS = [
       { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [
-      { id: "rov-selected-node-report", name: "ROV Selected Node Report (RSWNI)", mode: "ROV" }
+      { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", mode: "ROV" }
   ] },
   { id: 13, name: "Additional Wall Thickness Inspection", templates: [
-      { id: "utwt-report", name: "ROV UT Thickness Report", mode: "ROV" },
-      { id: "diving-utclb-report", name: "Diving UT Calibration Report", mode: "Diving" }
+      { id: "utwt-report", name: "UT Thickness Report (ROV)", mode: "ROV" },
+      { id: "diving-utclb-report", name: "UT Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 14, name: "Maintenance", templates: [] },
   { id: 15, name: "Cleaning Inspection", templates: [] },
   { id: 16, name: "Photography", templates: [
-      { id: "rov-photo-report", name: "ROV Photography Report", mode: "ROV" },
-      { id: "rov-photo-log-report", name: "ROV Photography Log Report", mode: "ROV" }
+      { id: "rov-photo-report", name: "Photography Report (ROV)", mode: "ROV" },
+      { id: "rov-photo-log-report", name: "Photography Log Report (ROV)", mode: "ROV" }
   ]},
   { id: 17, name: "Video", templates: [
-      { id: "video-log-report", name: "Video Log Report", mode: "General" },
+      { id: "video-log-report", name: "Video Log Report (ROV)", mode: "General" },
       { id: "diver-log-report", name: "Diver Log Report", mode: "Diving" }
   ]},
   { id: 18, name: "Anomaly", templates: [
@@ -304,6 +331,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         planningId: "",
         procedureId: "",
         sowReportNo: "",
+        printBlankReport: false,
     });
 
     const [selectedTemplates, setSelectedTemplates] = useState<string[]>(() => {
@@ -491,6 +519,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const isStepValid = () => {
         if (step === "template") return !!selections.templateId;
         if (step === "context") {
+            if (selections.printBlankReport) return true;
             const template = getCurrentTemplate();
             if (!template) return false;
 
@@ -605,12 +634,15 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     // Render Steps
     const renderTemplateSelection = () => {
         const filterTemplates = (templates: any[]) => {
-            if (!templateSearch.trim()) return templates;
-            const term = templateSearch.toLowerCase();
-            return templates.filter(t => 
-                (t.name || "").toLowerCase().includes(term) || 
-                (t.description || "").toLowerCase().includes(term)
-            );
+            let list = templates || [];
+            if (templateSearch.trim()) {
+                const term = templateSearch.toLowerCase();
+                list = list.filter(t => 
+                    (t.name || "").toLowerCase().includes(term) || 
+                    (t.description || "").toLowerCase().includes(term)
+                );
+            }
+            return [...list].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
         };
 
         const categories = {
@@ -797,7 +829,47 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     <p className="text-slate-500">Choose the specific items to include in your {template.name}</p>
                 </div>
 
-                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${cols} gap-6`}>
+                {/* Print Blank Report Option Banner */}
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-amber-500 text-white rounded-lg">
+                            <Printer className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <h4 className="font-semibold text-sm text-slate-900 dark:text-slate-100">Print Blank Inspection Report</h4>
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                                Generate a single blank page containing template fields & layout (no data required). Structure, Job Pack, and SOW Report selection will be bypassed.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Label htmlFor="print-blank-toggle" className="text-xs font-semibold cursor-pointer text-slate-700 dark:text-slate-300">
+                            {selections.printBlankReport ? "Blank Page Enabled" : "Print Blank"}
+                        </Label>
+                        <Switch
+                            id="print-blank-toggle"
+                            checked={selections.printBlankReport || false}
+                            onCheckedChange={(checked: boolean) => setSelections(prev => ({
+                                ...prev,
+                                printBlankReport: checked,
+                                ...(checked ? {
+                                    structureId: "",
+                                    jobPackId: "",
+                                    componentId: "",
+                                    sowReportNo: ""
+                                } : {})
+                            }))}
+                        />
+                    </div>
+                </div>
+
+                {selections.printBlankReport && (
+                    <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-center text-sm text-blue-700 dark:text-blue-300 font-medium">
+                        ✓ Blank report mode active. Click <strong>Next</strong> to customize report settings or preview the blank template.
+                    </div>
+                )}
+
+                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${cols} gap-6 ${selections.printBlankReport ? "opacity-40 pointer-events-none" : ""}`}>
 
                     {reqs.includes("structure") && (
                         <PanelContainer
@@ -1393,7 +1465,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         if (step === "preview") {
             const isDefectReport = selections.templateId === "defect-criteria-report";
             const isJobPackReport = selections.templateId === "jobpack-summary";
-            if (selections.structureId || isDefectReport || (isJobPackReport && selections.jobPackId)) {
+            if (selections.printBlankReport || selections.structureId || isDefectReport || (isJobPackReport && selections.jobPackId)) {
                 generatePreview();
             }
         }
@@ -1407,7 +1479,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         selections.jobPackId,
         selections.componentId,
         selections.planningId,
-        selections.procedureId
+        selections.procedureId,
+        selections.printBlankReport
     ]);
 
     const fetchStructureData = async () => {
@@ -1568,6 +1641,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
             const { generateROVCondReport }  = await import("@/utils/report-generators/rov-rcond-report");
             const { generateROVCondSketchReport } = await import("@/utils/report-generators/rov-rcond-sketch-report");
+            const { generatePipelineEventSketchReport } = await import("@/utils/report-generators/pipeline-event-sketch-report");
+            const { generateROVNavigReport } = await import("@/utils/report-generators/rov-navig-report");
             const { generateROVBoatlandingReport } = await import("@/utils/report-generators/rov-boatlanding-report");
             const { generateROVRiserGuardReport } = await import("@/utils/report-generators/rov-riser-guard-report");
             const { generateROVCaissonGuardReport } = await import("@/utils/report-generators/rov-caisson-guard-report");
@@ -1583,8 +1658,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRWDIReport } = await import("@/utils/report-generators/rov-rwdi-report");
             const { generateDivingDCASNUWReport } = await import("@/utils/report-generators/diving-dcasn-uw-report");
             const { generateDivingDCASNTSReport } = await import("@/utils/report-generators/diving-dcasn-ts-report");
+            const { generateDivingDCASNReport } = await import("@/utils/report-generators/diving-dcasn-report");
             const { generateDivingDCONDUWReport } = await import("@/utils/report-generators/diving-dcond-uw-report");
             const { generateDivingDCONDTSReport } = await import("@/utils/report-generators/diving-dcond-ts-report");
+            const { generateDivingDCONDReport } = await import("@/utils/report-generators/diving-dcond-report");
+            const { generateDivingFMDReport } = await import("@/utils/report-generators/diving-fmd-report");
+            const { generateDivingMEASUReport } = await import("@/utils/report-generators/diving-measu-report");
+            const { generateDivingRRISIReport } = await import("@/utils/report-generators/diving-rrisi-report");
+            const { generateDivingRRISIDetailReport } = await import("@/utils/report-generators/diving-rrisi-detail-report");
 
 
             // Fetch real company settings from API
@@ -1606,7 +1687,25 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             console.error("Error fetching company settings for report:", error);
         }
 
-        const reportConfig = { ...config, returnBlob };
+        const reportConfig = { 
+            ...config, 
+            returnBlob,
+            isBlankReport: selections.printBlankReport ?? false,
+            jobPackId: selections.jobPackId,
+            structureId: selections.structureId,
+            sowReportNo: selections.sowReportNo,
+            ...(currentTemplateId === "final-inspection-datasheet" ? { showPageNumbers: false } : {})
+        };
+
+        // Universal Blank Report Interceptor — guarantees ALL report templates produce an authentic blank report
+        if (selections.printBlankReport) {
+            const { generateBlankInspectionReport } = await import("@/utils/report-generators/blank-inspection-report");
+            const targetT = getCurrentTemplate() || TOC_SECTIONS.flatMap(s => s.templates).find(t => t.id === currentTemplateId);
+            const templateTitle = targetT?.name || currentTemplateId;
+            return await generateBlankInspectionReport(currentTemplateId, templateTitle, companySettings, reportConfig as any);
+        }
+
+
 
         // Final Inspection Datasheet Interceptor
         if (currentTemplateId === "final-inspection-datasheet") {
@@ -1682,6 +1781,26 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         }
                     }
 
+                    // Stamp global continuous page numbers on all merged pages
+                    const totalPagesCount = mergedPdf.getPageCount();
+                    const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
+
+                    for (let idx = 0; idx < totalPagesCount; idx++) {
+                        const p = mergedPdf.getPage(idx);
+                        const { width } = p.getSize();
+                        const pageStr = `Page ${idx + 1} of ${totalPagesCount}`;
+                        const fontSize = 8;
+                        const textWidth = font.widthOfTextAtSize(pageStr, fontSize);
+
+                        p.drawText(pageStr, {
+                            x: width - 12 - textWidth,
+                            y: 6,
+                            size: fontSize,
+                            font,
+                            color: rgb(0.12, 0.16, 0.23), // slate-800
+                        });
+                    }
+
                     setGenerationProgress(100);
                     setCurrentGeneratingTemplate("Finalizing combined PDF package...");
                     await new Promise(resolve => setTimeout(resolve, 500));
@@ -1716,51 +1835,196 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Summary Report / Findings Summary Report
         if (currentTemplateId === "defect-summary" || currentTemplateId === "findings-summary") {
-            const jobPack = await fetchJobPackData();
-            const structure = selections.structureId ? await fetchStructureData() : null;
-            if (!jobPack) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            if (!jobPack && !selections.printBlankReport) return null;
 
             const isFindingsReport = currentTemplateId === "findings-summary";
             const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
 
-            return await generateDefectSummaryReport(jobPack, structure, selections.sowReportNo, companySettings, extendedConfig as any);
+            return await generateDefectSummaryReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
+        }
+
+        // Defect Summary Report (Pipeline) & Finding Summary Report (Pipeline)
+        if (currentTemplateId === "defect-summary-pipeline" || currentTemplateId === "defect-summary-pipeline-report" || currentTemplateId === "findings-summary-pipeline" || currentTemplateId === "findings-summary-pipeline-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            if (!jobPack && !selections.printBlankReport) return null;
+
+            const isFindingsReport = currentTemplateId.includes("findings");
+            const extendedConfig = {
+                ...reportConfig,
+                isFindingsReport,
+                prefix: isFindingsReport ? "F-" : ((reportConfig as any)?.prefix || "DSR-PL")
+            };
+
+            return await generatePipelineDefectSummaryReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
         // Defect / Anomaly Report / Findings Report
         if (currentTemplateId === "defect-anomaly-report" || currentTemplateId === "findings-report") {
-            const jobPack = await fetchJobPackData();
-            const structure = await fetchStructureData();
-            if (!jobPack || !structure) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             const isFindingsReport = currentTemplateId === "findings-report";
             const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
 
-            return await generateDefectAnomalyReport(jobPack, structure, selections.sowReportNo, companySettings, extendedConfig as any);
+            return await generateDefectAnomalyReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
         // Diver Log Report
         if (currentTemplateId === "diver-log-report") {
-            const jobPack = await fetchJobPackData();
-            const structure = await fetchStructureData();
-            if (!jobPack || !structure) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
-            return await generateDiverLogReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+            return await generateDiverLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
         }
 
         // Video Log Report
         if (currentTemplateId === "video-log-report") {
-            const jobPack = await fetchJobPackData();
-            const structure = await fetchStructureData();
-            if (!jobPack || !structure) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
-            return await generateVideoLogReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig);
+            return await generateVideoLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
+        }
+
+        // Pipeline Event List Sketch Report
+        if (currentTemplateId === "pipeline-event-sketch-report" || currentTemplateId === "pipeline_event_sketch_report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
+
+            let records: any[] = [];
+            if (!selections.printBlankReport && selections.structureId) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    const structId = Number(selections.structureId);
+                    let q = supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            structure_components:component_id(id, q_id, code, metadata)
+                        `)
+                        .eq('structure_id', structId)
+                        .order('insp_id', { ascending: true });
+
+                    if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                        q = q.eq('sow_report_no', selections.sowReportNo);
+                    }
+
+                    const { data } = await q;
+                    if (data && data.length > 0) {
+                        records = data;
+                    } else {
+                        // Fallback query without sow_report_no filter
+                        const { data: allStrRecords } = await supabase
+                            .from('insp_records')
+                            .select(`
+                                *,
+                                structure_components:component_id(id, q_id, code, metadata)
+                            `)
+                            .eq('structure_id', structId)
+                            .order('insp_id', { ascending: true });
+                        if (allStrRecords) records = allStrRecords;
+                    }
+                } catch (err) {
+                    console.error("Error fetching records for pipeline event sketch report", err);
+                }
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack.metadata.contrac).maybeSingle();
+                    contractorLogoUrl = contrData?.logo_url || "";
+                } catch (e) {}
+            }
+            const headerData = {
+                date: format(new Date(), "dd/MM/yyyy"),
+                jobpackName: jobPack?.name || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure?.str_name || structure?.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generatePipelineEventSketchReport(
+                jobPack || {},
+                structure || {},
+                selections.sowReportNo || "N/A",
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: Number(selections.structureId), sowReportNo: selections.sowReportNo, headerData } as any,
+                records
+            );
+        }
+
+        // Pipeline Visual Inspection Report (ROV) - NAVIG
+        if (currentTemplateId === "rov-navig-report" || currentTemplateId === "rov_navig_report" || currentTemplateId === "pipeline-visual-inspection-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
+
+            let records: any[] = [];
+            if (!selections.printBlankReport && selections.structureId) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    const structId = Number(selections.structureId);
+                    let q = supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            structure_components:component_id(id, q_id, code, metadata)
+                        `)
+                        .eq('structure_id', structId)
+                        .order('insp_id', { ascending: true });
+
+                    if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                        q = q.eq('sow_report_no', selections.sowReportNo);
+                    }
+
+                    const { data } = await q;
+                    if (data && data.length > 0) records = data;
+                } catch (err) {
+                    console.error("Error fetching records for NAVIG report", err);
+                }
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack.metadata.contrac).maybeSingle();
+                    contractorLogoUrl = contrData?.logo_url || "";
+                } catch (e) {}
+            }
+            const headerData = {
+                date: format(new Date(), "dd/MM/yyyy"),
+                jobpackName: jobPack?.name || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure?.str_name || structure?.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateROVNavigReport(
+                jobPack || {},
+                structure || {},
+                selections.sowReportNo || "N/A",
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: Number(selections.structureId), sowReportNo: selections.sowReportNo, printBlankReport: selections.printBlankReport, isBlankReport: selections.printBlankReport, headerData } as any,
+                records
+            );
         }
 
         // Seabed Survey Reports
         if (currentTemplateId === "rov-seabed-report" || currentTemplateId === "seabed-survey-debris" || currentTemplateId === "seabed-survey-gas" || currentTemplateId === "seabed-survey-crater") {
-            const jobPack = await fetchJobPackData();
-            const structure = await fetchStructureData();
-            if (!jobPack || !structure) return null;
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
             
             const filterMap: Record<string, string> = {
                 "rov-seabed-report": "",
@@ -1769,7 +2033,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 "seabed-survey-crater": "Crater"
             };
             
-            return await generateSeabedSurveyReport(jobPack, structure, selections.sowReportNo, companySettings, reportConfig, filterMap[currentTemplateId]);
+            return await generateSeabedSurveyReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig, filterMap[currentTemplateId]);
         }
 
         // Detailed Seabed Survey Report
@@ -2034,13 +2298,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // Fetch MGI Profile
-            let profile = null;
-            const recordData = mgiRecords[0]?.inspection_data || mgiRecords[0]?.inspection_dat;
-            const profileId = recordData?._mgi_profile_id;
-            if (profileId) {
-                const { data } = await supabase.from('mgi_profiles').select('*').eq('id', profileId).maybeSingle();
-                profile = data;
-            }
+            const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id || r.inspection_dat?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
+            const profile = await getMGIProfileForJobpack(supabase, selections.jobPackId, profileId);
 
             // Fetch Contractor Logo if available
             let contractorLogoUrl = "";
@@ -2245,6 +2504,312 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("FMD Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving FMD Survey Report
+        if (currentTemplateId === "diving-fmd-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const fmdRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const codeUpper = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isDFMD = ['FLOOD', 'FMD', 'DFMD'].includes(codeUpper);
+                return sowMatches && jobPackMatches && isDFMD;
+            });
+
+            if (!fmdRecords || fmdRecords.length === 0) {
+                alert(`No Diving FMD records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingFMDReport(
+                    fmdRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("Diving FMD Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving MEASU Survey Report
+        if (currentTemplateId === "diving-measu-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const measuRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const codeUpper = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isMEASU = ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'].includes(codeUpper);
+                return sowMatches && jobPackMatches && isMEASU;
+            });
+
+            if (!measuRecords || measuRecords.length === 0) {
+                alert(`No Diving Measurement Dimensional records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingMEASUReport(
+                    measuRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("Diving MEASU Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Riser / J-Tube / I-Tube Survey Report with Sketch
+        if (["diving-rrisi-report", "diving-jtisi-report", "diving-itisi-report"].includes(currentTemplateId)) {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let reportType: 'R' | 'J' | 'I' = 'R';
+            if (currentTemplateId === "diving-jtisi-report") reportType = 'J';
+            if (currentTemplateId === "diving-itisi-report") reportType = 'I';
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const prefixChar = reportType;
+            const rrisiRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const qid = (r.structure_components?.q_id || r.q_id || '').toUpperCase();
+                const codeUpper = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const compCode = (r.structure_components?.code || '').toUpperCase();
+                const isTypeMatch = ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'RRISI', 'JTISI', 'ITISI'].includes(codeUpper);
+                const isQidPrefix = qid.startsWith(prefixChar);
+                const isCompMatch = ['RS', 'CL', 'WELD', 'FLANGE'].includes(compCode) || compCode === '' || !compCode;
+
+                return sowMatches && jobPackMatches && (isQidPrefix || isTypeMatch || isCompMatch);
+            });
+
+            if (!rrisiRecords || rrisiRecords.length === 0) {
+                const label = reportType === 'J' ? 'J-Tube' : (reportType === 'I' ? 'I-Tube' : 'Riser');
+                alert(`No Diving ${label} Survey records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingRRISIReport(
+                    rrisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), reportType } as any
+                );
+            } catch (error) {
+                console.error("Diving Riser/J-Tube/I-Tube Sketch Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving Riser / J-Tube / I-Tube Survey Summary Report without Sketch
+        if (["diving-rrisi-detail-report", "diving-jtisi-detail-report", "diving-itisi-detail-report"].includes(currentTemplateId)) {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let reportType: 'R' | 'J' | 'I' = 'R';
+            if (currentTemplateId === "diving-jtisi-detail-report") reportType = 'J';
+            if (currentTemplateId === "diving-itisi-detail-report") reportType = 'I';
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const prefixChar = reportType;
+            const rrisiRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                const qid = (r.structure_components?.q_id || r.q_id || '').toUpperCase();
+                const codeUpper = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const compCode = (r.structure_components?.code || '').toUpperCase();
+                const isTypeMatch = ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'RRISI', 'JTISI', 'ITISI'].includes(codeUpper);
+                const isQidPrefix = qid.startsWith(prefixChar);
+                const isCompMatch = ['RS', 'CL', 'WELD', 'FLANGE'].includes(compCode) || compCode === '' || !compCode;
+
+                return sowMatches && jobPackMatches && (isQidPrefix || isTypeMatch || isCompMatch);
+            });
+
+            if (!rrisiRecords || rrisiRecords.length === 0) {
+                const label = reportType === 'J' ? 'J-Tube' : (reportType === 'I' ? 'I-Tube' : 'Riser');
+                alert(`No Diving ${label} Survey records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateDivingRRISIDetailReport(
+                    rrisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), reportType } as any
+                );
+            } catch (error) {
+                console.error("Diving Riser/J-Tube/I-Tube Detail Generator Error:", error);
                 throw error;
             }
         }
@@ -2591,55 +3156,66 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // ROV Anode Inspection Report (New)
         if (currentTemplateId === "rov-anode-report") {
-            const supabase = (await import("@/utils/supabase/client")).createClient();
-            const structure = await fetchStructureData();
-            const jobPack = await fetchJobPackData();
-            if (!structure || !jobPack) return null;
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack   = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
-            const structId = Number(selections.structureId);
-            if (isNaN(structId)) {
-                alert("Invalid Structure selection. Please ensure a structure is selected.");
-                return null;
-            }
+            let anodeRecords: any[] = [];
+            if (selections.printBlankReport) {
+                anodeRecords = Array.from({ length: 12 }, (_, i) => ({
+                    id: i + 1,
+                    elevation: "",
+                    inspection_data: { cp_rdg: "", depletion_pct: "", dim_l: "", dim_w: "", dim_h: "" },
+                    structure_components: { q_id: "" },
+                    description: "",
+                    insp_rov_jobs: { job_no: "" }
+                }));
+            } else {
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                const structId = Number(selections.structureId);
+                if (isNaN(structId)) {
+                    alert("Invalid Structure selection. Please ensure a structure is selected.");
+                    return null;
+                }
 
-            let { data: records, error: fetchError } = await supabase
-                .from('insp_records')
-                .select(`
-                    *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no),
-                    insp_anomalies(*)
-                `)
-                .eq('structure_id', structId);
+                let { data: records, error: fetchError } = await supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        inspection_type:inspection_type_id!left(id, code, name),
+                        structure_components:component_id!left(id, q_id, code, metadata),
+                        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                        insp_video_tapes:tape_id!left(tape_no),
+                        insp_anomalies(*)
+                    `)
+                    .eq('structure_id', structId);
 
-            if (fetchError) {
-                console.error("Fetch Error:", fetchError);
-                alert(`Database error: ${fetchError.message || 'Unknown fetching error'}`);
-                return null;
-            }
+                if (fetchError) {
+                    console.error("Fetch Error:", fetchError);
+                    alert(`Database error: ${fetchError.message || 'Unknown fetching error'}`);
+                    return null;
+                }
 
-            // FILTER: RGVI + Component Type AN (excluding RSANI)
-            const anodeRecords = records?.filter(r => {
-                const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
-                const isRGVI = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
-                const isAN = String(r.structure_components?.code || '').toUpperCase() === 'AN' || 
-                             String(r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
-                return sowMatches && jobPackMatches && isRGVI && isAN;
-            });
+                anodeRecords = (records || []).filter(r => {
+                    const sowMatches = !selections.sowReportNo || 
+                        String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                    const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                    const isRGVI = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
+                    const isAN = String(r.structure_components?.code || '').toUpperCase() === 'AN' || 
+                                 String(r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
+                    return sowMatches && jobPackMatches && isRGVI && isAN;
+                });
 
-            if (!anodeRecords || anodeRecords.length === 0) {
-                alert(`No ROV Anode records (RGVI + component_type: AN) found for structure "${structure.str_name}" in this SOW.`);
-                return null;
+                if (!anodeRecords || anodeRecords.length === 0) {
+                    alert(`No ROV Anode records (RGVI + component_type: AN) found for structure "${structure.str_name}" in this SOW.`);
+                    return null;
+                }
             }
 
             let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
+            if (jobPack?.metadata?.contrac) {
                 try {
                     const cRes = await fetch(`/api/library/CONTR_NAM`);
                     const cJson = await cRes.json();
@@ -2649,9 +3225,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             const headerData = {
-                jobpackName: jobPack.name || jobPack.title || "N/A",
-                sowReportNo: selections.sowReportNo || "N/A",
-                platformName: structure.str_name || structure.title || "N/A",
+                jobpackName: jobPack?.name || ". . . . . . . . . . . . . . . . . . . .",
+                sowReportNo: selections.sowReportNo || (selections.printBlankReport ? (config.reportNoPrefix || "____________________") : "N/A"),
+                platformName: structure?.str_name || ". . . . . . . . . . . . . . . . . . . .",
                 contractorLogoUrl,
                 vessel: resolveVessel(jobPack)
             };
@@ -3033,44 +3609,56 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // ROV GVI Report (RGVI)
         if (currentTemplateId === "rov-rgvi-report") {
-            const supabase = (await import("@/utils/supabase/client")).createClient();
-            const structure = await fetchStructureData();
-            const jobPack   = await fetchJobPackData();
-            if (!structure || !jobPack) return null;
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack   = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
-            const { data: records, error: fetchError } = await supabase
-                .from("insp_records")
-                .select(`
-                    *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(q_id, code),
-                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_video_tapes:tape_id!left(tape_no),
-                    insp_anomalies(*)
-                `)
-                .eq("structure_id", Number(selections.structureId));
+            let rgviRecords: any[] = [];
+            if (selections.printBlankReport) {
+                rgviRecords = Array.from({ length: 12 }, (_, i) => ({
+                    id: i + 1,
+                    elevation: "",
+                    inspection_data: { cp_rdg: "", marine_growth: "", component_condition: "" },
+                    structure_components: { q_id: "" },
+                    description: "",
+                    insp_rov_jobs: { job_no: "" }
+                }));
+            } else {
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                const { data: records, error: fetchError } = await supabase
+                    .from("insp_records")
+                    .select(`
+                        *,
+                        inspection_type:inspection_type_id!left(id, code, name),
+                        structure_components:component_id!left(q_id, code),
+                        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                        insp_video_tapes:tape_id!left(tape_no),
+                        insp_anomalies(*)
+                    `)
+                    .eq("structure_id", Number(selections.structureId));
 
-            if (fetchError) {
-                alert(`Database error: ${fetchError.message}`);
-                return null;
-            }
+                if (fetchError) {
+                    alert(`Database error: ${fetchError.message}`);
+                    return null;
+                }
 
-            const rgviRecords = records?.filter((r: any) => {
-                const sowMatches = !selections.sowReportNo ||
-                    String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RGVI";
-                return sowMatches && jobPackMatches && isRGVI;
-            });
+                rgviRecords = (records || []).filter((r: any) => {
+                    const sowMatches = !selections.sowReportNo ||
+                        String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                    const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RGVI";
+                    return sowMatches && jobPackMatches && isRGVI;
+                });
 
-            if (!rgviRecords || rgviRecords.length === 0) {
-                alert(`No RGVI records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
+                if (!rgviRecords || rgviRecords.length === 0) {
+                    alert(`No RGVI records found for structure "${structure.str_name}" in this SOW.`);
+                    return null;
+                }
             }
 
             let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
+            if (jobPack?.metadata?.contrac) {
                 try {
                     const cRes  = await fetch(`/api/library/CONTR_NAM`);
                     const cJson = await cRes.json();
@@ -3080,31 +3668,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             const headerData = {
-                jobpackName:      jobPack.name || jobPack.title || "N/A",
-                sowReportNo:      selections.sowReportNo || "N/A",
-                platformName:     structure.str_name || structure.title || "N/A",
+                jobpackName:      jobPack?.name || ". . . . . . . . . . . . . . . . . . . .",
+                sowReportNo:      selections.sowReportNo || selections.printBlankReport ? (config.reportNoPrefix || "____________________") : "N/A",
+                platformName:     structure?.str_name || ". . . . . . . . . . . . . . . . . . . .",
                 contractorLogoUrl,
                 vessel: resolveVessel(jobPack),
             };
 
             try {
-                // Detect if any record belongs to a Riser Guard
-                const hasRG = rgviRecords.some((r: any) => {
-                    const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
-                    const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                    return qid.startsWith("RG") || qid.startsWith("RISG") || compCode === "RG";
-                });
-
-                if (hasRG) {
-                    const { generateROVRiserGuardReport } = await import("@/utils/report-generators/rov-riser-guard-report");
-                    return await generateROVRiserGuardReport(
-                        rgviRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        headerData,
-                        companySettings,
-                        { ...reportConfig, returnBlob, structureId: Number(selections.structureId) } as any
-                    );
-                }
-
                 const { generateROVRGVIReport } = await import("@/utils/report-generators/rov-rgvi-report");
                 return await generateROVRGVIReport(
                     rgviRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
@@ -3120,44 +3691,56 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Diving General Visual Inspection (GVINS)
         if (currentTemplateId === "diving-gvins-report") {
-            const supabase = (await import("@/utils/supabase/client")).createClient();
-            const structure = await fetchStructureData();
-            const jobPack = await fetchJobPackData();
-            if (!structure || !jobPack) return null;
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack   = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
-            let { data: records, error: fetchError } = await supabase
-                .from('insp_records')
-                .select(`
-                    *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(id, q_id, code, metadata),
-                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_anomalies(*)
-                `)
-                .eq('structure_id', Number(selections.structureId));
+            let gvinsRecords: any[] = [];
+            if (selections.printBlankReport) {
+                gvinsRecords = Array.from({ length: 12 }, (_, i) => ({
+                    id: i + 1,
+                    elevation: "",
+                    inspection_data: { cp_rdg: "", marine_growth: "", component_condition: "" },
+                    structure_components: { q_id: "" },
+                    description: "",
+                    insp_dive_jobs: { dive_no: "" }
+                }));
+            } else {
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                let { data: records, error: fetchError } = await supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        inspection_type:inspection_type_id!left(id, code, name),
+                        structure_components:component_id!left(id, q_id, code, metadata),
+                        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                        insp_anomalies(*)
+                    `)
+                    .eq('structure_id', Number(selections.structureId));
 
-            if (fetchError) {
-                console.error("Fetch Error:", fetchError);
-                alert(`Database error: ${fetchError.message}`);
-                return null;
-            }
+                if (fetchError) {
+                    console.error("Fetch Error:", fetchError);
+                    alert(`Database error: ${fetchError.message}`);
+                    return null;
+                }
 
-            const gvinsRecords = records?.filter(r => {
-                const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isGVINS = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'GVINS';
-                return sowMatches && jobPackMatches && isGVINS;
-            });
+                gvinsRecords = (records || []).filter(r => {
+                    const sowMatches = !selections.sowReportNo || 
+                        String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                    const isGVINS = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'GVINS';
+                    return sowMatches && jobPackMatches && isGVINS;
+                });
 
-            if (!gvinsRecords || gvinsRecords.length === 0) {
-                alert(`No Diving GVINS records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
+                if (!gvinsRecords || gvinsRecords.length === 0) {
+                    alert(`No Diving GVINS records found for structure "${structure.str_name}" in this SOW.`);
+                    return null;
+                }
             }
 
             let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
+            if (jobPack?.metadata?.contrac) {
                 try {
                     const cRes = await fetch(`/api/library/CONTR_NAM`);
                     const cJson = await cRes.json();
@@ -3167,9 +3750,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             const headerData = {
-                jobpackName: jobPack.name || jobPack.title || "N/A",
-                sowReportNo: selections.sowReportNo || "N/A",
-                platformName: structure.str_name || structure.title || "N/A",
+                jobpackName: jobPack?.name || ". . . . . . . . . . . . . . . . . . . .",
+                sowReportNo: selections.sowReportNo || (selections.printBlankReport ? (config.reportNoPrefix || "____________________") : "N/A"),
+                platformName: structure?.str_name || ". . . . . . . . . . . . . . . . . . . .",
                 contractorLogoUrl,
                 vessel: resolveVessel(jobPack)
             };
@@ -4212,16 +4795,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             try {
                 const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id 
                                 || jobPack.mgi_profile_id;
-                
-                if (profileId) {
-                    const pRes = await fetch(`/api/mgi-profiles/${profileId}`);
-                    const pJson = await pRes.json();
-                    activeMGIProfile = pJson.data;
-                } else {
-                    const pRes = await fetch(`/api/mgi-profiles`);
-                    const pJson = await pRes.json();
-                    activeMGIProfile = pJson.data?.find((p: any) => p.is_active && !p.is_job_specific);
-                }
+                activeMGIProfile = await getMGIProfileForJobpack(supabase, selections.jobPackId, profileId);
             } catch (e) { console.error("Profile fetch error", e); }
 
             let contractorLogoUrl = "";
@@ -4607,6 +5181,212 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             );
         }
 
+        // Caisson Inspection Diving (Combined Above Water & Underwater)
+        if (currentTemplateId === "diving-dcasn-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingDCASNReport(
+                records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Conductor Inspection Diving (Combined Above Water & Underwater)
+        if (currentTemplateId === "diving-dcond-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingDCONDReport(
+                records || [],
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Item Inspection (Diving) Report
+        if (currentTemplateId === "diving-item-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            const itemRecords = (records || []).filter((r: any) => {
+                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                return code === 'PL_IC' || code === 'ITEM';
+            });
+
+            const targetRecords = itemRecords.length > 0 ? itemRecords : (records || []);
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingItemReport(
+                targetRecords,
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
+        // Item Maintenance Inspection (Diving) Report
+        if (currentTemplateId === "diving-itmain-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            const structId = Number(selections.structureId);
+            const { data: records, error } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_video_tapes:tape_id!left(tape_no),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', structId)
+                .eq('sow_report_no', selections.sowReportNo);
+
+            if (error) throw error;
+            const itemRecords = (records || []).filter((r: any) => {
+                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                return code === 'ITMAIN';
+            });
+
+            const targetRecords = itemRecords.length > 0 ? itemRecords : (records || []);
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {}
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateDivingITMAINReport(
+                targetRecords,
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo } as any
+            );
+        }
+
         // ROV Boatlanding Survey Report (New)
         if (currentTemplateId === "rov-bl-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
@@ -4641,7 +5421,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                return sowMatches && jobPackMatches;
+                const isBL = isBLRecord(r);
+                return sowMatches && jobPackMatches && isBL;
             });
 
             if (!blRecords || blRecords.length === 0) {
@@ -5364,8 +6145,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 return await generateComponentSpecReport(data, component, companySettings, typeMap, reportConfig);
 
             default:
-                // Fallback to structure report
-                return await generateStructureReport(data, companySettings, reportConfig);
+                return null;
         }
     } finally {
         // selections.templateId = originalTemplateId;

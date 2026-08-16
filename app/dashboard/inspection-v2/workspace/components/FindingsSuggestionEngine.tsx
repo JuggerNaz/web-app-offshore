@@ -282,7 +282,7 @@ export function FindingsSuggestionEngine({
           className="h-8 px-2 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 gap-1.5"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          Suggestions
+          AI Suggestions
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0 shadow-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950" align="end">

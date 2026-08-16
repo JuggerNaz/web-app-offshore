@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { 
     Activity, 
     ArrowLeft, 
@@ -17,7 +18,9 @@ import {
     Layers,
     ArrowRightLeft,
     LayoutGrid,
-    RotateCcw
+    RotateCcw,
+    Edit2,
+    Globe
 } from "lucide-react";
 import Link from 'next/link';
 import {
@@ -29,7 +32,17 @@ import {
     DropdownMenuSubTrigger,
     DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
+import { createClient } from "@/utils/supabase/client";
 
 interface InspectionHeaderProps {
     headerData: any;
@@ -71,6 +84,7 @@ interface InspectionHeaderProps {
     generateRCASNSketchReport: () => void;
     generateRCONDReport: () => void;
     generateRCONDSketchReport: () => void;
+    generatePipelineEventSketchReport?: () => void;
     generateBLReport: () => void;
     generateRGReport: () => void;
     generateSGReport: () => void;
@@ -85,6 +99,8 @@ interface InspectionHeaderProps {
     onResetLayout?: () => void;
     closedPanels?: Array<{ id: string; name: string }>;
     onRestorePanel?: (id: string) => void;
+    onUpdateSowReportNo?: (newReportNo: string) => void;
+    onOpenGeodetic?: () => void;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -127,6 +143,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateRCASNSketchReport,
     generateRCONDReport,
     generateRCONDSketchReport,
+    generatePipelineEventSketchReport,
     generateBLReport,
     generateRGReport,
     generateSGReport,
@@ -140,16 +157,101 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     onSummaryOpen,
     onResetLayout,
     closedPanels,
-    onRestorePanel
+    onRestorePanel,
+    onUpdateSowReportNo,
+    onOpenGeodetic
 }) => {
     const isPipeline = headerData?.structureType === "pipeline" || headerData?.isPipeline;
+
+    // SOW Report No Edit State
+    const [isEditSowOpen, setIsEditSowOpen] = useState(false);
+    const [editedReportNo, setEditedReportNo] = useState(headerData.sowReportNo || "");
+    const [isSavingSow, setIsSavingSow] = useState(false);
+
+    useEffect(() => {
+        setEditedReportNo(headerData.sowReportNo || "");
+    }, [headerData.sowReportNo]);
+
+    const handleSaveSowReportNo = async () => {
+        const trimmed = editedReportNo.trim();
+        if (!trimmed) {
+            toast.error("SOW Report No cannot be empty.");
+            return;
+        }
+
+        if (trimmed === headerData.sowReportNo) {
+            setIsEditSowOpen(false);
+            return;
+        }
+
+        setIsSavingSow(true);
+        try {
+            const supabase = createClient();
+            const oldReportNo = headerData.sowReportNo;
+
+            // 1. Update u_sow table if structure and jobpack are bound
+            if (jobPackId && structureId) {
+                const { data: sowEntries } = await supabase
+                    .from("u_sow")
+                    .select("id, report_numbers")
+                    .eq("jobpack_id", Number(jobPackId))
+                    .eq("structure_id", Number(structureId));
+
+                if (sowEntries && sowEntries.length > 0) {
+                    for (const entry of sowEntries) {
+                        const updatedReports = (entry.report_numbers || []).map((r: any) => {
+                            if (r.number === oldReportNo) {
+                                return { ...r, number: trimmed };
+                            }
+                            return r;
+                        });
+                        await supabase
+                            .from("u_sow")
+                            .update({ report_numbers: updatedReports })
+                            .eq("id", entry.id);
+                    }
+                }
+
+                // Update u_sow_items for this jobpack/structure
+                await supabase
+                    .from("u_sow_items")
+                    .update({ report_number: trimmed })
+                    .eq("report_number", oldReportNo);
+            }
+
+            // 2. Update existing inspection records matching old report no
+            if (oldReportNo && oldReportNo !== "N/A" && oldReportNo !== "Unknown Report") {
+                await supabase
+                    .from("insp_records")
+                    .update({ sow_report_no: trimmed })
+                    .eq("sow_report_no", oldReportNo);
+            }
+
+            // 3. Update URL parameter so the workspace reloads cleanly with the new SOW Report No
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("sowReportNo", trimmed);
+            router.replace(`?${params.toString()}`);
+
+            if (onUpdateSowReportNo) {
+                onUpdateSowReportNo(trimmed);
+            }
+
+            toast.success(`SOW Report No updated to "${trimmed}"`);
+            setIsEditSowOpen(false);
+        } catch (err: any) {
+            console.error("Failed to update SOW Report No:", err);
+            toast.error("Failed to update SOW Report No");
+        } finally {
+            setIsSavingSow(false);
+        }
+    };
 
     return (
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800">
             <div className="flex items-center gap-3 flex-wrap">
                 <Link href="/dashboard/inspection-v2">
-                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8">
-                        <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                        <ArrowLeft className="w-4 h-4" /> <span>Back</span>
                     </Button>
                 </Link>
                 <div className="h-5 w-px bg-slate-700"></div>
@@ -159,7 +261,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                 </h1>
                 <div className="h-5 w-px bg-slate-700"></div>
 
-                <div className="flex bg-slate-800 rounded p-1">
+                <div className="flex bg-slate-800 rounded-md p-0.5 border border-slate-700 h-8 items-center">
                     <button
                         onClick={() => {
                             setInspMethod("DIVING");
@@ -167,7 +269,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             params.set("mode", "DIVING");
                             router.replace(`?${params.toString()}`);
                         }}
-                        className={`px-3 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        className={`px-3 py-1 h-7 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
                     >
                         DIVING
                     </button>
@@ -178,7 +280,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                             params.set("mode", "ROV");
                             router.replace(`?${params.toString()}`);
                         }}
-                        className={`px-3 py-1 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        className={`px-3 py-1 h-7 text-xs font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
                     >
                         ROV
                     </button>
@@ -186,12 +288,12 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
 
                 {/* Pipeline Inspection Preset Dropdowns */}
                 {isPipeline && (
-                    <div className="flex items-center gap-2 bg-slate-950/60 p-1 rounded-md border border-slate-800">
+                    <div className="flex items-center gap-2 bg-slate-950/60 p-0.5 rounded-md border border-slate-800 h-8">
                         {/* Inspection Direction Selector */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-                                    <ArrowRightLeft className="w-3 h-3 text-emerald-400" />
+                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm rounded">
+                                    <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-400" />
                                     <span>DIR: <strong className="text-emerald-300 ml-0.5">{inspectionDirection}</strong></span>
                                     <ChevronDown className="w-3 h-3 text-slate-400" />
                                 </Button>
@@ -211,8 +313,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         {/* Inspection Location / Target Selector */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-                                    <Layers className="w-3 h-3 text-cyan-400" />
+                                <Button variant="ghost" size="sm" className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm rounded">
+                                    <Layers className="w-3.5 h-3.5 text-cyan-400" />
                                     <span>LOC: <strong className="text-cyan-300 ml-0.5">{inspectionLocation}</strong></span>
                                     <ChevronDown className="w-3 h-3 text-slate-400" />
                                 </Button>
@@ -244,9 +346,19 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Structure Title:</span>
                         <span className="font-mono font-bold text-slate-200">{headerData.platformName}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700">
+                    <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700 group">
                         <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">SOW Report:</span>
                         <span className="font-mono font-black text-cyan-400">{headerData.sowReportNo}</span>
+                        <button
+                            onClick={() => {
+                                setEditedReportNo(headerData.sowReportNo || "");
+                                setIsEditSowOpen(true);
+                            }}
+                            className="p-1 text-slate-400 hover:text-cyan-300 hover:bg-slate-700/60 rounded transition-colors"
+                            title="Edit / Modify SOW Report No"
+                        >
+                            <Edit2 className="w-3 h-3" />
+                        </button>
                         {headerData.jobType && (
                             <>
                                 <span className="text-slate-600 dark:text-slate-500 font-bold px-1">/</span>
@@ -263,33 +375,104 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                 </div>
             </div>
 
-            <div className="flex gap-2">
+            {/* Modal Dialog to Edit SOW Report No */}
+            <Dialog open={isEditSowOpen} onOpenChange={setIsEditSowOpen}>
+                <DialogContent className="sm:max-w-md bg-slate-900 border-slate-800 text-slate-100 shadow-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-base font-black uppercase tracking-widest text-cyan-400 flex items-center gap-2">
+                            <Edit2 className="w-4 h-4 text-cyan-400" /> Modify SOW Report No
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-slate-400">
+                            Update the active SOW Report Number. This will update linked records and the active session header.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Current SOW Report No</label>
+                            <Input
+                                value={editedReportNo}
+                                onChange={(e) => setEditedReportNo(e.target.value)}
+                                placeholder="Enter Report Number (e.g. REP-2026-01)"
+                                className="bg-slate-950 border-slate-700 text-slate-100 font-mono font-bold focus:border-cyan-500 focus:ring-cyan-500/20"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsEditSowOpen(false)}
+                            disabled={isSavingSow}
+                            className="text-slate-400 hover:text-white hover:bg-slate-800 text-xs font-bold uppercase"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            size="sm"
+                            onClick={handleSaveSowReportNo}
+                            disabled={isSavingSow}
+                            className="bg-cyan-600 text-white hover:bg-cyan-500 text-xs font-bold uppercase px-4 shadow-md"
+                        >
+                            {isSavingSow ? "Saving..." : "Save Changes"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <div className="flex gap-2 items-center">
+                {onOpenGeodetic && isPipeline && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-blue-950/60 border-blue-700/60 text-blue-300 hover:bg-blue-900/70 hover:text-white h-8 w-8 p-0 rounded-md font-bold shadow-md flex items-center justify-center shrink-0"
+                        onClick={onOpenGeodetic}
+                        title="Geodetic Parameters (Global Positioning & Survey Reference)"
+                    >
+                        <Globe className="w-4 h-4 text-blue-400" />
+                    </Button>
+                )}
+
                 <Button
                     variant="outline"
                     size="sm"
-                    className="bg-gradient-to-r from-cyan-600 to-teal-600 border-cyan-500 text-white hover:from-cyan-500 hover:to-teal-500 hover:text-white h-8 font-bold shadow-md shadow-cyan-900/30"
+                    className="bg-gradient-to-r from-cyan-600 to-teal-600 border-cyan-500 text-white hover:from-cyan-500 hover:to-teal-500 hover:text-white h-8 px-2.5 rounded-md font-bold shadow-md shadow-cyan-900/30 flex items-center gap-1.5 text-[11px]"
                     onClick={onSummaryOpen}
+                    title="Inspection Summary Dashboard"
                 >
-                    <BarChart3 className="w-4 h-4 mr-2" /> Inspection Summary
+                    <BarChart3 className="w-4 h-4" /> <span>Inspection Summary</span>
                 </Button>
 
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8"
-                    onClick={() => setIsReportWizardOpen(true)}
-                >
-                    <Printer className="w-4 h-4 mr-2" /> Reports
-                </Button>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8 px-2.5 rounded-md flex items-center gap-1.5 text-[11px] font-bold"
+                            title="Reports Wizard & Report Templates"
+                        >
+                            <Printer className="w-4 h-4 text-cyan-400" /> <span>Reports</span> <ChevronDown className="w-3 h-3 text-slate-400" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64 bg-slate-900 border-slate-700 text-slate-200 shadow-xl">
+                        <DropdownMenuItem 
+                            onClick={() => setIsReportWizardOpen(true)}
+                            className="text-xs font-bold hover:bg-slate-800 cursor-pointer py-2 text-cyan-400 flex items-center gap-2"
+                        >
+                            <Printer className="w-4 h-4 text-cyan-400" /> Open Report Wizard...
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
  
                 {jobPackId && structureId ? (
-                    <div className="flex bg-slate-800 rounded p-0.5 border border-slate-700">
+                    <div className="flex items-center bg-slate-800 rounded-md p-0.5 border border-slate-700 h-8">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button 
                                     variant="ghost" 
                                     size="sm" 
-                                    className="text-slate-300 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 hover:bg-slate-700/50"
+                                    className="text-slate-300 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 hover:bg-slate-700/50 rounded"
                                     title="Dock station window settings and layout control"
                                 >
                                     <LayoutGrid className="w-3.5 h-3.5 text-blue-400" />
@@ -339,7 +522,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         <Button 
                             variant="ghost" 
                             size="sm" 
-                            className="bg-blue-600/90 text-white hover:bg-blue-600 h-7 px-3 text-[10px] font-black uppercase tracking-widest"
+                            className="bg-blue-600/90 text-white hover:bg-blue-600 h-7 px-2.5 text-[10px] font-black uppercase tracking-widest rounded"
                             onClick={() => {
                                 const structType = headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM';
                                 const currentUrl = window.location.href;
@@ -347,11 +530,11 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 router.push(`/dashboard/jobpack/${jobPackId}?tab=sow&structure=${structType}-${structureId}&returnTo=${returnTo}`);
                             }}
                         >
-                            <Grid3X3 className="w-3.5 h-3.5 mr-1.5" /> Workspace
+                            <Grid3X3 className="w-3.5 h-3.5 mr-1" /> Workspace
                         </Button>
                     </div>
                 ) : (
-                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-400 h-8 cursor-not-allowed opacity-50" disabled>
+                    <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-400 h-8 cursor-not-allowed opacity-50 rounded-md" disabled>
                         <Grid3X3 className="w-4 h-4 mr-2" /> Workspace
                     </Button>
                 )}

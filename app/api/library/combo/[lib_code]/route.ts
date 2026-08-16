@@ -30,7 +30,7 @@ export async function GET(
 
         // Fetch combo items - table uses lib_com for comments
         const { data: comboItems, error } = await supabase
-            .from("u_lib_combo" as any)
+            .from("u_lib_combo")
             .select("lib_code, code_1, code_2, lib_com, lib_delete")
             .eq("lib_code", lib_code)
             .order("code_1, code_2");
@@ -83,16 +83,42 @@ export async function POST(
             );
         }
 
-        // Check for duplicate combination
+        // Check for existing combination (including soft-deleted)
         const { data: existing } = await supabase
-            .from("u_lib_combo" as any)
-            .select("lib_code, code_1, code_2")
+            .from("u_lib_combo")
+            .select("lib_code, code_1, code_2, lib_delete")
             .eq("lib_code", lib_code)
             .eq("code_1", code_1)
             .eq("code_2", code_2)
             .maybeSingle();
 
         if (existing) {
+            // lib_delete is set to any non-null value when soft-deleted (1, "1", "Y", etc.)
+            const isSoftDeleted = existing.lib_delete != null;
+
+            if (isSoftDeleted) {
+                // Clear lib_delete and restore the combination seamlessly
+                const { data: updated, error: updateError } = await supabase
+                    .from("u_lib_combo")
+                    .update({
+                        lib_com: lib_com || null,
+                        lib_delete: null,
+                    })
+                    .eq("lib_code", lib_code)
+                    .eq("code_1", code_1)
+                    .eq("code_2", code_2)
+                    .select()
+                    .single();
+
+                if (updateError) {
+                    console.error("Supabase update error:", updateError);
+                    throw updateError;
+                }
+
+                console.log("Successfully reactivated combo:", updated);
+                return NextResponse.json({ data: updated }, { status: 200 });
+            }
+
             return NextResponse.json(
                 { error: "This combination already exists" },
                 { status: 409 }
@@ -103,12 +129,13 @@ export async function POST(
         console.log("Attempting to insert combo:", { lib_code, code_1, code_2, lib_com });
 
         const { data, error } = await supabase
-            .from("u_lib_combo" as any)
+            .from("u_lib_combo")
             .insert({
                 lib_code,
                 code_1,
                 code_2,
-                lib_com: lib_com || null, // Allow null for empty comments
+                lib_com: lib_com || null,
+                lib_delete: null,
             })
             .select()
             .single();

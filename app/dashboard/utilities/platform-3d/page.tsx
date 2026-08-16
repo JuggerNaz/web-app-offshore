@@ -15,11 +15,13 @@ import {
     Waves,
     RefreshCw,
     X,
-    AlertTriangle
+    AlertTriangle,
+    Printer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import dynamic from "next/dynamic";
 
 const Structural3DViewer = dynamic(
@@ -36,6 +38,7 @@ const Structural3DViewer = dynamic(
 );
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { WincairsFallbackDialog } from "@/components/dialogs/wincairs-fallback-dialog";
+import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 
@@ -75,6 +78,9 @@ export default function Platform3DPage() {
     const [useWincairsMode, setUseWincairsMode] = useState(false);
     const [fallbackComponents, setFallbackComponents] = useState<any[]>([]);
     const [isFallbackDialogOpen, setIsFallbackDialogOpen] = useState(false);
+    const [isPrintFaceDialogOpen, setIsPrintFaceDialogOpen] = useState(false);
+    const [isResyncing3D, setIsResyncing3D] = useState(false);
+    const [useWebapp3dConnection, setUseWebapp3dConnection] = useState(true);
 
     const [, setGlobalUrlId] = useAtom(urlId);
     const [, setGlobalUrlType] = useAtom(urlType);
@@ -113,26 +119,52 @@ export default function Platform3DPage() {
         selectedPlatform ? `/api/structure-components/${selectedPlatform.plat_id}` : null,
         fetcher
     );
+
+    const handleResync3DCache = async () => {
+        if (!selectedPlatform) return;
+        setIsResyncing3D(true);
+        try {
+            const res = await fetch(`/api/platform/webapp-3d/${selectedPlatform.plat_id}?resync=true`, { method: "POST" });
+            if (res.ok) {
+                toast.success("3D cache resynchronized successfully!");
+                await mutateComponents();
+                if (mutateWebapp3d) await mutateWebapp3d();
+            } else {
+                toast.error("Failed to resynchronize 3D cache.");
+            }
+        } catch (e) {
+            toast.error("Error resynchronizing 3D cache.");
+        } finally {
+            setIsResyncing3D(false);
+        }
+    };
     const components: Component[] = useMemo(() => {
         const all = componentsData?.data || [];
-        const excludeCodes = ["IT", "CU", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD"];
+        const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
         return all
             .filter((c: any) => {
                 if (c.is_deleted) return false;
                 const code = (c.code || "").trim().toUpperCase();
                 const qIdUpper = (c.q_id || "").toUpperCase();
                 const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
-                if (excludeCodes.includes(code) && !isRiserSupport) {
+                if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) {
+                    return false;
+                }
+
+                if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) {
                     return false;
                 }
 
                 // Exclude intermediate member seam welds (keep only primary junction node welds)
-                if (code === "WN" && c.q_id && c.q_id.includes("-")) {
-                    return false;
+                if (code === "WN") {
+                    const md = c.metadata || c;
+                    const sNode = (md.s_node || "").toString().trim().toUpperCase();
+                    const fNode = (md.f_node || "").toString().trim().toUpperCase();
+                    if (sNode && fNode && sNode !== fNode) return false;
                 }
 
-                // Exclude fender support components like FEND 1-SUPP-A2 / FEND x-SUPP-xx
-                if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) {
+                // Exclude fender/boatlanding support components like FEND 1-SUPP-A2 / BL 1-SUPP-A2
+                if (/^(?:FEND|BL|BOAT)\s+\d+-SUPP-/i.test(qIdUpper)) {
                     return false;
                 }
                 // Exclude components whose q_id ends with TERM
@@ -157,10 +189,16 @@ export default function Platform3DPage() {
     );
     const platformDetails = platformDetailData?.data;
 
-    // Fetch WebApp 3D Coordinates
-    const { data: webapp3dResponse, isLoading: isWebapp3dLoading } = useSWR(
+    // Fetch WebApp 3D Coordinates (Only revalidate when user explicitly clicks Re-sync 3D Cache)
+    const { data: webapp3dResponse, isLoading: isWebapp3dLoading, mutate: mutateWebapp3d } = useSWR(
         selectedPlatform ? `/api/platform/webapp-3d/${selectedPlatform.plat_id}` : null,
-        fetcher
+        fetcher,
+        {
+            revalidateOnFocus: false,
+            revalidateOnReconnect: false,
+            revalidateIfStale: true,
+            refreshInterval: 0,
+        }
     );
     const webapp3dData = webapp3dResponse?.data;
 
@@ -301,21 +339,16 @@ export default function Platform3DPage() {
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
-                        {/* WINCAIRS Mode Toggle Button */}
+                        {/* Print Face Button */}
                         <Button
-                            variant={useWincairsMode ? "default" : "outline"}
+                            variant="outline"
                             size="sm"
-                            onClick={() => setUseWincairsMode(!useWincairsMode)}
-                            className={cn(
-                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all shadow-sm",
-                                useWincairsMode
-                                    ? "bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)]"
-                                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                            )}
-                            title="Toggle WINCAIRS 3D Vector Rendering Mode"
+                            onClick={() => setIsPrintFaceDialogOpen(true)}
+                            className="h-9 px-3 gap-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)] transition-all"
+                            title="Print 2D CAD Structural Elevation Sketch for Selected Platform Face"
                         >
-                            <Layers className="h-3.5 w-3.5" />
-                            <span>WINCAIRS Mode: {useWincairsMode ? "ON" : "OFF"}</span>
+                            <Printer className="h-3.5 w-3.5" />
+                            <span>Print Face</span>
                         </Button>
 
                         {/* Fallback Warning Badge */}
@@ -343,13 +376,17 @@ export default function Platform3DPage() {
                             <span>Sync</span>
                         </Button>
 
-                        <div className="flex flex-col items-end pl-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Status</span>
-                            <span className="text-xs font-bold text-emerald-500 uppercase tracking-tight flex items-center gap-1.5">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                Interactive
-                            </span>
-                        </div>
+                        <Button 
+                            variant="outline"
+                            size="sm"
+                            onClick={handleResync3DCache}
+                            disabled={isResyncing3D}
+                            className="h-9 px-3 gap-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all shadow-xs"
+                            title="Re-sync 3D positioning cache for all platform components"
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", isResyncing3D && "animate-spin")} />
+                            <span>{isResyncing3D ? "Resynchronizing..." : "Re-sync 3D Cache"}</span>
+                        </Button>
                     </div>
                 </div>
 
@@ -375,7 +412,7 @@ export default function Platform3DPage() {
                             useWincairsMode={useWincairsMode}
                             wincairsParams={wincairsParams}
                             onFallbackComponentsChange={setFallbackComponents}
-                            webapp3dData={webapp3dData}
+                            webapp3dData={useWebapp3dConnection ? webapp3dData : null}
                         />
                     </div>
 
@@ -414,6 +451,17 @@ export default function Platform3DPage() {
                     fallbackComponents={fallbackComponents}
                     platformTitle={selectedPlatform.title}
                     onSelectComponent={handleSelectComponent}
+                />
+
+                {/* Print Face Selection Dialog */}
+                <PrintFaceDialog
+                    isOpen={isPrintFaceDialogOpen}
+                    onClose={() => setIsPrintFaceDialogOpen(false)}
+                    platformTitle={selectedPlatform.title}
+                    faces={faces}
+                    componentLayouts={webapp3dData?.components && webapp3dData.components.length > 0 ? webapp3dData.components : (components || [])}
+                    foundationMembers={webapp3dData?.foundationMembers || []}
+                    elevations={elevations}
                 />
             </div>
         );

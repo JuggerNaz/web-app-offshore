@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -247,28 +247,39 @@ export const generateROVRRISIJTubeDetailReport = async (
                 const tapeNo = r.tape_no || "—";
 
                 // Format CP
-                const cpVal = d.cp_rdg ?? d.cp ?? "";
-                let cpDisplay = cpVal !== "" && cpVal !== null && cpVal !== undefined ? `${cpVal} mV` : "—";
-                
-                const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
-                const addCpDetails: string[] = [];
+                const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
+                const additionals = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+                const additionalCPs = additionals
+                    .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                    .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+                const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+                const cpDisplay = cpList.length > 0
+                    ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
+                    : "—";
+
+                // Format Findings
+                let findingsParts: string[] = [];
+                if (r.description && r.description.trim()) {
+                    findingsParts.push(r.description.trim());
+                } else if (d.findings && d.findings.trim()) {
+                    findingsParts.push(d.findings.trim());
+                }
+
                 additionals.forEach((a: any) => {
                     const val = a.reading ?? a.cp_rdg ?? "";
-                    if (val !== "" && val !== null && val !== undefined) {
-                        cpDisplay += `, ${val} mV`;
+                    if ((val !== "" && val !== null && val !== undefined) || a.location) {
                         const loc = a.location ? ` @ ${a.location}` : "";
-                        addCpDetails.push(`Add. CP${loc}: ${val} mV`);
+                        const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                        findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
                     }
                 });
 
-                // Format Findings
-                let findings = r.description || d.findings || "No significant findings";
-                if (addCpDetails.length > 0) {
-                    findings += `\n[${addCpDetails.join(", ")}]`;
-                }
                 if (anoms.length > 0) {
-                    findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || a.anomaly_ref_no || "N/A"}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ""})` : ""}`).join("\n");
+                    findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || a.anomaly_ref_no || "N/A"}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ""})` : ""}`));
                 }
+
+                const findings = findingsParts.length > 0 ? findingsParts.join("\n") : "No significant findings";
 
                 return [
                     { content: String(rIdx + 1), styles: { halign: "center" as const } },
@@ -323,7 +334,7 @@ export const generateROVRRISIJTubeDetailReport = async (
                 sigY = pageHeight - 38;
             }
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
                 if (!config.printFriendly) {
@@ -337,13 +348,15 @@ export const generateROVRRISIJTubeDetailReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
 
-            drawSig('PREPARED BY', margin);
-            drawSig('REVIEWED BY', margin + sigW);
-            drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig("PREPARED BY", margin, config?.preparedBy);
+            drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
         }
 
         // --- Finalize Page Numbers ---

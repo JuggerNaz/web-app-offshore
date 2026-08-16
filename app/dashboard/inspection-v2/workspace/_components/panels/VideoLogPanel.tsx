@@ -34,6 +34,13 @@ interface VideoLogPanelProps {
   setVideoEvents: React.Dispatch<React.SetStateAction<any[]>>;
   setEditingEvent: (ev: any) => void;
   handleDeleteEvent: (id: string, logType: string, realId: number) => void;
+  currentTool?: string;
+  setCurrentTool?: (tool: any) => void;
+  currentColor?: string;
+  setCurrentColor?: (color: string) => void;
+  lineWidth?: number;
+  setLineWidth?: (width: number) => void;
+  overlayManager?: any;
 }
 
 export function VideoLogPanel({
@@ -66,22 +73,29 @@ export function VideoLogPanel({
   setVideoEvents,
   setEditingEvent,
   handleDeleteEvent,
+  currentTool,
+  setCurrentTool,
+  currentColor,
+  setCurrentColor,
+  lineWidth,
+  setLineWidth,
+  overlayManager,
 }: VideoLogPanelProps) {
   return (
-    <div className="flex-1 min-h-0 bg-black rounded-none overflow-hidden relative group/video flex flex-col h-full">
+    <div className="flex flex-col h-full bg-[#0f172a] text-slate-100 overflow-hidden">
       <VideoInterface
-        videoRef={videoRef}
-        canvasRef={canvasRef}
         vidState={vidState}
-        streamActive={streamActive}
-        setStreamActive={setStreamActive}
         vidTimer={vidTimer}
         tapeNo={tapeNo}
         videoVisible={videoVisible}
         setVideoVisible={setVideoVisible}
+        streamActive={streamActive}
+        setStreamActive={setStreamActive}
         isStreamRecording={isStreamRecording}
         isStreamPaused={isStreamPaused}
         previewStream={previewStream}
+        videoRef={videoRef}
+        canvasRef={canvasRef}
         onStartRecording={handleStartStreamRecording}
         onPauseRecording={handlePauseStreamRecording}
         onResumeRecording={handleResumeStreamRecording}
@@ -91,9 +105,17 @@ export function VideoLogPanel({
         onPopOut={handlePopOutStream}
         onStopStream={() => setStreamActive(false)}
         pipActive={!!pipWindow}
+        pipWindow={pipWindow}
         formatTime={formatTime}
         showDrawingTools={showDrawingTools}
         setShowDrawingTools={setShowDrawingTools}
+        currentTool={currentTool}
+        setCurrentTool={setCurrentTool}
+        currentColor={currentColor}
+        setCurrentColor={setCurrentColor}
+        lineWidth={lineWidth}
+        setLineWidth={setLineWidth}
+        overlayManager={overlayManager}
       />
       <div className="bg-[#0f172a] h-[180px] shrink-0 border-t border-slate-800 overflow-hidden">
         <TapeLogEvents
@@ -102,8 +124,6 @@ export function VideoLogPanel({
           onEditEvent={(ev) => {
             setEditingEvent(ev);
           }}
-          expanded={true}
-          setExpanded={() => {}}
         />
       </div>
     </div>

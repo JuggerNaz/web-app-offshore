@@ -8,13 +8,16 @@ export function formatInspectionTypeName(name: string | null | undefined): strin
   // 1. Fix common mislabeled UT names (casing)
   let formatted = name.replace(/\bUt\b/g, "UT");
   
-  // 2. Normalize "UT Thickness" to "UT Wall Thickness" if it's the specific code code
-  if (formatted === "UT Thickness") return "UT Wall Thickness";
-  
-  // 3. Remove "ROV " or "DIVING " prefixes if it's for UT Wall Thickness 
-  // to match user's desired "UT Wall Thickness" display
-  if (formatted.includes("UT Wall Thickness")) {
-    formatted = formatted.replace(/^(ROV|DIVING)\s+/, "");
+  // 2. Normalize "UT Thickness" to "UT Wall Thickness"
+  if (formatted === "UT Thickness") formatted = "UT Wall Thickness";
+
+  // 3. Format ROV and Diving prefixes into postfixes
+  // E.g., "ROV General Visual Inspection" -> "General Visual Inspection (ROV)"
+  // E.g., "Diving Bolted Support Inspection" -> "Bolted Support Inspection (Diving)"
+  if (/^ROV\s+/i.test(formatted)) {
+    formatted = formatted.replace(/^ROV\s+/i, "") + " (ROV)";
+  } else if (/^DIVING\s+/i.test(formatted)) {
+    formatted = formatted.replace(/^DIVING\s+/i, "") + " (Diving)";
   }
   
   return formatted;

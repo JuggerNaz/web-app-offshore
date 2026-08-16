@@ -40,3 +40,7 @@ next-env.d.ts
 # lock
 *.lock
 !yarn.lock
+
+# scratch
+scratch/
+

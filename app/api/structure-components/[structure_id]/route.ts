@@ -10,7 +10,7 @@ import { syncWebapp3D } from "@/utils/platform-3d-math";
 /**
  * GET /api/structure-components/[structure_id]
  * Fetch structure components by structure_id and optional code filter
- * Query params: ?code=ANODE (optional)
+ * Query params: ?code=ANODE (optional), ?archived=true, ?show_all=true, ?view_filter=default|show_all|findings|anomaly
  */
 export const GET = withAuth(
   async (
@@ -92,24 +92,25 @@ export const GET = withAuth(
       .in("source_id", componentIds)
       .in("source_type", ["component", "COMPONENT", "structure_component"]);
 
-    // Fetch inspection records with jobpack — inspection type name resolved client-side from JSON
+    // Fetch ALL inspection records for this structure (by structure_id so records
+    // without component_id — e.g. legacy migrated data — can still be matched by QID)
     const { data: inspRecords } = await supabase
       .from("insp_records")
       .select(
         `
-        insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description, sow_report_no,
+        insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description, sow_report_no, inspection_data,
         jobpack:jobpack_id(id, name)
       `
       )
-      .in("component_id", componentIds);
+      .eq("structure_id", structureIdNumber);
 
-    // Fetch anomalies directly linked to the components via the view
+    // Fetch ALL anomalies for this structure via the view
     const { data: componentAnomalies } = await (supabase as any)
       .from("v_anomaly_details")
       .select(
-        "anomaly_id, component_id, priority, status, defect_type, category, description, display_ref_no, jobpack_name"
+        "anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name"
       )
-      .in("component_id", componentIds);
+      .eq("structure_id", structureIdNumber);
 
     let inspAtts: any[] = [];
     if (inspRecords && inspRecords.length > 0) {
@@ -132,25 +133,47 @@ export const GET = withAuth(
       const inspAttsSet = new Set(inspAtts.map((a: any) => a.source_id));
       inspRecords.forEach((r: any) => {
         if (inspAttsSet.has(r.insp_id)) {
-          compsWithAtts.add(r.component_id);
+          if (r.component_id) {
+            compsWithAtts.add(r.component_id);
+          }
         }
       });
     }
 
     // Apply has_attachment flag and enrich with inspections/anomalies
+    // (matching by component_id OR component QID so legacy records link correctly)
     data.forEach((item: any) => {
       item.has_attachment = compsWithAtts.has(item.id);
 
-      if (inspRecords) {
-        item.inspections = inspRecords.filter((r: any) => r.component_id === item.id);
-      } else {
-        item.inspections = [];
-      }
-      if (componentAnomalies) {
-        item.anomalies = componentAnomalies.filter((a: any) => a.component_id === item.id);
-      } else {
-        item.anomalies = [];
-      }
+      const qidUpper = item.q_id ? item.q_id.toUpperCase() : "";
+
+      item.inspections = (inspRecords || []).filter((r: any) => {
+        if (r.component_id && r.component_id === item.id) return true;
+        if (qidUpper) {
+          if (r.component_qid && String(r.component_qid).toUpperCase() === qidUpper) return true;
+          if (r.inspection_data?.component && String(r.inspection_data.component).toUpperCase() === qidUpper) return true;
+          if (r.inspection_data?.component_qid && String(r.inspection_data.component_qid).toUpperCase() === qidUpper) return true;
+          if (r.inspection_data?.qid && String(r.inspection_data.qid).toUpperCase() === qidUpper) return true;
+        }
+        return false;
+      }) || [];
+
+      item.anomalies = (componentAnomalies || []).filter((a: any) => {
+        if (a.component_id && a.component_id === item.id) return true;
+        if (qidUpper) {
+          if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) return true;
+          if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) return true;
+        }
+        return false;
+      }) || [];
+
+      const hasAnom =
+        item.anomalies.length > 0 ||
+        item.inspections.some(
+          (r: any) => r.has_anomaly || String(r.status).toUpperCase() === "ANOMALY"
+        );
+      item.has_anomaly = hasAnom;
+      item.hasAnomaly = hasAnom;
     });
 
     // Apply view_filter for findings/anomaly
@@ -158,7 +181,11 @@ export const GET = withAuth(
     if (viewFilter === "findings") {
       finalData = data.filter((item: any) => item.inspections && item.inspections.length > 0);
     } else if (viewFilter === "anomaly") {
-      finalData = data.filter((item: any) => item.anomalies && item.anomalies.length > 0);
+      finalData = data.filter(
+        (item: any) =>
+          (item.anomalies && item.anomalies.length > 0) ||
+          item.has_anomaly === true
+      );
     }
     // -----------------------------
 

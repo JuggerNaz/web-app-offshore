@@ -120,6 +120,50 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
 
             if (error) throw error;
 
+            // Auto-stop active video log if ROV recovered / back to surface / TMS
+            const mTypeLower = (newMovement.movement_type || "").toLowerCase();
+            const isRecovery =
+                mTypeLower.includes("surface") ||
+                mTypeLower.includes("recovered") ||
+                mTypeLower.includes("tms") ||
+                mTypeLower.includes("deck");
+
+            if (isRecovery) {
+                try {
+                    const { data: activeTape } = await supabase
+                        .from("insp_video_tapes")
+                        .select("tape_id")
+                        .eq("rov_job_id", depId)
+                        .order("tape_id", { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (activeTape?.tape_id) {
+                        const { data: latestVideoLog } = await supabase
+                            .from("insp_video_logs")
+                            .select("*")
+                            .eq("tape_id", activeTape.tape_id)
+                            .order("event_time", { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (latestVideoLog && latestVideoLog.event_type !== "END") {
+                            await supabase.from("insp_video_logs").insert({
+                                tape_id: activeTape.tape_id,
+                                event_type: "END",
+                                event_time: finalTime,
+                                timecode_start: latestVideoLog.timecode_start || "00:00:00",
+                                tape_counter_start: latestVideoLog.tape_counter_start || 0,
+                                remarks: "Auto-stopped: ROV returned to surface/TMS/recovered",
+                            });
+                            console.log("[AutoStop] Video log automatically stopped on ROV recovery.");
+                        }
+                    }
+                } catch (vErr) {
+                    console.warn("[AutoStop] Warning stopping active video log on ROV movement:", vErr);
+                }
+            }
+
             toast.success("Movement logged");
             setNewMovement({ movement_type: "", remarks: "", movement_time: getLocalDatetimeString() });
             await loadMovements();

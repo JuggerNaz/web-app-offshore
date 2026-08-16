@@ -39,10 +39,5 @@ export async function GET() {
         })
     );
 
-    // Filter to only include fields that have at least one structure (platform or pipeline)
-    const fieldsWithStructures = fieldsWithStats.filter(
-        (field) => field.platform_count > 0 || field.pipeline_count > 0
-    );
-
-    return NextResponse.json({ data: fieldsWithStructures });
+    return NextResponse.json({ data: fieldsWithStats });
 }

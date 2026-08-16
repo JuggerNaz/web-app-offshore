@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,13 +11,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Link2, Paperclip, AlertCircle, ChevronsLeft, ChevronLeft, ChevronsRight } from "lucide-react";
+import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Link2, Paperclip, AlertCircle, ChevronsLeft, ChevronLeft, ChevronsRight, ShieldAlert, AlertTriangle } from "lucide-react";
 import { DeleteConfirmDialog } from "../dialogs/delete-confirm-dialog";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { ComponentEditDialog, EditableComponent } from "@/components/dialogs/component-edit-dialog";
 import { InspectionSummaryModal } from "@/components/dialogs/inspection-summary-modal";
 import { AnomalySummaryModal } from "@/components/dialogs/anomaly-summary-modal";
+import { ComponentIntegrityModal, getMissingIntegrityFields } from "@/components/dialogs/component-integrity-modal";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { useSearchParams } from "next/navigation";
@@ -77,7 +78,7 @@ export default function ComponentContent() {
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const searchParams = useSearchParams();
 
-  // Modal states for Inspections and Anomalies
+  // Modal states for Inspections, Anomalies, and Component Integrity
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
   const [selectedInspections, setSelectedInspections] = useState<any[]>([]);
   
@@ -85,6 +86,8 @@ export default function ComponentContent() {
   const [selectedAnomalies, setSelectedAnomalies] = useState<any[]>([]);
   const [anomalyDetailOpen, setAnomalyDetailOpen] = useState(false);
   const [selectedAnomalyForDetail, setSelectedAnomalyForDetail] = useState<any>(null);
+
+  const [integrityModalOpen, setIntegrityModalOpen] = useState(false);
 
   const getHighestPriorityAnomalyColor = (anomalies: any[]) => {
     if (!anomalies || anomalies.length === 0) return null;
@@ -182,6 +185,10 @@ export default function ComponentContent() {
     if (!associated_comp_id) return null;
     return allComponentsLookup.find((c) => c.id === associated_comp_id)?.q_id || null;
   };
+
+  const incompleteComponentsCount = useMemo(() => {
+    return components.filter((comp: Component) => getMissingIntegrityFields(comp).length > 0).length;
+  }, [components]);
 
   // Filter components by search query and type relevancy
   const filteredComponents = components.filter((comp: Component) => {
@@ -441,12 +448,38 @@ export default function ComponentContent() {
                 <Plus className="h-4 w-4" />
                 <span className="hidden sm:inline">Add Component</span>
               </Button>
+
+              <div className="flex flex-col items-center gap-1.5 shrink-0">
+                <Button
+                  onClick={() => setIntegrityModalOpen(true)}
+                  variant="outline"
+                  title="Component Integrity Audit"
+                  className={cn(
+                    "h-11 px-3.5 rounded-xl font-bold text-xs gap-2 transition-all shadow-sm border",
+                    incompleteComponentsCount > 0
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20"
+                      : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                  )}
+                >
+                  <AlertTriangle className={cn("h-5 w-5 shrink-0", incompleteComponentsCount > 0 ? "text-amber-500 animate-pulse" : "text-slate-400")} />
+                  <span
+                    className={cn(
+                      "px-2 py-0.5 rounded-full text-[11px] font-black",
+                      incompleteComponentsCount > 0
+                        ? "bg-amber-500 text-slate-950"
+                        : "bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                    )}
+                  >
+                    {incompleteComponentsCount}
+                  </span>
+                </Button>
+                <div className="px-3 py-0.5 bg-slate-100 dark:bg-slate-800/50 rounded-full whitespace-nowrap">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    {sortedComponents.length} Records
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 rounded-full">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-              {sortedComponents.length} Records
-            </span>
           </div>
         </div>
 
@@ -781,6 +814,31 @@ export default function ComponentContent() {
         loading={deleteLoading}
         title="Delete Component"
         description="Are you sure you want to permanently delete this record? This action cannot be undone and will remove the component from the system."
+      />
+
+      <ComponentIntegrityModal
+        open={integrityModalOpen}
+        onOpenChange={setIntegrityModalOpen}
+        components={components}
+        onEditComponent={(comp) => {
+          handleEditComponent(comp as Component);
+        }}
+        onDuplicateComponent={(comp) => {
+          handleDuplicateComponent(comp as Component);
+        }}
+        onArchiveComponent={async (comp) => {
+          try {
+            await fetcher(`/api/structure-components/item/${comp.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ is_deleted: !comp.is_deleted }),
+            });
+            if (apiUrl) mutate(apiUrl);
+            toast.success(comp.is_deleted ? "Component restored" : "Component archived");
+          } catch (error) {
+            console.error("Action failed", error);
+            toast.error("Failed to update component status");
+          }
+        }}
       />
       
       <InspectionSummaryModal

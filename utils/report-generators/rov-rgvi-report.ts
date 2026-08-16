@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -18,25 +18,15 @@ interface ReportConfig {
     preparedBy?: { name: string; date: string };
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
 
 /**
- * ROV General Visual Inspection Report (RGVI) — Portrait
- *
- * Columns: Item No. | Component QID | Elevation (m) | Dive No. | Tape No. | CP (mV) | Findings
- *
- * Findings column aggregates (in order, only when present):
- *   • Marine Growth: <value>
- *   • Component Condition: <value>
- *   • Coating Condition: <value>
- *   • Debris: <value>  [Material: <material>]
- *   • Additional CP readings:  Add. CP @ <location>: <value> mV
- *   • General description / remarks
- *   • Anomaly Ref: <ref>
- *   • Rectified: <remarks>
+ * ROV Riser Guard General Visual Inspection (RGVI) Report (Portrait)
+ * Columns: Item No. | Component QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
  */
 export const generateROVRGVIReport = async (
     records: any[],
@@ -48,7 +38,7 @@ export const generateROVRGVIReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin       = 12;
+        const margin = 12;
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
@@ -69,7 +59,10 @@ export const generateROVRGVIReport = async (
             const dates = records
                 .map(r => new Date(r.cr_date || r.created_at))
                 .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = min(dates); endDate = max(dates); }
+            if (dates.length > 0) {
+                startDate = min(dates);
+                endDate   = max(dates);
+            }
         }
         const dateRangeStr = startDate && endDate
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
@@ -77,7 +70,7 @@ export const generateROVRGVIReport = async (
 
         const HEADER_H = 24;
 
-        // ── Pre-load logos (async, once) ────────────────────────────────────────
+        // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
         if (companySettings.logo_url) {
@@ -91,7 +84,8 @@ export const generateROVRGVIReport = async (
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
             if (isPF) {
-                d.setDrawColor(...colors.navy); d.setLineWidth(0.5);
+                d.setDrawColor(...colors.navy);
+                d.setLineWidth(0.5);
                 d.rect(margin, margin, contentWidth, HEADER_H, "S");
                 d.setTextColor(...colors.navy);
             } else {
@@ -107,14 +101,15 @@ export const generateROVRGVIReport = async (
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
             d.setFontSize(7);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(12);  d.setFont("helvetica", "bold");
-            d.text("ROV General Visual Inspection Report (RGVI)",                       margin + contentWidth / 2, margin + 17, { align: "center" });
+            d.setFontSize(13);  d.setFont("helvetica", "bold");
+            d.text("Riser Guard Inspection Report (ROV)",                    margin + contentWidth / 2, margin + 17, { align: "center" });
             d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,                 margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
         };
 
-        // ── Context boxes ───────────────────────────────────────────────────────
+        // ── Context info boxes ─────────────────────────────────────────────────
         const ROW_H = 7;
+
         const drawContextRow = (d: jsPDF, y: number) => {
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
@@ -135,7 +130,7 @@ export const generateROVRGVIReport = async (
             return y + ROW_H * 2 + 4;
         };
 
-        // ── Sort by elevation (shallowest → deepest) ───────────────────────────
+        // ── Sort by elevation (top → bottom) ───────────────────────────────────
         const sorted = [...records].sort((a, b) => {
             const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
             const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
@@ -158,11 +153,20 @@ export const generateROVRGVIReport = async (
             const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const cpDisplay  = primaryCP !== "" && primaryCP !== null && primaryCP !== undefined
-                ? `${primaryCP} mV`
+            const addCPs: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            const additionalCPs = addCPs
+                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+            const cpDisplay = cpList.length > 0
+                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
             const parts: string[] = [];
+
+            // 1. Findings / Description
+            if (r.description?.trim()) parts.push(r.description.trim());
 
             const mg = d.marine_growth ?? [
                 d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
@@ -182,17 +186,17 @@ export const generateROVRGVIReport = async (
                 parts.push(`Debris: ${debris}${mat}`);
             }
 
-            const addCPs: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
+            // 2. CP Additional
             addCPs.forEach((a: any) => {
                 const val = a.reading ?? a.cp_rdg ?? "";
-                if (val !== "" && val !== null && val !== undefined) {
+                if ((val !== "" && val !== null && val !== undefined) || a.location) {
                     const loc = a.location ? ` @ ${a.location}` : "";
-                    parts.push(`Add. CP${loc}: ${val} mV`);
+                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                    parts.push(`Add. CP${loc}: ${val}${unit}`);
                 }
             });
 
-            if (r.description?.trim()) parts.push(r.description.trim());
-
+            // 3. Anomaly & Rectification
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef    = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) parts.push(`Ref: ${anomRef}`);
@@ -258,7 +262,6 @@ export const generateROVRGVIReport = async (
                 5: { cellWidth: 20,   halign: "center" },
                 6: { cellWidth: "auto" },
             },
-            // Sync callback — logos already preloaded
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
@@ -279,15 +282,19 @@ export const generateROVRGVIReport = async (
                     data.cell.styles.fontStyle  = "bold";
                 }
             },
+            didDrawCell: (data) => {
+            },
             didDrawPage: (data) => {
-                if (data.pageNumber > 1) drawPageHeader(doc);
-
+                if (data.pageNumber > 1) {
+                    drawPageHeader(doc);
+                }
+                // Footer
                 doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.text);
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ROV GVI Report (RGVI)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Riser Guard Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
@@ -296,19 +303,16 @@ export const generateROVRGVIReport = async (
             },
         });
 
+        const finalY = (doc as any).lastAutoTable.finalY || startY;
         if (config.showSignatures !== false) {
-            const finalY = (doc as any).lastAutoTable?.finalY ?? (pageHeight - 50);
             let sigY = pageHeight - 38;
-
-            // If the table ended too low, push signatures to a new page
             if (finalY > sigY - 10) {
                 doc.addPage();
                 drawPageHeader(doc);
                 sigY = pageHeight - 38;
             }
-            const sigW   = contentWidth / 3;
-
-            const drawSig = (label: string, lx: number) => {
+            const sigW = contentWidth / 3;
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
                 if (!isPF) {
@@ -322,19 +326,21 @@ export const generateROVRGVIReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
 
-            drawSig("PREPARED BY",  margin);
-            drawSig("REVIEWED BY",  margin + sigW);
-            drawSig("APPROVED BY",  margin + sigW * 2);
+            drawSig("PREPARED BY", margin, config?.preparedBy);
+            drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_GVI_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`ROV_RGVI_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ROV RGVI Report] Error:", err);
         throw err;

@@ -22,20 +22,65 @@ export const generateInspectionReport = async (
     try {
         const supabase = createClient();
 
-        // 1. Fetch Inspection Data
-        const { data: inspection, error: inspError } = await supabase
-            .from('insp_records')
-            .select(`
-                *,
-                inspection_type ( code, name ),
-                structure_components ( q_id, name )
-            `)
-            .eq('insp_id', inspectionId)
-            .single();
+        let inspection: any = null;
+        if ((config as any)?.isBlankReport) {
+            inspection = {
+                insp_id: 0,
+                sow_report_no: config?.reportNoPrefix || "____________________",
+                created_at: new Date().toISOString(),
+                inspection_type: { code: "GVI", name: "General Visual Inspection" },
+                structure_components: { q_id: ". . . . . .", name: ". . . . . ." },
+                inspection_data: {},
+                description: "",
+                insp_anomalies: [],
+                attachment: []
+            };
+        } else {
+            let fetchedInsp: any = null;
+            let inspError: any = null;
 
-        if (inspError || !inspection) {
-            console.error("Error fetching inspection for report:", inspError);
-            throw new Error("Inspection not found");
+            if (inspectionId && !isNaN(inspectionId) && inspectionId > 0) {
+                const res = await supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        structure_components:component_id ( q_id, code )
+                    `)
+                    .eq('insp_id', inspectionId)
+                    .maybeSingle();
+                fetchedInsp = res.data;
+                inspError = res.error;
+            }
+
+            if (!fetchedInsp && (config as any)?.jobPackId && (config as any)?.structureId) {
+                let q = supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        structure_components:component_id ( q_id, code )
+                    `)
+                    .eq('jobpack_id', (config as any).jobPackId)
+                    .eq('structure_id', (config as any).structureId);
+
+                if ((config as any).sowReportNo) {
+                    q = q.eq('sow_report_no', (config as any).sowReportNo);
+                }
+
+                const res = await q.order('insp_id', { ascending: false }).limit(1).maybeSingle();
+                fetchedInsp = res.data;
+            }
+
+            if (!fetchedInsp) {
+                console.error("Error fetching inspection for report:", inspError);
+                throw new Error("Inspection not found");
+            }
+            if (!fetchedInsp.inspection_type) {
+                fetchedInsp.inspection_type = {
+                    code: fetchedInsp.inspection_type_code || "",
+                    name: fetchedInsp.inspection_type_code || "General Inspection"
+                };
+            }
+            inspection = fetchedInsp;
         }
 
         // 2. Fetch Anomalies

@@ -61,7 +61,37 @@ export async function GET(request: NextRequest) {
             throw anomalyError;
         }
 
-        console.log(`[DefectSummary] Found ${anomalies?.length ?? 0} anomaly record(s)`);
+        // Deduplicate anomalies (since v_anomaly_details LEFT JOIN u_lib_combo can return duplicate rows per combo entry)
+        const seenKeys = new Set<string>();
+        const uniqueAnomalies: any[] = [];
+        for (const item of (anomalies || [])) {
+            const key = item.anomaly_id 
+                ? `anom_${item.anomaly_id}` 
+                : (item.id ? `insp_${item.id}_${item.display_ref_no || ''}` : `ref_${item.display_ref_no || ''}_${item.priority || ''}`);
+            if (seenKeys.has(key)) continue;
+            seenKeys.add(key);
+            uniqueAnomalies.push(item);
+        }
+
+        const PRIORITY_ORDER: Record<string, number> = {
+            critical: 1, c: 1, "priority 1": 1, p1: 1,
+            high: 2, h: 2, "priority 2": 2, p2: 2,
+            medium: 3, m: 3, "priority 3": 3, p3: 3,
+            low: 4, l: 4, "priority 4": 4, p4: 4,
+            observation: 5, o: 5, "priority 5": 5, p5: 5, "priority 6": 6, p6: 6,
+            informational: 7, info: 7, i: 7
+        };
+        const prioritySortKey = (p: string) => PRIORITY_ORDER[(p || "").toLowerCase()] ?? 99;
+
+        uniqueAnomalies.sort((a, b) => {
+            const pDiff = prioritySortKey(a.priority) - prioritySortKey(b.priority);
+            if (pDiff !== 0) return pDiff;
+            const refA = (a.display_ref_no || a.ref_no || a.anomaly_ref_no || "").toString();
+            const refB = (b.display_ref_no || b.ref_no || b.anomaly_ref_no || "").toString();
+            return refA.localeCompare(refB, undefined, { numeric: true, sensitivity: "base" });
+        });
+
+        console.log(`[DefectSummary] Found ${anomalies?.length ?? 0} raw record(s), deduplicated to ${uniqueAnomalies.length}`);
 
         // ── 2. Fetch priority types from u_lib_list (AMLY_TYP) ────────────────
         const { data: priorityTypes, error: typesError } = await (supabase as any)
@@ -86,24 +116,28 @@ export async function GET(request: NextRequest) {
             console.warn("[DefectSummary] Could not fetch ANMLYCLR combos:", colorError.message);
         }
 
-        // ── 4. Build priority_colors map: { "critical": "192,0,0", ... } ───────
+        // ── 4. Build priority_colors map: { "p1": "255,0,0", "priority 1": "255,0,0", ... } ───────
         const priorityColors: Record<string, string> = {};
 
         if (priorityTypes) {
-            // Build a lookup: lib_id → color rgb string
+            // Build lookup: lib_id -> color string (preferring numeric RGB strings if multiple rows exist)
             const idToColor: Record<string, string> = {};
             (colorCombos || []).forEach((combo: any) => {
                 if (combo.code_1 && combo.code_2) {
-                    idToColor[combo.code_1] = combo.code_2;
+                    const existing = idToColor[combo.code_1];
+                    // If no existing, or existing is not a numeric RGB string while new one is, overwrite
+                    if (!existing || (!existing.includes(",") && combo.code_2.includes(","))) {
+                        idToColor[combo.code_1] = combo.code_2;
+                    }
                 }
             });
 
-            // Map: priority label → color
+            // Map both lib_id (e.g. "p1") and lib_desc (e.g. "priority 1")
             (priorityTypes || []).forEach((row: any) => {
-                const label = (row.lib_desc || "").toLowerCase();
-                const color = idToColor[row.lib_id] || ""; // Include label even if color is missing
-                if (label) {
-                    priorityColors[label] = color;
+                const color = idToColor[row.lib_id] || "";
+                if (color) {
+                    if (row.lib_id) priorityColors[String(row.lib_id).toLowerCase()] = color;
+                    if (row.lib_desc) priorityColors[String(row.lib_desc).toLowerCase()] = color;
                 }
             });
         }
@@ -111,7 +145,7 @@ export async function GET(request: NextRequest) {
         console.log("[DefectSummary] Priority color map:", priorityColors);
 
         return NextResponse.json({
-            data: anomalies || [],
+            data: uniqueAnomalies,
             priority_colors: priorityColors,
         });
 

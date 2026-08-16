@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (decodedFilter.includes(",")) {
     const codes = decodedFilter.split(",");
     const { data, error } = await supabase
-      .from("u_lib_list" as any)
+      .from("u_lib_list")
       .select()
       .in("lib_code", codes)
       .or("lib_delete.is.null,lib_delete.neq.1");
@@ -27,14 +27,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ data });
   }
 
+  const includeDeleted = request.nextUrl.searchParams.get("include_deleted") === "true";
+
   // Single code logic (New Feature Requirement)
   // Fetch items for specific master code, hiding hidden items, sorting by value
-  const { data, error } = await supabase
-    .from("u_lib_list" as any)
+  let query = supabase
+    .from("u_lib_list")
     .select("*")
-    .eq("lib_code", decodedFilter)
-    .or("lib_delete.is.null,lib_delete.neq.1")
-    .order("lib_desc", { ascending: true });
+    .eq("lib_code", decodedFilter);
+
+  if (!includeDeleted) {
+    query = query.or("lib_delete.is.null,lib_delete.neq.1");
+  }
+
+  const { data, error } = await query.order("lib_desc", { ascending: true });
 
   if (error) {
     return handleSupabaseError(error, "Failed to fetch library items");
@@ -111,16 +117,61 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Get current user for cr_user
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Assuming body contains the fields to insert. We inject lib_code, workunit, cr_user
+  const libId = body.lib_id;
+
+  // Check if an item with the same category (lib_code) and ID/Value (lib_id) already exists (including soft-deleted)
+  if (libId) {
+    const { data: existing } = await supabase
+      .from("u_lib_list")
+      .select("*")
+      .eq("lib_code", decodedFilter)
+      .eq("lib_id", libId)
+      .maybeSingle();
+
+    if (existing) {
+      // lib_delete is set to any non-null value when soft-deleted (1, "1", "Y", etc.)
+      const isSoftDeleted = existing.lib_delete != null;
+
+      if (isSoftDeleted) {
+        // Automatically reactivate the record (lib_delete = null) and update attributes with new inputs
+        const updatePayload = {
+          ...body,
+          lib_code: decodedFilter,
+          workunit: '000',
+          cr_user: user?.email || user?.id || 'system',
+          lib_delete: null,
+        };
+
+        const { data: updated, error: updateError } = await supabase
+          .from("u_lib_list")
+          .update(updatePayload)
+          .eq("lib_code", decodedFilter)
+          .eq("lib_id", libId)
+          .select()
+          .single();
+
+        if (updateError) {
+          return handleSupabaseError(updateError, "Failed to reactivate library item");
+        }
+
+        return apiSuccess(updated);
+      } else {
+        return NextResponse.json({ error: "Item with this ID already exists" }, { status: 409 });
+      }
+    }
+  }
+
+  // Inject lib_code, workunit, cr_user and ensure lib_delete is null
   const payload = {
     ...body,
     lib_code: decodedFilter,
     workunit: '000',
-    cr_user: user?.email || user?.id || 'system'
+    cr_user: user?.email || user?.id || 'system',
+    lib_delete: null,
   };
 
   const { data, error } = await supabase
-    .from("u_lib_list" as any)
+    .from("u_lib_list")
     .insert(payload)
     .select()
     .single();

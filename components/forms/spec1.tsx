@@ -186,7 +186,9 @@ export default function Spec1({ data }: Props) {
         mutate(`/api/platform/${values.plat_id}`);
         router.push(`/dashboard/field/platform/${data.data.plat_id}`);
       } else {
-        toast.error("Failed to create platform");
+        const errData = await res.json().catch(() => null);
+        const errMsg = errData?.error ? `: ${errData.error}` : "";
+        toast.error(`Failed to create platform${errMsg}`);
       }
     } else {
       const res = await fetch(`/api/platform/${values.plat_id}`, {
@@ -200,7 +202,9 @@ export default function Spec1({ data }: Props) {
         toast.success("Platform updated");
         mutate(`/api/platform/${values.plat_id}`);
       } else {
-        toast.error("Failed to update platform");
+        const errData = await res.json().catch(() => null);
+        const errMsg = errData?.error ? `: ${errData.error}` : "";
+        toast.error(`Failed to update platform${errMsg}`);
       }
     }
   };

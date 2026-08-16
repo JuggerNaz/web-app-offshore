@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Printer, Loader2 } from 'lucide-react';
 import { SeabedDebrisPlot } from '@/components/inspection/seabed-debris-plot';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
 import { Badge } from "@/components/ui/badge";
+import { generateSeabedSurveyReport } from '@/utils/report-generators/seabed-survey-report';
+import { getReportHeaderData } from '@/utils/company-settings';
+import { ReportPreviewDialog } from '@/components/ReportPreviewDialog';
 
 interface SeabedSurveyGuiDialogProps {
     open: boolean;
@@ -19,6 +22,9 @@ interface SeabedSurveyGuiDialogProps {
     jobpackId: number | string;
     sowRecordId: number | null;
     sowReportNo?: string;
+    jobpackName?: string;
+    structureName?: string;
+    vessel?: string;
     rovJob: any;
     tapeId?: string;
     tapeCounter?: string;
@@ -31,7 +37,7 @@ interface SeabedSurveyGuiDialogProps {
 }
 
 export function SeabedSurveyGuiInline({
-    open, onClose, structureId, jobpackId, sowRecordId, sowIdFull, sowReportNo, rovJob, tapeId, tapeCounter, telemetryData, isStreamRecording, isStreamPaused, onRefreshInspection, manualOverride = false
+    open, onClose, structureId, jobpackId, sowRecordId, sowIdFull, sowReportNo, jobpackName: propJobpackName, structureName: propStructureName, vessel: propVessel, rovJob, tapeId, tapeCounter, telemetryData, isStreamRecording, isStreamPaused, onRefreshInspection, manualOverride = false
 }: SeabedSurveyGuiDialogProps) {
     const supabase = createClient();
     const [existingDebris, setExistingDebris] = useState<any[]>([]);
@@ -1122,10 +1128,17 @@ export function SeabedSurveyGuiInline({
         .filter(d => typeFilter === 'All' || d.type === typeFilter);
     const activeItem = existingDebris.find(d => d.id === activeId);
 
+    const [reportPreviewOpen, setReportPreviewOpen] = useState(false);
+
+    const handlePrintReport = () => {
+        setReportPreviewOpen(true);
+    };
+
     if (!open) return null;
 
     return (
-        <Card className="h-full w-full flex flex-col p-0 overflow-hidden shadow-2xl border-2 border-blue-200 dark:border-slate-500 bg-white dark:bg-slate-950 animate-in slide-in-from-right-8 duration-300">
+        <>
+            <Card className="h-full w-full flex flex-col p-0 overflow-hidden shadow-2xl border-2 border-blue-200 dark:border-slate-500 bg-white dark:bg-slate-950 animate-in slide-in-from-right-8 duration-300">
             <div className="px-6 py-4 border-b dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur-md flex items-center justify-between">
                 <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Seabed Survey Multi-Drop GUI</h2>
                 <div className="flex items-center gap-4">
@@ -1165,6 +1178,16 @@ export function SeabedSurveyGuiInline({
                         </div>
                         <Button variant="ghost" size="sm" className="dark:text-slate-300 dark:hover:bg-slate-700" onClick={() => setCurrentPage(p => p + 1)}>Next Range</Button>
                     </div>
+
+                    <Button 
+                        onClick={handlePrintReport} 
+                        className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 text-xs font-bold shadow-md"
+                        size="sm"
+                    >
+                        <Printer className="w-3.5 h-3.5" />
+                        Report
+                    </Button>
+
                     <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
                 </div>
             </div>
@@ -1812,5 +1835,112 @@ export function SeabedSurveyGuiInline({
                     )}
                 </div>
         </Card>
+
+        <ReportPreviewDialog
+            open={reportPreviewOpen}
+            onOpenChange={setReportPreviewOpen}
+            title="Seabed Survey Multi-Drop Sketch Report"
+            fileName={`Seabed_Survey_Report_${sowReportNo || 'Draft'}`}
+            generateReport={async (isPrintFriendly, showSignatures) => {
+                const numJpId = Number(jobpackId);
+                const numStrId = Number(structureId);
+
+                const [compSettingsRes, jpRes, strRes, platRes, pipeRes, rovJobsRes] = await Promise.all([
+                    supabase.from("company_settings").select("*").maybeSingle(),
+                    !isNaN(numJpId) && numJpId > 0 ? supabase.from("jobpack").select("name, title, metadata").eq("id", numJpId).maybeSingle() : Promise.resolve({ data: null }),
+                    !isNaN(numStrId) && numStrId > 0 ? supabase.from("structure").select("str_name, title, str_title, field_name").eq("str_id", numStrId).maybeSingle() : Promise.resolve({ data: null }),
+                    !isNaN(numStrId) && numStrId > 0 ? supabase.from("platform" as any).select("title").eq("plat_id", numStrId).maybeSingle() as any : Promise.resolve({ data: null }),
+                    !isNaN(numStrId) && numStrId > 0 ? supabase.from("u_pipeline" as any).select("title").eq("pipe_id", numStrId).maybeSingle() as any : Promise.resolve({ data: null }),
+                    !isNaN(numJpId) && numJpId > 0 ? supabase.from("insp_rov_jobs").select("vessel").eq("jobpack_id", numJpId).limit(20) : Promise.resolve({ data: null })
+                ]);
+
+                const compSettings = compSettingsRes.data || {};
+                const jobpackData: any = jpRes.data || {};
+                const structData: any = strRes.data || {};
+                const platData: any = platRes.data || {};
+                const pipeData: any = pipeRes.data || {};
+                const rovJobsData: any[] = rovJobsRes.data || [];
+
+                // Fetch contractor logo if present in jobpack metadata
+                let contractorLogoUrl = "";
+                if (jobpackData.metadata?.contrac) {
+                    try {
+                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobpackData.metadata.contrac).maybeSingle();
+                        contractorLogoUrl = contrData?.logo_url || '';
+                    } catch (_) {}
+                }
+
+                // Resolve Vessel Name from multiple sources (propVessel, active job, jobpack metadata vessel_history, insp_rov_jobs)
+                let vesselName = propVessel || "N/A";
+                if (vesselName === "N/A") {
+                    const activeJobVessel = rovJob?.raw?.vessel || rovJob?.vessel;
+                    const metaVessels: string[] = [];
+                    if (jobpackData.metadata?.vessel_history && Array.isArray(jobpackData.metadata.vessel_history)) {
+                        jobpackData.metadata.vessel_history.forEach((v: any) => {
+                            const name = typeof v === 'string' ? v : v?.name || v?.vessel;
+                            if (name && !metaVessels.includes(name)) metaVessels.push(name);
+                        });
+                    }
+                    if (jobpackData.metadata?.vessel && !metaVessels.includes(jobpackData.metadata.vessel)) {
+                        metaVessels.push(jobpackData.metadata.vessel);
+                    }
+
+                    if (rovJobsData.length > 0) {
+                        rovJobsData.forEach(j => {
+                            if (j.vessel && !metaVessels.includes(j.vessel)) metaVessels.push(j.vessel);
+                        });
+                    }
+
+                    if (activeJobVessel) {
+                        vesselName = activeJobVessel;
+                    } else if (metaVessels.length > 0) {
+                        vesselName = metaVessels.join(", ");
+                    }
+                }
+
+                // Resolve Platform Name (Priority: propStructureName > plat_id/pipe_id title > structure str_name/title > structureName)
+                let resolvedPlatform = propStructureName || platData.title || pipeData.title || structData.str_name || structData.title || structData.str_title || structureName;
+                if (!resolvedPlatform || resolvedPlatform === String(structureId)) {
+                    resolvedPlatform = typeof structureId === 'string' && isNaN(Number(structureId)) ? structureId : "N/A";
+                }
+
+                // Resolve Jobpack Name (Priority: propJobpackName > jobpack.name / title)
+                let resolvedJobpack = propJobpackName || jobpackData.name || jobpackData.title;
+                if (!resolvedJobpack || resolvedJobpack === String(jobpackId)) {
+                    resolvedJobpack = typeof jobpackId === 'string' && isNaN(Number(jobpackId)) ? jobpackId : "N/A";
+                }
+
+                const headerData = {
+                    platformName: resolvedPlatform,
+                    jobpackName: resolvedJobpack,
+                    vessel: vesselName,
+                    sowReportNo: sowReportNo || "N/A",
+                    contractorLogoUrl,
+                    date: new Date().toLocaleDateString("en-GB")
+                };
+
+                const currentComp = availableComparisons.find(c => c.key === selectedComparison);
+
+                return await generateSeabedSurveyReport(
+                    { id: jobpackId, name: headerData.jobpackName },
+                    { id: structureId, name: headerData.platformName, str_name: headerData.platformName },
+                    sowReportNo || headerData.sowReportNo || "",
+                    compSettings,
+                    {
+                        headerData,
+                        comparisonKey: selectedComparison !== "none" ? selectedComparison : undefined,
+                        comparisonName: currentComp ? currentComp.name : undefined,
+                        comparisonRecords: comparisonDebris,
+                        currentPage,
+                        printFriendly: isPrintFriendly,
+                        showSignatures: showSignatures,
+                        showPageNumbers: true,
+                        returnBlob: true
+                    },
+                    typeFilter === "All" ? "" : typeFilter
+                ) as Blob;
+            }}
+        />
+        </>
     );
 }

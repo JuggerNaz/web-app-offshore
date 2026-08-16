@@ -639,7 +639,7 @@
         },
         {
             "code": "ROVCPCLB",
-            "name": "ROV CP Calibration",
+            "name": "CP Calibration",
             "methods": [
                 "ROV"
             ],
@@ -1659,7 +1659,7 @@
                     "name": "item_type",
                     "label": "Type of Item",
                     "type": "combo",
-                    "lib_code": "ITEM_TYPE",
+                    "lib_code": "ITEM_TYP",
                     "required": true
                 },
                 {
@@ -2381,7 +2381,7 @@
         },
         {
             "code": "RGVI",
-            "name": "ROV General Visual Inspection",
+            "name": "General Visual Inspection",
             "methods": [
                 "ROV"
             ],
@@ -2469,7 +2469,7 @@
         },
         {
             "code": "RMGI",
-            "name": "ROV Marine Growth Inspection",
+            "name": "Marine Growth Inspection",
             "methods": [
                 "ROV"
             ],
@@ -2511,7 +2511,7 @@
         },
         {
             "code": "RSCOR",
-            "name": "ROV Scour Inspection",
+            "name": "Scour Inspection",
             "methods": [
                 "ROV"
             ],
@@ -2551,7 +2551,7 @@
         },
         {
             "code": "RSANI",
-            "name": "ROV Selected Anode Inspection",
+            "name": "Selected Anode Inspection",
             "methods": [
                 "ROV"
             ],
@@ -2578,7 +2578,7 @@
         },
         {
             "code": "RRISI",
-            "name": "ROV Riser Structural Integrity Inspection",
+            "name": "Riser Structural Integrity Inspection",
             "methods": [
                 "ROV"
             ],
@@ -2719,7 +2719,7 @@
         },
         {
             "code": "RSZCI",
-            "name": "ROV Splash Zone Inspection",
+            "name": "Splash Zone Inspection",
             "methods": [
                 "ROV"
             ],
@@ -2770,7 +2770,7 @@
         },
         {
             "code": "RSEAB",
-            "name": "ROV Seabed Inspection",
+            "name": "Seabed Inspection",
             "methods": [
                 "ROV"
             ],
@@ -2950,7 +2950,7 @@
         },
         {
             "code": "RSWNI",
-            "name": "ROV Selected Node Inspection",
+            "name": "Selected Node Inspection",
             "methods": [
                 "ROV"
             ],
@@ -2983,7 +2983,7 @@
         },
         {
             "code": "RWDI",
-            "name": "ROV Water Depth Inspection",
+            "name": "Water Depth Inspection",
             "methods": [
                 "ROV"
             ],
@@ -3007,7 +3007,7 @@
         },
         {
             "code": "RCOND",
-            "name": "ROV Conductor Inspection",
+            "name": "Conductor Inspection",
             "methods": [
                 "ROV"
             ],
@@ -3092,7 +3092,7 @@
         },
         {
             "code": "RCASN",
-            "name": "ROV Caisson Inspection",
+            "name": "Caisson Inspection",
             "methods": [
                 "ROV"
             ],
@@ -3177,7 +3177,7 @@
         },
         {
             "code": "RFMD",
-            "name": "ROV Flooded Member Detection",
+            "name": "Flooded Member Detection",
             "methods": [
                 "ROV"
             ],
@@ -3346,12 +3346,48 @@
             "code": "ITMAIN",
             "name": "Item Maintenance Inspection",
             "methods": [
-                "ROV",
                 "DIVING"
             ],
             "fields": [
                 {
-                    "$ref": "it_main_detail_readings"
+                    "name": "angle",
+                    "label": "Angle",
+                    "type": "number",
+                    "unitCategory": "ANGLE",
+                    "required": true
+                },
+                {
+                    "name": "dimension1",
+                    "label": "Dimension 1",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": true
+                },
+                {
+                    "name": "dimension2",
+                    "label": "Dimension 2",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": true
+                },
+                {
+                    "name": "dimension3",
+                    "label": "Dimension 3",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": true
+                },
+                {
+                    "name": "comments",
+                    "label": "Comments",
+                    "type": "text",
+                    "required": true
                 }
             ]
         }

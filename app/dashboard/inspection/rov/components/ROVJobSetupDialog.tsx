@@ -105,7 +105,7 @@ export default function ROVJobSetupDialog({
         }
     }, [existingJob, open]);
 
-    // AI Treatment: Intelligent Auto-Increment for Deployment Number
+    // AI Treatment: Intelligent Auto-Increment for Deployment Number & Auto-carry over ROV Type & Model
     useEffect(() => {
         if (existingJob || !open) return;
 
@@ -114,7 +114,7 @@ export default function ROVJobSetupDialog({
             try {
                 let query = supabase
                     .from("insp_rov_jobs")
-                    .select("deployment_no")
+                    .select("deployment_no, rov_type, rov_serial_no")
                     .order("cr_date", { ascending: false })
                     .limit(1);
 
@@ -124,14 +124,16 @@ export default function ROVJobSetupDialog({
 
                 const { data, error } = await query.maybeSingle();
 
-                if (!error && data && data.deployment_no) {
-                    const nextNo = generateNextDeploymentNumber(data.deployment_no);
-                    if (nextNo) {
-                        setFormData(prev => ({ ...prev, deployment_no: nextNo }));
-                    }
+                if (!error && data) {
+                    setFormData(prev => ({
+                        ...prev,
+                        deployment_no: data.deployment_no ? (generateNextDeploymentNumber(data.deployment_no) || prev.deployment_no) : prev.deployment_no,
+                        rov_type: data.rov_type || prev.rov_type,
+                        rov_serial_no: data.rov_serial_no || prev.rov_serial_no,
+                    }));
                 }
             } catch (err) {
-                console.error("Failed to fetch absolute latest ROV deployment no", err);
+                console.error("Failed to fetch absolute latest ROV deployment details", err);
             }
         };
 

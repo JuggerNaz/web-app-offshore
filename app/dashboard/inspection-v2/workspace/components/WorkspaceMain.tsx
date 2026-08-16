@@ -672,6 +672,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
               </div>
             ) : (
               <InspectionForm
+                inspMethod={props.inspMethod || headerData?.inspMethod}
                 selectedComp={selectedComp}
                 activeSpec={activeSpec}
                 allInspectionTypes={allInspectionTypes}

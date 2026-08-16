@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -175,7 +175,7 @@ export const generateROVCondSketchReport = async (
             if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
             d.setFontSize(9); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
             d.setFontSize(7); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10, { align: 'center' });
-            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text("ROV Conductor Survey (Sketch) Report", margin + contentWidth/2, margin + 17, { align: 'center' });
+            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text("Conductor Survey (Sketch) Report (ROV)", margin + contentWidth/2, margin + 17, { align: 'center' });
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
@@ -334,21 +334,45 @@ export const generateROVCondSketchReport = async (
                     const anoms = r.insp_anomalies || [];
                     const isAnom = r.has_anomaly || anoms.length > 0;
                     const c = r.structure_components || r.component || {};
-                    let findings = r.description || rd.findings || 'No significant findings';
-                    
-                    const anomParts: string[] = [];
+
+                    const primaryCP = rd.cp_rdg ?? rd.cp_reading_mv ?? rd.cp ?? "";
+                    const additionals: any[] = Array.isArray(rd.cp_rdg_additional) ? rd.cp_rdg_additional : (Array.isArray(rd.cp_readings) ? rd.cp_readings : []);
+                    const additionalCPs = additionals
+                        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+                        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+                    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+                    const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+
+                    let findingsParts: string[] = [];
+                    if (r.description && r.description.trim()) {
+                        findingsParts.push(r.description.trim());
+                    } else if (rd.findings && rd.findings.trim()) {
+                        findingsParts.push(rd.findings.trim());
+                    }
+
+                    additionals.forEach((a: any) => {
+                        const val = a.reading ?? a.cp_rdg ?? "";
+                        if ((val !== "" && val !== null && val !== undefined) || a.location) {
+                            const loc = a.location ? ` @ ${a.location}` : "";
+                            const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
+                            findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
+                        }
+                    });
+
                     if (isAnom && anoms.length > 0) {
                         anoms.forEach((a: any) => {
-                            anomParts.push(`[Anom Ref: ${a.anomaly_ref_no || a.ref_no || 'N/A'}]${a.is_rectified ? ` (Rectified: ${a.rectified_remarks || a.rect_comments || ''})` : ''}`);
+                            findingsParts.push(`[Anom Ref: ${a.anomaly_ref_no || a.ref_no || 'N/A'}]${a.is_rectified ? ` (Rectified: ${a.rectified_remarks || a.rect_comments || ''})` : ''}`);
                         });
                     }
-                    if (anomParts.length > 0) findings += `\n` + anomParts.join('\n');
-                    
-                    if (r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name) findings += `\n[Dive: ${r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name}]`;
-                    
+
+                    if (r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name) findingsParts.push(`[Dive: ${r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name}]`);
+
+                    const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
+
                     return [
                         { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold' } },
-                        { content: rd.cp_rdg ?? rd.cp ?? rd.cp_reading_mv ?? '-', styles: { halign: 'center' } },
+                        { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
                 }),
@@ -375,7 +399,7 @@ export const generateROVCondSketchReport = async (
                 sigY = pageHeight - 38;
             }
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, lx: number) => {
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
                 if (!config.printFriendly) {
@@ -389,13 +413,15 @@ export const generateROVCondSketchReport = async (
                 doc.text(label, lx + 2, sigY + 3.5);
                 doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                 doc.text("Name:", lx + 2, sigY + 10);
+                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                 doc.text("Date:", lx + 2, sigY + 13.5);
+                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                 doc.text("Signature:", lx + 2, sigY + 17);
             };
 
-            drawSig('PREPARED BY', margin);
-            drawSig('REVIEWED BY', margin + sigW);
-            drawSig('APPROVED BY', margin + (sigW * 2));
+            drawSig("PREPARED BY", margin, config?.preparedBy);
+            drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
         }
 
         const totalPages = doc.getNumberOfPages();

@@ -309,10 +309,10 @@ const generatePipelineReport = async (
   // Subtitle and Report No
   doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
-  doc.text("Comprehensive Structure Assessment & Data Sheet", 10, 24);
+  doc.text("", 10, 24);
 
   if (config) {
-    const reportNo = `${config.reportNoPrefix}-${config.reportYear}-${structure.str_id}`;
+    const reportNo = `${config.reportNoPrefix}-${config.reportYear}`;
     doc.text(`Report: ${reportNo}`, pageWidth - 10, 24, { align: "right" });
   } else if (companySettings?.serial_no) {
     doc.text(`Report: ${companySettings.serial_no}`, pageWidth - 10, 24, { align: "right" });
@@ -668,10 +668,10 @@ const generatePlatformReport = async (
   // Subtitle and Report No on same line
   doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
-  doc.text("Comprehensive Structure Assessment & Data Sheet", 10, 24);
+  doc.text("", 10, 24);
 
   if (config) {
-    const reportNo = `${config.reportNoPrefix}-${config.reportYear}-${structure.str_id}`;
+    const reportNo = `${config.reportNoPrefix}-${config.reportYear}`;
     doc.text(`Report: ${reportNo}`, pageWidth - 10, 24, { align: "right" });
   } else if (companySettings?.serial_no) {
     doc.text(`Report: ${companySettings.serial_no}`, pageWidth - 10, 24, { align: "right" });
@@ -1185,7 +1185,7 @@ const generatePipelineHTML = (
           <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
           <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; opacity: 0.95;">PIPELINE SPECIFICATIONS REPORT</h2>
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;">Comprehensive Structure Assessment & Data Sheet</p>
+            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;"></p>
             <p style="margin: 0; font-size: 9px; opacity: 0.8;">Report: ${companySettings?.serial_no || "N/A"}</p>
           </div>
         </div>
@@ -1380,7 +1380,7 @@ const generatePlatformHTML = (
           
           <!-- Subtitle and Report No on same line -->
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;">Comprehensive Structure Assessment & Data Sheet</p>
+            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;"></p>
             <p style="margin: 0; font-size: 9px; opacity: 0.8;">Report: ${companySettings?.serial_no || "N/A"}</p>
           </div>
         </div>
