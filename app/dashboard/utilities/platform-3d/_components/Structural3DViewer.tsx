@@ -1,7 +1,5 @@
 "use client";
 import * as THREE from 'three';
-
-import * as THREE from 'three';
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Fender } from "./Fender";
 import { RiserGuard } from "./RiserGuard";

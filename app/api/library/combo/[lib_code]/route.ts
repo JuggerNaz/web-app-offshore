@@ -30,7 +30,7 @@ export async function GET(
 
         // Fetch combo items - table uses lib_com for comments
         const { data: comboItems, error } = await supabase
-            .from("u_lib_combo" as any)
+            .from("u_lib_combo")
             .select("lib_code, code_1, code_2, lib_com, lib_delete")
             .eq("lib_code", lib_code)
             .order("code_1, code_2");
@@ -85,7 +85,7 @@ export async function POST(
 
         // Check for existing combination (including soft-deleted)
         const { data: existing } = await supabase
-            .from("u_lib_combo" as any)
+            .from("u_lib_combo")
             .select("lib_code, code_1, code_2, lib_delete")
             .eq("lib_code", lib_code)
             .eq("code_1", code_1)
@@ -93,16 +93,13 @@ export async function POST(
             .maybeSingle();
 
         if (existing) {
-            const isSoftDeleted =
-                existing.lib_delete === 1 ||
-                existing.lib_delete === "1" ||
-                existing.lib_delete === "Y" ||
-                (existing.lib_delete !== null && existing.lib_delete !== undefined);
+            // lib_delete is set to any non-null value when soft-deleted (1, "1", "Y", etc.)
+            const isSoftDeleted = existing.lib_delete != null;
 
             if (isSoftDeleted) {
                 // Clear lib_delete and restore the combination seamlessly
                 const { data: updated, error: updateError } = await supabase
-                    .from("u_lib_combo" as any)
+                    .from("u_lib_combo")
                     .update({
                         lib_com: lib_com || null,
                         lib_delete: null,
@@ -132,7 +129,7 @@ export async function POST(
         console.log("Attempting to insert combo:", { lib_code, code_1, code_2, lib_com });
 
         const { data, error } = await supabase
-            .from("u_lib_combo" as any)
+            .from("u_lib_combo")
             .insert({
                 lib_code,
                 code_1,

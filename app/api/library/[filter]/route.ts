@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (decodedFilter.includes(",")) {
     const codes = decodedFilter.split(",");
     const { data, error } = await supabase
-      .from("u_lib_list" as any)
+      .from("u_lib_list")
       .select()
       .in("lib_code", codes)
       .or("lib_delete.is.null,lib_delete.neq.1");
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // Single code logic (New Feature Requirement)
   // Fetch items for specific master code, hiding hidden items, sorting by value
   let query = supabase
-    .from("u_lib_list" as any)
+    .from("u_lib_list")
     .select("*")
     .eq("lib_code", decodedFilter);
 
@@ -122,18 +122,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Check if an item with the same category (lib_code) and ID/Value (lib_id) already exists (including soft-deleted)
   if (libId) {
     const { data: existing } = await supabase
-      .from("u_lib_list" as any)
+      .from("u_lib_list")
       .select("*")
       .eq("lib_code", decodedFilter)
       .eq("lib_id", libId)
       .maybeSingle();
 
     if (existing) {
-      const isSoftDeleted =
-        existing.lib_delete === 1 ||
-        existing.lib_delete === "1" ||
-        existing.lib_delete === "Y" ||
-        (existing.lib_delete !== null && existing.lib_delete !== undefined);
+      // lib_delete is set to any non-null value when soft-deleted (1, "1", "Y", etc.)
+      const isSoftDeleted = existing.lib_delete != null;
 
       if (isSoftDeleted) {
         // Automatically reactivate the record (lib_delete = null) and update attributes with new inputs
@@ -146,7 +143,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         };
 
         const { data: updated, error: updateError } = await supabase
-          .from("u_lib_list" as any)
+          .from("u_lib_list")
           .update(updatePayload)
           .eq("lib_code", decodedFilter)
           .eq("lib_id", libId)
@@ -174,7 +171,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   };
 
   const { data, error } = await supabase
-    .from("u_lib_list" as any)
+    .from("u_lib_list")
     .insert(payload)
     .select()
     .single();
