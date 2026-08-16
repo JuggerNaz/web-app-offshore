@@ -44,11 +44,6 @@ async function verify() {
   const { data: scenes, error: err3 } = await supabase.from('platform_3d_scenes').select('*').limit(1);
   if (err3) console.error(err3);
   else console.log(JSON.stringify(scenes, null, 2));
-
-  console.log('--- Sample from platform_3d_scenes table ---');
-  const { data: scenes, error: err3 } = await supabase.from('platform_3d_scenes').select('*').limit(1);
-  if (err3) console.error(err3);
-  else console.log(JSON.stringify(scenes, null, 2));
 }
 
 verify();

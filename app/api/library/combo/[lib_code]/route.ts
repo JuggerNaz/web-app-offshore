@@ -83,16 +83,45 @@ export async function POST(
             );
         }
 
-        // Check for duplicate combination
+        // Check for existing combination (including soft-deleted)
         const { data: existing } = await supabase
             .from("u_lib_combo" as any)
-            .select("lib_code, code_1, code_2")
+            .select("lib_code, code_1, code_2, lib_delete")
             .eq("lib_code", lib_code)
             .eq("code_1", code_1)
             .eq("code_2", code_2)
             .maybeSingle();
 
         if (existing) {
+            const isSoftDeleted =
+                existing.lib_delete === 1 ||
+                existing.lib_delete === "1" ||
+                existing.lib_delete === "Y" ||
+                (existing.lib_delete !== null && existing.lib_delete !== undefined);
+
+            if (isSoftDeleted) {
+                // Clear lib_delete and restore the combination seamlessly
+                const { data: updated, error: updateError } = await supabase
+                    .from("u_lib_combo" as any)
+                    .update({
+                        lib_com: lib_com || null,
+                        lib_delete: null,
+                    })
+                    .eq("lib_code", lib_code)
+                    .eq("code_1", code_1)
+                    .eq("code_2", code_2)
+                    .select()
+                    .single();
+
+                if (updateError) {
+                    console.error("Supabase update error:", updateError);
+                    throw updateError;
+                }
+
+                console.log("Successfully reactivated combo:", updated);
+                return NextResponse.json({ data: updated }, { status: 200 });
+            }
+
             return NextResponse.json(
                 { error: "This combination already exists" },
                 { status: 409 }
@@ -108,7 +137,8 @@ export async function POST(
                 lib_code,
                 code_1,
                 code_2,
-                lib_com: lib_com || null, // Allow null for empty comments
+                lib_com: lib_com || null,
+                lib_delete: null,
             })
             .select()
             .single();

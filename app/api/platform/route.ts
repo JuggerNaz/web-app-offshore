@@ -73,25 +73,76 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const body = await request.json();
 
-  // Remove plat_id if present (will be auto-generated)
+  // Determine starting candidate ID
+  const requestedId = Number(body.plat_id);
   delete body.plat_id;
 
-  // Insert platform
-  const { data, error } = await supabase.from("platform").insert(body).select().single();
+  // Find max ID from structure and platform tables
+  const { data: maxStruct } = await supabase
+    .from("structure")
+    .select("str_id")
+    .order("str_id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (error) {
-    return handleSupabaseError(error, "Failed to create platform");
+  const { data: maxPlat } = await supabase
+    .from("platform")
+    .select("plat_id")
+    .order("plat_id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const maxExistingId = Math.max(maxStruct?.str_id || 0, maxPlat?.plat_id || 0);
+
+  let candidateId = requestedId > 0 ? requestedId : maxExistingId + 1;
+  if (candidateId <= 0) candidateId = 1;
+
+  // Auto-increment candidateId until a unique value is found in both tables
+  let isUnique = false;
+  let attempts = 0;
+  const maxAttempts = 1000;
+
+  while (!isUnique && attempts < maxAttempts) {
+    attempts++;
+    const { data: structRow } = await supabase
+      .from("structure")
+      .select("str_id")
+      .eq("str_id", candidateId)
+      .maybeSingle();
+
+    const { data: platRow } = await supabase
+      .from("platform")
+      .select("plat_id")
+      .eq("plat_id", candidateId)
+      .maybeSingle();
+
+    if (!structRow && !platRow) {
+      isUnique = true;
+    } else {
+      candidateId++;
+    }
   }
 
-  // Create corresponding structure entry
+  // First create parent structure entry to satisfy foreign key constraint
   const { error: structureError } = await supabase
     .from("structure")
-    .insert({ str_id: data.plat_id, str_type: "PLATFORM" });
+    .insert({ str_id: candidateId, str_type: "PLATFORM" });
 
   if (structureError) {
-    // If structure creation fails, we should ideally rollback the platform creation
-    // For now, log the error and continue
-    console.error("[Platform API] Failed to create structure entry:", structureError);
+    return handleSupabaseError(structureError, "Failed to create structure entry for platform");
+  }
+
+  // Next insert platform entry with the unique candidateId
+  const { data, error } = await supabase
+    .from("platform")
+    .insert({ ...body, plat_id: candidateId })
+    .select()
+    .single();
+
+  if (error) {
+    // Rollback parent structure entry if platform creation fails
+    await supabase.from("structure").delete().eq("str_id", candidateId);
+    return handleSupabaseError(error, "Failed to create platform");
   }
 
   return apiCreated(data);

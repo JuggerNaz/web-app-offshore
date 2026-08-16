@@ -21,6 +21,29 @@ export async function POST(request: Request, context: any) {
   return NextResponse.json({ comment: data });
 }
 
+export async function PUT(request: Request, context: any) {
+  const body = await request.json();
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
+
+  const originalLevelName = body.original_level_name || body.level_name;
+  const { original_level_name, ...updateData } = body;
+
+  const { data, error } = await supabase
+    .from("str_level")
+    .update(updateData)
+    .eq("plat_id", body.plat_id)
+    .eq("level_name", originalLevelName)
+    .select();
+
+  if (error) {
+    console.error(error.message);
+    return NextResponse.json({ error: "Failed to update level" }, { status: 500 });
+  }
+
+  return NextResponse.json({ comment: data });
+}
+
 export async function DELETE(request: Request, context: any) {
   const body = await request.json();
 

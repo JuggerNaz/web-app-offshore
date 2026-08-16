@@ -62,25 +62,76 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const body = await request.json();
 
-  // Remove pipe_id if present (will be auto-generated)
+  // Determine starting candidate ID
+  const requestedId = Number(body.pipe_id);
   delete body.pipe_id;
 
-  // Insert pipeline
-  const { data, error } = await supabase.from("u_pipeline").insert(body).select().single();
+  // Find max ID from structure and u_pipeline tables
+  const { data: maxStruct } = await supabase
+    .from("structure")
+    .select("str_id")
+    .order("str_id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (error) {
-    return handleSupabaseError(error, "Failed to create pipeline");
+  const { data: maxPipe } = await supabase
+    .from("u_pipeline")
+    .select("pipe_id")
+    .order("pipe_id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const maxExistingId = Math.max(maxStruct?.str_id || 0, maxPipe?.pipe_id || 0);
+
+  let candidateId = requestedId > 0 ? requestedId : maxExistingId + 1;
+  if (candidateId <= 0) candidateId = 1;
+
+  // Auto-increment candidateId until a unique value is found in both tables
+  let isUnique = false;
+  let attempts = 0;
+  const maxAttempts = 1000;
+
+  while (!isUnique && attempts < maxAttempts) {
+    attempts++;
+    const { data: structRow } = await supabase
+      .from("structure")
+      .select("str_id")
+      .eq("str_id", candidateId)
+      .maybeSingle();
+
+    const { data: pipeRow } = await supabase
+      .from("u_pipeline")
+      .select("pipe_id")
+      .eq("pipe_id", candidateId)
+      .maybeSingle();
+
+    if (!structRow && !pipeRow) {
+      isUnique = true;
+    } else {
+      candidateId++;
+    }
   }
 
-  // Create corresponding structure entry
+  // First create parent structure entry to satisfy foreign key constraint
   const { error: structureError } = await supabase
     .from("structure")
-    .insert({ str_id: data.pipe_id, str_type: "PIPELINE" });
+    .insert({ str_id: candidateId, str_type: "PIPELINE" });
 
   if (structureError) {
-    // If structure creation fails, we should ideally rollback the pipeline creation
-    // For now, log the error and continue
-    console.error("[Pipeline API] Failed to create structure entry:", structureError);
+    return handleSupabaseError(structureError, "Failed to create structure entry for pipeline");
+  }
+
+  // Next insert pipeline entry with the unique candidateId
+  const { data, error } = await supabase
+    .from("u_pipeline")
+    .insert({ ...body, pipe_id: candidateId })
+    .select()
+    .single();
+
+  if (error) {
+    // Rollback parent structure entry if pipeline creation fails
+    await supabase.from("structure").delete().eq("str_id", candidateId);
+    return handleSupabaseError(error, "Failed to create pipeline");
   }
 
   return apiCreated(data);

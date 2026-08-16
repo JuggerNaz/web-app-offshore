@@ -24,6 +24,8 @@ import { JobPackSummaryPreviewDialog } from "@/components/dialogs/jobpack-summar
 import { number } from "zod";
 import { processAttachmentUrl, truncateText } from "@/utils/storage";
 import { DeleteConfirmDialog } from "@/components/dialogs/delete-confirm-dialog";
+import { LevelDialog } from "@/components/dialogs/level-dialog";
+import { FacesDialog } from "@/components/dialogs/faces-dialog";
 import Image from "next/image";
 import { ImageIcon } from "lucide-react";
 
@@ -333,6 +335,7 @@ export const levels: ColumnDef<Levels>[] = [
 
 function LevelActions({ row }: { row: any }) {
   const item = row.original;
+  const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -366,6 +369,13 @@ function LevelActions({ row }: { row: any }) {
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => setEditOpen(true)}
+          >
+            <Edit2 size={16} className="mr-2" />
+            Edit Data
+          </DropdownMenuItem>
+          <DropdownMenuItem
             className="cursor-pointer text-red-600 focus:text-red-700"
             onClick={() => setDeleteOpen(true)}
           >
@@ -374,6 +384,13 @@ function LevelActions({ row }: { row: any }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <LevelDialog
+        initialData={item}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        trigger={null}
+      />
 
       <DeleteConfirmDialog
         open={deleteOpen}
@@ -409,6 +426,7 @@ export const faces: ColumnDef<Faces>[] = [
 
 function FaceActions({ row }: { row: any }) {
   const item = row.original;
+  const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -442,6 +460,13 @@ function FaceActions({ row }: { row: any }) {
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => setEditOpen(true)}
+          >
+            <Edit2 size={16} className="mr-2" />
+            Edit Data
+          </DropdownMenuItem>
+          <DropdownMenuItem
             className="cursor-pointer text-red-600 focus:text-red-700"
             onClick={() => setDeleteOpen(true)}
           >
@@ -451,13 +476,20 @@ function FaceActions({ row }: { row: any }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <FacesDialog
+        initialData={item}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        trigger={null}
+      />
+
       <DeleteConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         onConfirm={onDelete}
         loading={loading}
         title="Remove Face"
-        description="Are you sure you want to remove this structure face definition?"
+        description="Are you sure you want to remove this structural face?"
       />
     </div>
   );

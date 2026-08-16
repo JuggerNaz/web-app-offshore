@@ -178,7 +178,9 @@ export default function Spec1Pipeline({ data }: Props) {
         mutate(`/api/pipeline/${values.pipe_id}`);
         router.push(`/dashboard/field/pipeline/${data.data.pipe_id}`);
       } else {
-        toast.error("Failed to create pipeline");
+        const errData = await res.json().catch(() => null);
+        const errMsg = errData?.error ? `: ${errData.error}` : "";
+        toast.error(`Failed to create pipeline${errMsg}`);
       }
     } else {
       const res = await fetch(`/api/pipeline/${values.pipe_id}`, {
@@ -192,7 +194,9 @@ export default function Spec1Pipeline({ data }: Props) {
         toast.success("Pipeline updated");
         mutate(`/api/pipeline/${values.pipe_id}`);
       } else {
-        toast.error("Failed to update pipeline");
+        const errData = await res.json().catch(() => null);
+        const errMsg = errData?.error ? `: ${errData.error}` : "";
+        toast.error(`Failed to update pipeline${errMsg}`);
       }
     }
   };
