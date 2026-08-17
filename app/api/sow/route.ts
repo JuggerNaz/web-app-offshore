@@ -12,15 +12,17 @@ export const GET = withTenant(async (request, { companyId }) => {
         const sowId = searchParams.get("sow_id");
 
         if (sowId) {
-            const { data: sow, error: sowError } = await (supabase as any)
-                .from("u_sow")
-                .select("*")
-                .eq("id", sowId)
-                .eq("company_id", companyId)
-                .single();
+            let query = (supabase as any).from("u_sow").select("*").eq("id", sowId);
+            if (companyId) {
+                query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+            const { data: sow, error: sowError } = await query.maybeSingle();
 
             if (sowError) {
                 return NextResponse.json({ error: sowError.message }, { status: 400 });
+            }
+            if (!sow) {
+                return NextResponse.json({ data: null });
             }
 
             const { data: items, error: itemsError } = await (supabase as any)
@@ -37,20 +39,27 @@ export const GET = withTenant(async (request, { companyId }) => {
         }
 
         if (jobpackId && structureId) {
-            const { data: sow, error: sowError } = await (supabase as any)
+            let query = (supabase as any)
                 .from("u_sow")
                 .select("*")
                 .eq("jobpack_id", jobpackId)
-                .eq("structure_id", structureId)
-                .eq("company_id", companyId)
-                .single();
+                .eq("structure_id", structureId);
+
+            if (companyId) {
+                query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+
+            const { data: sows, error: sowError } = await query;
 
             if (sowError) {
-                if (sowError.code === "PGRST116") {
-                    return NextResponse.json({ data: null });
-                }
                 return NextResponse.json({ error: sowError.message }, { status: 400 });
             }
+
+            if (!sows || sows.length === 0) {
+                return NextResponse.json({ data: null });
+            }
+
+            const sow = sows[0];
 
             const { data: items, error: itemsError } = await (supabase as any)
                 .from("u_sow_items")
@@ -66,12 +75,16 @@ export const GET = withTenant(async (request, { companyId }) => {
         }
 
         if (jobpackId) {
-            const { data: sows, error } = await (supabase as any)
+            let query = (supabase as any)
                 .from("u_sow")
                 .select("*")
-                .eq("jobpack_id", jobpackId)
-                .eq("company_id", companyId)
-                .order("created_at", { ascending: false });
+                .eq("jobpack_id", jobpackId);
+
+            if (companyId) {
+                query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+
+            const { data: sows, error } = await query.order("created_at", { ascending: false });
 
             if (error) {
                 return NextResponse.json({ error: error.message }, { status: 400 });
@@ -81,12 +94,16 @@ export const GET = withTenant(async (request, { companyId }) => {
         }
 
         if (structureId) {
-            const { data: sows, error } = await (supabase as any)
+            let query = (supabase as any)
                 .from("u_sow")
                 .select("*")
-                .eq("structure_id", structureId)
-                .eq("company_id", companyId)
-                .order("created_at", { ascending: false });
+                .eq("structure_id", structureId);
+
+            if (companyId) {
+                query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+
+            const { data: sows, error } = await query.order("created_at", { ascending: false });
 
             if (error) {
                 return NextResponse.json({ error: error.message }, { status: 400 });

@@ -1620,7 +1620,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
                                 <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Findings</label>
-                                <FindingsSuggestionEngine supabase={supabase} componentType={selectedComp?.raw?.type || ""} inspectionTypeCode={activeSpec || ""} onSelect={(val) => { if (recordNotes && recordNotes.trim()) setRecordNotes(`${recordNotes.trim()}\n${val}`); else setRecordNotes(val); }} currentFinding={recordNotes} />
+                                <FindingsSuggestionEngine supabase={supabase} componentType={selectedComp?.raw?.type || ""} inspectionTypeCode={activeSpec || ""} formData={dynamicProps} onSelect={(val) => { if (recordNotes && recordNotes.trim()) setRecordNotes(`${recordNotes.trim()}\n${val}`); else setRecordNotes(val); }} currentFinding={recordNotes} />
                             </div>
                             <textarea value={recordNotes} onChange={(e) => setRecordNotes(e.target.value)} placeholder="Observation specifics..." className="w-full min-h-[80px] rounded-lg border border-slate-300 dark:border-slate-700 p-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50 dark:bg-slate-950/50 dark:text-slate-200 shadow-inner"></textarea>
                         </div>

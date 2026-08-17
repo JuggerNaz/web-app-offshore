@@ -1,8 +1,9 @@
 {
   "private": true,
+  "license": "UNLICENSED",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build --webpack",
+    "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev --webpack",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
@@ -106,6 +107,7 @@
     "@types/react-dom": "19.0.1",
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/ui": "^4.0.10",
+    "cross-env": "7.0.3",
     "eslint": "^9.39.1",
     "eslint-config-next": "16.0.7",
     "jsdom": "^27.2.0",
