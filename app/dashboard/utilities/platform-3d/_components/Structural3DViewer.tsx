@@ -22,7 +22,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight } from "lucide-react";
+import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, Eye, SlidersHorizontal, Layers, Palette, Filter, History } from "lucide-react";
 import { getEffectiveClockAngle, computeRiserOffsetEndpoints, generatePlatform3DCoordinates } from "@/utils/platform-3d-math";
 import { getMainLegElementSets } from "../platform-legs-recognition";
 
@@ -33,6 +33,15 @@ interface Component3D {
     code: string | null;
     metadata: any;
 }
+
+export type VisualizationMode =
+    | "DEFAULT"
+    | "ANOMALY_PRIORITY"
+    | "PENDING_TASK"
+    | "INCOMPLETE_RECORD"
+    | "RECTIFIED_ANOMALY"
+    | "INSPECTION_TASK_TYPE"
+    | "HISTORICAL_COMPARE";
 
 interface Structural3DViewerProps {
     webapp3dData?: any;
@@ -47,6 +56,12 @@ interface Structural3DViewerProps {
     useWincairsMode?: boolean;
     wincairsParams?: any[];
     onFallbackComponentsChange?: (fallbackComps: Component3D[]) => void;
+    compactMode?: boolean;
+
+    currentRecords?: any[];
+    historicalRecords?: any[];
+    activeColorMode?: VisualizationMode;
+    selectedHistoricalCampaignId?: string | number;
 }
 
 function parseRiserClampInfo(qId: string) {
@@ -1179,6 +1194,10 @@ function InstancedComponentViewer({
     showWeldNumbering,
     isInspectionMode,
     selectedInspectionFilters,
+    colorMode = "DEFAULT",
+    currentRecords = [],
+    historicalRecords = [],
+    selectedCampaignId = "ALL",
 }: {
     layouts: any[];
     selectedCompId?: number;
@@ -1188,6 +1207,10 @@ function InstancedComponentViewer({
     showWeldNumbering?: boolean;
     isInspectionMode?: boolean;
     selectedInspectionFilters: string[];
+    colorMode?: VisualizationMode;
+    currentRecords?: any[];
+    historicalRecords?: any[];
+    selectedCampaignId?: string | number;
 }) {
     const weldRef = useRef<THREE.InstancedMesh>(null);
     const cylinderRef = useRef<THREE.InstancedMesh>(null);
@@ -1328,7 +1351,7 @@ function InstancedComponentViewer({
             const isConductor = code === "CD" || code === "CS" || code.includes("COND") || code === "CO";
             const isPile = code === "PL" || code === "PILE" || (item.comp?.q_id || "").toUpperCase().includes("PILE");
 
-            const defaultColor = isSelected
+            const baseColor = isSelected
                 ? "#2563eb"
                 : isPile
                     ? "#475569"
@@ -1338,13 +1361,23 @@ function InstancedComponentViewer({
                             ? "#475569"
                             : "#cbd5e1";
 
-            color.set(defaultColor);
+            const finalColor = getComponentColorByMode(
+                item.comp,
+                isSelected,
+                colorMode,
+                currentRecords,
+                historicalRecords,
+                selectedCampaignId,
+                baseColor
+            );
+
+            color.set(finalColor);
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [cylinders, selectedCompId, mainMemberIds]);
+    }, [cylinders, selectedCompId, mainMemberIds, colorMode, currentRecords, historicalRecords, selectedCampaignId]);
 
     // Apply matrices and colors for Welds (Vertical Purple Cylinder Collars - Pic 2)
     useLayoutEffect(() => {
@@ -1405,13 +1438,15 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#2563eb" : "#cbd5e1");
+            const baseColor = isSelected ? "#2563eb" : "#cbd5e1";
+            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor);
+            color.set(finalColor);
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [welds, selectedCompId, mainNodeIds]);
+    }, [welds, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId]);
 
     // Apply matrices and colors for Spheres (Structural Nodes ND)
     useLayoutEffect(() => {
@@ -1433,13 +1468,15 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#2563eb" : "#94a3b8");
+            const baseColor = isSelected ? "#2563eb" : "#94a3b8";
+            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor);
+            color.set(finalColor);
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [spheres, selectedCompId, mainNodeIds]);
+    }, [spheres, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId]);
 
     // Apply matrices and colors for Boxes (Clamps)
     useLayoutEffect(() => {
@@ -1457,13 +1494,15 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#2563eb" : "#d97706");
+            const baseColor = isSelected ? "#2563eb" : "#d97706";
+            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor);
+            color.set(finalColor);
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [boxes, selectedCompId]);
+    }, [boxes, selectedCompId, colorMode, currentRecords, historicalRecords, selectedCampaignId]);
 
     // Apply matrices and colors for Anodes (Standoff style)
     useLayoutEffect(() => {
@@ -1992,6 +2031,121 @@ function InstancedComponentViewer({
     );
 }
 
+function getComponentColorByMode(
+    comp: any,
+    isSelected: boolean,
+    mode: VisualizationMode,
+    currentRecords: any[],
+    historicalRecords: any[],
+    selectedCampaignId: string | number | null,
+    defaultColor: string
+): string {
+    if (isSelected) return "#2563eb";
+    if (!comp || mode === "DEFAULT") return defaultColor;
+
+    const compIdStr = String(comp.id || comp.comp_id || "");
+    const compQIdStr = String(comp.q_id || comp.name || "").toUpperCase();
+
+    const compCurrentRecords = (currentRecords || []).filter((r: any) => 
+        String(r.component_id || r.comp_id) === compIdStr || 
+        ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr)
+    );
+
+    const compHistRecords = (historicalRecords || []).filter((r: any) => {
+        const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
+                            ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
+        if (!matchesComp) return false;
+        if (selectedCampaignId && selectedCampaignId !== "ALL") {
+            return String(r.jobpack_id || r.campaign_id || r.jobpack_no) === String(selectedCampaignId);
+        }
+        return true;
+    });
+
+    switch (mode) {
+        case "ANOMALY_PRIORITY": {
+            if (compCurrentRecords.length === 0) return "#64748b";
+            let highestSeverity = 0;
+            compCurrentRecords.forEach((r: any) => {
+                const isAnomaly = r.finding_type === "ANOMALY" || r.is_anomaly || r.has_anomaly;
+                const cls = (r.anomaly_class || r.severity || r.anomaly_grade || "").toString().toUpperCase();
+                if (isAnomaly) {
+                    if (cls.includes("A") || cls.includes("HIGH") || cls.includes("1")) {
+                        highestSeverity = Math.max(highestSeverity, 3);
+                    } else if (cls.includes("B") || cls.includes("MEDIUM") || cls.includes("2")) {
+                        highestSeverity = Math.max(highestSeverity, 2);
+                    } else {
+                        highestSeverity = Math.max(highestSeverity, 1);
+                    }
+                }
+            });
+
+            if (highestSeverity === 3) return "#ef4444";
+            if (highestSeverity === 2) return "#f97316";
+            if (highestSeverity === 1) return "#eab308";
+            return "#10b981";
+        }
+
+        case "PENDING_TASK": {
+            const taskStatuses = comp.taskStatuses || comp.tasks || [];
+            if (!taskStatuses || taskStatuses.length === 0) return "#475569";
+            const hasCompleted = taskStatuses.some((t: any) => t.status === "COMPLETED" || t.status === "COMPLETE");
+            const hasInProgress = taskStatuses.some((t: any) => t.status === "IN_PROGRESS" || t.status === "STARTED");
+            const hasPending = taskStatuses.some((t: any) => !t.status || t.status === "PENDING" || t.status === "NOT_STARTED");
+
+            if (hasCompleted && !hasPending && !hasInProgress) return "#10b981";
+            if (hasInProgress) return "#0284c7";
+            return "#f59e0b";
+        }
+
+        case "INCOMPLETE_RECORD": {
+            if (compCurrentRecords.length === 0) return "#475569";
+            const hasIncomplete = compCurrentRecords.some((r: any) => r.record_status === "INCOMPLETE" || r.status === "INCOMPLETE" || r.is_incomplete);
+            if (hasIncomplete) return "#e11d48";
+            return "#10b981";
+        }
+
+        case "RECTIFIED_ANOMALY": {
+            if (compCurrentRecords.length === 0) return "#475569";
+            const anomalies = compCurrentRecords.filter((r: any) => r.finding_type === "ANOMALY" || r.is_anomaly);
+            if (anomalies.length === 0) return "#10b981";
+            const allRectified = anomalies.every((r: any) => r.rectified || r.is_rectified || r.status === "RECTIFIED" || r.repaired);
+            if (allRectified) return "#06b6d4";
+            return "#ef4444";
+        }
+
+        case "INSPECTION_TASK_TYPE": {
+            const primaryTaskCode = String(
+                (comp.taskStatuses && comp.taskStatuses[0]?.code) || 
+                comp.task_code || 
+                comp.type || 
+                ""
+            ).toUpperCase();
+
+            if (primaryTaskCode.includes("FMD")) return "#06b6d4";
+            if (primaryTaskCode.includes("UT") || primaryTaskCode.includes("WTK")) return "#f59e0b";
+            if (primaryTaskCode.includes("ANI") || primaryTaskCode.includes("ANODE")) return "#a855f7";
+            if (primaryTaskCode.includes("GV") || primaryTaskCode.includes("VIS")) return "#3b82f6";
+            if (primaryTaskCode.includes("CP")) return "#10b981";
+            if (primaryTaskCode.includes("COR") || primaryTaskCode.includes("WELD")) return "#ec4899";
+            return "#64748b";
+        }
+
+        case "HISTORICAL_COMPARE": {
+            const hasCurrentAnomaly = compCurrentRecords.some((r: any) => r.finding_type === "ANOMALY" || r.is_anomaly);
+            const hasHistAnomaly = compHistRecords.some((r: any) => r.finding_type === "ANOMALY" || r.is_anomaly);
+
+            if (hasCurrentAnomaly && !hasHistAnomaly) return "#dc2626";
+            if (hasCurrentAnomaly && hasHistAnomaly) return "#d97706";
+            if (!hasCurrentAnomaly && hasHistAnomaly) return "#0891b2";
+            if (compHistRecords.length > 0) return "#059669";
+            return "#64748b";
+        }
+
+        default:
+            return defaultColor;
+    }
+}
+
 export function Structural3DViewer({
     components: rawComponents,
     platformDetails,
@@ -2005,6 +2159,11 @@ export function Structural3DViewer({
     wincairsParams = [],
     onFallbackComponentsChange,
     webapp3dData,
+    compactMode = false,
+    currentRecords = [],
+    historicalRecords = [],
+    activeColorMode: externalColorMode = "DEFAULT",
+    selectedHistoricalCampaignId: externalCampaignId = "ALL"
 }: Structural3DViewerProps) {
     const wincairsParamsMap = useMemo(() => {
         const map = new Map<number, any>();
@@ -2065,7 +2224,18 @@ export function Structural3DViewer({
     const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-    const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | "inspection" | null>(null);
+    const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | "inspection" | "colormap" | null>(null);
+    const [colorMode, setColorMode] = useState<VisualizationMode>(externalColorMode);
+    const [selectedCampaignId, setSelectedCampaignId] = useState<string | number>(externalCampaignId);
+
+    // Sync external props if changed
+    useEffect(() => {
+        if (externalColorMode) setColorMode(externalColorMode);
+    }, [externalColorMode]);
+
+    useEffect(() => {
+        if (externalCampaignId) setSelectedCampaignId(externalCampaignId);
+    }, [externalCampaignId]);
     const [isActivated, setIsActivated] = useState(false);
     const [isActivating, setIsActivating] = useState(false);
 
@@ -2687,6 +2857,10 @@ export function Structural3DViewer({
                             showWeldNumbering={showWeldNumbering}
                             isInspectionMode={isInspectionMode}
                             selectedInspectionFilters={selectedInspectionFilters}
+                            colorMode={colorMode}
+                            currentRecords={currentRecords}
+                            historicalRecords={historicalRecords}
+                            selectedCampaignId={selectedCampaignId}
                         />
                     </SelectToZoom>
                 </Bounds>
@@ -2805,8 +2979,8 @@ export function Structural3DViewer({
                 />
             )}
 
-            <div className="absolute top-6 right-6 flex items-center gap-3 z-50">
-                {/* Sync Button */}
+            <div className={cn("absolute z-50 flex items-center flex-wrap justify-end", compactMode ? "top-2 right-2 gap-1.5 max-w-[95%]" : "top-6 right-6 gap-3")}>
+                {/* Sync / Re-sync 3D Cache Button */}
                 {onSync && (
                     <Button
                         variant="outline"
@@ -2814,15 +2988,112 @@ export function Structural3DViewer({
                         onClick={onSync}
                         disabled={isSyncing}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md h-9 w-9 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-800 transition-all shadow-sm flex items-center justify-center",
+                            "bg-white/90 backdrop-blur-md border border-slate-200 text-slate-500 hover:text-slate-800 transition-all shadow-sm flex items-center justify-center",
+                            compactMode ? "h-8 w-8 rounded-lg" : "h-9 w-9 rounded-xl",
                             isSyncing && "border-blue-200 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
                         )}
-                        title="Sync Component Data"
+                        title="Re-sync & Recreate 3D Model Cache"
                     >
-                        <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
+                        <RefreshCw className={cn(compactMode ? "h-3.5 w-3.5" : "h-4 w-4", isSyncing && "animate-spin")} />
                     </Button>
                 )}
 
+                {/* 3D Color Overlay & Historical Comparison Filter */}
+                <div className="relative">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setOpenDropdown(openDropdown === "colormap" ? null : "colormap")}
+                        className={cn(
+                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1.5",
+                            compactMode ? "h-8 px-2.5 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
+                            colorMode !== "DEFAULT"
+                                ? "border-amber-500 text-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.2)] bg-amber-50/80"
+                                : "border-slate-200 text-slate-600 hover:text-slate-900"
+                        )}
+                        title="3D Color Visualization & Historical Compare"
+                    >
+                        <Palette className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                        <span>
+                            {colorMode === "DEFAULT" && (compactMode ? "3D Color" : "Color Overlay")}
+                            {colorMode === "ANOMALY_PRIORITY" && "Anomaly Priority"}
+                            {colorMode === "PENDING_TASK" && "Pending Tasks"}
+                            {colorMode === "INCOMPLETE_RECORD" && "Incomplete Records"}
+                            {colorMode === "RECTIFIED_ANOMALY" && "Rectified"}
+                            {colorMode === "INSPECTION_TASK_TYPE" && "Task Type"}
+                            {colorMode === "HISTORICAL_COMPARE" && "Historical Compare"}
+                        </span>
+                    </Button>
+
+                    {openDropdown === "colormap" && (
+                        <div className="absolute right-0 mt-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl border border-slate-700 shadow-2xl p-3.5 w-72 flex flex-col gap-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+                                <div className="flex items-center gap-1.5">
+                                    <Palette className="w-3.5 h-3.5 text-amber-400" />
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-200">
+                                        3D Color Overlay Mode
+                                    </span>
+                                </div>
+                                {colorMode !== "DEFAULT" && (
+                                    <button
+                                        onClick={() => setColorMode("DEFAULT")}
+                                        className="text-[9px] font-black uppercase text-amber-400 hover:text-amber-300 transition-colors"
+                                    >
+                                        Reset
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex flex-col gap-1 text-[10px]">
+                                {[
+                                    { mode: "DEFAULT", label: "Standard Metallic 3D", desc: "Default material rendering" },
+                                    { mode: "ANOMALY_PRIORITY", label: "🔴 Anomaly / Finding Priority", desc: "Color by Class A / B / C severity" },
+                                    { mode: "PENDING_TASK", label: "🟡 Pending Tasks Status", desc: "Completed vs In-Progress vs Pending" },
+                                    { mode: "INCOMPLETE_RECORD", label: "🟣 Incomplete Records", desc: "Highlight incomplete inspection forms" },
+                                    { mode: "RECTIFIED_ANOMALY", label: "🔵 Anomaly Rectified / Repaired", desc: "Rectified vs active open anomalies" },
+                                    { mode: "INSPECTION_TASK_TYPE", label: "🎨 Inspection Task Type", desc: "Color code by FMD, UT, Anode, GVINS" },
+                                    { mode: "HISTORICAL_COMPARE", label: "📜 Historical Jobpack Compare", desc: "Compare past campaign anomalies vs present" }
+                                ].map(opt => (
+                                    <button
+                                        key={opt.mode}
+                                        onClick={() => setColorMode(opt.mode as VisualizationMode)}
+                                        className={cn(
+                                            "w-full text-left p-2 rounded-lg transition-all flex flex-col border",
+                                            colorMode === opt.mode
+                                                ? "bg-blue-600/30 border-blue-500 text-white font-bold"
+                                                : "bg-slate-950/40 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
+                                        )}
+                                    >
+                                        <span className="font-bold text-xs">{opt.label}</span>
+                                        <span className="text-[9px] text-slate-400">{opt.desc}</span>
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Historical Campaign Filter Dropdown */}
+                            {colorMode === "HISTORICAL_COMPARE" && (
+                                <div className="pt-2 border-t border-slate-800 flex flex-col gap-1">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                        <History className="w-3 h-3 text-cyan-400" /> Select Historical Campaign
+                                    </span>
+                                    <select
+                                        value={selectedCampaignId}
+                                        onChange={(e) => setSelectedCampaignId(e.target.value)}
+                                        className="h-7 text-[10px] font-bold bg-slate-950 border border-slate-700 text-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                                    >
+                                        <option value="ALL">All Past Campaigns Combined</option>
+                                        {Array.from(new Set((historicalRecords || []).map((r: any) => r.jobpack_no || r.jobpack_id || r.campaign_name || r.year || "Past Campaign")))
+                                            .filter(Boolean)
+                                            .map((jp: any, i: number) => (
+                                                <option key={i} value={jp}>Campaign: {jp}</option>
+                                            ))
+                                        }
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 {/* Inspection Filter */}
                 <div className="relative">
@@ -2831,13 +3102,16 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "inspection" ? null : "inspection")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
+                            compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
                             isInspectionMode
                                 ? "border-purple-400 text-purple-600 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
                                 : "border-slate-200 text-slate-500"
                         )}
+                        title="Inspection Mode Filter"
                     >
-                        Inspection {isInspectionMode ? `(${selectedInspectionFilters.length}/3)` : "OFF"} ▼
+                        <Eye className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                        <span>{compactMode ? (isInspectionMode ? `(${selectedInspectionFilters.length})` : "OFF") : `Inspection ${isInspectionMode ? `(${selectedInspectionFilters.length}/3)` : "OFF"} ▼`}</span>
                     </Button>
 
                     {openDropdown === "inspection" && (
@@ -2951,13 +3225,16 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "elevation" ? null : "elevation")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
+                            compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
                             selectedElevations.length > 0
                                 ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
                                 : "border-slate-200 text-slate-500"
                         )}
+                        title="Filter Elevations"
                     >
-                        Elevation {selectedElevations.length > 0 ? `(${selectedElevations.length})` : ""} ▼
+                        <Layers className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                        <span>{compactMode ? (selectedElevations.length > 0 ? `(${selectedElevations.length})` : "Elv") : `Elevation ${selectedElevations.length > 0 ? `(${selectedElevations.length})` : ""} ▼`}</span>
                     </Button>
 
                     {openDropdown === "elevation" && (
@@ -3027,13 +3304,16 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "face" ? null : "face")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
+                            compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
                             selectedFaces.length > 0
                                 ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
                                 : "border-slate-200 text-slate-500"
                         )}
+                        title="Filter Structural Faces"
                     >
-                        Face {selectedFaces.length > 0 ? `(${selectedFaces.length})` : ""} ▼
+                        <Compass className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                        <span>{compactMode ? (selectedFaces.length > 0 ? `(${selectedFaces.length})` : "Face") : `Face ${selectedFaces.length > 0 ? `(${selectedFaces.length})` : ""} ▼`}</span>
                     </Button>
 
                     {openDropdown === "face" && (
@@ -3085,11 +3365,14 @@ export function Structural3DViewer({
                     variant="outline"
                     size="sm"
                     onClick={() => setResetTrigger((prev) => prev + 1)}
-                    className="bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all font-black text-[10px] uppercase tracking-widest shadow-sm flex items-center gap-1.5"
+                    className={cn(
+                        "bg-white/90 backdrop-blur-md border border-slate-200 text-slate-500 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all font-black uppercase tracking-widest shadow-sm flex items-center justify-center",
+                        compactMode ? "h-8 w-8 rounded-lg px-0" : "h-9 px-4 rounded-xl text-[10px] gap-1.5"
+                    )}
                     title="Reset 3D View"
                 >
-                    <Maximize2 className="h-3.5 w-3.5" />
-                    <span>Reset View</span>
+                    <Maximize2 className={compactMode ? "h-3.5 w-3.5" : "h-3.5 w-3.5"} />
+                    {!compactMode && <span>Reset View</span>}
                 </Button>
 
                 {/* Display options dropdown */}
@@ -3099,13 +3382,16 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "display" ? null : "display")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
+                            "bg-white/90 backdrop-blur-md border transition-all font-black uppercase tracking-widest flex items-center justify-center",
+                            compactMode ? "h-8 w-8 rounded-lg px-0" : "h-9 px-4 rounded-xl text-[10px]",
                             openDropdown === "display"
                                 ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
                                 : "border-slate-200 text-slate-500"
                         )}
+                        title="Display Settings"
                     >
-                        Display ▼
+                        <SlidersHorizontal className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                        {!compactMode && <span className="ml-1">Display ▼</span>}
                     </Button>
 
                     {openDropdown === "display" && (
@@ -3157,13 +3443,89 @@ export function Structural3DViewer({
                     )}
                 </div>
 
-                <div className="bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border border-blue-100 shadow-lg flex items-center gap-3">
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-tight">
-                        {components.length} Assets Rendered
+                {/* Assets Rendered Pill */}
+                <div
+                    className={cn(
+                        "bg-white/90 backdrop-blur-md border border-blue-100 shadow-lg flex items-center gap-1.5",
+                        compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-xs"
+                    )}
+                    title={`${components.length} Assets Rendered`}
+                >
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)] shrink-0" />
+                    <span className="font-black text-slate-800 uppercase tracking-tight">
+                        {compactMode ? `${components.length}` : `${components.length} Assets Rendered`}
                     </span>
                 </div>
             </div>
+
+            {/* DYNAMIC COLOR LEGEND OVERLAY */}
+            {colorMode !== "DEFAULT" && (
+                <div className="absolute top-12 left-3 z-30 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl px-3 py-2 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200 flex flex-col gap-1.5 text-white max-w-md">
+                    <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
+                        <span className="flex items-center gap-1">
+                            <Palette className="w-3 h-3 text-amber-400" />
+                            <span>
+                                {colorMode === "ANOMALY_PRIORITY" && "Anomaly Priority Key"}
+                                {colorMode === "PENDING_TASK" && "Pending Tasks Status Key"}
+                                {colorMode === "INCOMPLETE_RECORD" && "Incomplete Records Key"}
+                                {colorMode === "RECTIFIED_ANOMALY" && "Rectified Anomaly Key"}
+                                {colorMode === "INSPECTION_TASK_TYPE" && "Inspection Task Spec Key"}
+                                {colorMode === "HISTORICAL_COMPARE" && "Historical Campaign Compare Key"}
+                            </span>
+                        </span>
+                        <button onClick={() => setColorMode("DEFAULT")} className="text-[8px] font-bold text-slate-500 hover:text-white uppercase">Hide</button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-bold">
+                        {colorMode === "ANOMALY_PRIORITY" && (
+                            <>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span>Class A (High)</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" /><span>Class B (Med)</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500" /><span>Class C (Low)</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span>Clean</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-500" /><span>Uninspected</span></div>
+                            </>
+                        )}
+                        {colorMode === "PENDING_TASK" && (
+                            <>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span>Completed</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sky-500" /><span>In Progress</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /><span>Pending</span></div>
+                            </>
+                        )}
+                        {colorMode === "INCOMPLETE_RECORD" && (
+                            <>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600" /><span>Incomplete Record</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span>Complete</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-600" /><span>Uninspected</span></div>
+                            </>
+                        )}
+                        {colorMode === "RECTIFIED_ANOMALY" && (
+                            <>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-400" /><span>Rectified</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span>Active Anomaly</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span>No Anomaly</span></div>
+                            </>
+                        )}
+                        {colorMode === "INSPECTION_TASK_TYPE" && (
+                            <>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-400" /><span>FMD</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /><span>UTWTK</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" /><span>Anode</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /><span>GVINS</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-500" /><span>Weld/Corrosion</span></div>
+                            </>
+                        )}
+                        {colorMode === "HISTORICAL_COMPARE" && (
+                            <>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-600" /><span>New Anomaly</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-600" /><span>Persistent Anomaly</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-500" /><span>Rectified Past Anomaly</span></div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

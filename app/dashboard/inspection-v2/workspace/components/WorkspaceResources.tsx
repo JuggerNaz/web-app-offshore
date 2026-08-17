@@ -1,6 +1,8 @@
-"use client";
-
 import React from "react";
+import dynamic from "next/dynamic";
+import useSWR from "swr";
+import { fetcher } from "@/utils/utils";
+import { toast } from "sonner";
 import { 
     Search, 
     Box, 
@@ -8,13 +10,64 @@ import {
     History, 
     Info,
     PlusCircle,
-    Loader2
+    Loader2,
+    X,
+    Play,
+    Plus
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RegisterComponentDialog } from "./RegisterComponentDialog";
+
+function getComponentNodeLegDetails(comp: any) {
+    if (!comp) return { sNode: null, fNode: null, legNo: null, depth: null };
+    const md = comp?.metadata || {};
+    const qId = String(comp?.q_id || comp?.id_no || comp?.name || "").toUpperCase();
+
+    let sNode = md.s_node || md.start_node || comp?.s_node;
+    let fNode = md.f_node || md.end_node || comp?.f_node;
+
+    if (!sNode || !fNode) {
+        const nodeMatch = qId.match(/N?(\d{3,5})[\-_/]+N?(\d{3,5})/i);
+        if (nodeMatch) {
+            sNode = sNode || `N${nodeMatch[1]}`;
+            fNode = fNode || `N${nodeMatch[2]}`;
+        }
+    }
+
+    let legNo = md.leg_no || md.leg || md.leg_name || comp?.leg_no || comp?.leg;
+    if (!legNo) {
+        const legMatch = qId.match(/(?:LEG|L)[-_ ]*([A-Z0-9]+)/i) || qId.match(/\b([A-D][1-4])\b/);
+        if (legMatch) {
+            legNo = legMatch[1];
+        }
+    }
+
+    const depth = md.depth || md.elevation || md.startElev || comp?.depth || comp?.elevation;
+
+    return {
+        sNode: sNode ? String(sNode) : null,
+        fNode: fNode ? String(fNode) : null,
+        legNo: legNo ? String(legNo) : null,
+        depth: depth ? String(depth) : null,
+    };
+}
+
+const Structural3DViewer = dynamic(
+    () => import("@/app/dashboard/utilities/platform-3d/_components/Structural3DViewer").then((mod) => mod.Structural3DViewer),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 p-6 text-center border border-slate-800 rounded-lg min-h-[300px]">
+                <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Loading 3D Platform Engine...</span>
+                <span className="text-[9px] text-slate-500 uppercase mt-1 tracking-wider">Building WebGL structural meshes</span>
+            </div>
+        )
+    }
+);
 
 interface WorkspaceResourcesProps {
     compView: "LIST" | "MODEL_3D";
@@ -59,6 +112,81 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     const [sortKey, setSortKey] = React.useState<SortKey>('name');
     const [sortDir, setSortDir] = React.useState<SortDir>('asc');
 
+    const allComponents = React.useMemo(() => {
+        return [...(componentsSow || []), ...(componentsNonSow || [])];
+    }, [componentsSow, componentsNonSow]);
+
+    // Fetch WebApp 3D Coordinates and Platform Details on-demand only when 3D mode is active
+    const shouldFetch3D = compView === "MODEL_3D" && !!structureId && structureId !== 0;
+
+    const { data: webapp3dResponse, isLoading: isWebapp3dLoading, mutate: mutateWebapp3d } = useSWR(
+        shouldFetch3D ? `/api/platform/webapp-3d/${structureId}` : null,
+        fetcher,
+        { revalidateOnFocus: false, revalidateOnReconnect: false, revalidateIfStale: true }
+    );
+    const webapp3dData = webapp3dResponse?.data;
+
+    const [isResyncing3D, setIsResyncing3D] = React.useState(false);
+
+    const handleResync3D = async () => {
+        if (!structureId || structureId === 0) return;
+        setIsResyncing3D(true);
+        try {
+            const res = await fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" });
+            if (res.ok) {
+                toast.success("3D model cache resynchronized & recreated successfully!");
+                if (mutateWebapp3d) await mutateWebapp3d();
+            } else {
+                toast.error("Failed to resynchronize 3D model cache.");
+            }
+        } catch (e) {
+            toast.error("Error resynchronizing 3D model cache.");
+        } finally {
+            setIsResyncing3D(false);
+        }
+    };
+
+    const { data: platformDetailData } = useSWR(
+        shouldFetch3D ? `/api/platform/${structureId}` : null,
+        fetcher,
+        { revalidateOnFocus: false, revalidateOnReconnect: false }
+    );
+    const platformDetails = platformDetailData?.data;
+
+    const { data: elevationsData } = useSWR(
+        shouldFetch3D ? `/api/platform/elevation/${structureId}` : null,
+        fetcher,
+        { revalidateOnFocus: false, revalidateOnReconnect: false }
+    );
+    const elevations = elevationsData?.data || [];
+
+    const { data: facesData } = useSWR(
+        shouldFetch3D ? `/api/platform/faces/${structureId}` : null,
+        fetcher,
+        { revalidateOnFocus: false, revalidateOnReconnect: false }
+    );
+    const faces = facesData?.data || [];
+
+    const [previewComp, setPreviewComp] = React.useState<any>(null);
+
+    const handle3DComponentClick = (comp3d: any) => {
+        const fullComp = allComponents.find(
+            (c: any) => String(c.id) === String(comp3d.id) || String(c.q_id) === String(comp3d.q_id)
+        ) || comp3d;
+        
+        setPreviewComp(fullComp);
+    };
+
+    const handleSelect3DTask = (taskCode: string) => {
+        if (!previewComp) return;
+        handleComponentSelection(previewComp);
+        if (handleTaskChange) {
+            handleTaskChange(taskCode);
+        }
+        toast.success(`Loaded ${taskCode} for ${previewComp.q_id || previewComp.name} into inspection form`);
+        setPreviewComp(null);
+    };
+
     const toggleSort = (key: SortKey) => {
         if (sortKey === key) {
             setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -102,9 +230,54 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
         return [...componentsNonSow, ...sowCompsWithoutValidTask];
     }, [componentsSow, componentsNonSow, allInspectionTypes, inspMethod]);
 
+    const availableInspectionTypesForMode = React.useMemo(() => {
+        return (allInspectionTypes || []).filter((it: any) => {
+            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
+            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
+            
+            // 1. Operational Mode Filter (DIVING vs ROV)
+            let matchesMode = true;
+            if (inspMethod === "DIVING") {
+                if (it.metadata?.diving !== undefined || it.metadata?.rov !== undefined || it.metadata?.job_type) {
+                    matchesMode = isDiving;
+                }
+            } else if (inspMethod === "ROV") {
+                if (it.metadata?.diving !== undefined || it.metadata?.rov !== undefined || it.metadata?.job_type) {
+                    matchesMode = isRov;
+                }
+            }
+
+            if (!matchesMode) return false;
+
+            // 2. Structure Type Filter (PLATFORM vs PIPELINE)
+            const structTypeMeta = (it.structure_type || it.structure_group || it.metadata?.structure_type || it.metadata?.structure_group || it.metadata?.category || "").toString().toUpperCase();
+            const codeUpper = String(it.code || "").toUpperCase();
+
+            const pipelineCodes = ["NAVIG", "RNAVIG", "CROSS", "PIPE", "PL_AN", "EVENT", "CP_FG", "FREE_SPAN"];
+
+            if (structureType === "pipeline") {
+                if (structTypeMeta) {
+                    if (structTypeMeta.includes("PLATFORM")) return false;
+                    if (structTypeMeta.includes("PIPELINE")) return true;
+                }
+                if (pipelineCodes.includes(codeUpper)) return true;
+                if (["RSANI", "DSANI", "FMD", "RMGI", "SZCI", "RSWNI", "ANMAIN", "RICMI"].includes(codeUpper)) return false;
+                return true;
+            } else {
+                // Platform structure
+                if (structTypeMeta) {
+                    if (structTypeMeta.includes("PIPELINE")) return false;
+                    if (structTypeMeta.includes("PLATFORM")) return true;
+                }
+                if (pipelineCodes.includes(codeUpper)) return false;
+                return true;
+            }
+        });
+    }, [allInspectionTypes, inspMethod, structureType]);
+
     return (
         <div className="flex-1 flex flex-col gap-3 overflow-hidden">
-        <Card className="flex flex-col border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden h-[300px]">
+        <Card className="flex flex-col border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden flex-1 h-full min-h-0">
                 <div className="bg-slate-800 dark:bg-slate-900 text-white flex items-center justify-between pl-1 pr-3 shrink-0">
                     <div className="flex">
                         <button 
@@ -278,79 +451,141 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                 )}
 
                 {compView === "MODEL_3D" && (
-                    <div className="flex-1 bg-slate-900 flex flex-col items-center justify-center p-4 text-center border-dashed border-2 border-slate-800 m-2 rounded-lg relative overflow-hidden">
-                        <Layers className="w-12 h-12 mb-3 text-slate-700/50" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">3D Viewer</span>
+                    <div className="flex-1 bg-slate-950 flex flex-col relative overflow-hidden min-h-0 w-full h-full">
+                        {isWebapp3dLoading ? (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 p-6 text-center border border-slate-800 rounded-lg">
+                                <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-3" />
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Rendering 3D Platform Model...</span>
+                            </div>
+                        ) : (
+                            <>
+                                <Structural3DViewer
+                                     webapp3dData={webapp3dData}
+                                     components={allComponents}
+                                     platformDetails={platformDetails}
+                                     elevations={elevations}
+                                     faces={faces}
+                                     selectedCompId={previewComp?.id || selectedComp?.id}
+                                     onSelectComponent={handle3DComponentClick}
+                                     onSync={handleResync3D}
+                                     isSyncing={isResyncing3D}
+                                     compactMode={true}
+                                     currentRecords={currentRecords}
+                                     historicalRecords={historicalRecords}
+                                />
+
+                                {/* BRIEF INFO OVERLAY CARD AT BOTTOM OF 3D VIEWER */}
+                                {previewComp && (
+                                    <div className="absolute bottom-2 left-2 right-2 z-30 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl p-3 shadow-2xl animate-in slide-in-from-bottom-2 duration-200 flex flex-col gap-2 text-white">
+                                        {/* Header Row: QID, Type badge & Close button */}
+                                        <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+                                            <div className="flex items-center gap-2 overflow-hidden pr-2">
+                                                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                                                <span className="text-xs font-black uppercase tracking-wider text-white truncate">
+                                                    {previewComp.q_id || previewComp.id_no || previewComp.name || `Component #${previewComp.id}`}
+                                                </span>
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-slate-800 text-slate-300 border border-slate-700 shrink-0">
+                                                    {previewComp.type || previewComp.code || "MEMBER"}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={() => setPreviewComp(null)}
+                                                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+                                                title="Dismiss brief info"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+
+                                        {/* Details Grid: Leg & Node information */}
+                                        {(() => {
+                                            const details = getComponentNodeLegDetails(previewComp);
+                                            const assignedTasks = previewComp.taskStatuses || previewComp.tasks || [];
+                                            return (
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                                                        <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
+                                                            <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Leg / Location</span>
+                                                            <span className="font-bold text-slate-200 truncate">
+                                                                {details.legNo ? `Leg ${details.legNo}` : "Unassigned"}
+                                                            </span>
+                                                        </div>
+                                                        <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
+                                                            <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Nodes (S ➔ F)</span>
+                                                            <span className="font-bold text-slate-200 truncate">
+                                                                {details.sNode && details.fNode ? `${details.sNode} ➔ ${details.fNode}` : details.sNode || details.fNode || "N/A"}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Inspection Tasks Action Section */}
+                                                    <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-800/80">
+                                                        <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                                            <span>Assigned Tasks ({assignedTasks.length})</span>
+                                                            <span className="text-blue-400 font-medium">Click task to inspect in form</span>
+                                                        </div>
+
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            {assignedTasks.length > 0 ? (
+                                                                assignedTasks.map((tItem: any, idx: number) => {
+                                                                    const tCode = tItem.code || tItem;
+                                                                    const matchedType = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                                                                    const displayName = matchedType?.name || tCode;
+
+                                                                    return (
+                                                                        <button
+                                                                            key={idx}
+                                                                            onClick={() => handleSelect3DTask(tCode)}
+                                                                            className="px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                                                                            title={`Start inspection for ${displayName}`}
+                                                                        >
+                                                                            <Play className="w-2.5 h-2.5 fill-current" />
+                                                                            <span>{displayName}</span>
+                                                                        </button>
+                                                                    );
+                                                                })
+                                                            ) : (
+                                                                <span className="text-[9px] italic text-slate-500">No inspection tasks assigned yet</span>
+                                                            )}
+
+                                                            {/* Dropdown to add a new inspection task */}
+                                                            <div className="relative inline-block">
+                                                                <select
+                                                                    onChange={(e) => {
+                                                                        if (e.target.value) {
+                                                                            handleSelect3DTask(e.target.value);
+                                                                        }
+                                                                    }}
+                                                                    defaultValue=""
+                                                                    className="h-6 text-[9px] font-black uppercase tracking-wider bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded px-2 pr-4 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                >
+                                                                    <option value="" disabled>+ Add Task ({inspMethod})...</option>
+                                                                    {(allInspectionTypes || [])
+                                                                        .filter((it: any) => {
+                                                                            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                                            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                                            if (inspMethod === "DIVING" && isDiving) return true;
+                                                                            if (inspMethod === "ROV" && isRov) return true;
+                                                                            return false;
+                                                                        })
+                                                                        .map((t: any) => (
+                                                                            <option key={t.id || t.code} value={t.code || t.name} className="bg-slate-900 text-white">
+                                                                                {t.name} ({t.code})
+                                                                            </option>
+                                                                        ))}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 )}
-            </Card>
-
-            <Card className="flex flex-col flex-1 border-2 border-slate-200 dark:border-slate-500 shadow-xl rounded-md bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-hidden min-h-0">
-                <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-2 flex justify-between items-center shrink-0">
-                    <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">HISTORY DATA</span>
-                    <History className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-                </div>
-                <ScrollArea className="flex-1 p-3">
-                    {historyLoading ? (
-                        <div className="flex flex-col items-center justify-center p-12 gap-3 animate-in fade-in duration-500">
-                            <div className="relative">
-                                <div className="absolute inset-0 blur-md bg-blue-400/20 rounded-full animate-pulse" />
-                                <Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" />
-                            </div>
-                            <div className="flex flex-col items-center gap-1">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retrieving History</span>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Looking up past inspection data...</span>
-                            </div>
-                        </div>
-                    ) : !selectedComp ? (
-                        <div className="text-center text-slate-400 text-xs py-10">Select component to view history</div>
-                    ) : (
-                        <div className="space-y-4">
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></div>
-                                    <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest bg-blue-50/50 dark:bg-blue-900/20 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-800/30">Current Workpack</span>
-                                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></div>
-                                </div>
-                                <div className="space-y-2">
-                                    {currentCompRecords.length === 0 ? (
-                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 p-3 text-center bg-slate-50/50 dark:bg-slate-900/30 rounded border border-dashed border-slate-200 dark:border-slate-800 italic font-medium">No records in current scope</div>
-                                    ) : currentCompRecords.map((r, i) => (
-                                        <div key={i} className="flex flex-col gap-1 p-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800 text-[11px] shadow-sm hover:border-blue-200 dark:hover:border-blue-800 transition-colors">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-bold text-slate-700 dark:text-slate-100">{r.type}</span>
-                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${r.status === 'Complete' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>{r.status}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tight">
-                                                <span>{inspMethod === 'DIVING' ? 'Dive' : 'Dep'}: {r.diveNo || 'N/A'}</span>
-                                                <span>Tape: {r.tapeNo}</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></div>
-                                    <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800">Historical Data</span>
-                                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></div>
-                                </div>
-                                <div className="space-y-2">
-                                    {historicalRecords.length === 0 ? (
-                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 p-3 text-center bg-slate-50/50 dark:bg-slate-900/30 rounded border border-dashed border-slate-200 dark:border-slate-800 italic font-medium">No historical records found</div>
-                                    ) : historicalRecords.map((r, i) => (
-                                        <div key={i} className="flex flex-col gap-1 p-2 bg-slate-50/50 dark:bg-slate-900/20 rounded border border-slate-200 dark:border-slate-800 text-[11px] opacity-80 hover:opacity-100 transition-opacity">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-bold text-slate-600 dark:text-slate-300">{r.type} ({r.year})</span>
-                                            </div>
-                                            <div className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5 italic">"{r.finding}"</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </ScrollArea>
             </Card>
 
             <RegisterComponentDialog 
