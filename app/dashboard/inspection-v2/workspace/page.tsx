@@ -2641,21 +2641,109 @@ function V10PreviewLayout() {
     return win;
   };
 
-  const handlePopoutCapturedEvents = async () => {
-    if (capturedEventsPipWindow) {
-      capturedEventsPipWindow.close();
-      setCapturedEventsPipWindow(null);
+  const [poppedOutWindows, setPoppedOutWindows] = useState<Record<string, Window | null>>({});
+
+  const handleTogglePanelPopout = useCallback(async (panelId: string, panelName?: string) => {
+    let title = panelName || panelId;
+    if (panelId === "opsLog") title = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
+    if (panelId === "videoLog") title = "Video Log";
+    if (panelId === "videoPreview") title = "Photo / Video Grab";
+    if (panelId === "form") title = "Inspection Form";
+    if (panelId === "events") title = "Captured Events";
+    if (panelId === "components") title = (isPipeline || headerData?.structureType === "pipeline") ? "Event Menu" : "Component List";
+    if (panelId === "history") title = "History Data";
+    if (panelId === "inspectionInfo") title = "Inspection Info";
+    if (panelId === "quickShortcuts") title = "Quick Log";
+
+    if (poppedOutWindows[panelId]) {
+      try {
+        poppedOutWindows[panelId]?.close();
+      } catch (e) {}
+      setPoppedOutWindows((prev) => {
+        const next = { ...prev };
+        delete next[panelId];
+        return next;
+      });
+      if (panelId === "videoPreview") setPipWindow(null);
+      if (panelId === "events") setCapturedEventsPipWindow(null);
       return;
     }
 
-    const win = await openFloatingWindow("Captured Events", 1100, 650);
+    let width = 1000;
+    let height = 650;
+    if (panelId === "form") { width = 1100; height = 750; }
+    if (panelId === "events") { width = 1200; height = 700; }
+    if (panelId === "components") { width = 950; height = 700; }
+    if (panelId === "videoPreview") { width = 960; height = 600; }
+    if (panelId === "videoLog") { width = 900; height = 650; }
+    if (panelId === "inspectionInfo") { width = 800; height = 550; }
+    if (panelId === "quickShortcuts") { width = 850; height = 600; }
+
+    const win = await openFloatingWindow(title, width, height);
     if (!win) return;
 
-    setCapturedEventsPipWindow(win);
+    if (panelId === "videoPreview") {
+      win.document.body.style.background = "#000";
+      setPipWindow(win);
+    }
+    if (panelId === "events") {
+      setCapturedEventsPipWindow(win);
+    }
 
-    const cleanup = () => setCapturedEventsPipWindow(null);
+    setPoppedOutWindows((prev) => ({
+      ...prev,
+      [panelId]: win,
+    }));
+
+    const cleanup = () => {
+      setPoppedOutWindows((prev) => {
+        const next = { ...prev };
+        delete next[panelId];
+        return next;
+      });
+      if (panelId === "videoPreview") setPipWindow(null);
+      if (panelId === "events") setCapturedEventsPipWindow(null);
+    };
+
     win.addEventListener("pagehide", cleanup);
     win.addEventListener("beforeunload", cleanup);
+  }, [inspMethod, isPipeline, headerData, poppedOutWindows]);
+
+  const renderPanelWithPopout = useCallback((
+    panelId: string,
+    panelName: string,
+    panelJSX: React.ReactNode
+  ) => {
+    const popoutWin = poppedOutWindows[panelId];
+    if (popoutWin) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full bg-slate-900/90 text-slate-300 p-6 text-center border border-slate-800 rounded-lg">
+          <div className="p-3 rounded-full bg-blue-500/10 border border-blue-500/20 mb-3 text-blue-400">
+            <ExternalLink className="w-6 h-6 animate-pulse" />
+          </div>
+          <h4 className="text-xs font-black uppercase tracking-widest text-white mb-1">
+            {panelName} Popped Out
+          </h4>
+          <p className="text-[10px] text-slate-400 max-w-xs mb-4">
+            This panel is active in an extended floating window. Move it to your secondary monitor for multi-screen inspection.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-[10px] font-bold uppercase tracking-wider text-blue-400 border-blue-800 hover:bg-blue-900/30 gap-1.5"
+            onClick={() => handleTogglePanelPopout(panelId, panelName)}
+          >
+            <Minimize2 className="w-3.5 h-3.5" /> Restore to Dock
+          </Button>
+          {(createPortal(panelJSX, popoutWin.document.body) as any)}
+        </div>
+      );
+    }
+    return panelJSX;
+  }, [poppedOutWindows, handleTogglePanelPopout]);
+
+  const handlePopoutCapturedEvents = async () => {
+    handleTogglePanelPopout("events", "Captured Events");
   };
 
   const handleDeleteTape = async (tapeIdToDelete: number) => {
@@ -3336,21 +3424,7 @@ function V10PreviewLayout() {
   };
 
   const handlePopOutStream = async () => {
-    if (pipWindow) {
-      pipWindow.close();
-      setPipWindow(null);
-      return;
-    }
-
-    const win = await openFloatingWindow("Photo / Video Grab", 960, 600);
-    if (!win) return;
-
-    win.document.body.style.background = "#000";
-    setPipWindow(win);
-
-    const cleanup = () => setPipWindow(null);
-    win.addEventListener("pagehide", cleanup);
-    win.addEventListener("beforeunload", cleanup);
+    handleTogglePanelPopout("videoPreview", "Photo / Video Grab");
   };
 
   const handleLinkToRecord = (file: (typeof recordedFiles)[0]) => {
@@ -7360,54 +7434,60 @@ function V10PreviewLayout() {
 
   const layoutFactory = useCallback((node: TabNode) => {
     const component = node.getComponent();
-    const name = node.getName();
-    console.log("[DEBUG] layoutFactory rendering component:", component, "with name:", name);
+    let name = node.getName();
+    if (component === "opsLog") name = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
+    if (component === "videoPreview") name = "Photo / Video Grab";
+    if (component === "components") name = (isPipeline || headerData?.structureType === "pipeline") ? "Event Menu" : "Component List";
+    if (component === "form") name = "Inspection Form";
+    if (component === "events") name = "Captured Events";
+    if (component === "history") name = "History Data";
+
+    let panelContent: React.ReactNode = null;
 
     switch (component) {
       case "opsLog":
-        return (
-          isPipeline ? (
-            <DiverLogPanelPipeline
-              inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
-              activeDep={activeDep}
-              timeInWater={timeInWater}
-              currentMovement={currentMovement}
-              diveStartTime={diveStartTime}
-              diveEndTime={diveEndTime}
-              setIsDiveSetupForNew={setIsDiveSetupForNew}
-              setIsDiveSetupOpen={setIsDiveSetupOpen}
-              setIsMovementLogOpen={setIsMovementLogOpen}
-              handleMovementPrev={handleMovementPrev}
-              handleMovementNext={handleMovementNext}
-              handleMovementLog={handleMovementLog}
-              handlePrevDep={handlePrevDep}
-              handleNextDep={handleNextDep}
-              diveActionsList={diveActionsList}
-              ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
-            />
-          ) : (
-            <DiverLogPanel
-              inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
-              activeDep={activeDep}
-              timeInWater={timeInWater}
-              currentMovement={currentMovement}
-              diveStartTime={diveStartTime}
-              diveEndTime={diveEndTime}
-              setIsDiveSetupForNew={setIsDiveSetupForNew}
-              setIsDiveSetupOpen={setIsDiveSetupOpen}
-              setIsMovementLogOpen={setIsMovementLogOpen}
-              handleMovementPrev={handleMovementPrev}
-              handleMovementNext={handleMovementNext}
-              handleMovementLog={handleMovementLog}
-              handlePrevDep={handlePrevDep}
-              handleNextDep={handleNextDep}
-              diveActionsList={diveActionsList}
-              ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
-            />
-          )
+        panelContent = isPipeline ? (
+          <DiverLogPanelPipeline
+            inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
+            activeDep={activeDep}
+            timeInWater={timeInWater}
+            currentMovement={currentMovement}
+            diveStartTime={diveStartTime}
+            diveEndTime={diveEndTime}
+            setIsDiveSetupForNew={setIsDiveSetupForNew}
+            setIsDiveSetupOpen={setIsDiveSetupOpen}
+            setIsMovementLogOpen={setIsMovementLogOpen}
+            handleMovementPrev={handleMovementPrev}
+            handleMovementNext={handleMovementNext}
+            handleMovementLog={handleMovementLog}
+            handlePrevDep={handlePrevDep}
+            handleNextDep={handleNextDep}
+            diveActionsList={diveActionsList}
+            ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+          />
+        ) : (
+          <DiverLogPanel
+            inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
+            activeDep={activeDep}
+            timeInWater={timeInWater}
+            currentMovement={currentMovement}
+            diveStartTime={diveStartTime}
+            diveEndTime={diveEndTime}
+            setIsDiveSetupForNew={setIsDiveSetupForNew}
+            setIsDiveSetupOpen={setIsDiveSetupOpen}
+            setIsMovementLogOpen={setIsMovementLogOpen}
+            handleMovementPrev={handleMovementPrev}
+            handleMovementNext={handleMovementNext}
+            handleMovementLog={handleMovementLog}
+            handlePrevDep={handlePrevDep}
+            handleNextDep={handleNextDep}
+            diveActionsList={diveActionsList}
+            ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+          />
         );
-       case "videoLog":
-        return (
+        break;
+      case "videoLog":
+        panelContent = (
           <div className="flex flex-col h-full w-full bg-white dark:bg-[#090d16] overflow-y-auto custom-scrollbar min-w-0">
             {isPipeline ? (
               <TapeManagementCardPipeline
@@ -7465,8 +7545,9 @@ function V10PreviewLayout() {
             </Dialog>
           </div>
         );
+        break;
       case "videoPreview":
-        return (
+        panelContent = (
           <VideoInterface
             videoRef={videoRef}
             canvasRef={canvasRef}
@@ -7502,8 +7583,9 @@ function V10PreviewLayout() {
             overlayManager={overlayManager}
           />
         );
+        break;
       case "form":
-        return (
+        panelContent = (
           <InspectionFormPanel
             inspMethod={inspMethod}
             selectedComp={selectedComp}
@@ -7563,8 +7645,9 @@ function V10PreviewLayout() {
             setPrevRefNo={setPrevRefNo}
           />
         );
+        break;
       case "events":
-        return (
+        panelContent = (
           <EventsTablePanel
             syncLoading={syncLoading}
             recordSearchQuery={recordSearchQuery}
@@ -7594,9 +7677,10 @@ function V10PreviewLayout() {
             editingRecordId={editingRecordId}
           />
         );
+        break;
       case "components":
         if (isPipeline || headerData.structureType === "pipeline") {
-          return (
+          panelContent = (
             <PipelineEventMenuPanel
               currentKp={headerData.kp || "0.000"}
               inspMethod={inspMethod}
@@ -7640,7 +7724,6 @@ function V10PreviewLayout() {
                 if (!targetComp && (isPipeline || headerData.structureType === "pipeline") && structureId) {
                   try {
                     const parsedStructId = parseInt(structureId);
-                    // Query if a Pipeline component already exists for this structure
                     const { data: existingComps } = await supabase
                       .from("structure_components")
                       .select("id, q_id, name, type")
@@ -7656,7 +7739,6 @@ function V10PreviewLayout() {
                       };
                       setSelectedComp(targetComp);
                     } else {
-                      // Create default Pipeline component in structure_components
                       const { data: createdComp, error: createErr } = await supabase
                         .from("structure_components")
                         .insert({
@@ -7678,7 +7760,6 @@ function V10PreviewLayout() {
                   }
                 }
 
-                // Strict Validation: Component ID MUST be present and valid before allowing inspection data creation
                 if (!targetComp?.id || targetComp.id === 999999) {
                   toast.error("Cannot save inspection event: A registered Component is required. Please select or register a Component first.");
                   return;
@@ -7725,7 +7806,6 @@ function V10PreviewLayout() {
                   ...eventProps,
                 }));
 
-                // DIRECT RECORD INSERTION INTO `insp_records` TABLE
                 try {
                   const userRes = await supabase.auth.getUser();
                   const user = userRes?.data?.user;
@@ -7778,45 +7858,48 @@ function V10PreviewLayout() {
               }}
             />
           );
+        } else {
+          panelContent = (
+            <ComponentListPanel
+              compView={compView}
+              setCompView={setCompView}
+              compSearchTerm={compSearchTerm}
+              setCompSearchTerm={setCompSearchTerm}
+              componentsSow={componentsSow}
+              componentsNonSow={componentsNonSow}
+              selectedComp={selectedComp}
+              handleComponentSelection={handleComponentSelection}
+              setCompSpecDialogOpen={setCompSpecDialogOpen}
+              currentRecords={currentRecords}
+              currentCompRecords={currentCompRecords}
+              historicalRecords={historicalRecords}
+              historyLoading={historyLoading}
+              inspMethod={inspMethod}
+              supabase={supabase}
+              structureId={structureId ? Number(structureId) : 0}
+              onRefreshComponents={() => { queryClient.invalidateQueries({ queryKey: ["sow-data"] }); }}
+              allInspectionTypes={allInspectionTypes}
+              structureType={(headerData.structureType as string) === "pipeline" ? "pipeline" : "platform"}
+              unitSystem={unitSystem}
+              handleEditRecord={handleEditRecord}
+              handleTaskChange={handleTaskChange}
+              setShowTaskSelector={setShowTaskSelector}
+            />
+          );
         }
-        return (
-          <ComponentListPanel
-            compView={compView}
-            setCompView={setCompView}
-            compSearchTerm={compSearchTerm}
-            setCompSearchTerm={setCompSearchTerm}
-            componentsSow={componentsSow}
-            componentsNonSow={componentsNonSow}
-            selectedComp={selectedComp}
-            handleComponentSelection={handleComponentSelection}
-            setCompSpecDialogOpen={setCompSpecDialogOpen}
-            currentRecords={currentRecords}
-            currentCompRecords={currentCompRecords}
-            historicalRecords={historicalRecords}
-            historyLoading={historyLoading}
-            inspMethod={inspMethod}
-            supabase={supabase}
-            structureId={structureId ? Number(structureId) : 0}
-            onRefreshComponents={() => { queryClient.invalidateQueries({ queryKey: ["sow-data"] }); }}
-            allInspectionTypes={allInspectionTypes}
-            structureType={(headerData.structureType as string) === "pipeline" ? "pipeline" : "platform"}
-            unitSystem={unitSystem}
-            handleEditRecord={handleEditRecord}
-            handleTaskChange={handleTaskChange}
-            setShowTaskSelector={setShowTaskSelector}
-          />
-        );
+        break;
       case "history":
-        return (
+        panelContent = (
           <HistoryDataPanel
             historicalRecords={historicalRecords}
             historyLoading={historyLoading}
             handleEditRecord={handleEditRecord}
           />
         );
+        break;
       case "inspectionInfo":
         if (!isPipeline) return null;
-        return (
+        panelContent = (
           <PipelineInspectionInfoPanel
             currentKp={headerData?.kp || "0.000"}
             inspectionDirection={inspectionDirection}
@@ -7825,128 +7908,54 @@ function V10PreviewLayout() {
             unitSystem={unitSystem}
           />
         );
+        break;
       case "quickShortcuts":
         if (!isPipeline) return null;
-        return (
+        panelContent = (
           <QuickShortcutsPanel
             onSelectEvent={handlePipelineEventSelect}
             currentKp={headerData?.kp || "0.000"}
             inspMethod={inspMethod}
           />
         );
+        break;
       default:
-        return <div className="p-4 text-slate-500">Panel {name} under construction</div>;
+        panelContent = <div className="p-4 text-slate-500">Panel {name} under construction</div>;
     }
+
+    if (!panelContent) return null;
+    return renderPanelWithPopout(component || "", name || "", panelContent);
   }, [
-    activeDep,
-    inspMethod,
-    vidState,
-    tapeId,
-    selectedComp,
-    currentRecords,
-    displayRecords,
-    dynamicProps,
-    findingType,
-    compView,
-    compSearchTerm,
-    componentsSow,
-    componentsNonSow,
-    currentCompRecords,
-    historicalRecords,
-    historyLoading,
-    timeInWater,
-    currentMovement,
-    diveStartTime,
-    diveEndTime,
-    setIsDiveSetupForNew,
-    setIsDiveSetupOpen,
-    setIsMovementLogOpen,
-    videoRef,
-    canvasRef,
-    streamActive,
-    setStreamActive,
-    vidTimer,
-    tapeNo,
-    videoVisible,
-    setVideoVisible,
-    isStreamRecording,
-    isStreamPaused,
-    previewStream,
-    handleStartStreamRecording,
-    handlePauseStreamRecording,
-    handleResumeStreamRecording,
-    handleStopStreamRecording,
-    handleGrabPhoto,
-    handleToggleStreamRecording,
-    handlePopOutStream,
-    pipWindow,
-    formatTime,
-    showDrawingTools,
-    setShowDrawingTools,
-    videoEvents,
-    supabase,
-    setVideoEvents,
-    setEditingEvent,
-    handleDeleteEvent,
-    activeSpec,
-    setFindingType,
-    editingRecordId,
-    resetForm,
-    FORM_AREA_ID,
-    setIsAddInspOpen,
-    allInspectionTypes,
-    activeFormProps,
-    renderInspectionField,
-    handleDynamicPropChange,
-    anomalyData,
-    setAnomalyData,
-    defectCodes,
-    allDefectTypes,
-    availableDefectTypes,
-    priorities,
-    headerData,
-    manualOverride,
-    setManualOverride,
-    setLastAutoMatchedRuleId,
-    handleCommitRecord,
-    isCommitting,
-    setCompSpecDialogOpen,
-    incompleteReason,
-    setIncompleteReason,
-    recordNotes,
-    setRecordNotes,
-    pendingAttachments,
-    setPendingAttachments,
-    deletedAttachmentIds,
-    setDeletedAttachmentIds,
-    setEditingAttachment,
-    setIsAttachmentManagerOpen,
-    recordedFiles,
-    setShowTaskSelector,
-    setShowCompSelector,
-    libOptionsMap,
-    handleDeleteRecord,
-    handlePrintAnomaly,
-    syncLoading,
-    recordSearchQuery,
-    setRecordSearchQuery,
-    sortedRecords,
-    capturedEventsPipWindow,
-    handlePopoutCapturedEvents,
-    activeTableColumns,
-    columnSettings,
-    handleMoveColumn,
-    toggleColumnVisibility,
-    handleSort,
-    sortConfig,
-    handleEditRecord,
-    setViewingRecordAttachments,
-    handleComponentSelection,
-    structureId,
-    unitSystem,
-    inspectionDirection,
-    inspectionLocation,
-    selectedComp,
+    inspMethod, isPipeline, headerData, renderPanelWithPopout,
+    activeDep, timeInWater, currentMovement, diveStartTime, diveEndTime,
+    setIsDiveSetupForNew, setIsDiveSetupOpen, setIsMovementLogOpen, handleMovementPrev,
+    handleMovementNext, handleMovementLog, handlePrevDep, handleNextDep, diveActionsList,
+    vidState, vidTimer, tapeId, tapeNo, activeChapter, jobTapes, handleLogEvent,
+    setTapeId, setTapeNo, setActiveChapter, setIsNewTapeOpen, handleOpenEditTape,
+    formatTime, videoLogExpanded, setVideoLogExpanded, videoEvents, handleDeleteEvent,
+    setEditingEvent, videoRef, canvasRef, streamActive, setStreamActive, videoVisible,
+    setVideoVisible, isStreamRecording, isStreamPaused, previewStream, handleStartStreamRecording,
+    handlePauseStreamRecording, handleResumeStreamRecording, handleStopStreamRecording, handleGrabPhoto,
+    handleToggleStreamRecording, handlePopOutStream, pipWindow, showDrawingTools, setShowDrawingTools,
+    currentTool, setCurrentTool, currentColor, setCurrentColor, lineWidth, setLineWidth, overlayManager,
+    selectedComp, editingRecordId, activeSpec, resetForm, FORM_AREA_ID, setIsAddInspOpen,
+    activeMGIProfile, allInspectionTypes, activeFormProps, findingType, setFindingType,
+    renderInspectionField, dynamicProps, handleDynamicPropChange, anomalyData, setAnomalyData,
+    defectCodes, allDefectTypes, availableDefectTypes, priorities, manualOverride, setManualOverride,
+    setLastAutoMatchedRuleId, handleCommitRecord, isCommitting, setCompSpecDialogOpen,
+    incompleteReason, setIncompleteReason, recordNotes, setRecordNotes, pendingAttachments,
+    setPendingAttachments, deletedAttachmentIds, setDeletedAttachmentIds, setEditingAttachment,
+    setIsAttachmentManagerOpen, recordedFiles, setShowTaskSelector, setShowCompSelector,
+    libOptionsMap, handleDeleteRecord, currentRecords, handlePrintAnomaly, handleTaskChange,
+    handleDeleteTaskFromScope, validateAnomalyRef, setPrevRefNo, syncLoading, recordSearchQuery,
+    setRecordSearchQuery, searchMode, setSearchMode, displayRecords, sortedRecords,
+    capturedEventsPipWindow, handlePopoutCapturedEvents, activeTableColumns, columnSettings,
+    handleMoveColumn, toggleColumnVisibility, handleSort, sortConfig, setViewingRecordAttachments,
+    supabase, recordsOffset, setRecordsOffset, recordsLimit, setRecordsLimit, totalRecords,
+    dataAcqConnected, unitSystem, inspectionDirection, inspectionLocation, structureId, jobPackId,
+    setActiveSpec, componentsSow, setSelectedComp, activeCompanyId, syncDeploymentState, queryClient,
+    compView, setCompView, compSearchTerm, setCompSearchTerm, componentsNonSow, currentCompRecords,
+    historicalRecords, historyLoading, handleEditRecord, handlePipelineEventSelect,
   ]);
 
   // --- AUTO-EDIT FROM URL PARAMETERS ---
@@ -8483,15 +8492,35 @@ function V10PreviewLayout() {
             factory={layoutFactory} 
             onModelChange={onLayoutChange} 
             onRenderTab={(node: TabNode, renderValues: any) => {
-              if (node.getComponent() === "videoPreview") {
+              const componentId = node.getComponent() || "";
+              if (componentId === "videoPreview") {
                 renderValues.content = "Photo / Video Grab";
               }
-              if (node.getComponent() === "opsLog") {
+              if (componentId === "opsLog") {
                 renderValues.content = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
               }
-              if (node.getComponent() === "components") {
+              if (componentId === "components") {
                 renderValues.content = (isPipeline || headerData.structureType === "pipeline") ? "Event Menu" : "Component List";
               }
+
+              const isPopped = !!poppedOutWindows[componentId];
+              renderValues.buttons.push(
+                <button
+                  key="popout-btn"
+                  title={isPopped ? "Restore panel to dock layout" : "Pop out panel to extended screen"}
+                  className={`flex items-center justify-center w-4 h-4 ml-1 rounded transition-all ${
+                    isPopped 
+                      ? "text-amber-400 bg-amber-500/20 hover:bg-amber-500/30" 
+                      : "text-slate-400 hover:text-blue-400 hover:bg-slate-700/50"
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTogglePanelPopout(componentId, node.getName() || "");
+                  }}
+                >
+                  {isPopped ? <Minimize2 className="w-3 h-3" /> : <ExternalLink className="w-3 h-3" />}
+                </button>
+              );
             }}
           />
         )}
