@@ -1369,7 +1369,7 @@ export function ComponentSpecDialog({
         mutate(`/api/structure-components/${structureId}`);
       }
 
-      toast("Component updated successfully");
+      toast("Component updated successfully", { position: "bottom-right" });
       setIsEditing(false);
       
       if (onSuccess && updatedComp) {

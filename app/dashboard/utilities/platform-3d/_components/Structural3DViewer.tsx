@@ -1305,7 +1305,8 @@ function InstancedComponentViewer({
                 len = offsetStart.distanceTo(offsetEnd);
             }
 
-            let thickness = item.thickness || 0.3;
+            const isPile = code === "PL" || code === "PILE" || (item.comp?.q_id || "").toUpperCase().includes("PILE");
+            let thickness = isPile ? 0.08 : (item.thickness || 0.3);
 
             const compIdStr = String(item.comp?.id || item.id);
             const isMainLeg = mainMemberIds.has(compIdStr);
@@ -1326,7 +1327,6 @@ function InstancedComponentViewer({
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
             const isConductor = code === "CD" || code === "CS" || code.includes("COND") || code === "CO";
-            const isPile = code === "PL" || code === "PILE" || (item.comp?.q_id || "").toUpperCase().includes("PILE");
 
             const defaultColor = isSelected
                 ? "#2563eb"
@@ -2125,12 +2125,13 @@ export function Structural3DViewer({
         const layouts = (webapp3dData.components || []).map((dbItem: any) => {
             const dbQIdUpper = (dbItem.q_id || dbItem.structure_components?.q_id || "").toUpperCase().trim();
             const dbCompIdStr = String(dbItem.component_id || dbItem.comp_id || "");
+            const baseCompIdStr = dbCompIdStr.split('-seg-')[0];
             const comp: any = rawComponents.find((c: any) =>
-                String(c.id) === dbCompIdStr ||
-                (c.comp_id && String(c.comp_id) === dbCompIdStr) ||
+                String(c.id) === baseCompIdStr ||
+                (c.comp_id && String(c.comp_id) === baseCompIdStr) ||
                 (dbQIdUpper && (c.q_id || "").toUpperCase().trim() === dbQIdUpper)
             ) || dbItem.structure_components || dbItem.component || {};
-            const q_id = comp.q_id || dbItem.q_id || dbItem.structure_components?.q_id || `COMP-${dbItem.component_id}`;
+            const q_id = comp.q_id || dbItem.q_id || dbItem.structure_components?.q_id || `COMP-${baseCompIdStr}`;
             const code = (comp.code || dbItem.code || dbItem.structure_components?.code || "").toUpperCase();
             const qIdUpper = q_id.toUpperCase();
 
@@ -2169,7 +2170,7 @@ export function Structural3DViewer({
                     : "NOT_INSPECTED";
 
             return {
-                id: dbItem.component_id,
+                id: Number(baseCompIdStr) || dbItem.component_id,
                 q_id: q_id,
                 type: dbItem.shape_type,
                 code: code,
@@ -2179,7 +2180,7 @@ export function Structural3DViewer({
                 rotation: [dbItem.rot_x || 0, dbItem.rot_y || 0, dbItem.rot_z || 0],
                 scale: [dbItem.scale_x || 1, dbItem.scale_y || 1, dbItem.scale_z || 1],
                 color: finalColor,
-                thickness: dbItem.thickness || dbItem.dimensions?.radius || (isWeld ? 0.25 : isPile ? 0.2 : 0.5),
+                thickness: isPile ? 0.08 : (dbItem.thickness || dbItem.dimensions?.radius || (isWeld ? 0.25 : 0.5)),
                 length: dbItem.dimensions?.length || 1,
                 offsetDistance: dbItem.dimensions?.offset || 0,
                 shape: dbItem.shape_type,
@@ -2806,24 +2807,6 @@ export function Structural3DViewer({
             )}
 
             <div className="absolute top-6 right-6 flex items-center gap-3 z-50">
-                {/* Sync Button */}
-                {onSync && (
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={onSync}
-                        disabled={isSyncing}
-                        className={cn(
-                            "bg-white/90 backdrop-blur-md h-9 w-9 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-800 transition-all shadow-sm flex items-center justify-center",
-                            isSyncing && "border-blue-200 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
-                        )}
-                        title="Sync Component Data"
-                    >
-                        <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
-                    </Button>
-                )}
-
-
                 {/* Inspection Filter */}
                 <div className="relative">
                     <Button

@@ -90,6 +90,14 @@ export const GET = withAuth(
     let elvMarkers: any[] = [];
 
     const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+    const webapp3dMap = new Map<number, any>();
+    if (webapp3d) {
+      webapp3d.forEach((w: any) => {
+        const cid = w.comp_id || w.structure_components?.id;
+        if (cid) webapp3dMap.set(Number(cid), w);
+      });
+    }
+
     const filteredRawComponents = (rawComponents || [])
       .filter((c: any) => {
         const code = (c.code || "").trim().toUpperCase();
@@ -108,7 +116,14 @@ export const GET = withAuth(
         if (qIdUpper.endsWith("TERM")) return false;
         return true;
       })
-      .map((c: any) => ({ ...c.metadata, ...c }));
+      .map((c: any) => {
+        const w3d = webapp3dMap.get(Number(c.id));
+        const _webapp3d = w3d ? {
+          start_x: w3d.start_x, start_y: w3d.start_y, start_z: w3d.start_z,
+          end_x: w3d.end_x, end_y: w3d.end_y, end_z: w3d.end_z
+        } : null;
+        return { ...c.metadata, ...c, _webapp3d };
+      });
 
     // Compute foundation & elevation markers from math
     const mathResult = generatePlatform3DCoordinates(
@@ -192,7 +207,10 @@ export const GET = withAuth(
                        (item.start_z === 0 || item.start_z === "0" || !item.start_z)) ||
                        (item.start_x === item.end_x && item.start_y === item.end_y && item.start_z === item.end_z);
 
-        if (isZeroOrPoint && mathLayout) {
+        const isSupportWeld = code === "WP" || code === "CL" || (typeof qid === "string" && (qid.includes("SUPP") || qid.includes("CLP")));
+        const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS") || (typeof qid === "string" && qid.startsWith("CS-"));
+
+        if ((isZeroOrPoint || isSupportWeld || isCaisson) && mathLayout) {
           const sX = mathLayout.start?.x ?? mathLayout.start?.[0] ?? 0;
           const sY = mathLayout.start?.y ?? mathLayout.start?.[1] ?? 0;
           const sZ = mathLayout.start?.z ?? mathLayout.start?.[2] ?? 0;

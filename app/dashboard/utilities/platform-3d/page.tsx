@@ -126,14 +126,14 @@ export default function Platform3DPage() {
         try {
             const res = await fetch(`/api/platform/webapp-3d/${selectedPlatform.plat_id}?resync=true`, { method: "POST" });
             if (res.ok) {
-                toast.success("3D cache resynchronized successfully!");
+                toast.success("3D cache resynchronized successfully!", { position: "bottom-right" });
                 await mutateComponents();
                 if (mutateWebapp3d) await mutateWebapp3d();
             } else {
-                toast.error("Failed to resynchronize 3D cache.");
+                toast.error("Failed to resynchronize 3D cache.", { position: "bottom-right" });
             }
         } catch (e) {
-            toast.error("Error resynchronizing 3D cache.");
+            toast.error("Error resynchronizing 3D cache.", { position: "bottom-right" });
         } finally {
             setIsResyncing3D(false);
         }
@@ -368,17 +368,6 @@ export default function Platform3DPage() {
                         <Button 
                             variant="outline"
                             size="sm"
-                            onClick={() => mutateComponents()}
-                            disabled={isComponentsValidating}
-                            className="h-9 px-3 gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
-                        >
-                            <RefreshCw className={cn("h-3.5 w-3.5", isComponentsValidating && "animate-spin")} />
-                            <span>Sync</span>
-                        </Button>
-
-                        <Button 
-                            variant="outline"
-                            size="sm"
                             onClick={handleResync3DCache}
                             disabled={isResyncing3D}
                             className="h-9 px-3 gap-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all shadow-xs"
@@ -407,8 +396,6 @@ export default function Platform3DPage() {
                             faces={faces}
                             selectedCompId={selectedComponent?.id}
                             onSelectComponent={handleSelectComponent}
-                            onSync={mutateComponents}
-                            isSyncing={isComponentsValidating}
                             useWincairsMode={useWincairsMode}
                             wincairsParams={wincairsParams}
                             onFallbackComponentsChange={setFallbackComponents}
@@ -437,6 +424,7 @@ export default function Platform3DPage() {
                                     onSuccess={(updatedComponent) => {
                                         mutateComponents();
                                         setSelectedComponent(updatedComponent);
+                                        handleResync3DCache();
                                     }}
                                 />
                             </div>
