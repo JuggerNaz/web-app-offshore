@@ -6640,9 +6640,13 @@ function V10PreviewLayout() {
       );
       setActiveSpec(navigSpec?.code || "NAVIG");
     } else {
+      const recCompId = String(fullRecord.component_id || "");
+      const recCompName = String(fullRecord.component_name || "").toUpperCase();
+
       const comp =
-        componentsSow.find((c) => c.id === fullRecord.component_id) ||
-        componentsNonSow.find((c) => c.id === fullRecord.component_id);
+        componentsSow.find((c) => String(c.id) === recCompId || (c.q_id && String(c.q_id).toUpperCase() === recCompName)) ||
+        componentsNonSow.find((c) => String(c.id) === recCompId || (c.q_id && String(c.q_id).toUpperCase() === recCompName));
+
       if (comp) {
         setSelectedComp(comp);
       } else {
@@ -6652,6 +6656,7 @@ function V10PreviewLayout() {
 
         setSelectedComp({
           id: fullRecord.component_id,
+          q_id: jc?.q_id || fullRecord.component_name || `Component ${fullRecord.component_id}`,
           name: jc?.q_id || fullRecord.component_name || `Component ${fullRecord.component_id}`,
           type: jc?.code || fullRecord.component_type,
           depth: md.water_depth || jc?.water_depth || "-",
@@ -6682,6 +6687,8 @@ function V10PreviewLayout() {
           fullRecord.inspection_type?.name
       );
     }
+    setShowTaskSelector(false);
+    setShowCompSelector(false);
     setEditingRecordId(fullRecord.insp_id || fullRecord.id);
     setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
 
@@ -7884,6 +7891,30 @@ function V10PreviewLayout() {
               handleEditRecord={handleEditRecord}
               handleTaskChange={handleTaskChange}
               setShowTaskSelector={setShowTaskSelector}
+              isFormDirty={Boolean(
+                (dynamicProps && Object.keys(dynamicProps).length > 0) ||
+                (recordNotes && recordNotes.trim().length > 0) ||
+                (anomalyData && (anomalyData.defectCode || anomalyData.priority || anomalyData.description)) ||
+                editingRecordId !== null
+              )}
+              handleCommitRecord={handleCommitRecord}
+              resetForm={resetForm}
+              onDirectSelectTask={(comp: any, taskCode: string) => {
+                const currentTasks = comp.taskStatuses || comp.tasks || [];
+                const taskExists = currentTasks.some((t: any) => (t.code || t) === taskCode);
+                if (!taskExists) {
+                  const updatedTasks = [...currentTasks, { code: taskCode, status: "INCOMPLETE" }];
+                  comp.taskStatuses = updatedTasks;
+                  comp.tasks = updatedTasks;
+                }
+
+                resetForm();
+                setSelectedComp({ ...comp });
+                setActiveSpec(taskCode);
+                setShowTaskSelector(false);
+                setShowCompSelector(false);
+                setEditingRecordId(null);
+              }}
             />
           );
         }

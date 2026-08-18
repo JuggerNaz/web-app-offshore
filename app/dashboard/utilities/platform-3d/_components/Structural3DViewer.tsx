@@ -37,6 +37,7 @@ interface Component3D {
 export type VisualizationMode =
     | "DEFAULT"
     | "ANOMALY_PRIORITY"
+    | "FINDING_CATEGORY"
     | "PENDING_TASK"
     | "INCOMPLETE_RECORD"
     | "RECTIFIED_ANOMALY"
@@ -1198,6 +1199,11 @@ function InstancedComponentViewer({
     currentRecords = [],
     historicalRecords = [],
     selectedCampaignId = "ALL",
+    libraryColors = {},
+    selectedPriorityFilter = null,
+    inspectionModeFilter = "BOTH",
+    priorityScope = "BOTH",
+    compareWithCurrent = true,
 }: {
     layouts: any[];
     selectedCompId?: number;
@@ -1211,6 +1217,11 @@ function InstancedComponentViewer({
     currentRecords?: any[];
     historicalRecords?: any[];
     selectedCampaignId?: string | number;
+    libraryColors?: Record<string, string>;
+    selectedPriorityFilter?: string | null;
+    inspectionModeFilter?: "BOTH" | "ROV" | "DIVING";
+    priorityScope?: "BOTH" | "ANOMALY" | "FINDING";
+    compareWithCurrent?: boolean;
 }) {
     const weldRef = useRef<THREE.InstancedMesh>(null);
     const cylinderRef = useRef<THREE.InstancedMesh>(null);
@@ -1368,7 +1379,12 @@ function InstancedComponentViewer({
                 currentRecords,
                 historicalRecords,
                 selectedCampaignId,
-                baseColor
+                baseColor,
+                libraryColors,
+                selectedPriorityFilter,
+                inspectionModeFilter,
+                priorityScope,
+                compareWithCurrent
             );
 
             color.set(finalColor);
@@ -1377,7 +1393,7 @@ function InstancedComponentViewer({
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [cylinders, selectedCompId, mainMemberIds, colorMode, currentRecords, historicalRecords, selectedCampaignId]);
+    }, [cylinders, selectedCompId, mainMemberIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent]);
 
     // Apply matrices and colors for Welds (Vertical Purple Cylinder Collars - Pic 2)
     useLayoutEffect(() => {
@@ -1439,14 +1455,14 @@ function InstancedComponentViewer({
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
             const baseColor = isSelected ? "#2563eb" : "#cbd5e1";
-            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor);
+            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent);
             color.set(finalColor);
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [welds, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId]);
+    }, [welds, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent]);
 
     // Apply matrices and colors for Spheres (Structural Nodes ND)
     useLayoutEffect(() => {
@@ -1469,14 +1485,14 @@ function InstancedComponentViewer({
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
             const baseColor = isSelected ? "#2563eb" : "#94a3b8";
-            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor);
+            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent);
             color.set(finalColor);
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [spheres, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId]);
+    }, [spheres, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent]);
 
     // Apply matrices and colors for Boxes (Clamps)
     useLayoutEffect(() => {
@@ -1495,14 +1511,14 @@ function InstancedComponentViewer({
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
             const baseColor = isSelected ? "#2563eb" : "#d97706";
-            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor);
+            const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent);
             color.set(finalColor);
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [boxes, selectedCompId, colorMode, currentRecords, historicalRecords, selectedCampaignId]);
+    }, [boxes, selectedCompId, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent]);
 
     // Apply matrices and colors for Anodes (Standoff style)
     useLayoutEffect(() => {
@@ -2031,6 +2047,31 @@ function InstancedComponentViewer({
     );
 }
 
+function isRecordInInspectionMode(r: any, mode: "BOTH" | "ROV" | "DIVING"): boolean {
+    if (!r || mode === "BOTH") return true;
+
+    const rMode = String(r.mode || r.campaign_mode || r.jobpack_mode || r.inspection_mode || "").toUpperCase();
+    if (rMode) {
+        if (mode === "ROV" && (rMode.includes("ROV") || rMode === "R")) return true;
+        if (mode === "DIVING" && (rMode.includes("DIV") || rMode === "D")) return true;
+    }
+
+    const code = String(r.inspection_type_code || r.inspection_type?.code || r.task_code || r.spec_code || "").toUpperCase();
+    if (code) {
+        if (mode === "ROV") {
+            if (code.startsWith("R") && code !== "RISER") return true;
+            if (code.includes("ROV")) return true;
+            if (!code.startsWith("D")) return true;
+        } else if (mode === "DIVING") {
+            if (code.startsWith("D") && code !== "DEBRIS") return true;
+            if (code.includes("DIV")) return true;
+            if (!code.startsWith("R") || code === "RISER") return true;
+        }
+    }
+
+    return false;
+}
+
 function getComponentColorByMode(
     comp: any,
     isSelected: boolean,
@@ -2038,7 +2079,12 @@ function getComponentColorByMode(
     currentRecords: any[],
     historicalRecords: any[],
     selectedCampaignId: string | number | null,
-    defaultColor: string
+    defaultColor: string,
+    libraryColors: Record<string, string> = {},
+    selectedPriorityFilter: string | null = null,
+    inspectionModeFilter: "BOTH" | "ROV" | "DIVING" = "BOTH",
+    priorityScope: "BOTH" | "ANOMALY" | "FINDING" = "BOTH",
+    compareWithCurrent: boolean = true
 ): string {
     if (isSelected) return "#2563eb";
     if (!comp || mode === "DEFAULT") return defaultColor;
@@ -2046,99 +2092,366 @@ function getComponentColorByMode(
     const compIdStr = String(comp.id || comp.comp_id || "");
     const compQIdStr = String(comp.q_id || comp.name || "").toUpperCase();
 
-    const compCurrentRecords = (currentRecords || []).filter((r: any) => 
-        String(r.component_id || r.comp_id) === compIdStr || 
-        ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr)
-    );
+    const compCurrentRecords = (currentRecords || []).filter((r: any) => {
+        const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
+                            ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
+        if (!matchesComp) return false;
+        return isRecordInInspectionMode(r, inspectionModeFilter);
+    });
 
     const compHistRecords = (historicalRecords || []).filter((r: any) => {
         const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
                             ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
         if (!matchesComp) return false;
         if (selectedCampaignId && selectedCampaignId !== "ALL") {
-            return String(r.jobpack_id || r.campaign_id || r.jobpack_no) === String(selectedCampaignId);
+            if (String(r.jobpack_id || r.campaign_id || r.jobpack_no) !== String(selectedCampaignId)) return false;
         }
-        return true;
+        return isRecordInInspectionMode(r, inspectionModeFilter);
     });
 
     switch (mode) {
         case "ANOMALY_PRIORITY": {
-            if (compCurrentRecords.length === 0) return "#64748b";
-            let highestSeverity = 0;
+            if (compCurrentRecords.length === 0) {
+                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
+                return libraryColors["UNINSPECTED"] || "#64748b";
+            }
+            let highestSeverity = 0; // 5: Priority 1, 4: Priority 2, 3: Priority 3, 2: Priority 4
+            let hasFinding = false;
+            let findingSeverity = 0; // 4: Finding P1, 3: Finding P2, 2: Finding P3, 1: Observation
+            let findingPriorityCode = "";
+
             compCurrentRecords.forEach((r: any) => {
-                const isAnomaly = r.finding_type === "ANOMALY" || r.is_anomaly || r.has_anomaly;
-                const cls = (r.anomaly_class || r.severity || r.anomaly_grade || "").toString().toUpperCase();
-                if (isAnomaly) {
-                    if (cls.includes("A") || cls.includes("HIGH") || cls.includes("1")) {
+                const ft = String(r.finding_type || r.findingType || r.record_category || r.category || "").toUpperCase();
+                const isAnomaly = ft === "ANOMALY" || ft.includes("ANOMALY") || Boolean(r.is_anomaly) || Boolean(r.has_anomaly) || Boolean(r.anomaly_class) || Boolean(r.anomaly_id) || Boolean(r.anomaly_ref_no) || Boolean(r.priority || r.priority_code);
+                const isFinding = !isAnomaly && (ft === "FINDING" || ft.includes("FINDING") || ft === "OBSERVATION" || ft.includes("OBSERVATION") || Boolean(r.is_finding) || Boolean(r.has_finding));
+
+                const prio = (r.priority || r.priority_code || r.anomaly_class || r.severity || r.anomaly_grade || r.class || "").toString().toUpperCase();
+
+                if (isAnomaly && (priorityScope === "BOTH" || priorityScope === "ANOMALY")) {
+                    if (prio.includes("PRIORITY 1") || prio === "P1" || prio.includes("CLASS A") || prio.includes("CRITICAL") || prio === "1") {
+                        highestSeverity = Math.max(highestSeverity, 5);
+                    } else if (prio.includes("PRIORITY 2") || prio === "P2" || prio.includes("CLASS B") || prio.includes("HIGH") || prio === "2") {
+                        highestSeverity = Math.max(highestSeverity, 4);
+                    } else if (prio.includes("PRIORITY 3") || prio === "P3" || prio.includes("CLASS C") || prio.includes("MEDIUM") || prio.includes("MED") || prio === "3") {
                         highestSeverity = Math.max(highestSeverity, 3);
-                    } else if (cls.includes("B") || cls.includes("MEDIUM") || cls.includes("2")) {
+                    } else if (prio.includes("PRIORITY 4") || prio === "P4" || prio.includes("LOW") || prio === "4") {
                         highestSeverity = Math.max(highestSeverity, 2);
                     } else {
-                        highestSeverity = Math.max(highestSeverity, 1);
+                        highestSeverity = Math.max(highestSeverity, 4);
                     }
+                } else if (isFinding && (priorityScope === "BOTH" || priorityScope === "FINDING")) {
+                    hasFinding = true;
+                    if (prio.includes("PRIORITY 1") || prio === "P1" || prio.includes("CLASS A") || prio.includes("CRITICAL") || prio.includes("HIGH") || prio === "1") {
+                        findingSeverity = Math.max(findingSeverity, 4);
+                    } else if (prio.includes("PRIORITY 2") || prio === "P2" || prio.includes("CLASS B") || prio.includes("MODERATE") || prio.includes("MED") || prio === "2") {
+                        findingSeverity = Math.max(findingSeverity, 3);
+                    } else if (prio.includes("PRIORITY 3") || prio === "P3" || prio.includes("CLASS C") || prio.includes("LOW") || prio.includes("MINOR") || prio === "3") {
+                        findingSeverity = Math.max(findingSeverity, 2);
+                    } else {
+                        findingSeverity = Math.max(findingSeverity, 1);
+                    }
+                    if (prio) findingPriorityCode = prio;
                 }
             });
 
-            if (highestSeverity === 3) return "#ef4444";
-            if (highestSeverity === 2) return "#f97316";
-            if (highestSeverity === 1) return "#eab308";
-            return "#10b981";
+            let finalCode = "CLEAN";
+            let colorHex = libraryColors["CLEAN"] || "#10b981";
+
+            if (highestSeverity === 5) {
+                finalCode = "PRIORITY 1";
+                colorHex = libraryColors["PRIORITY 1"] || libraryColors["P1"] || "#ef4444";
+            } else if (highestSeverity === 4) {
+                finalCode = "PRIORITY 2";
+                colorHex = libraryColors["PRIORITY 2"] || libraryColors["P2"] || "#f97316";
+            } else if (highestSeverity === 3) {
+                finalCode = "PRIORITY 3";
+                colorHex = libraryColors["PRIORITY 3"] || libraryColors["P3"] || "#eab308";
+            } else if (highestSeverity === 2) {
+                finalCode = "PRIORITY 4";
+                colorHex = libraryColors["PRIORITY 4"] || libraryColors["P4"] || "#84cc16";
+            } else if (hasFinding) {
+                if (findingSeverity === 4) {
+                    finalCode = "FINDING P1";
+                    colorHex = libraryColors["FINDING P1"] || libraryColors["FINDING_P1"] || "#ef4444";
+                } else if (findingSeverity === 3) {
+                    finalCode = "FINDING P2";
+                    colorHex = libraryColors["FINDING P2"] || libraryColors["FINDING_P2"] || "#f97316";
+                } else if (findingSeverity === 2) {
+                    finalCode = "FINDING P3";
+                    colorHex = libraryColors["FINDING P3"] || libraryColors["FINDING_P3"] || "#0284c7";
+                } else if (findingPriorityCode.includes("OBSERVATION") || findingPriorityCode === "OBS") {
+                    finalCode = "OBSERVATION";
+                    colorHex = libraryColors["OBSERVATION"] || libraryColors["OBS"] || "#d97706";
+                } else {
+                    finalCode = "FINDING";
+                    colorHex = libraryColors["FINDING"] || libraryColors["OBSERVATION"] || "#0284c7";
+                }
+            }
+
+            if (selectedPriorityFilter) {
+                const selUpper = selectedPriorityFilter.toUpperCase();
+                const isMatch = selectedPriorityFilter === finalCode ||
+                    (selUpper.includes("P1") && finalCode === "PRIORITY 1") ||
+                    (selUpper.includes("P2") && finalCode === "PRIORITY 2") ||
+                    (selUpper.includes("P3") && finalCode === "PRIORITY 3") ||
+                    (selUpper.includes("P4") && finalCode === "PRIORITY 4") ||
+                    (selUpper.includes("OBS") && (finalCode === "OBSERVATION" || finalCode === "FINDING"));
+
+                if (!isMatch) return "#1e293b";
+            }
+
+            return colorHex;
+        }
+
+        case "FINDING_CATEGORY": {
+            if (compCurrentRecords.length === 0) {
+                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
+                return libraryColors["UNINSPECTED"] || "#64748b";
+            }
+            let categoryType = "";
+
+            compCurrentRecords.forEach((r: any) => {
+                const desc = String(r.description || r.finding_description || r.finding_detail || r.finding_type || r.category || "").toUpperCase();
+                if (desc.includes("CORROSION") || desc.includes("PIT") || desc.includes("METAL LOSS") || desc.includes("RUST") || desc.includes("WELD")) {
+                    categoryType = "CORROSION";
+                } else if (desc.includes("MARINE") || desc.includes("GROWTH") || desc.includes("BARNACLE") || desc.includes("BIO") || desc.includes("FOULING")) {
+                    if (!categoryType || categoryType === "GENERAL") categoryType = "MARINE_GROWTH";
+                } else if (desc.includes("COATING") || desc.includes("PAINT") || desc.includes("DEGRADATION") || desc.includes("BLISTER")) {
+                    if (!categoryType || categoryType === "GENERAL") categoryType = "COATING";
+                } else if (desc.includes("DEBRIS") || desc.includes("ROPE") || desc.includes("WIRE") || desc.includes("OBJECT") || desc.includes("FOREIGN")) {
+                    if (!categoryType || categoryType === "GENERAL") categoryType = "DEBRIS";
+                } else if (desc.includes("SCOUR") || desc.includes("SEABED") || desc.includes("BURIAL") || desc.includes("CRATER") || desc.includes("DEPRESSION")) {
+                    if (!categoryType || categoryType === "GENERAL") categoryType = "SCOUR";
+                } else if (r.finding_type || r.description) {
+                    if (!categoryType) categoryType = "GENERAL";
+                }
+            });
+
+            let finalCode = "CLEAN";
+            let colorHex = libraryColors["CLEAN"] || "#10b981";
+
+            if (categoryType === "CORROSION") { finalCode = "CORROSION"; colorHex = libraryColors["CORROSION"] || "#ec4899"; }
+            else if (categoryType === "MARINE_GROWTH") { finalCode = "MARINE_GROWTH"; colorHex = libraryColors["MARINE_GROWTH"] || "#06b6d4"; }
+            else if (categoryType === "COATING") { finalCode = "COATING"; colorHex = libraryColors["COATING"] || "#a855f7"; }
+            else if (categoryType === "DEBRIS") { finalCode = "DEBRIS"; colorHex = libraryColors["DEBRIS"] || "#84cc16"; }
+            else if (categoryType === "SCOUR") { finalCode = "SCOUR"; colorHex = libraryColors["SCOUR"] || "#3b82f6"; }
+            else if (categoryType === "GENERAL") { finalCode = "GENERAL"; colorHex = libraryColors["GENERAL"] || "#0284c7"; }
+
+            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return "#1e293b";
+
+            return colorHex;
         }
 
         case "PENDING_TASK": {
             const taskStatuses = comp.taskStatuses || comp.tasks || [];
-            if (!taskStatuses || taskStatuses.length === 0) return "#475569";
+            if (!taskStatuses || taskStatuses.length === 0) {
+                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
+                return "#475569";
+            }
             const hasCompleted = taskStatuses.some((t: any) => t.status === "COMPLETED" || t.status === "COMPLETE");
             const hasInProgress = taskStatuses.some((t: any) => t.status === "IN_PROGRESS" || t.status === "STARTED");
             const hasPending = taskStatuses.some((t: any) => !t.status || t.status === "PENDING" || t.status === "NOT_STARTED");
 
-            if (hasCompleted && !hasPending && !hasInProgress) return "#10b981";
-            if (hasInProgress) return "#0284c7";
+            let finalCode = "PENDING";
+            if (hasCompleted && !hasPending && !hasInProgress) finalCode = "COMPLETED";
+            else if (hasInProgress) finalCode = "IN_PROGRESS";
+
+            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return "#1e293b";
+
+            if (finalCode === "COMPLETED") return "#10b981";
+            if (finalCode === "IN_PROGRESS") return "#0284c7";
             return "#f59e0b";
         }
 
         case "INCOMPLETE_RECORD": {
-            if (compCurrentRecords.length === 0) return "#475569";
-            const hasIncomplete = compCurrentRecords.some((r: any) => r.record_status === "INCOMPLETE" || r.status === "INCOMPLETE" || r.is_incomplete);
+            if (compCurrentRecords.length === 0) {
+                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
+                return "#475569";
+            }
+            const hasIncomplete = compCurrentRecords.some((r: any) => String(r.record_status || r.status || "").toUpperCase() === "INCOMPLETE" || r.is_incomplete);
+            const finalCode = hasIncomplete ? "INCOMPLETE" : "COMPLETE";
+
+            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return "#1e293b";
+
             if (hasIncomplete) return "#e11d48";
             return "#10b981";
         }
 
         case "RECTIFIED_ANOMALY": {
-            if (compCurrentRecords.length === 0) return "#475569";
-            const anomalies = compCurrentRecords.filter((r: any) => r.finding_type === "ANOMALY" || r.is_anomaly);
-            if (anomalies.length === 0) return "#10b981";
-            const allRectified = anomalies.every((r: any) => r.rectified || r.is_rectified || r.status === "RECTIFIED" || r.repaired);
+            if (compCurrentRecords.length === 0) {
+                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
+                return "#475569";
+            }
+            const anomalies = compCurrentRecords.filter((r: any) => {
+                const ft = String(r.finding_type || r.findingType || r.record_category || r.category || "").toUpperCase();
+                return ft === "ANOMALY" || ft.includes("ANOMALY") || Boolean(r.is_anomaly) || Boolean(r.has_anomaly) || Boolean(r.anomaly_class);
+            });
+            if (anomalies.length === 0) {
+                if (selectedPriorityFilter && selectedPriorityFilter !== "CLEAN") return "#1e293b";
+                return "#10b981";
+            }
+            const allRectified = anomalies.every((r: any) => r.rectified || r.is_rectified || String(r.status || "").toUpperCase() === "RECTIFIED" || r.repaired);
+            const finalCode = allRectified ? "RECTIFIED" : "ACTIVE";
+
+            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return "#1e293b";
+
             if (allRectified) return "#06b6d4";
             return "#ef4444";
         }
 
         case "INSPECTION_TASK_TYPE": {
-            const primaryTaskCode = String(
-                (comp.taskStatuses && comp.taskStatuses[0]?.code) || 
-                comp.task_code || 
-                comp.type || 
-                ""
-            ).toUpperCase();
+            const codes: string[] = [];
+            if (compCurrentRecords && compCurrentRecords.length > 0) {
+                compCurrentRecords.forEach((r: any) => {
+                    const c = String(r.inspection_type_code || r.inspection_type?.code || r.task_code || r.spec_code || "").toUpperCase();
+                    if (c) codes.push(c);
+                });
+            }
+            if (comp.taskStatuses && comp.taskStatuses.length > 0) {
+                comp.taskStatuses.forEach((t: any) => {
+                    const c = String(t.code || t.task_code || t.spec_code || "").toUpperCase();
+                    if (c) codes.push(c);
+                });
+            }
+            const directCode = String(comp.task_code || comp.type || "").toUpperCase();
+            if (directCode) codes.push(directCode);
 
-            if (primaryTaskCode.includes("FMD")) return "#06b6d4";
-            if (primaryTaskCode.includes("UT") || primaryTaskCode.includes("WTK")) return "#f59e0b";
-            if (primaryTaskCode.includes("ANI") || primaryTaskCode.includes("ANODE")) return "#a855f7";
-            if (primaryTaskCode.includes("GV") || primaryTaskCode.includes("VIS")) return "#3b82f6";
-            if (primaryTaskCode.includes("CP")) return "#10b981";
-            if (primaryTaskCode.includes("COR") || primaryTaskCode.includes("WELD")) return "#ec4899";
-            return "#64748b";
+            if (codes.length === 0) {
+                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
+                return "#475569";
+            }
+
+            let finalCode = "OTHER";
+            let colorHex = "#94a3b8";
+
+            for (const c of codes) {
+                if (c.includes("RFMD") || c.includes("DFMD") || c === "FMD" || c.includes("FLOOD")) {
+                    finalCode = c.includes("RFMD") ? "RFMD" : c.includes("DFMD") ? "DFMD" : "FMD";
+                    colorHex = "#06b6d4"; // Cyan
+                    break;
+                } else if (c.includes("RUTWT") || c.includes("DUTWT") || c.includes("UTWTK") || c === "UT" || c.includes("WTK")) {
+                    finalCode = c.includes("RUTWT") ? "RUTWT" : c.includes("DUTWT") ? "DUTWT" : "UTWTK";
+                    colorHex = "#f59e0b"; // Amber
+                    break;
+                } else if (c.includes("RSANI") || c.includes("DSANI") || c.includes("ANODE") || c.includes("PL_AN")) {
+                    finalCode = c.includes("RSANI") ? "RSANI" : c.includes("DSANI") ? "DSANI" : "ANODE";
+                    colorHex = "#a855f7"; // Purple
+                    break;
+                } else if (c.includes("RGVIN") || c.includes("DGVIN") || c.includes("GVINS") || c.includes("GVI") || c.includes("VIS")) {
+                    finalCode = c.includes("RGVIN") ? "RGVIN" : c.includes("DGVIN") ? "DGVIN" : "GVINS";
+                    colorHex = "#3b82f6"; // Blue
+                    break;
+                } else if (c.includes("RCVIN") || c.includes("DCVIN") || c.includes("CVINS") || c.includes("CVI")) {
+                    finalCode = c.includes("RCVIN") ? "RCVIN" : c.includes("DCVIN") ? "DCVIN" : "CVINS";
+                    colorHex = "#0284c7"; // Sky Blue
+                    break;
+                } else if (c.includes("RCPSU") || c.includes("DCPSU") || c.includes("CPSURV") || c === "CP") {
+                    finalCode = c.includes("RCPSU") ? "RCPSU" : c.includes("DCPSU") ? "DCPSU" : "CPSURV";
+                    colorHex = "#10b981"; // Emerald
+                    break;
+                } else if (c.includes("RSZCI") || c.includes("DSZCI") || c.includes("SZCI") || c.includes("SZONE")) {
+                    finalCode = c.includes("RSZCI") ? "RSZCI" : c.includes("DSZCI") ? "DSZCI" : "SZONE";
+                    colorHex = "#f43f5e"; // Rose
+                    break;
+                } else if (c.includes("RACFM") || c.includes("DACFM") || c.includes("ACFM")) {
+                    finalCode = c.includes("RACFM") ? "RACFM" : c.includes("DACFM") ? "DACFM" : "ACFM";
+                    colorHex = "#ec4899"; // Pink
+                    break;
+                } else if (c.includes("DMPIN") || c.includes("MPINS") || c.includes("MPI")) {
+                    finalCode = c.includes("DMPIN") ? "DMPIN" : "MPI";
+                    colorHex = "#ef4444"; // Red
+                    break;
+                } else if (c.includes("RMGI") || c.includes("DMGI") || c.includes("MGROW")) {
+                    finalCode = c.includes("RMGI") ? "RMGI" : c.includes("DMGI") ? "DMGI" : "MGROW";
+                    colorHex = "#84cc16"; // Lime
+                    break;
+                } else if (c.includes("RSCOR") || c.includes("RSEAB") || c.includes("DSCOU") || c.includes("SCOUR")) {
+                    finalCode = c.includes("RSCOR") || c.includes("RSEAB") ? "RSCOR" : c.includes("DSCOU") ? "DSCOU" : "SCOUR";
+                    colorHex = "#14b8a6"; // Teal
+                    break;
+                } else if (c.includes("RRISI") || c.includes("DRRISI") || c.includes("DJTISI") || c.includes("DITISI") || c.includes("RISER")) {
+                    finalCode = c.includes("RRISI") ? "RRISI" : c.includes("DRRISI") ? "DRRISI" : "RISER";
+                    colorHex = "#ea580c"; // Orange
+                    break;
+                } else if (c.includes("COR") || c.includes("WELD")) {
+                    finalCode = "WELD";
+                    colorHex = "#ec4899"; // Pink
+                    break;
+                }
+            }
+
+            if (selectedPriorityFilter) {
+                const sel = selectedPriorityFilter.toUpperCase();
+                const matchesFilter = 
+                    selectedPriorityFilter === finalCode ||
+                    (sel === "GVI" && (finalCode === "GVINS" || finalCode === "RGVIN" || finalCode === "DGVIN")) ||
+                    (sel === "CVI" && (finalCode === "CVINS" || finalCode === "RCVIN" || finalCode === "DCVIN")) ||
+                    (sel === "FMD" && (finalCode === "FMD" || finalCode === "RFMD" || finalCode === "DFMD")) ||
+                    (sel === "UT" && (finalCode === "UTWTK" || finalCode === "RUTWT" || finalCode === "DUTWT")) ||
+                    (sel === "CP" && (finalCode === "CPSURV" || finalCode === "RCPSU" || finalCode === "DCPSU")) ||
+                    (sel === "ANODE" && (finalCode === "ANODE" || finalCode === "RSANI" || finalCode === "DSANI")) ||
+                    (sel === "SZONE" && (finalCode === "SZONE" || finalCode === "RSZCI" || finalCode === "DSZCI")) ||
+                    (sel === "ACFM" && (finalCode === "ACFM" || finalCode === "RACFM" || finalCode === "DACFM")) ||
+                    (sel === "MPI" && (finalCode === "MPI" || finalCode === "DMPIN")) ||
+                    (sel === "MGROW" && (finalCode === "MGROW" || finalCode === "RMGI" || finalCode === "DMGI")) ||
+                    (sel === "SCOUR" && (finalCode === "SCOUR" || finalCode === "RSCOR" || finalCode === "DSCOU")) ||
+                    (sel === "RISER" && (finalCode === "RISER" || finalCode === "RRISI" || finalCode === "DRRISI"));
+
+                if (!matchesFilter) return "#1e293b";
+            }
+
+            return colorHex;
         }
 
         case "HISTORICAL_COMPARE": {
-            const hasCurrentAnomaly = compCurrentRecords.some((r: any) => r.finding_type === "ANOMALY" || r.is_anomaly);
-            const hasHistAnomaly = compHistRecords.some((r: any) => r.finding_type === "ANOMALY" || r.is_anomaly);
+            const checkAnomaly = (r: any) => {
+                const ft = String(r.finding_type || r.findingType || r.record_category || r.category || "").toUpperCase();
+                return ft === "ANOMALY" || ft.includes("ANOMALY") || Boolean(r.is_anomaly) || Boolean(r.has_anomaly) || Boolean(r.anomaly_class);
+            };
+            const hasCurrentAnomaly = compCurrentRecords.some(checkAnomaly);
+            const hasHistAnomaly = compHistRecords.some(checkAnomaly);
 
-            if (hasCurrentAnomaly && !hasHistAnomaly) return "#dc2626";
-            if (hasCurrentAnomaly && hasHistAnomaly) return "#d97706";
-            if (!hasCurrentAnomaly && hasHistAnomaly) return "#0891b2";
-            if (compHistRecords.length > 0) return "#059669";
-            return "#64748b";
+            let finalCode = "UNINS";
+            let colorHex = "#64748b";
+
+            if (compareWithCurrent) {
+                if (hasCurrentAnomaly && !hasHistAnomaly) {
+                    finalCode = "NEW_ANOMALY";
+                    colorHex = "#ef4444"; // Red
+                } else if (hasCurrentAnomaly && hasHistAnomaly) {
+                    finalCode = "PERSISTENT";
+                    colorHex = "#eab308"; // Amber
+                } else if (!hasCurrentAnomaly && hasHistAnomaly) {
+                    finalCode = "RECTIFIED";
+                    colorHex = "#06b6d4"; // Cyan
+                } else if (compHistRecords.length > 0 || compCurrentRecords.length > 0) {
+                    finalCode = "CLEAN";
+                    colorHex = "#10b981"; // Emerald
+                }
+            } else {
+                if (hasHistAnomaly) {
+                    finalCode = "HIST_ANOMALY";
+                    colorHex = "#ef4444";
+                } else if (compHistRecords.length > 0) {
+                    finalCode = "CLEAN";
+                    colorHex = "#10b981";
+                }
+            }
+
+            if (selectedPriorityFilter) {
+                const sel = selectedPriorityFilter.toUpperCase();
+                const isMatch = selectedPriorityFilter === finalCode ||
+                    (sel.includes("NEW") && finalCode === "NEW_ANOMALY") ||
+                    (sel.includes("RECT") && finalCode === "RECTIFIED") ||
+                    (sel.includes("PERSIST") && finalCode === "PERSISTENT") ||
+                    (sel.includes("HIST") && finalCode === "HIST_ANOMALY") ||
+                    (sel.includes("CLEAN") && finalCode === "CLEAN") ||
+                    (sel.includes("UNINS") && finalCode === "UNINS");
+
+                if (!isMatch) return "#1e293b";
+            }
+
+            return colorHex;
         }
 
         default:
@@ -2227,6 +2540,235 @@ export function Structural3DViewer({
     const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | "inspection" | "colormap" | null>(null);
     const [colorMode, setColorMode] = useState<VisualizationMode>(externalColorMode);
     const [selectedCampaignId, setSelectedCampaignId] = useState<string | number>(externalCampaignId);
+    const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<string | null>(null);
+    const [libraryColors, setLibraryColors] = useState<Record<string, string>>({});
+    const [libraryPriorityList, setLibraryPriorityList] = useState<Array<{ code: string; label: string; color: string }>>([]);
+    const [inspectionModeFilter, setInspectionModeFilter] = useState<"BOTH" | "ROV" | "DIVING">("BOTH");
+    const [priorityScope, setPriorityScope] = useState<"BOTH" | "ANOMALY" | "FINDING">("BOTH");
+    const [structureJobpacks, setStructureJobpacks] = useState<Array<{ id: string | number; label: string; year?: string; mode?: string }>>([]);
+    const [compareWithCurrent, setCompareWithCurrent] = useState(true);
+
+    // Fetch and aggregate jobpacks strictly by structure_id registered in the jobpack
+    useEffect(() => {
+        let isMounted = true;
+        let activeStructureId = "";
+
+        if (platformDetails?.id) activeStructureId = String(platformDetails.id);
+        else if (platformDetails?.structure_id) activeStructureId = String(platformDetails.structure_id);
+        else if (platformDetails?.platform_id) activeStructureId = String(platformDetails.platform_id);
+        else if (webapp3dData?.structure_id) activeStructureId = String(webapp3dData.structure_id);
+
+        if (!activeStructureId && currentRecords && currentRecords.length > 0) {
+            const firstRec = currentRecords.find((r: any) => r.structure_id || r.platform_id);
+            if (firstRec) {
+                activeStructureId = String(firstRec.structure_id || firstRec.platform_id || "");
+            }
+        }
+
+        const map = new Map<string, { id: string | number; label: string; year?: string; mode?: string }>();
+
+        const formatName = (jp: any): string => {
+            const name = (
+                jp.jobpack_name || 
+                jp.name || 
+                jp.title || 
+                jp.campaign_name || 
+                jp.jobpack_no || 
+                jp.description || 
+                ""
+            ).toString().trim();
+
+            if (name) return name;
+            return "Inspection Campaign";
+        };
+
+        // Strict matcher: matches strictly by structure_id registered in column or metadata.structures JSON
+        const isJobpackForStructureId = (jp: any): boolean => {
+            if (!activeStructureId) return false;
+            const targetClean = String(activeStructureId).replace(/^(platform|pipeline)-/, "");
+
+            // 1. Direct structure_id or platform_id column
+            const jpStructId = String(jp.structure_id || jp.platform_id || "").replace(/^(platform|pipeline)-/, "");
+            if (jpStructId && jpStructId !== "0" && jpStructId !== "null") {
+                if (jpStructId === targetClean) return true;
+            }
+
+            // 2. Structures array inside jobpack metadata (assigned in Jobpack Wizard)
+            const structures = (jp.metadata as any)?.structures || jp.structures || [];
+            if (Array.isArray(structures) && structures.length > 0) {
+                return structures.some((s: any) => {
+                    const sid = String(s.id || s.structure_id || s.platform_id || "").replace(/^(platform|pipeline)-/, "");
+                    return sid === targetClean;
+                });
+            }
+
+            return false;
+        };
+
+        // Process historical records specific to this active structure ID
+        (historicalRecords || []).forEach((r: any) => {
+            const rStructId = String(r.structure_id || r.platform_id || "");
+            if (activeStructureId && rStructId && rStructId !== activeStructureId) {
+                return;
+            }
+
+            const id = String(r.jobpack_id || r.campaign_id || r.jobpack_no || r.jobpack_name || "");
+            if (id && !map.has(id)) {
+                const name = formatName(r);
+                const year = r.year || r.year_inspected || "";
+                const label = year && !name.includes(String(year)) ? `[${year}] ${name}` : name;
+                map.set(id, { id, label, year: String(year), mode: r.mode });
+            }
+        });
+
+        // Fetch API jobpacks strictly for active structure ID
+        if (activeStructureId) {
+            fetch(`/api/jobpack?structure_id=${activeStructureId}&limit=1000`)
+                .then(res => res.json())
+                .then(json => {
+                    if (!isMounted) return;
+                    const items = json?.data || json?.jobpacks || (Array.isArray(json) ? json : []);
+                    if (Array.isArray(items)) {
+                        items.forEach((jp: any) => {
+                            if (!isJobpackForStructureId(jp)) return;
+
+                            const id = String(jp.id || jp.jobpack_no || jp.jobpack_id || "");
+                            if (!id) return;
+
+                            const name = formatName(jp);
+                            const year = jp.year || jp.year_inspected || (jp.created_at ? new Date(jp.created_at).getFullYear() : "");
+                            const label = year && !name.includes(String(year)) ? `[${year}] ${name}` : name;
+
+                            if (!map.has(id)) {
+                                map.set(id, { id, label, year: String(year), mode: jp.mode || jp.campaign_mode });
+                            }
+                        });
+                    }
+
+                    const list = Array.from(map.values());
+                    if (isMounted) {
+                        setStructureJobpacks(list);
+                        if (list.length > 0 && (!selectedCampaignId || selectedCampaignId === "ALL")) {
+                            setSelectedCampaignId(list[0].id);
+                        }
+                    }
+                })
+                .catch(() => {
+                    if (!isMounted) return;
+                    const list = Array.from(map.values());
+                    setStructureJobpacks(list);
+                    if (list.length > 0 && (!selectedCampaignId || selectedCampaignId === "ALL")) {
+                        setSelectedCampaignId(list[0].id);
+                    }
+                });
+        } else {
+            const list = Array.from(map.values());
+            if (isMounted) {
+                setStructureJobpacks(list);
+            }
+        }
+
+        return () => {
+            isMounted = false;
+        };
+    }, [platformDetails, webapp3dData, historicalRecords, currentRecords]);
+
+    // Detect campaign mode (ROV vs DIVING) dynamically from current inspection records
+    const campaignTaskMode = useMemo(() => {
+        if (!currentRecords || currentRecords.length === 0) return "GENERAL";
+        let rovCount = 0;
+        let divCount = 0;
+        currentRecords.forEach((r: any) => {
+            const code = String(r.inspection_type_code || r.inspection_type?.code || r.task_code || "").toUpperCase();
+            const rMode = String(r.mode || r.campaign_mode || r.jobpack_mode || r.inspection_mode || "").toUpperCase();
+            if (rMode.includes("ROV") || rMode === "R" || (code.startsWith("R") && code !== "RISER") || code.includes("ROV")) rovCount++;
+            if (rMode.includes("DIV") || rMode === "D" || (code.startsWith("D") && code !== "DEBRIS") || code.includes("DIV")) divCount++;
+        });
+        if (rovCount > 0 && divCount === 0) return "ROV";
+        if (divCount > 0 && rovCount === 0) return "DIVING";
+        if (rovCount > 0 && divCount > 0) return "MIXED";
+        return "GENERAL";
+    }, [currentRecords]);
+
+    // Automatically set default inspection mode filter to active campaign mode (ROV or DIVING)
+    useEffect(() => {
+        if (campaignTaskMode === "ROV") {
+            setInspectionModeFilter("ROV");
+        } else if (campaignTaskMode === "DIVING") {
+            setInspectionModeFilter("DIVING");
+        } else if (campaignTaskMode === "MIXED" || campaignTaskMode === "GENERAL") {
+            setInspectionModeFilter("BOTH");
+        }
+    }, [campaignTaskMode]);
+
+    // Fetch priority colors directly from library endpoint
+    useEffect(() => {
+        let isMounted = true;
+        fetch('/api/library/combo/ANMLYCLR')
+            .then(res => res.json())
+            .then(json => {
+                if (!isMounted) return;
+                if (json?.data && Array.isArray(json.data) && json.data.length > 0) {
+                    const map: Record<string, string> = {};
+                    const list: Array<{ code: string; label: string; color: string }> = [];
+                    const seenCodes = new Set<string>();
+
+                    json.data.forEach((item: any) => {
+                        // Skip deleted items
+                        if (item.lib_delete === 1 || item.lib_delete === "1" || item.lib_delete === true) return;
+                        if (!item.code_1 || !item.code_2) return;
+
+                        let col = String(item.code_2).trim();
+                        if (!col || col === "undefined" || col === "null") return;
+
+                        if (col.includes(",")) {
+                            const parts = col.split(",").map((n: string) => parseInt(n.trim()));
+                            if (parts.length === 3 && !parts.some(isNaN)) {
+                                col = `#${parts[0].toString(16).padStart(2, "0")}${parts[1].toString(16).padStart(2, "0")}${parts[2].toString(16).padStart(2, "0")}`;
+                            }
+                        }
+                        if (!col.startsWith("#") && !col.startsWith("rgb")) {
+                            col = `#${col}`;
+                        }
+
+                        // Validate hex color string format (e.g. #ef4444 or rgb(...))
+                        if (!/^#([0-9A-F]{3}){1,2}$/i.test(col) && !col.startsWith("rgb")) return;
+
+                        const rawCode = String(item.code_1).trim();
+                        const codeUpper = rawCode.toUpperCase();
+                        map[codeUpper] = col;
+
+                        // Deduplicate by priority code so each priority appears ONCE
+                        if (!seenCodes.has(codeUpper)) {
+                            seenCodes.add(codeUpper);
+                            const label = item.name_1 || item.code_1_desc || item.description || rawCode;
+                            list.push({
+                                code: codeUpper,
+                                label: label,
+                                color: col
+                            });
+                        }
+                    });
+
+                    if (isMounted) {
+                        setLibraryColors(map);
+                        if (list.length > 0) {
+                            setLibraryPriorityList(list);
+                        }
+                    }
+                }
+            })
+            .catch(() => {});
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    // Reset single priority filter whenever visualization mode changes
+    useEffect(() => {
+        setSelectedPriorityFilter(null);
+    }, [colorMode]);
 
     // Sync external props if changed
     useEffect(() => {
@@ -2861,6 +3403,11 @@ export function Structural3DViewer({
                             currentRecords={currentRecords}
                             historicalRecords={historicalRecords}
                             selectedCampaignId={selectedCampaignId}
+                            libraryColors={libraryColors}
+                            selectedPriorityFilter={selectedPriorityFilter}
+                            inspectionModeFilter={inspectionModeFilter}
+                            priorityScope={priorityScope}
+                            compareWithCurrent={compareWithCurrent}
                         />
                     </SelectToZoom>
                 </Bounds>
@@ -3047,7 +3594,8 @@ export function Structural3DViewer({
                             <div className="flex flex-col gap-1 text-[10px]">
                                 {[
                                     { mode: "DEFAULT", label: "Standard Metallic 3D", desc: "Default material rendering" },
-                                    { mode: "ANOMALY_PRIORITY", label: "🔴 Anomaly / Finding Priority", desc: "Color by Class A / B / C severity" },
+                                    { mode: "ANOMALY_PRIORITY", label: "🔴 Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4 & Findings" },
+                                    { mode: "FINDING_CATEGORY", label: "🔍 Finding Category", desc: "Color by Corrosion, Marine Growth, Coating, Debris, Scour" },
                                     { mode: "PENDING_TASK", label: "🟡 Pending Tasks Status", desc: "Completed vs In-Progress vs Pending" },
                                     { mode: "INCOMPLETE_RECORD", label: "🟣 Incomplete Records", desc: "Highlight incomplete inspection forms" },
                                     { mode: "RECTIFIED_ANOMALY", label: "🔵 Anomaly Rectified / Repaired", desc: "Rectified vs active open anomalies" },
@@ -3070,25 +3618,104 @@ export function Structural3DViewer({
                                 ))}
                             </div>
 
-                            {/* Historical Campaign Filter Dropdown */}
-                            {colorMode === "HISTORICAL_COMPARE" && (
-                                <div className="pt-2 border-t border-slate-800 flex flex-col gap-1">
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                                        <History className="w-3 h-3 text-cyan-400" /> Select Historical Campaign
+                            {/* Inspection Mode Scope Filter (BOTH / ROV / DIVING) */}
+                            <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+                                <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                    <span className="flex items-center gap-1">
+                                        <SlidersHorizontal className="w-3 h-3 text-amber-400" />
+                                        Inspection Mode Scope
                                     </span>
-                                    <select
-                                        value={selectedCampaignId}
-                                        onChange={(e) => setSelectedCampaignId(e.target.value)}
-                                        className="h-7 text-[10px] font-bold bg-slate-950 border border-slate-700 text-slate-200 rounded px-2 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                                    <span className="text-[8px] text-amber-300 font-bold">
+                                        {inspectionModeFilter === "BOTH" ? "ROV & Diving" : inspectionModeFilter}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-1 p-0.5 bg-slate-950/80 rounded-lg border border-slate-800 text-[9px] font-black">
+                                    <button
+                                        onClick={() => setInspectionModeFilter("BOTH")}
+                                        className={cn(
+                                            "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                            inspectionModeFilter === "BOTH"
+                                                ? "bg-blue-600 text-white shadow"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                        )}
                                     >
-                                        <option value="ALL">All Past Campaigns Combined</option>
-                                        {Array.from(new Set((historicalRecords || []).map((r: any) => r.jobpack_no || r.jobpack_id || r.campaign_name || r.year || "Past Campaign")))
-                                            .filter(Boolean)
-                                            .map((jp: any, i: number) => (
-                                                <option key={i} value={jp}>Campaign: {jp}</option>
-                                            ))
-                                        }
-                                    </select>
+                                        Both
+                                    </button>
+                                    <button
+                                        onClick={() => setInspectionModeFilter("ROV")}
+                                        className={cn(
+                                            "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                            inspectionModeFilter === "ROV"
+                                                ? "bg-cyan-600 text-white shadow"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                        )}
+                                    >
+                                        ROV
+                                    </button>
+                                    <button
+                                        onClick={() => setInspectionModeFilter("DIVING")}
+                                        className={cn(
+                                            "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                            inspectionModeFilter === "DIVING"
+                                                ? "bg-purple-600 text-white shadow"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                        )}
+                                    >
+                                        Diving
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Historical Campaign & Jobpack Compare Controls */}
+                            {colorMode === "HISTORICAL_COMPARE" && (
+                                <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                            <History className="w-3 h-3 text-cyan-400" /> Structure Historical Jobpack
+                                        </span>
+                                        <select
+                                            value={selectedCampaignId}
+                                            onChange={(e) => setSelectedCampaignId(e.target.value)}
+                                            className="h-7 text-[10px] font-bold bg-slate-950 border border-slate-700 text-cyan-300 rounded px-2 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer w-full"
+                                        >
+                                            <option value="ALL">All Historical Jobpacks Combined</option>
+                                            {structureJobpacks.map((jp) => (
+                                                <option key={jp.id} value={jp.id}>{jp.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                            Comparison Scope
+                                        </span>
+                                        <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-950/80 rounded-lg border border-slate-800 text-[9px] font-black">
+                                            <button
+                                                onClick={() => setCompareWithCurrent(true)}
+                                                className={cn(
+                                                    "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                                    compareWithCurrent
+                                                        ? "bg-cyan-600 text-white shadow"
+                                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                                )}
+                                                title="Compare selected historical jobpack against current active jobpack"
+                                            >
+                                                vs Current
+                                            </button>
+                                            <button
+                                                onClick={() => setCompareWithCurrent(false)}
+                                                className={cn(
+                                                    "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                                    !compareWithCurrent
+                                                        ? "bg-purple-600 text-white shadow"
+                                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                                )}
+                                                title="View component status as recorded in historical jobpack only"
+                                            >
+                                                Historical Only
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -3462,66 +4089,446 @@ export function Structural3DViewer({
             {colorMode !== "DEFAULT" && (
                 <div className="absolute top-12 left-3 z-30 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl px-3 py-2 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200 flex flex-col gap-1.5 text-white max-w-md">
                     <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
-                        <span className="flex items-center gap-1">
-                            <Palette className="w-3 h-3 text-amber-400" />
+                        <span className="flex items-center gap-1.5">
+                            <Palette className="w-3.5 h-3.5 text-amber-400" />
                             <span>
-                                {colorMode === "ANOMALY_PRIORITY" && "Anomaly Priority Key"}
+                                {colorMode === "ANOMALY_PRIORITY" && "Anomaly Priority & Finding Key"}
+                                {colorMode === "FINDING_CATEGORY" && "Finding Category Key"}
                                 {colorMode === "PENDING_TASK" && "Pending Tasks Status Key"}
                                 {colorMode === "INCOMPLETE_RECORD" && "Incomplete Records Key"}
                                 {colorMode === "RECTIFIED_ANOMALY" && "Rectified Anomaly Key"}
-                                {colorMode === "INSPECTION_TASK_TYPE" && "Inspection Task Spec Key"}
+                                {colorMode === "INSPECTION_TASK_TYPE" && (
+                                    campaignTaskMode === "ROV" ? "Inspection Task Spec Key (ROV Campaign)" :
+                                    campaignTaskMode === "DIVING" ? "Inspection Task Spec Key (Diving Campaign)" :
+                                    campaignTaskMode === "MIXED" ? "Inspection Task Spec Key (ROV & Diving Tasks)" :
+                                    "Inspection Task Spec Key"
+                                )}
                                 {colorMode === "HISTORICAL_COMPARE" && "Historical Campaign Compare Key"}
                             </span>
                         </span>
-                        <button onClick={() => setColorMode("DEFAULT")} className="text-[8px] font-bold text-slate-500 hover:text-white uppercase">Hide</button>
+                        <div className="flex items-center gap-2">
+                            {/* Anomaly vs Finding Priority Scope Switcher */}
+                            {colorMode === "ANOMALY_PRIORITY" && (
+                                <div className="flex items-center bg-slate-950/80 p-0.5 rounded-lg border border-slate-800 text-[8px] font-black uppercase tracking-wider">
+                                    <button
+                                        onClick={() => setPriorityScope("BOTH")}
+                                        className={cn(
+                                            "px-1.5 py-0.5 rounded transition-all cursor-pointer",
+                                            priorityScope === "BOTH"
+                                                ? "bg-amber-500 text-slate-950 font-black shadow"
+                                                : "text-slate-400 hover:text-slate-200"
+                                        )}
+                                        title="Show combined Anomaly and Finding priorities"
+                                    >
+                                        All
+                                    </button>
+                                    <button
+                                        onClick={() => setPriorityScope("ANOMALY")}
+                                        className={cn(
+                                            "px-1.5 py-0.5 rounded transition-all cursor-pointer",
+                                            priorityScope === "ANOMALY"
+                                                ? "bg-rose-600 text-white font-black shadow"
+                                                : "text-slate-400 hover:text-slate-200"
+                                        )}
+                                        title="Filter 3D view to Anomaly Priorities only"
+                                    >
+                                        Anomaly
+                                    </button>
+                                    <button
+                                        onClick={() => setPriorityScope("FINDING")}
+                                        className={cn(
+                                            "px-1.5 py-0.5 rounded transition-all cursor-pointer",
+                                            priorityScope === "FINDING"
+                                                ? "bg-cyan-600 text-white font-black shadow"
+                                                : "text-slate-400 hover:text-slate-200"
+                                        )}
+                                        title="Filter 3D view to Finding Priorities only"
+                                    >
+                                        Finding
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Inspection Mode Scope Switcher */}
+                            <div className="flex items-center bg-slate-950/80 p-0.5 rounded-lg border border-slate-800 text-[8px] font-black uppercase tracking-wider">
+                                <button
+                                    onClick={() => setInspectionModeFilter("BOTH")}
+                                    className={cn(
+                                        "px-1.5 py-0.5 rounded transition-all cursor-pointer",
+                                        inspectionModeFilter === "BOTH"
+                                            ? "bg-blue-600 text-white font-black shadow"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    )}
+                                    title="Show both ROV and Diving inspection results"
+                                >
+                                    Both
+                                </button>
+                                <button
+                                    onClick={() => setInspectionModeFilter("ROV")}
+                                    className={cn(
+                                        "px-1.5 py-0.5 rounded transition-all cursor-pointer",
+                                        inspectionModeFilter === "ROV"
+                                            ? "bg-cyan-600 text-white font-black shadow"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    )}
+                                    title="Filter color map to ROV inspection mode only"
+                                >
+                                    ROV
+                                </button>
+                                <button
+                                    onClick={() => setInspectionModeFilter("DIVING")}
+                                    className={cn(
+                                        "px-1.5 py-0.5 rounded transition-all cursor-pointer",
+                                        inspectionModeFilter === "DIVING"
+                                            ? "bg-purple-600 text-white font-black shadow"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    )}
+                                    title="Filter color map to Diving inspection mode only"
+                                >
+                                    Diving
+                                </button>
+                            </div>
+
+                            {selectedPriorityFilter && (
+                                <button
+                                    onClick={() => setSelectedPriorityFilter(null)}
+                                    className="text-[8px] font-black uppercase text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-1.5 py-0.5 rounded transition-all"
+                                >
+                                    Show All
+                                </button>
+                            )}
+                            <button onClick={() => setColorMode("DEFAULT")} className="text-[8px] font-bold text-slate-500 hover:text-white uppercase">Hide</button>
+                        </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-bold">
+                    <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-bold">
                         {colorMode === "ANOMALY_PRIORITY" && (
                             <>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span>Class A (High)</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" /><span>Class B (Med)</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500" /><span>Class C (Low)</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span>Clean</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-500" /><span>Uninspected</span></div>
+                                {(
+                                    priorityScope === "FINDING" ? [
+                                        { code: "OBSERVATION", label: "Observation", color: libraryColors["OBSERVATION"] || libraryColors["OBS"] || "#d97706" },
+                                        { code: "FINDING P1", label: "Finding P1", color: libraryColors["FINDING P1"] || "#ef4444" },
+                                        { code: "FINDING P2", label: "Finding P2", color: libraryColors["FINDING P2"] || "#f97316" },
+                                        { code: "FINDING P3", label: "Finding P3", color: libraryColors["FINDING P3"] || "#0284c7" },
+                                        { code: "CLEAN", label: "Clean", color: libraryColors["CLEAN"] || "#10b981" },
+                                        { code: "UNINSPECTED", label: "Uninspected", color: libraryColors["UNINSPECTED"] || "#64748b" }
+                                    ] : libraryPriorityList.length > 0 ? [
+                                        ...libraryPriorityList,
+                                        { code: "OBSERVATION", label: "Observation", color: libraryColors["OBSERVATION"] || "#d97706" },
+                                        { code: "FINDING", label: "Finding (Observation)", color: libraryColors["FINDING"] || "#0284c7" },
+                                        { code: "CLEAN", label: "Clean", color: libraryColors["CLEAN"] || "#10b981" },
+                                        { code: "UNINSPECTED", label: "Uninspected", color: libraryColors["UNINSPECTED"] || "#64748b" }
+                                    ] : [
+                                        { code: "PRIORITY 1", label: "Priority 1", color: "#ef4444" },
+                                        { code: "PRIORITY 2", label: "Priority 2", color: "#f97316" },
+                                        { code: "PRIORITY 3", label: "Priority 3", color: "#eab308" },
+                                        { code: "PRIORITY 4", label: "Priority 4", color: "#84cc16" },
+                                        { code: "OBSERVATION", label: "Observation", color: "#d97706" },
+                                        { code: "FINDING", label: "Finding (Observation)", color: "#0284c7" },
+                                        { code: "CLEAN", label: "Clean", color: "#10b981" },
+                                        { code: "UNINSPECTED", label: "Uninspected", color: "#64748b" },
+                                    ]
+                                ).filter(item => {
+                                    if (priorityScope === "ANOMALY") {
+                                        return item.code !== "FINDING" && item.code !== "OBSERVATION" && !item.code.startsWith("FINDING P");
+                                    }
+                                    return true;
+                                }).map((item) => {
+                                    const colorHex = item.color || libraryColors[item.code] || libraryColors[item.code.replace("PRIORITY ", "P")] || "#64748b";
+                                    const isSelected = selectedPriorityFilter === item.code;
+                                    return (
+                                        <button
+                                            key={item.code}
+                                            onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
+                                            className={cn(
+                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
+                                                isSelected
+                                                    ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
+                                                    : selectedPriorityFilter
+                                                    ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
+                                                    : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
+                                            )}
+                                            title={`Click to filter 3D view by ${item.label}`}
+                                        >
+                                            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: colorHex }} />
+                                            <span>{item.label}</span>
+                                        </button>
+                                    );
+                                })}
                             </>
                         )}
+
+                        {colorMode === "FINDING_CATEGORY" && (
+                            <>
+                                {[
+                                    { code: "CORROSION", label: "Corrosion / Metal Loss", defaultCol: "#ec4899" },
+                                    { code: "MARINE_GROWTH", label: "Marine Growth", defaultCol: "#06b6d4" },
+                                    { code: "COATING", label: "Coating Defect", defaultCol: "#a855f7" },
+                                    { code: "DEBRIS", label: "Debris / Foreign Object", defaultCol: "#84cc16" },
+                                    { code: "SCOUR", label: "Scour / Seabed", defaultCol: "#3b82f6" },
+                                    { code: "GENERAL", label: "General Finding", defaultCol: "#0284c7" },
+                                    { code: "CLEAN", label: "Clean", defaultCol: "#10b981" },
+                                    { code: "UNINSPECTED", label: "Uninspected", defaultCol: "#64748b" },
+                                ].map((item) => {
+                                    const colorHex = libraryColors[item.code] || item.defaultCol;
+                                    const isSelected = selectedPriorityFilter === item.code;
+                                    return (
+                                        <button
+                                            key={item.code}
+                                            onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
+                                            className={cn(
+                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
+                                                isSelected
+                                                    ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
+                                                    : selectedPriorityFilter
+                                                    ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
+                                                    : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
+                                            )}
+                                            title={`Click to filter 3D view by ${item.label}`}
+                                        >
+                                            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: colorHex }} />
+                                            <span>{item.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </>
+                        )}
+
                         {colorMode === "PENDING_TASK" && (
                             <>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span>Completed</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sky-500" /><span>In Progress</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /><span>Pending</span></div>
+                                {[
+                                    { code: "COMPLETED", label: "Completed", colorHex: "#10b981" },
+                                    { code: "IN_PROGRESS", label: "In Progress", colorHex: "#0284c7" },
+                                    { code: "PENDING", label: "Pending", colorHex: "#f59e0b" },
+                                ].map((item) => {
+                                    const isSelected = selectedPriorityFilter === item.code;
+                                    return (
+                                        <button
+                                            key={item.code}
+                                            onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
+                                            className={cn(
+                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
+                                                isSelected
+                                                    ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
+                                                    : selectedPriorityFilter
+                                                    ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
+                                                    : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
+                                            )}
+                                        >
+                                            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: item.colorHex }} />
+                                            <span>{item.label}</span>
+                                        </button>
+                                    );
+                                })}
                             </>
                         )}
+
                         {colorMode === "INCOMPLETE_RECORD" && (
                             <>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600" /><span>Incomplete Record</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span>Complete</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-600" /><span>Uninspected</span></div>
+                                {[
+                                    { code: "INCOMPLETE", label: "Incomplete Record", colorHex: "#e11d48" },
+                                    { code: "COMPLETE", label: "Complete", colorHex: "#10b981" },
+                                    { code: "UNINSPECTED", label: "Uninspected", colorHex: "#64748b" },
+                                ].map((item) => {
+                                    const isSelected = selectedPriorityFilter === item.code;
+                                    return (
+                                        <button
+                                            key={item.code}
+                                            onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
+                                            className={cn(
+                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
+                                                isSelected
+                                                    ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
+                                                    : selectedPriorityFilter
+                                                    ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
+                                                    : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
+                                            )}
+                                        >
+                                            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: item.colorHex }} />
+                                            <span>{item.label}</span>
+                                        </button>
+                                    );
+                                })}
                             </>
                         )}
+
                         {colorMode === "RECTIFIED_ANOMALY" && (
                             <>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-400" /><span>Rectified</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span>Active Anomaly</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span>No Anomaly</span></div>
+                                {[
+                                    { code: "RECTIFIED", label: "Rectified", colorHex: "#06b6d4" },
+                                    { code: "ACTIVE", label: "Active Anomaly", colorHex: "#ef4444" },
+                                    { code: "CLEAN", label: "No Anomaly", colorHex: "#10b981" },
+                                ].map((item) => {
+                                    const isSelected = selectedPriorityFilter === item.code;
+                                    return (
+                                        <button
+                                            key={item.code}
+                                            onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
+                                            className={cn(
+                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
+                                                isSelected
+                                                    ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
+                                                    : selectedPriorityFilter
+                                                    ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
+                                                    : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
+                                            )}
+                                        >
+                                            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: item.colorHex }} />
+                                            <span>{item.label}</span>
+                                        </button>
+                                    );
+                                })}
                             </>
                         )}
+
                         {colorMode === "INSPECTION_TASK_TYPE" && (
                             <>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-400" /><span>FMD</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /><span>UTWTK</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" /><span>Anode</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /><span>GVINS</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-500" /><span>Weld/Corrosion</span></div>
+                                {(
+                                    campaignTaskMode === "ROV" ? [
+                                        { code: "RGVIN", label: "RGVIN (ROV GVI)", colorHex: "#3b82f6" },
+                                        { code: "RCVIN", label: "RCVIN (ROV CVI)", colorHex: "#0284c7" },
+                                        { code: "RFMD", label: "RFMD (ROV FMD)", colorHex: "#06b6d4" },
+                                        { code: "RUTWT", label: "RUTWT (ROV UT)", colorHex: "#f59e0b" },
+                                        { code: "RCPSU", label: "RCPSU (ROV CP)", colorHex: "#10b981" },
+                                        { code: "RSANI", label: "RSANI (ROV Anode)", colorHex: "#a855f7" },
+                                        { code: "RSZCI", label: "RSZCI (ROV Splash Zone)", colorHex: "#f43f5e" },
+                                        { code: "RMGI", label: "RMGI (ROV Marine Growth)", colorHex: "#84cc16" },
+                                        { code: "RSCOR", label: "RSCOR (ROV Seabed)", colorHex: "#14b8a6" },
+                                        { code: "RACFM", label: "RACFM (ROV ACFM)", colorHex: "#ec4899" },
+                                        { code: "RRISI", label: "RRISI (ROV Riser)", colorHex: "#ea580c" },
+                                    ] : campaignTaskMode === "DIVING" ? [
+                                        { code: "DGVIN", label: "DGVIN (Diver GVI)", colorHex: "#3b82f6" },
+                                        { code: "DCVIN", label: "DCVIN (Diver CVI)", colorHex: "#0284c7" },
+                                        { code: "DFMD", label: "DFMD (Diver FMD)", colorHex: "#06b6d4" },
+                                        { code: "DUTWT", label: "DUTWT (Diver UT)", colorHex: "#f59e0b" },
+                                        { code: "DCPSU", label: "DCPSU (Diver CP)", colorHex: "#10b981" },
+                                        { code: "DSANI", label: "DSANI (Diver Anode)", colorHex: "#a855f7" },
+                                        { code: "DSZCI", label: "DSZCI (Diver Splash Zone)", colorHex: "#f43f5e" },
+                                        { code: "DMGI", label: "DMGI (Diver Marine Growth)", colorHex: "#84cc16" },
+                                        { code: "DSCOU", label: "DSCOU (Diver Seabed)", colorHex: "#14b8a6" },
+                                        { code: "DACFM", label: "DACFM (Diver ACFM)", colorHex: "#ec4899" },
+                                        { code: "DMPIN", label: "DMPIN (Diver MPI)", colorHex: "#ef4444" },
+                                        { code: "DRRISI", label: "DRRISI (Diver Riser)", colorHex: "#ea580c" },
+                                    ] : [
+                                        { code: "GVI", label: "GVI (General Visual)", colorHex: "#3b82f6" },
+                                        { code: "CVI", label: "CVI (Close Visual)", colorHex: "#0284c7" },
+                                        { code: "FMD", label: "FMD (Flooded Member)", colorHex: "#06b6d4" },
+                                        { code: "UT", label: "UT (Wall Thickness)", colorHex: "#f59e0b" },
+                                        { code: "CP", label: "CP Potential Survey", colorHex: "#10b981" },
+                                        { code: "ANODE", label: "Anode Inspection", colorHex: "#a855f7" },
+                                        { code: "MPI", label: "MPI (Magnetic Particle)", colorHex: "#ef4444" },
+                                        { code: "ACFM", label: "ACFM NDT", colorHex: "#ec4899" },
+                                        { code: "SZONE", label: "Splash Zone", colorHex: "#f43f5e" },
+                                        { code: "MGROW", label: "Marine Growth", colorHex: "#84cc16" },
+                                        { code: "SCOUR", label: "Scour / Seabed", colorHex: "#14b8a6" },
+                                        { code: "RISER", label: "Riser & Clamp", colorHex: "#ea580c" },
+                                    ]
+                                ).map((item) => {
+                                    const isSelected = selectedPriorityFilter === item.code;
+                                    return (
+                                        <button
+                                            key={item.code}
+                                            onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
+                                            className={cn(
+                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
+                                                isSelected
+                                                    ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
+                                                    : selectedPriorityFilter
+                                                    ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
+                                                    : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
+                                            )}
+                                        >
+                                            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: item.colorHex }} />
+                                            <span>{item.label}</span>
+                                        </button>
+                                    );
+                                })}
                             </>
                         )}
+
                         {colorMode === "HISTORICAL_COMPARE" && (
-                            <>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-600" /><span>New Anomaly</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-600" /><span>Persistent Anomaly</span></div>
-                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-500" /><span>Rectified Past Anomaly</span></div>
-                            </>
+                            <div className="flex flex-col gap-2 w-full">
+                                {/* Jobpack Selection & Comparison Mode Header */}
+                                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800">
+                                    <div className="flex items-center gap-1">
+                                        <History className="w-3.5 h-3.5 text-cyan-400" />
+                                        <span className="text-[9px] font-black uppercase text-slate-300">Jobpack:</span>
+                                        <select
+                                            value={selectedCampaignId}
+                                            onChange={(e) => setSelectedCampaignId(e.target.value)}
+                                            className="h-6 text-[9px] font-bold bg-slate-950 border border-slate-700 text-cyan-300 rounded px-1.5 focus:outline-none cursor-pointer max-w-[180px] truncate"
+                                        >
+                                            <option value="ALL">All Past Jobpacks Combined</option>
+                                            {structureJobpacks.map((jp) => (
+                                                <option key={jp.id} value={jp.id}>{jp.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Compare vs Current Switcher */}
+                                    <div className="flex items-center bg-slate-950/80 p-0.5 rounded-lg border border-slate-800 text-[8px] font-black uppercase tracking-wider">
+                                        <button
+                                            onClick={() => setCompareWithCurrent(true)}
+                                            className={cn(
+                                                "px-1.5 py-0.5 rounded transition-all cursor-pointer",
+                                                compareWithCurrent
+                                                    ? "bg-cyan-600 text-white font-black shadow"
+                                                    : "text-slate-400 hover:text-slate-200"
+                                            )}
+                                            title="Compare selected historical jobpack against current active jobpack"
+                                        >
+                                            vs Current
+                                        </button>
+                                        <button
+                                            onClick={() => setCompareWithCurrent(false)}
+                                            className={cn(
+                                                "px-1.5 py-0.5 rounded transition-all cursor-pointer",
+                                                !compareWithCurrent
+                                                    ? "bg-purple-600 text-white font-black shadow"
+                                                    : "text-slate-400 hover:text-slate-200"
+                                            )}
+                                            title="View component status as recorded in historical jobpack only"
+                                        >
+                                            Historical Only
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Badges */}
+                                <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-bold">
+                                    {(compareWithCurrent ? [
+                                        { code: "NEW_ANOMALY", label: "New Anomaly in Current", colorHex: "#ef4444" },
+                                        { code: "RECTIFIED", label: "Rectified / Fixed", colorHex: "#06b6d4" },
+                                        { code: "PERSISTENT", label: "Persistent Anomaly", colorHex: "#eab308" },
+                                        { code: "CLEAN", label: "Clean / No Anomaly", colorHex: "#10b981" },
+                                        { code: "UNINS", label: "Uninspected", colorHex: "#64748b" }
+                                    ] : [
+                                        { code: "HIST_ANOMALY", label: "Historical Anomaly", colorHex: "#ef4444" },
+                                        { code: "CLEAN", label: "Clean / No Anomaly", colorHex: "#10b981" },
+                                        { code: "UNINS", label: "Uninspected", colorHex: "#64748b" }
+                                    ]).map((item) => {
+                                        const isSelected = selectedPriorityFilter === item.code;
+                                        return (
+                                            <button
+                                                key={item.code}
+                                                onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
+                                                className={cn(
+                                                    "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
+                                                    isSelected
+                                                        ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
+                                                        : selectedPriorityFilter
+                                                        ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
+                                                        : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
+                                                )}
+                                                title={`Click to filter 3D view by ${item.label}`}
+                                            >
+                                                <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: item.colorHex }} />
+                                                <span>{item.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>

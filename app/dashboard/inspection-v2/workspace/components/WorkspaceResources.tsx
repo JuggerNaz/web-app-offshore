@@ -13,7 +13,10 @@ import {
     Loader2,
     X,
     Play,
-    Plus
+    Plus,
+    Ruler,
+    CheckCircle2,
+    AlertCircle
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -79,6 +82,7 @@ interface WorkspaceResourcesProps {
     selectedComp: any;
     handleComponentSelection: (comp: any) => void;
     handleTaskChange?: (code: string) => void;
+    handleEditRecord?: (rec: any) => void;
     setCompSpecDialogOpen: (val: boolean) => void;
     currentRecords: any[];
     currentCompRecords: any[];
@@ -92,6 +96,10 @@ interface WorkspaceResourcesProps {
     structureType: "platform" | "pipeline";
     unitSystem: "METRIC" | "IMPERIAL";
     setShowTaskSelector?: (val: boolean) => void;
+    isFormDirty?: boolean;
+    handleCommitRecord?: () => void;
+    resetForm?: () => void;
+    onDirectSelectTask?: (comp: any, taskCode: string) => void;
 }
 
 type SortKey = 'name' | 'depth' | 'startElev';
@@ -101,16 +109,23 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     const {
         compView, setCompView, compSearchTerm, setCompSearchTerm,
         componentsSow, componentsNonSow, selectedComp,
-        handleComponentSelection, handleTaskChange, setShowTaskSelector, setCompSpecDialogOpen,
+        handleComponentSelection, handleTaskChange, handleEditRecord, setShowTaskSelector, setCompSpecDialogOpen,
         currentRecords, currentCompRecords, historicalRecords,
         historyLoading,
         inspMethod, supabase, structureId, onRefreshComponents,
-        allInspectionTypes, structureType, unitSystem
+        allInspectionTypes, structureType, unitSystem,
+        isFormDirty, handleCommitRecord, resetForm, onDirectSelectTask
     } = props;
 
     const [isRegisterOpen, setIsRegisterOpen] = React.useState(false);
     const [sortKey, setSortKey] = React.useState<SortKey>('name');
     const [sortDir, setSortDir] = React.useState<SortDir>('asc');
+    const [pending3DTask, setPending3DTask] = React.useState<{ taskCode: string; comp: any } | null>(null);
+    const [showUnsavedPrompt, setShowUnsavedPrompt] = React.useState(false);
+
+    const clickTimerRef = React.useRef<any>(null);
+    const [selectedTaskRecords, setSelectedTaskRecords] = React.useState<{ tCode: string; displayName: string; records: any[] } | null>(null);
+    const [showRecordSelectModal, setShowRecordSelectModal] = React.useState(false);
 
     const allComponents = React.useMemo(() => {
         return [...(componentsSow || []), ...(componentsNonSow || [])];
@@ -177,14 +192,100 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
         setPreviewComp(fullComp);
     };
 
-    const handleSelect3DTask = (taskCode: string) => {
+    const executeLoad3DTask = (taskCode: string, targetComp: any) => {
+        React.startTransition(() => {
+            if (onDirectSelectTask) {
+                onDirectSelectTask(targetComp, taskCode);
+            } else {
+                handleComponentSelection(targetComp);
+                if (handleTaskChange) {
+                    handleTaskChange(taskCode);
+                }
+            }
+            setPreviewComp(null);
+        });
+        toast.success(`Loaded ${taskCode} for ${targetComp.q_id || targetComp.name} into inspection form`);
+    };
+
+    const handleSelect3DTaskWithCheck = (taskCode: string) => {
         if (!previewComp) return;
-        handleComponentSelection(previewComp);
-        if (handleTaskChange) {
-            handleTaskChange(taskCode);
+        if (isFormDirty) {
+            setPending3DTask({ taskCode, comp: previewComp });
+            setShowUnsavedPrompt(true);
+        } else {
+            executeLoad3DTask(taskCode, previewComp);
         }
-        toast.success(`Loaded ${taskCode} for ${previewComp.q_id || previewComp.name} into inspection form`);
-        setPreviewComp(null);
+    };
+
+    const handleTaskSingleClick = (taskCode: string) => {
+        if (clickTimerRef.current) {
+            clearTimeout(clickTimerRef.current);
+            clickTimerRef.current = null;
+        }
+        clickTimerRef.current = setTimeout(() => {
+            handleSelect3DTaskWithCheck(taskCode);
+            clickTimerRef.current = null;
+        }, 250);
+    };
+
+    const handleTaskDoubleClick = (taskCode: string, existingRecords: any[], displayName: string) => {
+        if (clickTimerRef.current) {
+            clearTimeout(clickTimerRef.current);
+            clickTimerRef.current = null;
+        }
+
+        if (!existingRecords || existingRecords.length === 0) {
+            handleSelect3DTaskWithCheck(taskCode);
+            return;
+        }
+
+        if (existingRecords.length === 1) {
+            if (handleEditRecord) {
+                handleEditRecord(existingRecords[0]);
+                toast.info(`Viewing recorded ${displayName} data`);
+                setPreviewComp(null);
+            }
+        } else {
+            setSelectedTaskRecords({ tCode: taskCode, displayName, records: existingRecords });
+            setShowRecordSelectModal(true);
+        }
+    };
+
+    const getWallThickness = (comp: any) => {
+        if (!comp) return "N/A";
+        const wtProp = comp.wall_thickness || comp.wt || comp.thickness || comp.metadata?.wall_thickness || comp.metadata?.wt || comp.metadata?.thickness || comp.metadata?.wall_thickness_mm;
+        if (wtProp) return `${wtProp} mm`;
+
+        const compIdStr = String(comp.id || comp.comp_id || "");
+        const compQIdStr = String(comp.q_id || comp.name || "").toUpperCase();
+
+        const utRec = (currentRecords || []).find((r: any) => {
+            const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
+                                ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
+            if (!matchesComp) return false;
+            const code = String(r.inspection_type_code || r.inspection_type?.code || r.task_code || "").toUpperCase();
+            return code === 'RUTWT' || code === 'UTWTK' || code === 'DUTWT' || code === 'UT';
+        });
+
+        if (utRec && (utRec.thickness || utRec.wt_reading || utRec.reading || utRec.measurement)) {
+            return `${utRec.thickness || utRec.wt_reading || utRec.reading || utRec.measurement} mm`;
+        }
+
+        return "N/A";
+    };
+
+    const getStructureGroup = (comp: any) => {
+        if (!comp) return "MEMBER";
+        const grp = comp.group || comp.group_name || comp.structure_group || comp.category || comp.type || comp.metadata?.group || comp.metadata?.structure_group || comp.metadata?.category;
+        if (grp) return String(grp).toUpperCase();
+        return "MEMBER";
+    };
+
+    const getFaceValue = (comp: any) => {
+        if (!comp) return "N/A";
+        const face = comp.face || comp.face_name || comp.face_code || comp.metadata?.face || comp.metadata?.face_code || comp.metadata?.face_name;
+        if (face) return String(face).toUpperCase();
+        return "N/A";
     };
 
     const toggleSort = (key: SortKey) => {
@@ -497,91 +598,293 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                             </button>
                                         </div>
 
-                                        {/* Details Grid: Leg & Node information */}
-                                        {(() => {
-                                            const details = getComponentNodeLegDetails(previewComp);
-                                            const assignedTasks = previewComp.taskStatuses || previewComp.tasks || [];
-                                            return (
-                                                <div className="flex flex-col gap-2">
-                                                    <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-                                                        <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
-                                                            <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Leg / Location</span>
-                                                            <span className="font-bold text-slate-200 truncate">
-                                                                {details.legNo ? `Leg ${details.legNo}` : "Unassigned"}
-                                                            </span>
-                                                        </div>
-                                                        <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
-                                                            <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Nodes (S ➔ F)</span>
-                                                            <span className="font-bold text-slate-200 truncate">
-                                                                {details.sNode && details.fNode ? `${details.sNode} ➔ ${details.fNode}` : details.sNode || details.fNode || "N/A"}
-                                                            </span>
-                                                        </div>
-                                                    </div>
+                                        {/* Details Grid: Leg, Nodes, WT, Group & Face */}
+                                         {(() => {
+                                             const details = getComponentNodeLegDetails(previewComp);
+                                             const assignedTasks = previewComp.taskStatuses || previewComp.tasks || [];
+                                             const wtReading = getWallThickness(previewComp);
+                                             const groupName = getStructureGroup(previewComp);
+                                             const faceVal = getFaceValue(previewComp);
 
-                                                    {/* Inspection Tasks Action Section */}
-                                                    <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-800/80">
-                                                        <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400">
-                                                            <span>Assigned Tasks ({assignedTasks.length})</span>
-                                                            <span className="text-blue-400 font-medium">Click task to inspect in form</span>
-                                                        </div>
+                                             return (
+                                                 <div className="flex flex-col gap-2">
+                                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
+                                                         <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
+                                                             <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Leg / Location</span>
+                                                             <span className="font-bold text-slate-200 truncate">
+                                                                 {details.legNo ? `Leg ${details.legNo}` : "Unassigned"}
+                                                             </span>
+                                                         </div>
 
-                                                        <div className="flex flex-wrap items-center gap-1.5">
-                                                            {assignedTasks.length > 0 ? (
-                                                                assignedTasks.map((tItem: any, idx: number) => {
-                                                                    const tCode = tItem.code || tItem;
-                                                                    const matchedType = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
-                                                                    const displayName = matchedType?.name || tCode;
+                                                         <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
+                                                             <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Nodes (S ➔ F)</span>
+                                                             <span className="font-bold text-slate-200 truncate">
+                                                                 {details.sNode && details.fNode ? `${details.sNode} ➔ ${details.fNode}` : details.sNode || details.fNode || "N/A"}
+                                                             </span>
+                                                         </div>
 
-                                                                    return (
-                                                                        <button
-                                                                            key={idx}
-                                                                            onClick={() => handleSelect3DTask(tCode)}
-                                                                            className="px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 transition-all flex items-center gap-1 shadow-sm active:scale-95"
-                                                                            title={`Start inspection for ${displayName}`}
-                                                                        >
-                                                                            <Play className="w-2.5 h-2.5 fill-current" />
-                                                                            <span>{displayName}</span>
-                                                                        </button>
-                                                                    );
-                                                                })
-                                                            ) : (
-                                                                <span className="text-[9px] italic text-slate-500">No inspection tasks assigned yet</span>
-                                                            )}
+                                                         <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
+                                                             <span className="text-[8px] font-black uppercase text-cyan-400 tracking-wider flex items-center gap-1">
+                                                                 <Ruler className="w-2.5 h-2.5" /> Wall Thickness
+                                                             </span>
+                                                             <span className="font-bold text-cyan-200 truncate">
+                                                                 {wtReading}
+                                                             </span>
+                                                         </div>
 
-                                                            {/* Dropdown to add a new inspection task */}
-                                                            <div className="relative inline-block">
-                                                                <select
-                                                                    onChange={(e) => {
-                                                                        if (e.target.value) {
-                                                                            handleSelect3DTask(e.target.value);
-                                                                        }
-                                                                    }}
-                                                                    defaultValue=""
-                                                                    className="h-6 text-[9px] font-black uppercase tracking-wider bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded px-2 pr-4 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                                >
-                                                                    <option value="" disabled>+ Add Task ({inspMethod})...</option>
-                                                                    {(allInspectionTypes || [])
-                                                                        .filter((it: any) => {
-                                                                            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                                                            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                                                            if (inspMethod === "DIVING" && isDiving) return true;
-                                                                            if (inspMethod === "ROV" && isRov) return true;
-                                                                            return false;
-                                                                        })
-                                                                        .map((t: any) => (
-                                                                            <option key={t.id || t.code} value={t.code || t.name} className="bg-slate-900 text-white">
-                                                                                {t.name} ({t.code})
-                                                                            </option>
-                                                                        ))}
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
+                                                         <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
+                                                             <span className="text-[8px] font-black uppercase text-purple-400 tracking-wider">Group / Face</span>
+                                                             <span className="font-bold text-purple-200 truncate">
+                                                                 {groupName} {faceVal !== "N/A" ? `• ${faceVal}` : ""}
+                                                             </span>
+                                                         </div>
+                                                     </div>
+
+                                                     {/* Inspection Tasks Action Section */}
+                                                     <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-800/80">
+                                                         <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                                             <span>Assigned Tasks ({assignedTasks.length})</span>
+                                                             <span className="text-blue-400 font-medium">Click task to inspect • Double-click to view record</span>
+                                                         </div>
+
+                                                         <div className="flex flex-wrap items-center gap-1.5">
+                                                             {assignedTasks.length > 0 ? (
+                                                                 assignedTasks.map((tItem: any, idx: number) => {
+                                                                     const tCode = tItem.code || tItem;
+                                                                     const matchedType = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                                                                     const displayName = matchedType?.name || tCode;
+
+                                                                     const compIdStr = String(previewComp.id || previewComp.comp_id || "");
+                                                                     const compQIdStr = String(previewComp.q_id || previewComp.name || "").toUpperCase();
+
+                                                                     const taskRecords = (currentRecords || []).filter((r: any) => {
+                                                                         const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
+                                                                                             ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
+                                                                         if (!matchesComp) return false;
+                                                                         const rCode = String(r.inspection_type_code || r.inspection_type?.code || r.task_code || "").toUpperCase();
+                                                                         return rCode === String(tCode).toUpperCase();
+                                                                     });
+
+                                                                     const isInspected = taskRecords.length > 0;
+
+                                                                     return (
+                                                                         <button
+                                                                             key={idx}
+                                                                             onClick={() => handleTaskSingleClick(tCode)}
+                                                                             onDoubleClick={() => handleTaskDoubleClick(tCode, taskRecords, displayName)}
+                                                                             className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer border ${
+                                                                                 isInspected
+                                                                                     ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600 hover:text-white"
+                                                                                     : "bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600 hover:text-white"
+                                                                             }`}
+                                                                             title={isInspected ? `Single-click: add new entry. Double-click: view recorded inspection (${taskRecords.length} rec)` : `Start inspection for ${displayName}`}
+                                                                         >
+                                                                             {isInspected ? (
+                                                                                 <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 fill-emerald-500/20" />
+                                                                             ) : (
+                                                                                 <Play className="w-2.5 h-2.5 fill-current" />
+                                                                             )}
+                                                                             <span>{displayName}</span>
+                                                                             {isInspected && (
+                                                                                 <span className="text-[7.5px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-950/80 px-1 py-0.2 rounded border border-emerald-500/40 ml-0.5">
+                                                                                     {taskRecords.length > 1 ? `Inspected (${taskRecords.length})` : "Inspected"}
+                                                                                 </span>
+                                                                             )}
+                                                                         </button>
+                                                                     );
+                                                                 })
+                                                             ) : (
+                                                                 <span className="text-[9px] italic text-slate-500">No inspection tasks assigned yet</span>
+                                                             )}
+
+                                                             {/* Dropdown to add a new inspection task */}
+                                                             <div className="relative inline-block">
+                                                                 <select
+                                                                     onChange={(e) => {
+                                                                         if (e.target.value) {
+                                                                             handleSelect3DTaskWithCheck(e.target.value);
+                                                                         }
+                                                                     }}
+                                                                     defaultValue=""
+                                                                     className="h-6 text-[9px] font-black uppercase tracking-wider bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded px-2 pr-4 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                 >
+                                                                     <option value="" disabled>+ Add Task ({inspMethod})...</option>
+                                                                     {(allInspectionTypes || [])
+                                                                         .filter((it: any) => {
+                                                                             const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
+                                                                             const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
+                                                                             if (inspMethod === "DIVING" && isDiving) return true;
+                                                                             if (inspMethod === "ROV" && isRov) return true;
+                                                                             return false;
+                                                                         })
+                                                                         .map((t: any) => (
+                                                                             <option key={t.id || t.code} value={t.code || t.name} className="bg-slate-900 text-white">
+                                                                                 {t.name} ({t.code})
+                                                                             </option>
+                                                                         ))}
+                                                                 </select>
+                                                             </div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             );
+                                         })()}
+                                     </div>
                                 )}
+
+                                 {/* UNSAVED CHANGES MODAL PROMPT */}
+                                 {showUnsavedPrompt && pending3DTask && (
+                                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+                                         <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-md w-full shadow-2xl flex flex-col gap-4 text-white">
+                                             <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+                                                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                                                     <AlertCircle className="w-5 h-5" />
+                                                 </div>
+                                                 <div className="flex flex-col">
+                                                     <h3 className="text-sm font-black uppercase tracking-wider text-slate-100">Unsaved Changes Detected</h3>
+                                                     <p className="text-[10px] text-slate-400 font-medium">The inspection form has modifications that haven't been saved.</p>
+                                                 </div>
+                                             </div>
+
+                                             <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                                                 You have unsaved changes in the active form. Would you like to <strong className="text-emerald-400 font-bold">Save</strong> before switching, or <strong className="text-rose-400 font-bold">Discard</strong> your modifications to proceed with <span className="text-cyan-300 font-bold">{pending3DTask.taskCode}</span> for <span className="text-white font-bold">{pending3DTask.comp.q_id || pending3DTask.comp.name}</span>?
+                                             </p>
+
+                                             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                                                 <Button
+                                                     variant="ghost"
+                                                     size="sm"
+                                                     onClick={() => {
+                                                         setShowUnsavedPrompt(false);
+                                                         setPending3DTask(null);
+                                                     }}
+                                                     className="text-xs text-slate-400 hover:text-white"
+                                                 >
+                                                     Cancel
+                                                 </Button>
+                                                 <Button
+                                                     variant="outline"
+                                                     size="sm"
+                                                     onClick={() => {
+                                                         if (resetForm) resetForm();
+                                                         executeLoad3DTask(pending3DTask.taskCode, pending3DTask.comp);
+                                                         setShowUnsavedPrompt(false);
+                                                         setPending3DTask(null);
+                                                     }}
+                                                     className="text-xs bg-rose-950/60 hover:bg-rose-900 text-rose-300 border-rose-800"
+                                                 >
+                                                     Discard & Proceed
+                                                 </Button>
+                                                 <Button
+                                                     size="sm"
+                                                     onClick={async () => {
+                                                         if (handleCommitRecord) {
+                                                             await handleCommitRecord();
+                                                         }
+                                                         executeLoad3DTask(pending3DTask.taskCode, pending3DTask.comp);
+                                                         setShowUnsavedPrompt(false);
+                                                         setPending3DTask(null);
+                                                     }}
+                                                     className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                                                 >
+                                                     Save & Proceed
+                                                 </Button>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 )}
+                                 {/* MULTIPLE INSPECTION RECORDS SELECTION MODAL */}
+                                 {showRecordSelectModal && selectedTaskRecords && (
+                                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+                                         <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-lg w-full shadow-2xl flex flex-col gap-4 text-white">
+                                             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                                 <div className="flex items-center gap-2.5">
+                                                     <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold text-xs">
+                                                         {selectedTaskRecords.records.length}
+                                                     </div>
+                                                     <div className="flex flex-col">
+                                                         <h3 className="text-xs font-black uppercase tracking-wider text-slate-100">Select Inspection Record</h3>
+                                                         <p className="text-[10px] text-slate-400 font-medium">
+                                                             {previewComp?.q_id || previewComp?.name} • {selectedTaskRecords.displayName}
+                                                         </p>
+                                                     </div>
+                                                 </div>
+                                                 <button
+                                                     onClick={() => {
+                                                         setShowRecordSelectModal(false);
+                                                         setSelectedTaskRecords(null);
+                                                     }}
+                                                     className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                                 >
+                                                     <X className="w-4 h-4" />
+                                                 </button>
+                                             </div>
+
+                                             <p className="text-[11px] text-slate-300 font-medium">
+                                                 Multiple inspection records were found for this task. Select a record to view or edit:
+                                             </p>
+
+                                             <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+                                                 {selectedTaskRecords.records.map((rec: any, i: number) => {
+                                                     const dateStr = rec.inspection_date ? `${rec.inspection_date} ${rec.inspection_time || ""}` : "Date N/A";
+                                                     const isAnomaly = rec.has_anomaly || rec.result_status === "Anomaly";
+                                                     const isFinding = rec.result_status === "Finding";
+
+                                                     return (
+                                                         <button
+                                                             key={rec.insp_id || i}
+                                                             onClick={() => {
+                                                                 if (handleEditRecord) {
+                                                                     handleEditRecord(rec);
+                                                                     toast.info(`Loaded record #${rec.insp_id || i + 1} for ${selectedTaskRecords.displayName}`);
+                                                                     setShowRecordSelectModal(false);
+                                                                     setSelectedTaskRecords(null);
+                                                                     setPreviewComp(null);
+                                                                 }
+                                                             }}
+                                                             className="w-full text-left p-3 rounded-xl bg-slate-950/80 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-between group cursor-pointer"
+                                                         >
+                                                             <div className="flex flex-col gap-1">
+                                                                 <div className="flex items-center gap-2">
+                                                                     <span className="text-xs font-bold text-slate-200 group-hover:text-cyan-300">
+                                                                         Record #{rec.insp_id || i + 1}
+                                                                     </span>
+                                                                     <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border ${
+                                                                         isAnomaly ? "bg-rose-500/20 text-rose-300 border-rose-500/40" :
+                                                                         isFinding ? "bg-amber-500/20 text-amber-300 border-amber-500/40" :
+                                                                         "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                                     }`}>
+                                                                         {isAnomaly ? "Anomaly" : isFinding ? "Finding" : "Complete"}
+                                                                     </span>
+                                                                 </div>
+                                                                 <span className="text-[10px] text-slate-400 font-mono">
+                                                                     📅 {dateStr} {rec.sow_report_no ? `• Report: ${rec.sow_report_no}` : ""}
+                                                                 </span>
+                                                             </div>
+                                                             <span className="text-xs font-bold text-blue-400 group-hover:translate-x-0.5 transition-transform">
+                                                                 Load Record ➔
+                                                             </span>
+                                                         </button>
+                                                     );
+                                                 })}
+                                             </div>
+
+                                             <div className="flex justify-end pt-2 border-t border-slate-800">
+                                                 <Button
+                                                     variant="ghost"
+                                                     size="sm"
+                                                     onClick={() => {
+                                                         setShowRecordSelectModal(false);
+                                                         setSelectedTaskRecords(null);
+                                                     }}
+                                                     className="text-xs text-slate-400 hover:text-white"
+                                                 >
+                                                     Close
+                                                 </Button>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 )}
                             </>
                         )}
                     </div>
