@@ -121,6 +121,7 @@ export const POST = withAuth(
       let levelCount = 0;
       let facesCount = 0;
       let assocCount = 0;
+      let pipeGeoCount = 0;
 
       try {
         const rStr = await connection.execute(`SELECT COUNT(*) as CNT FROM v_structure WHERE STR_ID = :strId`, { strId: str_id });
@@ -131,31 +132,43 @@ export const POST = withAuth(
         elvCount = rElv.rows?.[0]?.CNT || rElv.rows?.[0]?.[0] || 0;
       } catch (e) {}
       try {
-        const rLvl = await connection.execute(`SELECT COUNT(*) as CNT FROM STR_LEVEL WHERE PLAT_ID = :strId`, { strId: str_id });
-        levelCount = rLvl.rows?.[0]?.CNT || rLvl.rows?.[0]?.[0] || 0;
+        const rLevel = await connection.execute(`SELECT COUNT(*) as CNT FROM STR_LEVEL WHERE PLAT_ID = :strId`, { strId: str_id });
+        levelCount = rLevel.rows?.[0]?.CNT || rLevel.rows?.[0]?.[0] || 0;
       } catch (e) {}
       try {
-        const rFcs = await connection.execute(`SELECT COUNT(*) as CNT FROM STR_FACES WHERE PLAT_ID = :strId`, { strId: str_id });
-        facesCount = rFcs.rows?.[0]?.CNT || rFcs.rows?.[0]?.[0] || 0;
+        const rFaces = await connection.execute(`SELECT COUNT(*) as CNT FROM STR_FACES WHERE PLAT_ID = :strId`, { strId: str_id });
+        facesCount = rFaces.rows?.[0]?.CNT || rFaces.rows?.[0]?.[0] || 0;
+      } catch (e) {}
+      try {
+        let rGeo = null;
+        try {
+          rGeo = await connection.execute(`SELECT COUNT(*) as CNT FROM PIPE_GEO WHERE STR_ID = :strId`, { strId: str_id });
+        } catch (_) {
+          try {
+            rGeo = await connection.execute(`SELECT COUNT(*) as CNT FROM PIPE_GEO WHERE PIPE_ID = :strId`, { strId: str_id });
+          } catch (__) {
+            rGeo = await connection.execute(`SELECT COUNT(*) as CNT FROM U_PIPEGEO WHERE STR_ID = :strId`, { strId: str_id });
+          }
+        }
+        pipeGeoCount = rGeo?.rows?.[0]?.CNT || rGeo?.rows?.[0]?.[0] || 0;
       } catch (e) {}
       try {
         const rAsc = await connection.execute(
           `SELECT COUNT(*) as CNT FROM U_ASSOC a 
-            WHERE a.STR_ID = :strId
-              AND a.COMP_ID IN (
-                SELECT c1.COMP_ID FROM ALLCOMPID c1 
-                WHERE c1.STR_ID = :strId
-                  AND NOT (NVL(c1.DEL, 0) = 1 AND NOT EXISTS (
-                    SELECT 1 FROM allinspid i1 WHERE i1.COMP_ID = c1.COMP_ID AND i1.STR_ID = c1.STR_ID
-                  ))
-              )
-              AND a.ASSOC_COMPID IN (
-                SELECT c2.COMP_ID FROM ALLCOMPID c2 
-                WHERE c2.STR_ID = :strId
-                  AND NOT (NVL(c2.DEL, 0) = 1 AND NOT EXISTS (
-                    SELECT 1 FROM allinspid i2 WHERE i2.COMP_ID = c2.COMP_ID AND i2.STR_ID = c2.STR_ID
-                  ))
-              )`, 
+            WHERE a.COMP_ID IN (
+              SELECT c1.COMP_ID FROM ALLCOMPID c1 
+              WHERE c1.STR_ID = :strId
+                AND NOT (NVL(c1.DEL, 0) = 1 AND NOT EXISTS (
+                  SELECT 1 FROM allinspid i1 WHERE i1.COMP_ID = c1.COMP_ID AND i1.STR_ID = c1.STR_ID
+                ))
+            )
+            AND a.ASSOC_COMPID IN (
+              SELECT c2.COMP_ID FROM ALLCOMPID c2 
+              WHERE c2.STR_ID = :strId
+                AND NOT (NVL(c2.DEL, 0) = 1 AND NOT EXISTS (
+                  SELECT 1 FROM allinspid i2 WHERE i2.COMP_ID = c2.COMP_ID AND i2.STR_ID = c2.STR_ID
+                ))
+            )`, 
           { strId: str_id }
         );
         assocCount = rAsc.rows?.[0]?.CNT || rAsc.rows?.[0]?.[0] || 0;
@@ -167,6 +180,7 @@ export const POST = withAuth(
       let pgLevelCount = 0;
       let pgFacesCount = 0;
       let pgAssocCount = 0;
+      let pgPipeGeoCount = 0;
 
       try {
         // Query both platform and u_pipeline
@@ -185,6 +199,10 @@ export const POST = withAuth(
       try {
         const { count } = await supabase.from('str_faces').select('*', { count: 'exact', head: true }).eq('plat_id', Number(str_id));
         pgFacesCount = count || 0;
+      } catch (e) {}
+      try {
+        const { count } = await (supabase.from as any)('u_pipegeo').select('*', { count: 'exact', head: true }).eq('str_id', Number(str_id));
+        pgPipeGeoCount = count || 0;
       } catch (e) {}
       try {
         const { count } = await supabase.from('structure_components').select('*', { count: 'exact', head: true })
@@ -219,7 +237,7 @@ export const POST = withAuth(
           companyDetails = {
             comp_name: row.COMP_NAME || row[0] || "",
             depart_name: row.DEPART_NAME || row[1] || "",
-            iconfile: row.ICONFILE || row[2] || "",
+            icon_file: row.ICONFILE || row[2] || "",
             serial_no: row.SERIAL_NO || row[3] || "",
             version: row.VERSION || row[4] || ""
           };
@@ -231,22 +249,19 @@ export const POST = withAuth(
       // Fetch PREFERENCE details from Oracle
       let preferenceDetails: any = null;
       try {
-        const rPref = await connection.execute(
-          `SELECT DEF_UNIT, DEF_FP, DEF_FPUNIT, DEF_X, DEF_Y, DEF_DATE, WORKUNIT, DEF_FPFORMAT, DEF_XYUNIT, APPL_MODE, MGROW_PROFILE, DEF_DEPTUNIT 
-           FROM PREFERENCE WHERE ROWNUM <= 1`
-        );
+        const rPref = await connection.execute(`SELECT DEF_UNIT, DEF_FORMAT, DEF_COMPID, DEF_DRAWID, DEF_REPORT, DEF_LANG, DEF_CURR, DEF_TAX, DEF_MAP, APPL_MODE, MGROW_PROFILE, DEF_DEPTUNIT FROM PREFERENCE WHERE ROWNUM <= 1`);
         if (rPref.rows && rPref.rows.length > 0) {
           const row: any = rPref.rows[0];
           preferenceDetails = {
             def_unit: row.DEF_UNIT || row[0] || "",
-            def_fp: row.DEF_FP || row[1] || "",
-            def_fpunit: row.DEF_FPUNIT || row[2] || "",
-            def_x: row.DEF_X || row[3] || "",
-            def_y: row.DEF_Y || row[4] || "",
-            def_date: row.DEF_DATE || row[5] || "",
-            workunit: row.WORKUNIT || row[6] || "",
-            def_fpformat: row.DEF_FPFORMAT || row[7] || "",
-            def_xyunit: row.DEF_XYUNIT || row[8] || "",
+            def_format: row.DEF_FORMAT || row[1] || "",
+            def_compid: row.DEF_COMPID || row[2] || "",
+            def_drawid: row.DEF_DRAWID || row[3] || "",
+            def_report: row.DEF_REPORT || row[4] || "",
+            def_lang: row.DEF_LANG || row[5] || "",
+            def_curr: row.DEF_CURR || row[6] || "",
+            def_tax: row.DEF_TAX || row[7] || "",
+            def_map: row.DEF_MAP || row[8] || "",
             appl_mode: row.APPL_MODE || row[9] || "",
             mgrow_profile: row.MGROW_PROFILE || row[10] || "",
             def_deptunit: row.DEF_DEPTUNIT || row[11] || ""
@@ -270,6 +285,37 @@ export const POST = withAuth(
         };
       });
 
+      let isPipe = false;
+      try {
+        const rPipe = await connection.execute(`SELECT PTYPE FROM v_structure WHERE STR_ID = :strId`, { strId: str_id });
+        const pTypeVal = String((rPipe.rows?.[0]?.PTYPE || rPipe.rows?.[0]?.[0]) || "").toUpperCase();
+        if (pTypeVal === "PIPE" || pTypeVal === "PIPELINE") {
+          isPipe = true;
+        }
+      } catch (e) {}
+
+      const frameworkList: any[] = [
+        { code: isPipe ? "STRUCTURE_PIPELINE" : "STRUCTURE", name: isPipe ? "Pipeline Master (U_PIPELINE)" : "Structure Master (PLATFORM)", row_count: Number(strCount), pg_row_count: pgStrCount }
+      ];
+
+      if (!isPipe) {
+        frameworkList.push(
+          { code: "STR_ELV", name: "Structural Elevations", row_count: Number(elvCount), pg_row_count: pgElvCount },
+          { code: "STR_LEVEL", name: "Structural Levels", row_count: Number(levelCount), pg_row_count: pgLevelCount },
+          { code: "STR_FACES", name: "Structural Faces", row_count: Number(facesCount), pg_row_count: pgFacesCount },
+          { code: "U_ASSOC", name: "Hierarchy Associations", row_count: Number(assocCount), pg_row_count: pgAssocCount }
+        );
+      }
+
+      if (isPipe || pipeGeoCount > 0 || pgPipeGeoCount > 0) {
+        frameworkList.push({
+          code: "PIPE_GEO",
+          name: "Geodetic Parameters (PIPE_GEO)",
+          row_count: Number(pipeGeoCount),
+          pg_row_count: pgPipeGeoCount
+        });
+      }
+
       return NextResponse.json({ 
         success: true, 
         data: summaryWithPg,
@@ -281,13 +327,7 @@ export const POST = withAuth(
           { code: "U_LIB_COMBO", name: "Library Combo (u_lib_combo)", row_count: Number(comboCount), pg_row_count: pgComboCount },
           { code: "U_MGI_PROFILE", name: "MGI Profiles (mgi_profiles)", row_count: Number(mgiProfileCount), pg_row_count: pgMgiProfileCount }
         ],
-        framework: [
-          { code: "STRUCTURE", name: "Structure Master", row_count: Number(strCount), pg_row_count: pgStrCount },
-          { code: "STR_ELV", name: "Structural Elevations", row_count: Number(elvCount), pg_row_count: pgElvCount },
-          { code: "STR_LEVEL", name: "Structural Levels", row_count: Number(levelCount), pg_row_count: pgLevelCount },
-          { code: "STR_FACES", name: "Structural Faces", row_count: Number(facesCount), pg_row_count: pgFacesCount },
-          { code: "U_ASSOC", name: "Hierarchy Associations", row_count: Number(assocCount), pg_row_count: pgAssocCount }
-        ]
+        framework: frameworkList
       });
 
     } catch (error: any) {

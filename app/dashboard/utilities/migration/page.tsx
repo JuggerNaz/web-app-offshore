@@ -382,8 +382,11 @@ export default function MigrationDashboard() {
     const key = `INSP_${type}_${code}`;
     setSelectedMappingEntity(key);
     
+    const isPipe = mappingStructureType === "PIPELINE";
+    const resolvedTable = (type === "ROV" && isPipe) ? "NAVIG" : tableName;
+
     // Fetch columns for the table (non-blocking for UI)
-    fetchOracleColumns(tableName);
+    fetchOracleColumns(resolvedTable);
 
     setMappings(prev => {
       if (prev[key] && prev[key].length > 0) return prev;
@@ -395,8 +398,8 @@ export default function MigrationDashboard() {
         { oracleCol: "INSPNO", pgCol: "jobpack_id" },
         { oracleCol: "TAPE_NO", pgCol: "tape_id" },
         { oracleCol: "DIVE_NO", pgCol: type === "ROV" ? "rov_job_id" : "dive_job_id" },
-        { oracleCol: "INSP_DATE", pgCol: "inspection_date" },
-        { oracleCol: "INSP_TIME", pgCol: "inspection_time" }
+        { oracleCol: isPipe ? "I_DATE" : "INSP_DATE", pgCol: "inspection_date" },
+        { oracleCol: isPipe ? "I_TIME" : "INSP_TIME", pgCol: "inspection_time" }
       ];
       
       return { ...prev, [key]: defaults };
@@ -507,10 +510,12 @@ export default function MigrationDashboard() {
       }
       fields = compConfig.fields.map((f: any) => f.name);
     } else if (entity.startsWith("INSP_ROV_") || entity.startsWith("INSP_DIV_")) {
-      const typeCode = entity.startsWith("INSP_ROV_") 
-        ? entity.replace("INSP_ROV_", "") 
-        : entity.replace("INSP_DIV_", "");
-      specTableName = typeCode.toUpperCase();
+      if (entity.startsWith("INSP_ROV_")) {
+        specTableName = mappingStructureType === "PIPELINE" ? "NAVIG" : "PLATGI";
+      } else {
+        const typeCode = entity.replace("INSP_DIV_", "");
+        specTableName = typeCode.toUpperCase();
+      }
     } else {
       toast.error("Auto Mapping is only supported for Component specifications and Inspection tables.");
       return;
@@ -913,6 +918,15 @@ export default function MigrationDashboard() {
     setOraclePreference(null);
 
     setSelectedStructureId(strId);
+
+    // Auto-detect structure type (PIPELINE vs PLATFORM)
+    const selectedStrObj = structures.find(s => String(s.STR_ID || s.str_id) === String(strId));
+    const isPipe = selectedStrObj?.PTYPE === "PIPE" || selectedStrObj?.PTYPE === "PIPELINE" || selectedStrObj?.ptype === "PIPE";
+    if (isPipe) {
+      setMappingStructureType("PIPELINE");
+    } else {
+      setMappingStructureType("PLATFORM");
+    }
     
     // Fetch summary
     try {
@@ -978,6 +992,9 @@ export default function MigrationDashboard() {
     const inspNoVal = jp.INSPNO || jp.inspno;
     if (!selectedStructureId || !inspNoVal) return;
 
+    const currentStr = structures.find(s => String(s.STR_ID || s.str_id) === String(selectedStructureId));
+    const isPipe = mappingStructureType === "PIPELINE" || currentStr?.PTYPE === "PIPE" || currentStr?.PTYPE === "PIPELINE";
+
     try {
       setIsLoadingInspectionSummary(true);
       const res = await fetch("/api/migration/inspection-summary", {
@@ -987,7 +1004,7 @@ export default function MigrationDashboard() {
           config,
           str_id: selectedStructureId,
           inspno: inspNoVal,
-          structureType: mappingStructureType
+          structureType: isPipe ? "PIPELINE" : "PLATFORM"
         })
       });
       const data = await safeParseJson(res);
@@ -1879,7 +1896,7 @@ export default function MigrationDashboard() {
                         <CardTitle className="text-sm font-black uppercase text-slate-800 dark:text-slate-200">Component Summary</CardTitle>
                         <CardDescription className="text-[10px] uppercase font-bold text-slate-500 mt-0.5">FROM ORACLE allcompid VIEW</CardDescription>
                       </div>
-                      {summary.length > 0 && (
+                      {(summary.length > 0 || framework.length > 0 || !!selectedStructureId) && (
                         <div className="flex items-center gap-4">
                           <div className="flex items-center space-x-2">
                             <input
@@ -1918,7 +1935,7 @@ export default function MigrationDashboard() {
                           <RefreshCw className="w-6 h-6 animate-spin mb-2" />
                           <span className="text-xs font-bold uppercase tracking-widest">Loading Summary...</span>
                         </div>
-                      ) : summary.length > 0 ? (
+                      ) : (summary.length > 0 || framework.length > 0 || libraries.length > 0) ? (
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 p-6 bg-slate-50/30 dark:bg-slate-900/10">
                           
                           {/* 1. Reference Libraries Preflight */}
@@ -2037,8 +2054,16 @@ export default function MigrationDashboard() {
                                 </CardHeader>
                                 <CardContent className="p-0">
                                   {mappedRows.length === 0 ? (
-                                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs italic">
-                                      No mapped components. Configure mappings in the tab above.
+                                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs space-y-2">
+                                      {mappingStructureType === "PIPELINE" ? (
+                                        <>
+                                          <CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto opacity-80" />
+                                          <p className="font-bold text-slate-700 dark:text-slate-300">Pipeline Asset Migration</p>
+                                          <p className="text-[10px]">No subsea components in ALLCOMPID for this pipeline. Main Structure (U_PIPELINE), Geodetics (PIPE_GEO), and ROV Survey records (NAVIG) will be migrated directly.</p>
+                                        </>
+                                      ) : (
+                                        <p className="italic">No mapped components. Configure mappings in the tab above.</p>
+                                      )}
                                     </div>
                                   ) : (
                                     <table className="w-full text-left border-collapse">
@@ -2278,7 +2303,7 @@ export default function MigrationDashboard() {
                               <div className="flex items-center justify-between">
                                 <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                                   <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
-                                  ROV Platform Inspections
+                                  {mappingStructureType === "PIPELINE" ? "ROV Pipeline Surveys (NAVIG)" : "ROV Platform Inspections"}
                                 </h5>
                                 <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200/40 dark:border-cyan-800/20 px-2 py-0.5 rounded">
                                   {(inspectionSummary.rovInspections || []).length} Types
@@ -2298,7 +2323,7 @@ export default function MigrationDashboard() {
                                             {rov.name}
                                           </p>
                                           <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">
-                                            Oracle Table: {mappingStructureType === "PLATFORM" ? "PLATGI" : "allinspid"}
+                                            Oracle Table: {mappingStructureType === "PIPELINE" ? "NAVIG" : (mappingStructureType === "PLATFORM" ? "PLATGI" : "allinspid")}
                                           </p>
                                         </div>
                                       </div>
@@ -2381,14 +2406,18 @@ export default function MigrationDashboard() {
 
                               {/* ROV Video Logs Card */}
                               <div className="p-4 bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-2xl space-y-1 group hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
-                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">ROV Video (PLATG/PLATGI)</span>
+                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">
+                                  {mappingStructureType === "PIPELINE" ? "ROV Video Logs (NAVIG Table)" : "ROV Video (PLATG/PLATGI)"}
+                                </span>
                                 <div className="flex items-center justify-between">
                                   <span className="text-lg font-black text-cyan-600 dark:text-cyan-400">{inspectionSummary.platgVideoCount || 0}</span>
                                   <span className="text-[8px] px-1.5 py-0.5 bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 rounded uppercase font-bold border border-cyan-100/50 dark:border-cyan-900/20">
                                     ROV Video
                                   </span>
                                 </div>
-                                <p className="text-[8px] text-slate-400">ROV video logs are embedded directly in the PLATG/PLATGI tables.</p>
+                                <p className="text-[8px] text-slate-400">
+                                  {mappingStructureType === "PIPELINE" ? "ROV video logs and tape indices are extracted directly from the NAVIG table." : "ROV video logs are embedded directly in the PLATG/PLATGI tables."}
+                                </p>
                               </div>
 
                               {/* Diving Video Logs Card */}
@@ -2582,16 +2611,18 @@ export default function MigrationDashboard() {
                         </div>
                         {inspectionSummary && (inspectionSummary.rovInspections || []).map((rov: any) => {
                           const key = `INSP_ROV_${rov.code}`;
+                          const isPipe = mappingStructureType === "PIPELINE";
+                          const oracleSrc = isPipe ? "NAVIG" : "PLATGI";
                           return (
                             <button
                               key={key}
-                              onClick={() => handleSelectInspectionMapping("ROV", rov.code, "PLATGI")}
+                              onClick={() => handleSelectInspectionMapping("ROV", rov.code, oracleSrc)}
                               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === key ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
                             >
                               <span className="flex flex-col items-start gap-0.5 max-w-[210px] overflow-hidden">
                                 <span className="truncate w-full text-left">ROV: {rov.code} {rov.name ? `- ${rov.name}` : ""}</span>
                                 <span className="text-[8px] opacity-75 font-mono lowercase truncate w-full text-left">
-                                  PLATGI (SCODE='{rov.code}') → inspection_data
+                                  {isPipe ? `NAVIG → inspection_data` : `PLATGI (SCODE='${rov.code}') → inspection_data`}
                                 </span>
                               </span>
                               <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 shrink-0">{(mappings[key] || []).length}</span>
@@ -2654,6 +2685,7 @@ export default function MigrationDashboard() {
                       {/* Dynamic Schema Banner */}
                       {(() => {
                         const isPlat = mappingStructureType === "PLATFORM";
+                        const isPipe = mappingStructureType === "PIPELINE";
                         let oracleTable = "";
                         let oracleDesc = "";
                         let pgTable = "";
@@ -2714,9 +2746,9 @@ export default function MigrationDashboard() {
                             break;
                           default:
                             if (selectedMappingEntity.startsWith("INSP_ROV_")) {
-                              oracleTable = "PLATGI";
+                              oracleTable = isPipe ? "NAVIG" : "PLATGI";
                               const scode = selectedMappingEntity.replace("INSP_ROV_", "");
-                              oracleDesc = `Legacy ROV Inspection Type: ${scode}`;
+                              oracleDesc = isPipe ? `Pipeline ROV Survey (NAVIG Table)` : `Legacy ROV Inspection Type: ${scode}`;
                               pgTable = "insp_records";
                               pgDesc = "Normalized inspection records (inspection_data JSONB)";
                               pkCol = "INSP_ID";
@@ -2814,8 +2846,11 @@ export default function MigrationDashboard() {
                                 );
                               }
                               let tableKey = "";
-                              if (selectedMappingEntity.startsWith("INSP_ROV_")) tableKey = "PLATGI";
-                              else if (selectedMappingEntity.startsWith("INSP_DIV_")) tableKey = selectedMappingEntity.replace("INSP_DIV_", "");
+                              if (selectedMappingEntity.startsWith("INSP_ROV_")) {
+                                tableKey = mappingStructureType === "PIPELINE" ? "NAVIG" : "PLATGI";
+                              } else if (selectedMappingEntity.startsWith("INSP_DIV_")) {
+                                tableKey = selectedMappingEntity.replace("INSP_DIV_", "");
+                              }
                               
                               return tableKey && oracleColumnsCache[tableKey] && oracleColumnsCache[tableKey].length > 0 ? (
                                 <datalist id="oracle-columns-list">
