@@ -1074,14 +1074,20 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             }
 
             const qIdUpper = (c.q_id || "").toUpperCase();
-            const clampMatch = qIdUpper.match(/RIS-?(\d+)-SUPP-?(\d+)M/i) || qIdUpper.match(/RIS-?(\d+)-CLP-?(\d+)M/i);
+            const clampMatch = 
+                qIdUpper.match(/(?:RIS|R)[-_]?(\d+)[-_]?(?:SUPP|CLP|CLAMP|CL)[-_ ]*(\+|-)?\s*(\d+(?:\.\d+)?)M?/i) ||
+                qIdUpper.match(/(?:CLP|CLAMP|CL)[-_]?(?:R|RIS)?[-_]?(\d+)[-_ ]*(\+|-)?\s*(\d+(?:\.\d+)?)M?/i) ||
+                qIdUpper.match(/RIS-?(\d+)-SUPP-?(\d+)M/i) ||
+                qIdUpper.match(/RIS-?(\d+)-CLP-?(\d+)M/i);
+
             if (clampMatch) {
                 const riserNum = clampMatch[1];
-                const elevationVal = parseFloat(clampMatch[2]);
-                let targetElv = -elevationVal;
+                const explicitSign = clampMatch[2];
+                const rawElv = parseFloat(clampMatch[3] || clampMatch[2]);
+                let targetElv = explicitSign === "+" ? rawElv : explicitSign === "-" ? -rawElv : -Math.abs(rawElv);
 
-                if (elvValues.length > 0) {
-                    const possibleElvs = [-elevationVal, elevationVal];
+                if (elvValues.length > 0 && !isNaN(rawElv)) {
+                    const possibleElvs = [-Math.abs(rawElv), Math.abs(rawElv)];
                     let closest = elvValues[0];
                     let minDist = Math.abs(elvValues[0] - targetElv);
                     for (const elv of elvValues) {
@@ -1504,12 +1510,21 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 const compCode = (comp.code || "").toUpperCase();
                 const isRiser = compCode === "RS" || compCode.includes("RISER") || compCode.includes("RISR");
                 if (isRiser) {
-                    const qIdUpper = (comp.q_id || "").toUpperCase();
+                    const qIdUpper = (comp.q_id || comp.name || "").toUpperCase();
                     if (
-                        qIdUpper.includes(`R${riserNum}`) ||
+                        qIdUpper.startsWith(`R${riserNum}-`) ||
+                        qIdUpper.startsWith(`R${riserNum}_`) ||
+                        qIdUpper.includes(`R${riserNum}-`) ||
+                        qIdUpper.includes(`R${riserNum}_`) ||
                         qIdUpper.includes(`R-${riserNum}`) ||
                         qIdUpper.includes(`RISER${riserNum}`) ||
-                        qIdUpper.includes(`RISER ${riserNum}`)
+                        qIdUpper.includes(`RISER-${riserNum}`) ||
+                        qIdUpper.includes(`RISER ${riserNum}`) ||
+                        qIdUpper.includes(`RIS-${riserNum}`) ||
+                        qIdUpper.includes(`RIS_${riserNum}`) ||
+                        qIdUpper === `R${riserNum}` ||
+                        qIdUpper === `RIS-${riserNum}` ||
+                        qIdUpper === `RISER${riserNum}`
                     ) {
                         parentLayout = layout;
                         break;

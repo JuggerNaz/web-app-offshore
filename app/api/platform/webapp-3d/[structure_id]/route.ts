@@ -80,7 +80,7 @@ export const GET = withAuth(
       .select(`
         *,
         structure_components (
-          id, q_id, code, name, is_deleted
+          *
         )
       `)
       .eq("structure_id", structureIdNum);
@@ -89,12 +89,12 @@ export const GET = withAuth(
     let foundationMembers: any[] = [];
     let elvMarkers: any[] = [];
 
-    const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+    const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RB", "SD", "FA"];
     const filteredRawComponents = (rawComponents || [])
       .filter((c: any) => {
         const code = (c.code || "").trim().toUpperCase();
         const qIdUpper = (c.q_id || "").toUpperCase();
-        const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
+        const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM");
         if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) return false;
         if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) return false;
         if (code === "WN") {
@@ -149,15 +149,26 @@ export const GET = withAuth(
         if (comp.q_id) mathLayoutsByQId.set(comp.q_id.toUpperCase().trim(), m);
       });
 
-      // Repair stored rows if their 3D coordinates are (0,0,0) or missing
+      // Repair stored rows if their 3D coordinates are (0,0,0) or missing and merge real database component specifications
       componentsToEnrich = componentsToEnrich.map((item: any) => {
+        const sc = item.structure_components || {};
         const cid1 = Number(item.comp_id);
-        const cid2 = Number(item.structure_components?.id);
-        const qid = (item.q_id || item.structure_components?.q_id || "").toUpperCase().trim();
+        const cid2 = Number(sc.id);
+        const realQId = sc.q_id || (item.q_id && !item.q_id.startsWith("COMP-") ? item.q_id : null) || sc.name || item.q_id;
+        const qid = String(realQId || "").toUpperCase().trim();
         const mathLayout = mathLayoutsByCompId.get(cid1) || mathLayoutsByCompId.get(cid2) || mathLayoutsByQId.get(qid);
 
-        const code = (item.code || item.structure_components?.code || "").toUpperCase();
+        const code = (sc.code || item.code || "").toUpperCase();
         const isPile = code === "PL" || code === "PILE" || qid.includes("PILE");
+
+        let updatedItem = {
+          ...item,
+          ...sc,
+          id: sc.id || item.comp_id || item.id,
+          q_id: realQId,
+          code: code || item.code,
+          structure_components: sc
+        };
 
         if (isPile) {
           const sX = mathLayout?.start?.x ?? mathLayout?.start?.[0] ?? (item.start_x || 0);
@@ -172,8 +183,8 @@ export const GET = withAuth(
             eY = sY - 2.0;
           }
 
-          return {
-            ...item,
+          updatedItem = {
+            ...updatedItem,
             start_x: sX,
             start_y: sY,
             start_z: sZ,
@@ -185,6 +196,7 @@ export const GET = withAuth(
             pos_z: (sZ + eZ) / 2,
             thickness: mathLayout?.thickness || 0.2,
           };
+          return updatedItem;
         }
 
         const isZeroOrPoint = ((item.start_x === 0 || item.start_x === "0" || !item.start_x) &&
@@ -199,8 +211,8 @@ export const GET = withAuth(
           const eX = mathLayout.end?.x ?? mathLayout.end?.[0] ?? sX;
           const eY = mathLayout.end?.y ?? mathLayout.end?.[1] ?? sY;
           const eZ = mathLayout.end?.z ?? mathLayout.end?.[2] ?? sZ;
-          return {
-            ...item,
+          updatedItem = {
+            ...updatedItem,
             start_x: sX,
             start_y: sY,
             start_z: sZ,
@@ -212,8 +224,9 @@ export const GET = withAuth(
             pos_z: (sZ + eZ) / 2,
             thickness: mathLayout.thickness || item.thickness || 0.2,
           };
+          return updatedItem;
         }
-        return item;
+        return updatedItem;
       });
 
       // Also append any dynamic math layouts missing from webapp3d entirely

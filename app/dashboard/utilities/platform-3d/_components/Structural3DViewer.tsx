@@ -58,6 +58,7 @@ interface Structural3DViewerProps {
     wincairsParams?: any[];
     onFallbackComponentsChange?: (fallbackComps: Component3D[]) => void;
     compactMode?: boolean;
+    isInspectionWorkspace?: boolean;
 
     currentRecords?: any[];
     historicalRecords?: any[];
@@ -126,12 +127,12 @@ const ComponentMesh = ({
 
     const code = (component?.code || "").toUpperCase();
     const qIdUpper = (component?.q_id || "").toUpperCase();
-    const isNode = code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND";
+    const isNode = (code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND") && !qIdUpper.includes("SUPP") && !qIdUpper.includes("CLP");
     const isAnode = code === "AN" || code.includes("ANOD");
-    const isWeld = code === "WN";
     const isCaissonSupportComponent = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
-    const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL";
-    const isClamp = (code === "CL" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupportComponent;
+    const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupportComponent;
+    const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupportComponent;
+    const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport) || code.includes("WELD")) && !isClamp;
     const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS");
     const isRiser = !isAnode && !isRiserSupport && !isCaisson && (
         code === "RS" ||
@@ -284,17 +285,30 @@ const ComponentMesh = ({
         
         let targetRiser = null;
         if (allLayouts && allLayouts.length > 0) {
-            if (md?.associated_comp_id) {
-                targetRiser = allLayouts.find((l: any) => l.component?.id === md.associated_comp_id);
+            const compAnyObj = component as any;
+            const assocIdVal = md?.associated_comp_id || compAnyObj?.associated_component_id || compAnyObj?.associated_id;
+            if (assocIdVal) {
+                targetRiser = allLayouts.find((l: any) => l.component?.id === assocIdVal || l.id === assocIdVal);
             }
             if (!targetRiser && clampInfo) {
                 targetRiser = allLayouts.find((l: any) => {
                     const q = (l.component?.q_id || l.q_id || l.id || "").toString().toUpperCase();
+                    const lCode = (l.component?.code || l.code || "").toString().toUpperCase();
+                    const isRiserComp = lCode === "RS" || lCode.includes("RISER") || lCode.includes("RISR") || q.includes("RISER") || q.includes("RIS-") || /^R\d+[-_]/i.test(q);
+                    if (!isRiserComp) return false;
+
                     return (
+                        q.startsWith(`R${clampInfo.riserNum}-`) ||
+                        q.startsWith(`R${clampInfo.riserNum}_`) ||
                         q.includes(`R${clampInfo.riserNum}-`) ||
                         q.includes(`R${clampInfo.riserNum}_`) ||
+                        q.includes(`RISER-${clampInfo.riserNum}`) ||
                         q.includes(`RISER ${clampInfo.riserNum}`) ||
-                        q.includes(`RISER-${clampInfo.riserNum}`)
+                        q.includes(`RIS-${clampInfo.riserNum}`) ||
+                        q.includes(`RIS_${clampInfo.riserNum}`) ||
+                        q === `R${clampInfo.riserNum}` ||
+                        q === `RISER${clampInfo.riserNum}` ||
+                        q === `RIS-${clampInfo.riserNum}`
                     );
                 });
             }
@@ -674,7 +688,7 @@ const ComponentMesh = ({
 
         return (
             <group
-                position={[position.x, position.y, position.z]}
+                position={[position.x + ox, position.y + oy, position.z + oz]}
                 rotation={euler}
                 onClick={(e) => {
                     e.stopPropagation();
@@ -698,7 +712,7 @@ const ComponentMesh = ({
                 {/* Click target wrapper */}
                 <mesh castShadow={false} receiveShadow={false}>
                     <boxGeometry args={[(baseThickness || 0.3) + 0.8, 0.7, (baseThickness || 0.3) + 0.8]} />
-                    <meshBasicMaterial transparent opacity={0} />
+                    <meshBasicMaterial transparent opacity={0.01} depthWrite={false} />
                 </mesh>
 
                 {showLabel && (
@@ -731,10 +745,10 @@ const ComponentMesh = ({
                 else supportColor = "#94a3b8";
             }
             return new RiserClamp({
-                outerRadius: (riserThickness || 0.3) / 2 + 0.04,
-                height: 0.6,
-                flangeWidth: 0.15,
-                flangeThickness: 0.04,
+                outerRadius: (riserThickness || 0.3) / 2 + 0.06,
+                height: 0.7,
+                flangeWidth: 0.22,
+                flangeThickness: 0.05,
                 color: supportColor,
                 isSelected,
                 isHovered: hovered,
@@ -743,7 +757,7 @@ const ComponentMesh = ({
 
         return (
             <group
-                position={[position.x, position.y, position.z]}
+                position={[position.x + ox, position.y + oy, position.z + oz]}
                 rotation={euler}
                 onClick={(e) => {
                     e.stopPropagation();
@@ -766,8 +780,8 @@ const ComponentMesh = ({
                 
                 {/* Click target wrapper */}
                 <mesh castShadow={false} receiveShadow={false}>
-                    <boxGeometry args={[(baseThickness || 0.3) + 0.6, 0.8, (baseThickness || 0.3) + 0.6]} />
-                    <meshBasicMaterial transparent opacity={0} />
+                    <boxGeometry args={[(baseThickness || 0.3) + 1.0, 1.2, (baseThickness || 0.3) + 1.0]} />
+                    <meshBasicMaterial transparent opacity={0.01} depthWrite={false} />
                 </mesh>
 
                 {showLabel && (
@@ -1265,23 +1279,25 @@ function InstancedComponentViewer({
                 qIdUpper.startsWith("BL") ||
                 qIdUpper.startsWith("BLD");
             const isRiserGuard = code === "RG" || code.includes("RGUARD") || code.includes("RISG");
-            const isRiser =
+            const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
+            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport;
+            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport;
+
+            const isRiser = !isRiserSupport && !isCaissonSupport && !isClamp && (
                 code === "RS" ||
                 code.includes("RISER") || code.includes("RISR") ||
                 qIdUpper.includes("RISER") || qIdUpper.includes("RISR") ||
                 /^R\d+[-_]/i.test(qIdUpper) ||
-                (qIdUpper.startsWith("R") && !qIdUpper.startsWith("RIS-") && !qIdUpper.startsWith("ROW"));
-
-            const isClamp = code === "CL" || code.includes("CLAM") || (code === "SUPP" && qIdUpper.includes("RIS"));
-            const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
+                (qIdUpper.startsWith("R") && !qIdUpper.startsWith("RIS-") && !qIdUpper.startsWith("ROW"))
+            );
 
             if (isFender || isRiserGuard || isRiser || isClamp || isCaissonSupport) {
                 custom.push({ ...layout, comp, code });
                 return;
             }
 
-            const isWeld = code === "WN";
-            const isNode = code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND";
+            const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport) || code.includes("WELD")) && !isClamp;
+            const isNode = (code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND") && !isClamp && !isWeld;
             const isAnode = code === "AN" || code.includes("ANOD") || qIdUpper === "AN" || qIdUpper.includes("ANOD") || qIdUpper.startsWith("BAN");
 
             const item = { ...layout, comp, code, qIdUpper };
@@ -2473,11 +2489,17 @@ export function Structural3DViewer({
     onFallbackComponentsChange,
     webapp3dData,
     compactMode = false,
+    isInspectionWorkspace = false,
     currentRecords = [],
     historicalRecords = [],
     activeColorMode: externalColorMode = "DEFAULT",
     selectedHistoricalCampaignId: externalCampaignId = "ALL"
 }: Structural3DViewerProps) {
+    const isWorkspace = Boolean(
+        isInspectionWorkspace || 
+        compactMode || 
+        (currentRecords && currentRecords.length > 0)
+    );
     const wincairsParamsMap = useMemo(() => {
         const map = new Map<number, any>();
         if (wincairsParams && Array.isArray(wincairsParams)) {
@@ -2491,12 +2513,15 @@ export function Structural3DViewer({
     }, [wincairsParams]);
 
     const components = useMemo(() => {
-        const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+        const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RB", "SD", "FA"];
         return rawComponents.filter((c) => {
             const code = (c.code || "").trim().toUpperCase();
             const qIdUpper = (c.q_id || "").toUpperCase();
 
-            if (excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) {
+            // Whitelist riser supports/clamps — never exclude them
+            const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM");
+
+            if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) {
                 return false;
             }
 
@@ -2548,8 +2573,19 @@ export function Structural3DViewer({
     const [structureJobpacks, setStructureJobpacks] = useState<Array<{ id: string | number; label: string; year?: string; mode?: string }>>([]);
     const [compareWithCurrent, setCompareWithCurrent] = useState(true);
 
-    // Fetch and aggregate jobpacks strictly by structure_id registered in the jobpack
+    const updateStructureJobpacksIfChanged = (newList: Array<{ id: string | number; label: string; year?: string; mode?: string }>) => {
+        setStructureJobpacks((prev) => {
+            if (prev.length === newList.length && prev.every((item, idx) => String(item.id) === String(newList[idx]?.id))) {
+                return prev;
+            }
+            return newList;
+        });
+    };
+
+    // Fetch and aggregate jobpacks strictly by structure_id registered in the jobpack (Inspection Workspace only)
     useEffect(() => {
+        if (!isWorkspace) return;
+
         let isMounted = true;
         let activeStructureId = "";
 
@@ -2647,7 +2683,7 @@ export function Structural3DViewer({
 
                     const list = Array.from(map.values());
                     if (isMounted) {
-                        setStructureJobpacks(list);
+                        updateStructureJobpacksIfChanged(list);
                         if (list.length > 0 && (!selectedCampaignId || selectedCampaignId === "ALL")) {
                             setSelectedCampaignId(list[0].id);
                         }
@@ -2656,22 +2692,19 @@ export function Structural3DViewer({
                 .catch(() => {
                     if (!isMounted) return;
                     const list = Array.from(map.values());
-                    setStructureJobpacks(list);
-                    if (list.length > 0 && (!selectedCampaignId || selectedCampaignId === "ALL")) {
-                        setSelectedCampaignId(list[0].id);
-                    }
+                    updateStructureJobpacksIfChanged(list);
                 });
         } else {
             const list = Array.from(map.values());
             if (isMounted) {
-                setStructureJobpacks(list);
+                updateStructureJobpacksIfChanged(list);
             }
         }
 
         return () => {
             isMounted = false;
         };
-    }, [platformDetails, webapp3dData, historicalRecords, currentRecords]);
+    }, [isWorkspace, platformDetails, webapp3dData, historicalRecords, currentRecords]);
 
     // Detect campaign mode (ROV vs DIVING) dynamically from current inspection records
     const campaignTaskMode = useMemo(() => {
@@ -2835,19 +2868,49 @@ export function Structural3DViewer({
         }
 
         const layouts = (webapp3dData.components || []).map((dbItem: any) => {
-            const dbQIdUpper = (dbItem.q_id || dbItem.structure_components?.q_id || "").toUpperCase().trim();
-            const dbCompIdStr = String(dbItem.component_id || dbItem.comp_id || "");
-            const comp: any = rawComponents.find((c: any) =>
-                String(c.id) === dbCompIdStr ||
-                (c.comp_id && String(c.comp_id) === dbCompIdStr) ||
-                (dbQIdUpper && (c.q_id || "").toUpperCase().trim() === dbQIdUpper)
-            ) || dbItem.structure_components || dbItem.component || {};
+            const dbCompRaw = dbItem.component || dbItem.structure_components || dbItem.originalComp || {};
+            const dbCompQId = dbCompRaw.q_id || dbCompRaw.name || dbItem.q_id;
+            const dbQIdUpper = String(dbCompQId || "").toUpperCase().trim();
+            const dbCode = String(dbItem.code || dbCompRaw.code || "").toUpperCase().trim();
+            const dbCompIdStr = String(dbItem.component_id || dbItem.comp_id || dbCompRaw.id || dbItem.id || "").trim();
+            
+            let comp: any = null;
+
+            // 1. If dbCompRaw already has a valid QID, match directly by ID or exact QID in rawComponents
+            if (dbCompQId && !String(dbCompQId).startsWith("COMP-")) {
+                comp = rawComponents.find((c: any) => {
+                    const cId = c.id || c.comp_id;
+                    const dbId = dbCompRaw.id || dbCompRaw.comp_id || dbItem.component_id || dbItem.comp_id;
+                    if (cId && dbId && String(cId) === String(dbId)) return true;
+                    const cQId = String(c.q_id || c.name || "").toUpperCase().trim();
+                    if (cQId && dbQIdUpper && cQId === dbQIdUpper) return true;
+                    return false;
+                }) || dbCompRaw;
+            }
+
+            // 2. Otherwise fallback to direct ID or exact QID match
+            if (!comp) {
+                comp = rawComponents.find((c: any) => {
+                    const cRaw = c.raw || c;
+                    const cIdStr = String(c.id || c.comp_id || cRaw.id || cRaw.comp_id || "").trim();
+                    const cQIdUpper = String(c.q_id || c.name || cRaw.q_id || cRaw.name || "").toUpperCase().trim();
+
+                    if (cIdStr && dbCompIdStr && cIdStr === dbCompIdStr) return true;
+                    if (cQIdUpper && dbQIdUpper && dbQIdUpper !== dbCode && cQIdUpper === dbQIdUpper) return true;
+
+                    return false;
+                }) || dbCompRaw || dbItem;
+            }
+
             const q_id = comp.q_id || dbItem.q_id || dbItem.structure_components?.q_id || `COMP-${dbItem.component_id}`;
             const code = (comp.code || dbItem.code || dbItem.structure_components?.code || "").toUpperCase();
             const qIdUpper = q_id.toUpperCase();
 
             const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE") || dbQIdUpper.includes("PILE");
-            const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
+            const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
+            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport;
+            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport;
+            const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport && !isClamp) || code.includes("WELD")) && !isClamp;
 
             const compMd = comp.metadata || dbItem.metadata || {};
             const sLegStr = (comp.s_leg || compMd.s_leg || dbItem.s_leg || "").toString().trim().toUpperCase();
@@ -2856,7 +2919,8 @@ export function Structural3DViewer({
             const isMainLegWeld = isWeld && isLegComponent;
 
             const weldColor = isWeld ? "#cbd5e1" : null;
-            const finalColor = isInspectionMode ? dbItem.inspection_color : (weldColor || dbItem.color_hex || "#64748b");
+            const clampColor = isClamp ? "#facc15" : null;
+            const finalColor = isInspectionMode ? dbItem.inspection_color : (clampColor || weldColor || dbItem.color_hex || "#64748b");
 
             let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
                 ? [Number(dbItem.start_x), Number(dbItem.start_y), Number(dbItem.start_z)]
@@ -2870,7 +2934,7 @@ export function Structural3DViewer({
                 endVec = [startVec[0], startVec[1] - 2.0, startVec[2]];
             }
 
-            const enrichedComp = { ...comp, code, q_id };
+            const enrichedComp = { ...dbItem, ...comp, code, q_id };
 
             const isInspected = Boolean(dbItem.is_inspected);
             const hasAnomaly = Boolean(dbItem.has_anomaly);
@@ -2879,6 +2943,10 @@ export function Structural3DViewer({
                 : isInspected
                     ? "NO_ANOMALY"
                     : "NOT_INSPECTED";
+
+            // Clamps get riser-sized thickness so ComponentMesh renders them properly
+            const clampThickness = isClamp ? 0.3 : null;
+            const defaultThickness = isWeld ? 0.25 : isPile ? 0.2 : 0.5;
 
             return {
                 id: dbItem.component_id,
@@ -2891,7 +2959,7 @@ export function Structural3DViewer({
                 rotation: [dbItem.rot_x || 0, dbItem.rot_y || 0, dbItem.rot_z || 0],
                 scale: [dbItem.scale_x || 1, dbItem.scale_y || 1, dbItem.scale_z || 1],
                 color: finalColor,
-                thickness: dbItem.thickness || dbItem.dimensions?.radius || (isWeld ? 0.25 : isPile ? 0.2 : 0.5),
+                thickness: clampThickness || dbItem.thickness || dbItem.dimensions?.radius || defaultThickness,
                 length: dbItem.dimensions?.length || 1,
                 offsetDistance: dbItem.dimensions?.offset || 0,
                 shape: dbItem.shape_type,
@@ -3545,305 +3613,315 @@ export function Structural3DViewer({
                     </Button>
                 )}
 
-                {/* 3D Color Overlay & Historical Comparison Filter */}
-                <div className="relative">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setOpenDropdown(openDropdown === "colormap" ? null : "colormap")}
-                        className={cn(
-                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1.5",
-                            compactMode ? "h-8 px-2.5 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
-                            colorMode !== "DEFAULT"
-                                ? "border-amber-500 text-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.2)] bg-amber-50/80"
-                                : "border-slate-200 text-slate-600 hover:text-slate-900"
-                        )}
-                        title="3D Color Visualization & Historical Compare"
-                    >
-                        <Palette className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        <span>
-                            {colorMode === "DEFAULT" && (compactMode ? "3D Color" : "Color Overlay")}
-                            {colorMode === "ANOMALY_PRIORITY" && "Anomaly Priority"}
-                            {colorMode === "PENDING_TASK" && "Pending Tasks"}
-                            {colorMode === "INCOMPLETE_RECORD" && "Incomplete Records"}
-                            {colorMode === "RECTIFIED_ANOMALY" && "Rectified"}
-                            {colorMode === "INSPECTION_TASK_TYPE" && "Task Type"}
-                            {colorMode === "HISTORICAL_COMPARE" && "Historical Compare"}
-                        </span>
-                    </Button>
-
-                    {openDropdown === "colormap" && (
-                        <div className="absolute right-0 mt-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl border border-slate-700 shadow-2xl p-3.5 w-72 flex flex-col gap-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
-                                <div className="flex items-center gap-1.5">
-                                    <Palette className="w-3.5 h-3.5 text-amber-400" />
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-200">
-                                        3D Color Overlay Mode
-                                    </span>
-                                </div>
-                                {colorMode !== "DEFAULT" && (
-                                    <button
-                                        onClick={() => setColorMode("DEFAULT")}
-                                        className="text-[9px] font-black uppercase text-amber-400 hover:text-amber-300 transition-colors"
-                                    >
-                                        Reset
-                                    </button>
-                                )}
-                            </div>
-
-                            <div className="flex flex-col gap-1 text-[10px]">
-                                {[
-                                    { mode: "DEFAULT", label: "Standard Metallic 3D", desc: "Default material rendering" },
-                                    { mode: "ANOMALY_PRIORITY", label: "🔴 Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4 & Findings" },
-                                    { mode: "FINDING_CATEGORY", label: "🔍 Finding Category", desc: "Color by Corrosion, Marine Growth, Coating, Debris, Scour" },
-                                    { mode: "PENDING_TASK", label: "🟡 Pending Tasks Status", desc: "Completed vs In-Progress vs Pending" },
-                                    { mode: "INCOMPLETE_RECORD", label: "🟣 Incomplete Records", desc: "Highlight incomplete inspection forms" },
-                                    { mode: "RECTIFIED_ANOMALY", label: "🔵 Anomaly Rectified / Repaired", desc: "Rectified vs active open anomalies" },
-                                    { mode: "INSPECTION_TASK_TYPE", label: "🎨 Inspection Task Type", desc: "Color code by FMD, UT, Anode, GVINS" },
-                                    { mode: "HISTORICAL_COMPARE", label: "📜 Historical Jobpack Compare", desc: "Compare past campaign anomalies vs present" }
-                                ].map(opt => (
-                                    <button
-                                        key={opt.mode}
-                                        onClick={() => setColorMode(opt.mode as VisualizationMode)}
-                                        className={cn(
-                                            "w-full text-left p-2 rounded-lg transition-all flex flex-col border",
-                                            colorMode === opt.mode
-                                                ? "bg-blue-600/30 border-blue-500 text-white font-bold"
-                                                : "bg-slate-950/40 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
-                                        )}
-                                    >
-                                        <span className="font-bold text-xs">{opt.label}</span>
-                                        <span className="text-[9px] text-slate-400">{opt.desc}</span>
-                                    </button>
-                                ))}
-                            </div>
-
-                            {/* Inspection Mode Scope Filter (BOTH / ROV / DIVING) */}
-                            <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
-                                <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400">
-                                    <span className="flex items-center gap-1">
-                                        <SlidersHorizontal className="w-3 h-3 text-amber-400" />
-                                        Inspection Mode Scope
-                                    </span>
-                                    <span className="text-[8px] text-amber-300 font-bold">
-                                        {inspectionModeFilter === "BOTH" ? "ROV & Diving" : inspectionModeFilter}
-                                    </span>
-                                </div>
-                                <div className="grid grid-cols-3 gap-1 p-0.5 bg-slate-950/80 rounded-lg border border-slate-800 text-[9px] font-black">
-                                    <button
-                                        onClick={() => setInspectionModeFilter("BOTH")}
-                                        className={cn(
-                                            "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
-                                            inspectionModeFilter === "BOTH"
-                                                ? "bg-blue-600 text-white shadow"
-                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                                        )}
-                                    >
-                                        Both
-                                    </button>
-                                    <button
-                                        onClick={() => setInspectionModeFilter("ROV")}
-                                        className={cn(
-                                            "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
-                                            inspectionModeFilter === "ROV"
-                                                ? "bg-cyan-600 text-white shadow"
-                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                                        )}
-                                    >
-                                        ROV
-                                    </button>
-                                    <button
-                                        onClick={() => setInspectionModeFilter("DIVING")}
-                                        className={cn(
-                                            "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
-                                            inspectionModeFilter === "DIVING"
-                                                ? "bg-purple-600 text-white shadow"
-                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                                        )}
-                                    >
-                                        Diving
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Historical Campaign & Jobpack Compare Controls */}
-                            {colorMode === "HISTORICAL_COMPARE" && (
-                                <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                                            <History className="w-3 h-3 text-cyan-400" /> Structure Historical Jobpack
-                                        </span>
-                                        <select
-                                            value={selectedCampaignId}
-                                            onChange={(e) => setSelectedCampaignId(e.target.value)}
-                                            className="h-7 text-[10px] font-bold bg-slate-950 border border-slate-700 text-cyan-300 rounded px-2 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer w-full"
-                                        >
-                                            <option value="ALL">All Historical Jobpacks Combined</option>
-                                            {structureJobpacks.map((jp) => (
-                                                <option key={jp.id} value={jp.id}>{jp.label}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
-                                            Comparison Scope
-                                        </span>
-                                        <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-950/80 rounded-lg border border-slate-800 text-[9px] font-black">
-                                            <button
-                                                onClick={() => setCompareWithCurrent(true)}
-                                                className={cn(
-                                                    "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
-                                                    compareWithCurrent
-                                                        ? "bg-cyan-600 text-white shadow"
-                                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                                                )}
-                                                title="Compare selected historical jobpack against current active jobpack"
-                                            >
-                                                vs Current
-                                            </button>
-                                            <button
-                                                onClick={() => setCompareWithCurrent(false)}
-                                                className={cn(
-                                                    "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
-                                                    !compareWithCurrent
-                                                        ? "bg-purple-600 text-white shadow"
-                                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                                                )}
-                                                title="View component status as recorded in historical jobpack only"
-                                            >
-                                                Historical Only
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                {/* 3D Color Overlay & Historical Comparison Filter - Inspection Workspace Only */}
+                {isWorkspace && (
+                    <div className="relative">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setOpenDropdown(openDropdown === "colormap" ? null : "colormap")}
+                            className={cn(
+                                "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1.5",
+                                compactMode ? "h-8 px-2.5 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
+                                colorMode !== "DEFAULT"
+                                    ? "border-amber-500 text-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.2)] bg-amber-50/80"
+                                    : "border-slate-200 text-slate-600 hover:text-slate-900"
                             )}
-                        </div>
-                    )}
-                </div>
+                            title="3D Color Visualization & Historical Compare"
+                        >
+                            <Palette className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                            <span>
+                                {colorMode === "DEFAULT" && (compactMode ? "3D Color" : "Color Overlay")}
+                                {colorMode === "ANOMALY_PRIORITY" && "Anomaly Priority"}
+                                {colorMode === "PENDING_TASK" && "Pending Tasks"}
+                                {colorMode === "INCOMPLETE_RECORD" && "Incomplete Records"}
+                                {colorMode === "RECTIFIED_ANOMALY" && "Rectified"}
+                                {colorMode === "INSPECTION_TASK_TYPE" && "Task Type"}
+                                {colorMode === "HISTORICAL_COMPARE" && "Historical Compare"}
+                            </span>
+                        </Button>
 
-                {/* Inspection Filter */}
-                <div className="relative">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setOpenDropdown(openDropdown === "inspection" ? null : "inspection")}
-                        className={cn(
-                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
-                            compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
-                            isInspectionMode
-                                ? "border-purple-400 text-purple-600 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                                : "border-slate-200 text-slate-500"
-                        )}
-                        title="Inspection Mode Filter"
-                    >
-                        <Eye className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        <span>{compactMode ? (isInspectionMode ? `(${selectedInspectionFilters.length})` : "OFF") : `Inspection ${isInspectionMode ? `(${selectedInspectionFilters.length}/3)` : "OFF"} ▼`}</span>
-                    </Button>
-
-                    {openDropdown === "inspection" && (
-                        <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-72 flex flex-col gap-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                                    Inspection Mode
-                                </span>
-                                <div className="flex items-center gap-2">
-                                    {selectedInspectionFilters.length < 3 && (
+                        {openDropdown === "colormap" && (
+                            <div className="absolute right-0 mt-2 bg-slate-900/95 backdrop-blur-md text-white rounded-2xl border border-slate-700 shadow-2xl p-3.5 w-72 flex flex-col gap-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+                                    <div className="flex items-center gap-1.5">
+                                        <Palette className="w-3.5 h-3.5 text-amber-400" />
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-200">
+                                            3D Color Overlay Mode
+                                        </span>
+                                    </div>
+                                    {colorMode !== "DEFAULT" && (
                                         <button
                                             onClick={() => {
-                                                setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
-                                                setIsInspectionMode(true);
+                                                setColorMode("DEFAULT");
+                                                setOpenDropdown(null);
                                             }}
-                                            className="text-[9px] font-black uppercase text-purple-600 hover:text-purple-800 transition-colors"
+                                            className="text-[9px] font-black uppercase text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
                                         >
-                                            Select All
+                                            Reset
                                         </button>
                                     )}
-                                    <label className="flex items-center cursor-pointer">
-                                        <div className="relative">
-                                            <input
-                                                type="checkbox"
-                                                className="sr-only"
-                                                checked={isInspectionMode}
-                                                onChange={(e) => {
-                                                    const nextState = e.target.checked;
-                                                    setIsInspectionMode(nextState);
-                                                    if (nextState && selectedInspectionFilters.length === 0) {
-                                                        setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
-                                                    }
-                                                }}
-                                            />
-                                            <div className={`block w-8 h-5 rounded-full ${isInspectionMode ? 'bg-purple-500' : 'bg-slate-200'}`}></div>
-                                            <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition ${isInspectionMode ? 'transform translate-x-3' : ''}`}></div>
+                                </div>
+
+                                <div className="flex flex-col gap-1 text-[10px]">
+                                    {[
+                                        { mode: "DEFAULT", label: "Standard Metallic 3D", desc: "Default material rendering" },
+                                        { mode: "ANOMALY_PRIORITY", label: "🔴 Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4 & Findings" },
+                                        { mode: "FINDING_CATEGORY", label: "🔍 Finding Category", desc: "Color by Corrosion, Marine Growth, Coating, Debris, Scour" },
+                                        { mode: "PENDING_TASK", label: "🟡 Pending Tasks Status", desc: "Completed vs In-Progress vs Pending" },
+                                        { mode: "INCOMPLETE_RECORD", label: "🟣 Incomplete Records", desc: "Highlight incomplete inspection forms" },
+                                        { mode: "RECTIFIED_ANOMALY", label: "🔵 Anomaly Rectified / Repaired", desc: "Rectified vs active open anomalies" },
+                                        { mode: "INSPECTION_TASK_TYPE", label: "🎨 Inspection Task Type", desc: "Color code by FMD, UT, Anode, GVINS" },
+                                        { mode: "HISTORICAL_COMPARE", label: "📜 Historical Jobpack Compare", desc: "Compare past campaign anomalies vs present" }
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.mode}
+                                            onClick={() => {
+                                                setColorMode(opt.mode as VisualizationMode);
+                                                setOpenDropdown(null);
+                                            }}
+                                            className={cn(
+                                                "w-full text-left p-2 rounded-lg transition-all flex flex-col border cursor-pointer",
+                                                colorMode === opt.mode
+                                                    ? "bg-blue-600/30 border-blue-500 text-white font-bold"
+                                                    : "bg-slate-950/40 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
+                                            )}
+                                        >
+                                            <span className="font-bold text-xs">{opt.label}</span>
+                                            <span className="text-[9px] text-slate-400">{opt.desc}</span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Inspection Mode Scope Filter (BOTH / ROV / DIVING) */}
+                                <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                        <span className="flex items-center gap-1">
+                                            <SlidersHorizontal className="w-3 h-3 text-amber-400" />
+                                            Inspection Mode Scope
+                                        </span>
+                                        <span className="text-[8px] text-amber-300 font-bold">
+                                            {inspectionModeFilter === "BOTH" ? "ROV & Diving" : inspectionModeFilter}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1 p-0.5 bg-slate-950/80 rounded-lg border border-slate-800 text-[9px] font-black">
+                                        <button
+                                            onClick={() => setInspectionModeFilter("BOTH")}
+                                            className={cn(
+                                                "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                                inspectionModeFilter === "BOTH"
+                                                    ? "bg-blue-600 text-white shadow"
+                                                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                            )}
+                                        >
+                                            Both
+                                        </button>
+                                        <button
+                                            onClick={() => setInspectionModeFilter("ROV")}
+                                            className={cn(
+                                                "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                                inspectionModeFilter === "ROV"
+                                                    ? "bg-cyan-600 text-white shadow"
+                                                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                            )}
+                                        >
+                                            ROV
+                                        </button>
+                                        <button
+                                            onClick={() => setInspectionModeFilter("DIVING")}
+                                            className={cn(
+                                                "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                                inspectionModeFilter === "DIVING"
+                                                    ? "bg-purple-600 text-white shadow"
+                                                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                            )}
+                                        >
+                                            Diving
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Historical Campaign & Jobpack Compare Controls */}
+                                {colorMode === "HISTORICAL_COMPARE" && (
+                                    <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                                <History className="w-3 h-3 text-cyan-400" /> Structure Historical Jobpack
+                                            </span>
+                                            <select
+                                                value={selectedCampaignId}
+                                                onChange={(e) => setSelectedCampaignId(e.target.value)}
+                                                className="h-7 text-[10px] font-bold bg-slate-950 border border-slate-700 text-cyan-300 rounded px-2 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer w-full"
+                                            >
+                                                <option value="ALL">All Historical Jobpacks Combined</option>
+                                                {structureJobpacks.map((jp) => (
+                                                    <option key={jp.id} value={jp.id}>{jp.label}</option>
+                                                ))}
+                                            </select>
                                         </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                                Comparison Scope
+                                            </span>
+                                            <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-950/80 rounded-lg border border-slate-800 text-[9px] font-black">
+                                                <button
+                                                    onClick={() => setCompareWithCurrent(true)}
+                                                    className={cn(
+                                                        "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                                        compareWithCurrent
+                                                            ? "bg-cyan-600 text-white shadow"
+                                                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                                    )}
+                                                    title="Compare selected historical jobpack against current active jobpack"
+                                                >
+                                                    vs Current
+                                                </button>
+                                                <button
+                                                    onClick={() => setCompareWithCurrent(false)}
+                                                    className={cn(
+                                                        "py-1 px-1 rounded transition-all text-center uppercase tracking-tight cursor-pointer",
+                                                        !compareWithCurrent
+                                                            ? "bg-purple-600 text-white shadow"
+                                                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                                                    )}
+                                                    title="View component status as recorded in historical jobpack only"
+                                                >
+                                                    Historical Only
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Inspection Filter (OFF) - Hidden in Inspection Workspace */}
+                {!isWorkspace && (
+                    <div className="relative">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setOpenDropdown(openDropdown === "inspection" ? null : "inspection")}
+                            className={cn(
+                                "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
+                                compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
+                                isInspectionMode
+                                    ? "border-purple-400 text-purple-600 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+                                    : "border-slate-200 text-slate-500"
+                            )}
+                            title="Inspection Mode Filter"
+                        >
+                            <Eye className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                            <span>{compactMode ? (isInspectionMode ? `(${selectedInspectionFilters.length})` : "OFF") : `Inspection ${isInspectionMode ? `(${selectedInspectionFilters.length}/3)` : "OFF"} ▼`}</span>
+                        </Button>
+
+                        {openDropdown === "inspection" && (
+                            <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-72 flex flex-col gap-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                        Inspection Mode
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        {selectedInspectionFilters.length < 3 && (
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
+                                                    setIsInspectionMode(true);
+                                                }}
+                                                className="text-[9px] font-black uppercase text-purple-600 hover:text-purple-800 transition-colors"
+                                            >
+                                                Select All
+                                            </button>
+                                        )}
+                                        <label className="flex items-center cursor-pointer">
+                                            <div className="relative">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only"
+                                                    checked={isInspectionMode}
+                                                    onChange={(e) => {
+                                                        const nextState = e.target.checked;
+                                                        setIsInspectionMode(nextState);
+                                                        if (nextState && selectedInspectionFilters.length === 0) {
+                                                            setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
+                                                        }
+                                                    }}
+                                                />
+                                                <div className={`block w-8 h-5 rounded-full ${isInspectionMode ? 'bg-purple-500' : 'bg-slate-200'}`}></div>
+                                                <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition ${isInspectionMode ? 'transform translate-x-3' : ''}`}></div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1.5 py-1">
+                                    {/* Not Inspected Checkbox */}
+                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedInspectionFilters.includes("NOT_INSPECTED")}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                if (!isInspectionMode) setIsInspectionMode(true);
+                                                if (checked) {
+                                                    setSelectedInspectionFilters((prev) => [...prev, "NOT_INSPECTED"]);
+                                                } else {
+                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NOT_INSPECTED"));
+                                                }
+                                            }}
+                                            className="h-4 w-4 rounded border-slate-300 text-slate-600 focus:ring-purple-500 accent-slate-600"
+                                        />
+                                        <div className="w-2.5 h-2.5 rounded-full bg-slate-400 border border-slate-500 shrink-0" />
+                                        <span className="text-xs font-bold text-slate-700">Not Inspected</span>
+                                    </label>
+
+                                    {/* Inspected (No Anomaly) Checkbox */}
+                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-emerald-50/60 cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedInspectionFilters.includes("NO_ANOMALY")}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                if (!isInspectionMode) setIsInspectionMode(true);
+                                                if (checked) {
+                                                    setSelectedInspectionFilters((prev) => [...prev, "NO_ANOMALY"]);
+                                                } else {
+                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NO_ANOMALY"));
+                                                }
+                                            }}
+                                            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 accent-emerald-600"
+                                        />
+                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] border border-emerald-600 shrink-0" />
+                                        <span className="text-xs font-bold text-emerald-700">Inspected (No Anomaly)</span>
+                                    </label>
+
+                                    {/* Inspected (Has Anomaly) Checkbox */}
+                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50/80 cursor-pointer transition-colors border border-transparent hover:border-red-100">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedInspectionFilters.includes("HAS_ANOMALY")}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                if (!isInspectionMode) setIsInspectionMode(true);
+                                                if (checked) {
+                                                    setSelectedInspectionFilters((prev) => [...prev, "HAS_ANOMALY"]);
+                                                } else {
+                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "HAS_ANOMALY"));
+                                                }
+                                            }}
+                                            className="h-4 w-4 rounded border-red-400 text-red-600 focus:ring-red-500 accent-red-600"
+                                        />
+                                        <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] border border-red-600 shrink-0 animate-pulse" />
+                                        <span className="text-xs font-bold text-red-700">Inspected (Has Anomaly)</span>
                                     </label>
                                 </div>
                             </div>
-
-                            <div className="flex flex-col gap-1.5 py-1">
-                                {/* Not Inspected Checkbox */}
-                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedInspectionFilters.includes("NOT_INSPECTED")}
-                                        onChange={(e) => {
-                                            const checked = e.target.checked;
-                                            if (!isInspectionMode) setIsInspectionMode(true);
-                                            if (checked) {
-                                                setSelectedInspectionFilters((prev) => [...prev, "NOT_INSPECTED"]);
-                                            } else {
-                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NOT_INSPECTED"));
-                                            }
-                                        }}
-                                        className="h-4 w-4 rounded border-slate-300 text-slate-600 focus:ring-purple-500 accent-slate-600"
-                                    />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-slate-400 border border-slate-500 shrink-0" />
-                                    <span className="text-xs font-bold text-slate-700">Not Inspected</span>
-                                </label>
-
-                                {/* Inspected (No Anomaly) Checkbox */}
-                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-emerald-50/60 cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedInspectionFilters.includes("NO_ANOMALY")}
-                                        onChange={(e) => {
-                                            const checked = e.target.checked;
-                                            if (!isInspectionMode) setIsInspectionMode(true);
-                                            if (checked) {
-                                                setSelectedInspectionFilters((prev) => [...prev, "NO_ANOMALY"]);
-                                            } else {
-                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NO_ANOMALY"));
-                                            }
-                                        }}
-                                        className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 accent-emerald-600"
-                                    />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] border border-emerald-600 shrink-0" />
-                                    <span className="text-xs font-bold text-emerald-700">Inspected (No Anomaly)</span>
-                                </label>
-
-                                {/* Inspected (Has Anomaly) Checkbox */}
-                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50/80 cursor-pointer transition-colors border border-transparent hover:border-red-100">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedInspectionFilters.includes("HAS_ANOMALY")}
-                                        onChange={(e) => {
-                                            const checked = e.target.checked;
-                                            if (!isInspectionMode) setIsInspectionMode(true);
-                                            if (checked) {
-                                                setSelectedInspectionFilters((prev) => [...prev, "HAS_ANOMALY"]);
-                                            } else {
-                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "HAS_ANOMALY"));
-                                            }
-                                        }}
-                                        className="h-4 w-4 rounded border-red-400 text-red-600 focus:ring-red-500 accent-red-600"
-                                    />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] border border-red-600 shrink-0 animate-pulse" />
-                                    <span className="text-xs font-bold text-red-700">Inspected (Has Anomaly)</span>
-                                </label>
-                            </div>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Elevation Filter */}
                 <div className="relative">
@@ -4085,8 +4163,8 @@ export function Structural3DViewer({
                 </div>
             </div>
 
-            {/* DYNAMIC COLOR LEGEND OVERLAY */}
-            {colorMode !== "DEFAULT" && (
+            {/* DYNAMIC COLOR LEGEND OVERLAY - Workspace Only */}
+            {isWorkspace && colorMode !== "DEFAULT" && (
                 <div className="absolute top-12 left-3 z-30 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl px-3 py-2 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200 flex flex-col gap-1.5 text-white max-w-md">
                     <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
                         <span className="flex items-center gap-1.5">
@@ -4204,57 +4282,64 @@ export function Structural3DViewer({
                     <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-bold">
                         {colorMode === "ANOMALY_PRIORITY" && (
                             <>
-                                {(
-                                    priorityScope === "FINDING" ? [
-                                        { code: "OBSERVATION", label: "Observation", color: libraryColors["OBSERVATION"] || libraryColors["OBS"] || "#d97706" },
-                                        { code: "FINDING P1", label: "Finding P1", color: libraryColors["FINDING P1"] || "#ef4444" },
-                                        { code: "FINDING P2", label: "Finding P2", color: libraryColors["FINDING P2"] || "#f97316" },
-                                        { code: "FINDING P3", label: "Finding P3", color: libraryColors["FINDING P3"] || "#0284c7" },
-                                        { code: "CLEAN", label: "Clean", color: libraryColors["CLEAN"] || "#10b981" },
-                                        { code: "UNINSPECTED", label: "Uninspected", color: libraryColors["UNINSPECTED"] || "#64748b" }
-                                    ] : libraryPriorityList.length > 0 ? [
-                                        ...libraryPriorityList,
-                                        { code: "OBSERVATION", label: "Observation", color: libraryColors["OBSERVATION"] || "#d97706" },
-                                        { code: "FINDING", label: "Finding (Observation)", color: libraryColors["FINDING"] || "#0284c7" },
-                                        { code: "CLEAN", label: "Clean", color: libraryColors["CLEAN"] || "#10b981" },
-                                        { code: "UNINSPECTED", label: "Uninspected", color: libraryColors["UNINSPECTED"] || "#64748b" }
-                                    ] : [
-                                        { code: "PRIORITY 1", label: "Priority 1", color: "#ef4444" },
-                                        { code: "PRIORITY 2", label: "Priority 2", color: "#f97316" },
-                                        { code: "PRIORITY 3", label: "Priority 3", color: "#eab308" },
-                                        { code: "PRIORITY 4", label: "Priority 4", color: "#84cc16" },
-                                        { code: "OBSERVATION", label: "Observation", color: "#d97706" },
-                                        { code: "FINDING", label: "Finding (Observation)", color: "#0284c7" },
-                                        { code: "CLEAN", label: "Clean", color: "#10b981" },
-                                        { code: "UNINSPECTED", label: "Uninspected", color: "#64748b" },
-                                    ]
-                                ).filter(item => {
-                                    if (priorityScope === "ANOMALY") {
-                                        return item.code !== "FINDING" && item.code !== "OBSERVATION" && !item.code.startsWith("FINDING P");
-                                    }
-                                    return true;
-                                }).map((item) => {
-                                    const colorHex = item.color || libraryColors[item.code] || libraryColors[item.code.replace("PRIORITY ", "P")] || "#64748b";
-                                    const isSelected = selectedPriorityFilter === item.code;
-                                    return (
-                                        <button
-                                            key={item.code}
-                                            onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
-                                            className={cn(
-                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
-                                                isSelected
-                                                    ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
-                                                    : selectedPriorityFilter
-                                                    ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
-                                                    : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
-                                            )}
-                                            title={`Click to filter 3D view by ${item.label}`}
-                                        >
-                                            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: colorHex }} />
-                                            <span>{item.label}</span>
-                                        </button>
+                                {(() => {
+                                    const priorityItems = (
+                                        priorityScope === "FINDING" ? [
+                                            { code: "OBSERVATION", label: "Observation", color: libraryColors["OBSERVATION"] || libraryColors["OBS"] || "#d97706" },
+                                            { code: "FINDING P1", label: "Finding P1", color: libraryColors["FINDING P1"] || "#ef4444" },
+                                            { code: "FINDING P2", label: "Finding P2", color: libraryColors["FINDING P2"] || "#f97316" },
+                                            { code: "FINDING P3", label: "Finding P3", color: libraryColors["FINDING P3"] || "#0284c7" },
+                                            { code: "CLEAN", label: "Clean", color: libraryColors["CLEAN"] || "#10b981" },
+                                            { code: "UNINSPECTED", label: "Uninspected", color: libraryColors["UNINSPECTED"] || "#64748b" }
+                                        ] : libraryPriorityList.length > 0 ? [
+                                            ...libraryPriorityList,
+                                            { code: "OBSERVATION", label: "Observation", color: libraryColors["OBSERVATION"] || "#d97706" },
+                                            { code: "CLEAN", label: "Clean", color: libraryColors["CLEAN"] || "#10b981" },
+                                            { code: "UNINSPECTED", label: "Uninspected", color: libraryColors["UNINSPECTED"] || "#64748b" }
+                                        ] : [
+                                            { code: "PRIORITY 1", label: "Priority 1", color: "#ef4444" },
+                                            { code: "PRIORITY 2", label: "Priority 2", color: "#f97316" },
+                                            { code: "PRIORITY 3", label: "Priority 3", color: "#eab308" },
+                                            { code: "PRIORITY 4", label: "Priority 4", color: "#84cc16" },
+                                            { code: "OBSERVATION", label: "Observation", color: "#d97706" },
+                                            { code: "CLEAN", label: "Clean", color: "#10b981" },
+                                            { code: "UNINSPECTED", label: "Uninspected", color: "#64748b" },
+                                        ]
+                                    ).filter(item => {
+                                        if (priorityScope === "ANOMALY") {
+                                            return item.code !== "FINDING" && item.code !== "OBSERVATION" && !item.code.startsWith("FINDING P");
+                                        }
+                                        return true;
+                                    });
+
+                                    // Deduplicate items by code to ensure unique keys
+                                    const uniquePriorityItems = Array.from(
+                                        new Map(priorityItems.map(item => [item.code, item])).values()
                                     );
-                                })}
+
+                                    return uniquePriorityItems.map((item) => {
+                                        const colorHex = item.color || libraryColors[item.code] || libraryColors[item.code.replace("PRIORITY ", "P")] || "#64748b";
+                                        const isSelected = selectedPriorityFilter === item.code;
+                                        return (
+                                            <button
+                                                key={item.code}
+                                                onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
+                                                className={cn(
+                                                    "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
+                                                    isSelected
+                                                        ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
+                                                        : selectedPriorityFilter
+                                                        ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
+                                                        : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
+                                                )}
+                                                title={`Click to filter 3D view by ${item.label}`}
+                                            >
+                                                <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: colorHex }} />
+                                                <span>{item.label}</span>
+                                            </button>
+                                        );
+                                    });
+                                })()}
                             </>
                         )}
 

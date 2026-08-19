@@ -527,7 +527,7 @@ function V10PreviewLayout() {
                 type: "tabset",
                 weight: 30,
                 children: [
-                  { type: "tab", name: isPipeline ? "Event Menu" : "Component List", component: "components" },
+                  { type: "tab", name: "Component List", component: "components" },
                 ],
               },
               ...(isPipeline ? [
@@ -575,7 +575,7 @@ function V10PreviewLayout() {
       { id: "videoPreview", name: "Photo / Video Grab" },
       { id: "form", name: "Inspection Form" },
       { id: "events", name: "Captured Events" },
-      { id: "components", name: isPipeline ? "Event Menu" : "Component List" },
+      { id: "components", name: "Component List" },
       { id: "history", name: "History Data" },
     ];
     if (isPipeline) {
@@ -2650,7 +2650,7 @@ function V10PreviewLayout() {
     if (panelId === "videoPreview") title = "Photo / Video Grab";
     if (panelId === "form") title = "Inspection Form";
     if (panelId === "events") title = "Captured Events";
-    if (panelId === "components") title = (isPipeline || headerData?.structureType === "pipeline") ? "Event Menu" : "Component List";
+    if (panelId === "components") title = "Component List";
     if (panelId === "history") title = "History Data";
     if (panelId === "inspectionInfo") title = "Inspection Info";
     if (panelId === "quickShortcuts") title = "Quick Log";
@@ -4061,7 +4061,7 @@ function V10PreviewLayout() {
         headerData.sowReportNo !== "Unknown Report"
       ) {
         query = query.or(
-          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
+          `sow_report_no.eq.${headerData.sowReportNo},sow_report_no.is.null`
         );
       }
 
@@ -7444,7 +7444,7 @@ function V10PreviewLayout() {
     let name = node.getName();
     if (component === "opsLog") name = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
     if (component === "videoPreview") name = "Photo / Video Grab";
-    if (component === "components") name = (isPipeline || headerData?.structureType === "pipeline") ? "Event Menu" : "Component List";
+    if (component === "components") name = "Component List";
     if (component === "form") name = "Inspection Form";
     if (component === "events") name = "Captured Events";
     if (component === "history") name = "History Data";
@@ -7922,9 +7922,13 @@ function V10PreviewLayout() {
       case "history":
         panelContent = (
           <HistoryDataPanel
+            selectedComp={selectedComp}
             historicalRecords={historicalRecords}
             historyLoading={historyLoading}
             handleEditRecord={handleEditRecord}
+            allInspectionTypes={allInspectionTypes}
+            jobPackId={jobPackId}
+            structureId={structureId}
           />
         );
         break;
@@ -8531,7 +8535,7 @@ function V10PreviewLayout() {
                 renderValues.content = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
               }
               if (componentId === "components") {
-                renderValues.content = (isPipeline || headerData.structureType === "pipeline") ? "Event Menu" : "Component List";
+                renderValues.content = "Component List";
               }
 
               const isPopped = !!poppedOutWindows[componentId];

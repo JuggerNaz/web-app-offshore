@@ -16,7 +16,8 @@ import {
     Plus,
     Ruler,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    Link2
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -24,36 +25,282 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RegisterComponentDialog } from "./RegisterComponentDialog";
 
-function getComponentNodeLegDetails(comp: any) {
-    if (!comp) return { sNode: null, fNode: null, legNo: null, depth: null };
-    const md = comp?.metadata || {};
-    const qId = String(comp?.q_id || comp?.id_no || comp?.name || "").toUpperCase();
+function getCorrectQID(comp: any, allComponents: any[] = []) {
+    if (!comp) return "N/A";
+    const raw = comp.raw || comp;
+    const md = comp.metadata || raw.metadata || {};
 
-    let sNode = md.s_node || md.start_node || comp?.s_node;
-    let fNode = md.f_node || md.end_node || comp?.f_node;
+    const candidateQId = 
+        comp.q_id || 
+        comp.name || 
+        raw.q_id || 
+        raw.name || 
+        comp.id_no || 
+        raw.id_no || 
+        md.q_id || 
+        md.qid;
+
+    const compCode = (comp.code || raw.code || md.code || "").toString().toUpperCase().trim();
+
+    // 1. Direct QID check (ignore candidate if it belongs to wrong component type e.g. BAN019 anode for CL clamp)
+    if (candidateQId && !String(candidateQId).startsWith("COMP-")) {
+        const isAnodeQId = String(candidateQId).startsWith("BAN") || String(candidateQId).startsWith("AN");
+        if ((compCode === "CL" || compCode === "MB" || compCode === "RS") && isAnodeQId) {
+            // Mismatched type QID, proceed to search by node & code
+        } else {
+            return String(candidateQId).trim();
+        }
+    }
+
+    // 2. Search allComponents by ID or Start/End Node & Leg matching WITH exact component code check
+    const compIdStr = String(comp.id || comp.comp_id || "").trim();
+    const nodeLeg = getComponentNodeLegDetails(comp);
+
+    if (allComponents && allComponents.length > 0) {
+        const matched = allComponents.find((c: any) => {
+            const cRaw = c.raw || c;
+            const cIdStr = String(c.id || c.comp_id || cRaw.id || "").trim();
+            const cCode = (c.code || cRaw.code || c.metadata?.code || "").toString().toUpperCase().trim();
+
+            if (compCode && cCode && compCode !== cCode) {
+                // Must match component type code (e.g. skip ANODE when selecting CLAMP)
+                return false;
+            }
+
+            if (cIdStr && compIdStr && cIdStr === compIdStr) return true;
+
+            const cSNode = String(c.startNode || c.s_node || cRaw.s_node || cRaw.start_node || "").trim();
+            const cFNode = String(c.endNode || c.f_node || cRaw.f_node || cRaw.end_node || "").trim();
+
+            if (nodeLeg.sNode && nodeLeg.fNode && cSNode && cFNode && ((cSNode === nodeLeg.sNode && cFNode === nodeLeg.fNode) || (cSNode === nodeLeg.fNode && cFNode === nodeLeg.sNode))) {
+                return true;
+            }
+            return false;
+        });
+
+        if (matched) {
+            const mQId = matched.q_id || matched.name || matched.raw?.q_id || matched.raw?.name || matched.raw?.id_no;
+            if (mQId && !String(mQId).startsWith("COMP-") && !String(mQId).match(/^[A-Z]\d+-\d+-\d+$/)) {
+                return String(mQId).trim();
+            }
+        }
+    }
+
+    // 3. Fallback: return description, id_no, or candidateQId
+    const fallbackDesc = comp.description || raw.description || comp.id_no || raw.id_no;
+    if (fallbackDesc && !String(fallbackDesc).match(/^[A-Z]\d+-\d+-\d+$/)) {
+        return String(fallbackDesc).trim();
+    }
+
+    return String(candidateQId || comp.q_id || comp.name || `COMP-${comp.id}`).trim();
+}
+
+function getComponentTypeAndCode(comp: any) {
+    if (!comp) return { type: "N/A", code: "N/A", fullLabel: "N/A" };
+    const md = comp.metadata || comp.raw?.metadata || {};
+    const rawObj = comp.raw || {};
+
+    const typeName = (
+        comp.comp_type_name || 
+        comp.type_name || 
+        comp.type || 
+        md.comp_type_name || 
+        md.type_name || 
+        md.type || 
+        rawObj.type_name || 
+        rawObj.type || 
+        comp.category || 
+        "MEMBER"
+    ).toString().toUpperCase().trim();
+
+    const typeCode = (
+        comp.comp_type_code || 
+        comp.type_code || 
+        comp.code || 
+        md.comp_type_code || 
+        md.type_code || 
+        md.code || 
+        rawObj.type_code || 
+        rawObj.code || 
+        typeName
+    ).toString().toUpperCase().trim();
+
+    const fullLabel = (typeName === typeCode || !typeCode || typeName.endsWith(`(${typeCode})`)) 
+        ? typeName 
+        : `${typeName} (${typeCode})`;
+
+    return { type: typeName, code: typeCode, fullLabel };
+}
+
+function getAssociatedComponentInfo(comp: any, allComponents: any[] = []) {
+    if (!comp) return null;
+    const md = comp.metadata || comp.raw?.metadata || {};
+    const compIdStr = String(comp.id || comp.comp_id || "").trim();
+    const qIdUpper = String(comp.q_id || comp.name || comp.code || comp.raw?.name || "").toUpperCase().trim();
+
+    let assocQId = 
+        comp.associated_qid || 
+        comp.associated_component || 
+        comp.associated_comp_name || 
+        comp.parent_qid || 
+        comp.ref_qid || 
+        md.associated_qid || 
+        md.associated_component || 
+        md.ref_component_qid || 
+        md.parent_component_qid || 
+        comp.raw?.associated_qid;
+
+    let assocTypeRaw = 
+        comp.associated_type || 
+        comp.associated_comp_type || 
+        md.associated_type || 
+        md.associated_comp_type || 
+        comp.raw?.associated_type;
+
+    let assocId = comp.associated_id || comp.associated_component_id || md.associated_id || md.associated_component_id;
+
+    // Reverse association check in allComponents
+    if (!assocQId && !assocId && allComponents && allComponents.length > 0) {
+        const reverseMatch = allComponents.find((c: any) => {
+            const cMd = c.metadata || c.raw?.metadata || {};
+            const cAssocId = String(c.associated_id || c.associated_component_id || cMd.associated_id || cMd.associated_component_id || "");
+            const cAssocQId = String(c.associated_qid || c.associated_component || cMd.associated_qid || cMd.associated_component || "").toUpperCase().trim();
+            return (cAssocId && cAssocId === compIdStr) || (cAssocQId && (cAssocQId === qIdUpper || qIdUpper.includes(cAssocQId)));
+        });
+
+        if (reverseMatch) {
+            const typeObj = getComponentTypeAndCode(reverseMatch);
+            return {
+                qid: reverseMatch.q_id || reverseMatch.name || reverseMatch.code,
+                type: typeObj.type,
+                code: typeObj.code,
+                fullLabel: typeObj.fullLabel,
+                isReverse: true
+            };
+        }
+    }
+
+    let matchedComp = null;
+    if (assocId) {
+        matchedComp = (allComponents || []).find((c: any) => String(c.id || c.comp_id) === String(assocId));
+    }
+    if (!matchedComp && assocQId) {
+        const cleanQId = String(assocQId).toUpperCase().trim();
+        matchedComp = (allComponents || []).find((c: any) => {
+            const cQId = String(c.q_id || c.name || c.code || c.raw?.name || "").toUpperCase().trim();
+            return cQId === cleanQId || cQId.includes(cleanQId) || cleanQId.includes(cQId);
+        });
+    }
+
+    // Heuristic fallback: Search allComponents for actual associated Riser, Caisson, or Member component
+    if (!matchedComp && allComponents && allComponents.length > 0) {
+        const suppMatch = qIdUpper.match(/^(?:RIS|PL)[-_]*(\d+)[-_]*SUPP/i) || qIdUpper.match(/^(?:RIS|PL)[-_]*(\d+)/i) || qIdUpper.match(/^R(\d+)[-_]/i);
+        if (suppMatch && (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || comp.code === "CL")) {
+            const riserNum = suppMatch[1];
+            matchedComp = allComponents.find((c: any) => {
+                const cCode = (c.code || c.raw?.code || "").toUpperCase();
+                const isRiserComp = cCode === "RS" || cCode.includes("RISER") || cCode.includes("RISR");
+                if (!isRiserComp) return false;
+                const cQId = String(c.q_id || c.name || c.id_no || "").toUpperCase();
+                return (
+                    cQId.startsWith(`R${riserNum}-`) ||
+                    cQId.startsWith(`R${riserNum}_`) ||
+                    cQId.includes(`R${riserNum}-`) ||
+                    cQId.includes(`R${riserNum}_`) ||
+                    cQId.includes(`RISER-${riserNum}`) ||
+                    cQId.includes(`RISER ${riserNum}`) ||
+                    cQId.includes(`RIS-${riserNum}`) ||
+                    String(c.metadata?.riser_no) === String(riserNum)
+                );
+            });
+            if (!matchedComp) {
+                assocQId = `RISER-${riserNum}`;
+                assocTypeRaw = "RISER";
+            }
+        } else {
+            const clpMatch = qIdUpper.match(/^(?:CLP|CLAMP|AND|ANODE)[-_]+([A-Z0-9\-_]+)/i);
+            if (clpMatch) {
+                const targetQ = clpMatch[1].toUpperCase();
+                matchedComp = allComponents.find((c: any) => {
+                    const cQId = String(c.q_id || c.name || c.id_no || "").toUpperCase();
+                    return cQId === targetQ || cQId.includes(targetQ);
+                });
+                if (!matchedComp) {
+                    assocQId = targetQ;
+                    assocTypeRaw = "MEMBER";
+                }
+            }
+        }
+    }
+
+    if (!matchedComp && !assocQId && !assocId) return null;
+
+    const qid = matchedComp ? (matchedComp.q_id || matchedComp.name || matchedComp.id_no || matchedComp.code) : assocQId;
+    const typeObj = matchedComp ? getComponentTypeAndCode(matchedComp) : { type: assocTypeRaw || "COMPONENT", code: assocTypeRaw || "COMP", fullLabel: assocTypeRaw || "COMPONENT" };
+
+    if (!qid) return null;
+    return { qid: String(qid), type: typeObj.type, code: typeObj.code, fullLabel: typeObj.fullLabel, isReverse: false };
+}
+
+function getComponentNodeLegDetails(comp: any) {
+    if (!comp) return { sNode: null, fNode: null, startLeg: null, endLeg: null, legNo: null, legDisplay: "Unassigned", depth: null };
+    const md = comp?.metadata || comp?.raw?.metadata || {};
+    const rawObj = comp?.raw || {};
+    const qId = String(comp?.q_id || comp?.id_no || comp?.name || rawObj.name || "").toUpperCase();
+
+    let sNode = md.start_node || md.s_node || md.f_node || md.Node_1 || comp?.start_node || comp?.startNode || comp?.s_node || rawObj.start_node || rawObj.s_node;
+    let fNode = md.end_node || md.f_node || md.s_node || md.Node_2 || comp?.end_node || comp?.endNode || comp?.f_node || rawObj.end_node || rawObj.f_node;
 
     if (!sNode || !fNode) {
-        const nodeMatch = qId.match(/N?(\d{3,5})[\-_/]+N?(\d{3,5})/i);
+        const nodeMatch = qId.match(/N?(\d{1,5})[\-_/]+N?(\d{1,5})/i);
         if (nodeMatch) {
-            sNode = sNode || `N${nodeMatch[1]}`;
-            fNode = fNode || `N${nodeMatch[2]}`;
+            sNode = sNode || `${nodeMatch[1]}`;
+            fNode = fNode || `${nodeMatch[2]}`;
         }
     }
 
-    let legNo = md.leg_no || md.leg || md.leg_name || comp?.leg_no || comp?.leg;
-    if (!legNo) {
+    let startLeg = md.start_leg || md.s_leg || md.leg_1 || md.StartLeg || md.Leg_1 || comp?.start_leg || comp?.startLeg || comp?.s_leg || rawObj.start_leg || rawObj.s_leg;
+    let endLeg = md.end_leg || md.f_leg || md.leg_2 || md.EndLeg || md.Leg_2 || comp?.end_leg || comp?.endLeg || comp?.f_leg || rawObj.end_leg || rawObj.f_leg;
+    let generalLeg = md.leg_no || md.leg || md.leg_name || comp?.leg_no || comp?.leg || comp?.leg_name || rawObj.leg_no || rawObj.leg;
+
+    if (!startLeg && !generalLeg) {
         const legMatch = qId.match(/(?:LEG|L)[-_ ]*([A-Z0-9]+)/i) || qId.match(/\b([A-D][1-4])\b/);
         if (legMatch) {
-            legNo = legMatch[1];
+            generalLeg = legMatch[1];
         }
     }
 
-    const depth = md.depth || md.elevation || md.startElev || comp?.depth || comp?.elevation;
+    const fmtLeg = (l: any) => {
+        if (!l) return null;
+        const str = String(l).trim();
+        if (str.toUpperCase().startsWith("LEG")) return str;
+        return `Leg ${str}`;
+    };
+
+    const sLegFmt = fmtLeg(startLeg);
+    const eLegFmt = fmtLeg(endLeg);
+    const genLegFmt = fmtLeg(generalLeg);
+
+    let legDisplay = "Unassigned";
+    if (sLegFmt && eLegFmt && sLegFmt !== eLegFmt) {
+        legDisplay = `${sLegFmt} ➔ ${eLegFmt}`;
+    } else if (sLegFmt) {
+        legDisplay = sLegFmt;
+    } else if (eLegFmt) {
+        legDisplay = eLegFmt;
+    } else if (genLegFmt) {
+        legDisplay = genLegFmt;
+    }
+
+    const depth = md.depth || md.elevation || md.startElev || comp?.depth || comp?.elevation || comp?.startElev || rawObj.elevation;
 
     return {
         sNode: sNode ? String(sNode) : null,
         fNode: fNode ? String(fNode) : null,
-        legNo: legNo ? String(legNo) : null,
+        startLeg: sLegFmt,
+        endLeg: eLegFmt,
+        legNo: genLegFmt,
+        legDisplay,
         depth: depth ? String(depth) : null,
     };
 }
@@ -137,7 +384,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     const { data: webapp3dResponse, isLoading: isWebapp3dLoading, mutate: mutateWebapp3d } = useSWR(
         shouldFetch3D ? `/api/platform/webapp-3d/${structureId}` : null,
         fetcher,
-        { revalidateOnFocus: false, revalidateOnReconnect: false, revalidateIfStale: true }
+        { revalidateOnFocus: false, revalidateOnReconnect: false, revalidateIfStale: true, onError: () => {} }
     );
     const webapp3dData = webapp3dResponse?.data;
 
@@ -164,32 +411,69 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     const { data: platformDetailData } = useSWR(
         shouldFetch3D ? `/api/platform/${structureId}` : null,
         fetcher,
-        { revalidateOnFocus: false, revalidateOnReconnect: false }
+        { revalidateOnFocus: false, revalidateOnReconnect: false, onError: () => {} }
     );
     const platformDetails = platformDetailData?.data;
 
     const { data: elevationsData } = useSWR(
         shouldFetch3D ? `/api/platform/elevation/${structureId}` : null,
         fetcher,
-        { revalidateOnFocus: false, revalidateOnReconnect: false }
+        { revalidateOnFocus: false, revalidateOnReconnect: false, onError: () => {} }
     );
     const elevations = elevationsData?.data || [];
 
     const { data: facesData } = useSWR(
         shouldFetch3D ? `/api/platform/faces/${structureId}` : null,
         fetcher,
-        { revalidateOnFocus: false, revalidateOnReconnect: false }
+        { revalidateOnFocus: false, revalidateOnReconnect: false, onError: () => {} }
     );
     const faces = facesData?.data || [];
 
     const [previewComp, setPreviewComp] = React.useState<any>(null);
 
     const handle3DComponentClick = (comp3d: any) => {
-        const fullComp = allComponents.find(
-            (c: any) => String(c.id) === String(comp3d.id) || String(c.q_id) === String(comp3d.q_id)
-        ) || comp3d;
-        
-        setPreviewComp(fullComp);
+        if (!comp3d) return;
+
+        const comp3dRaw = comp3d.raw || comp3d.component || comp3d;
+        const comp3dId = comp3d.component_id || comp3d.comp_id || comp3d.id || comp3dRaw.id || comp3dRaw.comp_id;
+        const comp3dIdStr = comp3dId ? String(comp3dId).trim() : "";
+
+        const compCode = (comp3d.code || comp3dRaw.code || "").toString().toUpperCase().trim();
+        const targetQId = String(comp3d.q_id || comp3d.name || comp3dRaw.q_id || comp3dRaw.name || "").toUpperCase().trim();
+
+        // 1. Match directly against allComponents from DB by ID or exact QID
+        let fullComp = null;
+        if (allComponents && allComponents.length > 0) {
+            fullComp = allComponents.find((c: any) => {
+                const cRaw = c.raw || c;
+                const cId = c.id || c.comp_id || cRaw.id || cRaw.comp_id;
+                const cIdStr = cId ? String(cId).trim() : "";
+                if (cIdStr && comp3dIdStr && cIdStr === comp3dIdStr) return true;
+
+                const cQId = String(c.q_id || c.name || cRaw.q_id || cRaw.name || "").toUpperCase().trim();
+                if (cQId && targetQId && targetQId !== compCode && cQId === targetQId) return true;
+
+                return false;
+            });
+        }
+
+        const matchedComp = fullComp || comp3dRaw || comp3d;
+
+        const mergedComp = { 
+            ...comp3d, 
+            ...matchedComp, 
+            id: comp3d.id || comp3d.comp_id || matchedComp.id,
+            comp_id: comp3d.comp_id || comp3d.id || matchedComp.comp_id || matchedComp.id,
+            q_id: matchedComp.q_id || matchedComp.name || comp3d.q_id || comp3d.name,
+            taskStatuses: matchedComp.taskStatuses || matchedComp.tasks || comp3d.taskStatuses || comp3d.tasks || [],
+            metadata: { ...(comp3d.metadata || {}), ...(matchedComp.metadata || {}), ...(matchedComp.raw?.metadata || {}) },
+            raw: { ...(comp3d.raw || {}), ...(matchedComp.raw || {}), ...matchedComp }
+        };
+
+        setPreviewComp(mergedComp);
+        if (handleComponentSelection) {
+            handleComponentSelection(mergedComp);
+        }
     };
 
     const executeLoad3DTask = (taskCode: string, targetComp: any) => {
@@ -207,35 +491,41 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
         toast.success(`Loaded ${taskCode} for ${targetComp.q_id || targetComp.name} into inspection form`);
     };
 
-    const handleSelect3DTaskWithCheck = (taskCode: string) => {
-        if (!previewComp) return;
+    const handleSelect3DTaskWithCheck = (taskCode: string, targetComp?: any) => {
+        const compToUse = targetComp || previewComp || selectedComp;
+        if (!compToUse) return;
         if (isFormDirty) {
-            setPending3DTask({ taskCode, comp: previewComp });
+            setPending3DTask({ taskCode, comp: compToUse });
             setShowUnsavedPrompt(true);
         } else {
-            executeLoad3DTask(taskCode, previewComp);
+            executeLoad3DTask(taskCode, compToUse);
         }
     };
 
-    const handleTaskSingleClick = (taskCode: string) => {
+    const handleTaskSingleClick = (taskCode: string, targetComp?: any) => {
+        const compToUse = targetComp || previewComp || selectedComp;
         if (clickTimerRef.current) {
             clearTimeout(clickTimerRef.current);
             clickTimerRef.current = null;
         }
         clickTimerRef.current = setTimeout(() => {
-            handleSelect3DTaskWithCheck(taskCode);
+            handleComponentSelection(compToUse);
+            handleSelect3DTaskWithCheck(taskCode, compToUse);
             clickTimerRef.current = null;
         }, 250);
     };
 
-    const handleTaskDoubleClick = (taskCode: string, existingRecords: any[], displayName: string) => {
+    const handleTaskDoubleClick = (taskCode: string, existingRecords: any[], displayName: string, targetComp?: any) => {
+        const compToUse = targetComp || previewComp || selectedComp;
         if (clickTimerRef.current) {
             clearTimeout(clickTimerRef.current);
             clickTimerRef.current = null;
         }
 
+        handleComponentSelection(compToUse);
+
         if (!existingRecords || existingRecords.length === 0) {
-            handleSelect3DTaskWithCheck(taskCode);
+            handleSelect3DTaskWithCheck(taskCode, compToUse);
             return;
         }
 
@@ -243,7 +533,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
             if (handleEditRecord) {
                 handleEditRecord(existingRecords[0]);
                 toast.info(`Viewing recorded ${displayName} data`);
-                setPreviewComp(null);
+                if (previewComp) setPreviewComp(null);
             }
         } else {
             setSelectedTaskRecords({ tCode: taskCode, displayName, records: existingRecords });
@@ -493,19 +783,47 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                 return false;
                                                             })
                                                             .map((ts: any, idx: number) => {
-                                                                const s = ts.status || 'pending';
-                                                                const hasAnom = currentRecords.some((r: any) => r.has_anomaly && (r.inspection_type?.code === ts.code || r.inspection_type_code === ts.code) && r.component_id === c.id);
+                                                                const tCode = ts.code;
+                                                                const matchedType = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                                                                const displayName = matchedType?.name || tCode;
+
+                                                                const compIdStr = String(c.id || c.comp_id || "");
+                                                                const compQIdStr = String(c.q_id || c.name || "").toUpperCase();
+
+                                                                const taskRecords = (currentRecords || []).filter((r: any) => {
+                                                                    const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
+                                                                                        ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
+                                                                    if (!matchesComp) return false;
+                                                                    const rCode = String(r.inspection_type_code || r.inspection_type?.code || r.task_code || "").toUpperCase();
+                                                                    return rCode === String(tCode).toUpperCase();
+                                                                });
+
+                                                                const isInspected = taskRecords.length > 0;
+                                                                const hasAnom = taskRecords.some((r: any) => r.has_anomaly);
+
                                                                 return (
                                                                     <span 
                                                                         key={idx} 
                                                                         onClick={(e) => { 
                                                                             e.stopPropagation(); 
-                                                                            if (handleTaskChange) handleTaskChange(ts.code); 
+                                                                            handleTaskSingleClick(tCode, c); 
                                                                         }}
-                                                                        className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-all ${isSelected ? 'bg-white/20 text-blue-100 hover:bg-white/30' : 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'}`}
+                                                                        onDoubleClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleTaskDoubleClick(tCode, taskRecords, displayName, c);
+                                                                        }}
+                                                                        className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-all ${
+                                                                            isSelected ? 'bg-white/20 text-blue-100 hover:bg-white/30' : 
+                                                                            isInspected ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' :
+                                                                            'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
+                                                                        }`}
+                                                                        title={isInspected ? `Single-click: add new inspection. Double-click: view recorded data (${taskRecords.length} rec)` : `Start inspection for ${displayName}`}
                                                                     >
-                                                                        <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500' : s === 'completed' ? 'bg-green-500' : 'bg-slate-400'}`} />
-                                                                        {ts.code}
+                                                                        <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500 animate-pulse' : isInspected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                                        {tCode}
+                                                                        {isInspected && (
+                                                                            <span className="text-[7.5px] font-black text-emerald-600 dark:text-emerald-300">({taskRecords.length})</span>
+                                                                        )}
                                                                     </span>
                                                                 );
                                                             })}
@@ -571,6 +889,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                      onSync={handleResync3D}
                                      isSyncing={isResyncing3D}
                                      compactMode={true}
+                                     isInspectionWorkspace={true}
                                      currentRecords={currentRecords}
                                      historicalRecords={historicalRecords}
                                 />
@@ -578,41 +897,70 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                 {/* BRIEF INFO OVERLAY CARD AT BOTTOM OF 3D VIEWER */}
                                 {previewComp && (
                                     <div className="absolute bottom-2 left-2 right-2 z-30 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl p-3 shadow-2xl animate-in slide-in-from-bottom-2 duration-200 flex flex-col gap-2 text-white">
-                                        {/* Header Row: QID, Type badge & Close button */}
-                                        <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
-                                            <div className="flex items-center gap-2 overflow-hidden pr-2">
-                                                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
-                                                <span className="text-xs font-black uppercase tracking-wider text-white truncate">
-                                                    {previewComp.q_id || previewComp.id_no || previewComp.name || `Component #${previewComp.id}`}
-                                                </span>
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-slate-800 text-slate-300 border border-slate-700 shrink-0">
-                                                    {previewComp.type || previewComp.code || "MEMBER"}
-                                                </span>
-                                            </div>
-                                            <button
-                                                onClick={() => setPreviewComp(null)}
-                                                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-                                                title="Dismiss brief info"
-                                            >
-                                                <X className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
+                                        {/* Header Row: QID, Component Type badge (Name & Code), Associated Component Badge & Close button */}
+                                        {(() => {
+                                            const typeObj = getComponentTypeAndCode(previewComp);
+                                            const assocInfo = getAssociatedComponentInfo(previewComp, allComponents);
+                                            const qidDisplay = getCorrectQID(previewComp, allComponents);
 
-                                        {/* Details Grid: Leg, Nodes, WT, Group & Face */}
+                                            return (
+                                                <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+                                                    <div className="flex items-center gap-2 overflow-hidden pr-2">
+                                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                                                        <span className="text-xs font-black uppercase tracking-wider text-white truncate" title={`QID: ${qidDisplay}`}>
+                                                            {qidDisplay}
+                                                        </span>
+                                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-blue-950 text-blue-300 border border-blue-800 shrink-0">
+                                                            TYPE: {typeObj.fullLabel}
+                                                        </span>
+                                                        {assocInfo && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-cyan-950/90 text-cyan-300 border border-cyan-700/60 shrink-0 flex items-center gap-1">
+                                                                <Link2 className="w-2.5 h-2.5 text-cyan-400" />
+                                                                Assoc: {assocInfo.qid} ({assocInfo.code})
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <button
+                                                            onClick={() => {
+                                                                handleComponentSelection(previewComp);
+                                                                setCompSpecDialogOpen(true);
+                                                            }}
+                                                            className="p-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 transition-all flex items-center gap-1 text-[9px] font-black uppercase tracking-wider cursor-pointer shadow-sm"
+                                                            title="Open Full Component Specification Details Dialog"
+                                                        >
+                                                            <Info className="w-3.5 h-3.5 text-blue-400" />
+                                                            <span className="hidden sm:inline">Spec Details</span>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setPreviewComp(null)}
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                                            title="Dismiss brief info"
+                                                        >
+                                                            <X className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Details Grid: Leg (Start ➔ End), Nodes, WT, Group/Face, Component Type & Code, Associated Component */}
                                          {(() => {
                                              const details = getComponentNodeLegDetails(previewComp);
                                              const assignedTasks = previewComp.taskStatuses || previewComp.tasks || [];
                                              const wtReading = getWallThickness(previewComp);
                                              const groupName = getStructureGroup(previewComp);
                                              const faceVal = getFaceValue(previewComp);
+                                             const typeObj = getComponentTypeAndCode(previewComp);
+                                             const assocInfo = getAssociatedComponentInfo(previewComp, allComponents);
 
                                              return (
                                                  <div className="flex flex-col gap-2">
-                                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
+                                                     <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5 text-[10px]">
                                                          <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
                                                              <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Leg / Location</span>
-                                                             <span className="font-bold text-slate-200 truncate">
-                                                                 {details.legNo ? `Leg ${details.legNo}` : "Unassigned"}
+                                                             <span className="font-bold text-slate-200 truncate" title={details.legDisplay}>
+                                                                 {details.legDisplay}
                                                              </span>
                                                          </div>
 
@@ -636,6 +984,31 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                              <span className="text-[8px] font-black uppercase text-purple-400 tracking-wider">Group / Face</span>
                                                              <span className="font-bold text-purple-200 truncate">
                                                                  {groupName} {faceVal !== "N/A" ? `• ${faceVal}` : ""}
+                                                             </span>
+                                                         </div>
+
+                                                         <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col">
+                                                             <span className="text-[8px] font-black uppercase text-amber-400 tracking-wider">Comp Type & Code</span>
+                                                             <span className="font-bold text-amber-200 truncate text-[9px]">
+                                                                 {typeObj.fullLabel}
+                                                             </span>
+                                                         </div>
+
+                                                         <div className="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 flex flex-col col-span-2 sm:col-span-1">
+                                                             <span className="text-[8px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-1">
+                                                                 <Link2 className="w-2.5 h-2.5" /> Associated Comp
+                                                             </span>
+                                                             <span className="font-bold text-blue-200 truncate flex items-center gap-1 text-[9px]">
+                                                                 {assocInfo ? (
+                                                                     <>
+                                                                         <span>{assocInfo.qid}</span>
+                                                                         <span className="text-[7.5px] font-black px-1 py-0.1 bg-blue-950 text-blue-300 rounded border border-blue-800 uppercase">
+                                                                             {assocInfo.code}
+                                                                         </span>
+                                                                     </>
+                                                                 ) : (
+                                                                     <span className="text-slate-500 font-normal italic">None</span>
+                                                                 )}
                                                              </span>
                                                          </div>
                                                      </div>
