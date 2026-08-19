@@ -50,13 +50,35 @@ interface SummaryData {
     completedPct: number;
     incompletePct: number;
     pendingPct: number;
+    rov?: {
+      total: number;
+      completed: number;
+      incomplete: number;
+      pending: number;
+      completionPct: number;
+    };
+    dive?: {
+      total: number;
+      completed: number;
+      incomplete: number;
+      pending: number;
+      completionPct: number;
+    };
   };
   records: {
     total: number;
     completed: number;
+    completedRov?: number;
+    completedDive?: number;
     incomplete: number;
+    incompleteRov?: number;
+    incompleteDive?: number;
     anomaly: number;
+    anomalyRov?: number;
+    anomalyDive?: number;
     finding: number;
+    findingRov?: number;
+    findingDive?: number;
     rovCount: number;
     diveCount: number;
     hasBothModes: boolean;
@@ -107,6 +129,8 @@ interface SummaryData {
   };
   anomalies: {
     total: number;
+    rov?: number;
+    dive?: number;
     rectified: number;
     open: number;
     byPriority: Record<string, number>;
@@ -115,6 +139,8 @@ interface SummaryData {
   };
   findings: {
     total: number;
+    rov?: number;
+    dive?: number;
     rectified: number;
     open: number;
     byPriority: Record<string, number>;
@@ -163,6 +189,8 @@ function StatCard({
   sub,
   color = "blue",
   pulse = false,
+  rovCount,
+  diveCount,
 }: {
   icon: React.ElementType<any>;
   label: string;
@@ -170,6 +198,8 @@ function StatCard({
   sub?: string;
   color?: "blue" | "green" | "amber" | "red" | "teal" | "violet" | "cyan" | "slate";
   pulse?: boolean;
+  rovCount?: number;
+  diveCount?: number;
 }) {
   const colors: Record<string, string> = {
     blue: "bg-blue-500/10 border-blue-500/20 text-blue-400",
@@ -192,19 +222,37 @@ function StatCard({
     slate: "text-slate-400",
   };
 
+  const hasModeBreakdown = rovCount !== undefined || diveCount !== undefined;
+
   return (
     <div
-      className={`rounded-xl border p-4 flex flex-col gap-2 ${colors[color] ?? ""} transition-all hover:scale-[1.02]`}
+      className={`rounded-xl border p-4 flex flex-col justify-between gap-2.5 ${colors[color] ?? ""} transition-all hover:scale-[1.02]`}
     >
-      <div className="flex items-center gap-2">
-        {(React.createElement as any)(Icon, {
-          className: ["w-4 h-4", iconColors[color] ?? "", pulse ? "animate-pulse" : ""].join(" "),
-        })}
-        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
-          {label}
-        </span>
+      <div>
+        <div className="flex items-center gap-2">
+          {(React.createElement as any)(Icon, {
+            className: ["w-4 h-4", iconColors[color] ?? "", pulse ? "animate-pulse" : ""].join(" "),
+          })}
+          <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+            {label}
+          </span>
+        </div>
+        <div className="text-3xl font-black text-white leading-none mt-2">{value}</div>
       </div>
-      <div className="text-3xl font-black text-white leading-none">{value}</div>
+
+      {hasModeBreakdown && (
+        <div className="flex items-center gap-1.5 pt-2 border-t border-slate-700/40 text-[9px] font-bold">
+          <span className="text-blue-300 bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+            ROV: {rovCount ?? 0}
+          </span>
+          <span className="text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+            DIV: {diveCount ?? 0}
+          </span>
+        </div>
+      )}
+
       {sub && <div className="text-[10px] font-medium text-slate-400 leading-tight">{sub}</div>}
     </div>
   );
@@ -1493,8 +1541,8 @@ export function InspectionSummaryPanel({
               <SectionHeader icon={Target} title="Scope of Work Completion" color="blue" />
 
             {/* Big completion ring + stats */}
-            <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl p-5">
-              <div className="flex items-center gap-6 mb-5">
+            <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-6">
                 {/* Ring */}
                 <div className="relative flex-shrink-0">
                   <RingChart pct={sow?.completionPct ?? 0} color="#3b82f6" size={100} />
@@ -1533,8 +1581,71 @@ export function InspectionSummaryPanel({
                 </div>
               </div>
 
+              {/* SOW Breakdown by Mode (ROV vs Diving) */}
+              {(sow?.rov || sow?.dive) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-700/40">
+                  {/* ROV SOW Card */}
+                  <div className="bg-blue-950/20 border border-blue-500/30 rounded-xl p-3 flex flex-col justify-between">
+                    <div className="flex items-center justify-between pb-2 border-b border-blue-500/20">
+                      <div className="flex items-center gap-1.5">
+                        <Ship className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-300">
+                          ROV Scope ({sow.rov?.total ?? 0})
+                        </span>
+                      </div>
+                      <Badge className="bg-blue-500/20 text-blue-300 border-none text-[9px] font-black">
+                        {sow.rov?.completionPct ?? 0}% Done
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 pt-2 text-center text-xs font-bold">
+                      <div className="bg-slate-900/60 p-1.5 rounded">
+                        <span className="text-[8px] uppercase text-emerald-400 block font-bold">Done</span>
+                        <span className="text-emerald-300 font-mono font-black">{sow.rov?.completed ?? 0}</span>
+                      </div>
+                      <div className="bg-slate-900/60 p-1.5 rounded">
+                        <span className="text-[8px] uppercase text-amber-400 block font-bold">Incompl</span>
+                        <span className="text-amber-300 font-mono font-black">{sow.rov?.incomplete ?? 0}</span>
+                      </div>
+                      <div className="bg-slate-900/60 p-1.5 rounded">
+                        <span className="text-[8px] uppercase text-slate-400 block font-bold">Pending</span>
+                        <span className="text-slate-300 font-mono font-black">{sow.rov?.pending ?? 0}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Diving SOW Card */}
+                  <div className="bg-cyan-950/20 border border-cyan-500/30 rounded-xl p-3 flex flex-col justify-between">
+                    <div className="flex items-center justify-between pb-2 border-b border-cyan-500/20">
+                      <div className="flex items-center gap-1.5">
+                        <Anchor className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                          Diving Scope ({sow.dive?.total ?? 0})
+                        </span>
+                      </div>
+                      <Badge className="bg-cyan-500/20 text-cyan-300 border-none text-[9px] font-black">
+                        {sow.dive?.completionPct ?? 0}% Done
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 pt-2 text-center text-xs font-bold">
+                      <div className="bg-slate-900/60 p-1.5 rounded">
+                        <span className="text-[8px] uppercase text-emerald-400 block font-bold">Done</span>
+                        <span className="text-emerald-300 font-mono font-black">{sow.dive?.completed ?? 0}</span>
+                      </div>
+                      <div className="bg-slate-900/60 p-1.5 rounded">
+                        <span className="text-[8px] uppercase text-amber-400 block font-bold">Incompl</span>
+                        <span className="text-amber-300 font-mono font-black">{sow.dive?.incomplete ?? 0}</span>
+                      </div>
+                      <div className="bg-slate-900/60 p-1.5 rounded">
+                        <span className="text-[8px] uppercase text-slate-400 block font-bold">Pending</span>
+                        <span className="text-slate-300 font-mono font-black">{sow.dive?.pending ?? 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Multi-segment bar */}
-              <div className="space-y-2">
+              <div className="space-y-2 pt-2">
                 <div className="flex justify-between items-center">
                   <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
                     Overall Progress
@@ -1547,7 +1658,7 @@ export function InspectionSummaryPanel({
               </div>
 
               {/* Overall percentage breakdown */}
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 pt-2">
                 <div className="bg-slate-900/60 rounded-xl p-3 flex items-center gap-3">
                   <CheckCircle2 className="w-5 h-5 text-blue-400 flex-shrink-0" />
                   <div>
@@ -1643,11 +1754,6 @@ export function InspectionSummaryPanel({
                               </thead>
                               <tbody className="divide-y divide-slate-800/40">
                                 {visibleQidEntries.map(([qid, qidData]) => {
-                                  const totalCompl = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.completed, 0);
-                                  const totalIncompl = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.incomplete, 0);
-                                  const totalAnom = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.anomaly, 0);
-                                  const totalPend = Object.values(qidData.inspectionTypes).reduce((a, b) => a + b.pending, 0);
-
                                   return (
                                     <tr key={qid} className="hover:bg-slate-900/50 transition-colors">
                                       {/* QID */}
@@ -1754,12 +1860,16 @@ export function InspectionSummaryPanel({
                 label="Complete Records"
                 value={records?.completed ?? 0}
                 color="green"
+                rovCount={records?.completedRov}
+                diveCount={records?.completedDive}
               />
               <StatCard
                 icon={Clock}
                 label="Incomplete"
                 value={records?.incomplete ?? 0}
                 color="amber"
+                rovCount={records?.incompleteRov}
+                diveCount={records?.incompleteDive}
               />
               <StatCard
                 icon={AlertTriangle}
@@ -1767,31 +1877,40 @@ export function InspectionSummaryPanel({
                 value={records?.anomaly ?? 0}
                 color="red"
                 pulse={!!(records?.anomaly && records.anomaly > 0)}
+                rovCount={records?.anomalyRov}
+                diveCount={records?.anomalyDive}
               />
-              <StatCard icon={Info} label="Findings" value={records?.finding ?? 0} color="violet" />
+              <StatCard
+                icon={Info}
+                label="Findings"
+                value={records?.finding ?? 0}
+                color="violet"
+                rovCount={records?.findingRov}
+                diveCount={records?.findingDive}
+              />
             </div>
 
             {/* Mode breakdown */}
             {hasBoth ? (
               <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-4 grid grid-cols-3 gap-3">
-                <div className="text-center">
-                  <div className="text-[9px] font-black uppercase text-blue-400 tracking-wider mb-1">
-                    ROV
+                <div className="text-center bg-blue-950/20 border border-blue-500/20 rounded-xl p-3">
+                  <div className="text-[10px] font-black uppercase text-blue-400 tracking-wider mb-1 flex items-center justify-center gap-1.5">
+                    <Ship className="w-3.5 h-3.5" /> ROV Mode
                   </div>
                   <div className="text-2xl font-black text-blue-300">{records?.rovCount ?? 0}</div>
-                  <div className="text-[9px] text-slate-500">
+                  <div className="text-[10px] text-slate-400 mt-0.5">
                     {records?.uniqueRovJobs ?? 0} Deployments
                   </div>
                 </div>
                 <div className="flex items-center justify-center">
-                  <div className="text-[9px] font-black text-slate-500 tracking-wider">+</div>
+                  <div className="text-sm font-black text-slate-500 tracking-wider">+</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-[9px] font-black uppercase text-cyan-400 tracking-wider mb-1">
-                    DIVING
+                <div className="text-center bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-3">
+                  <div className="text-[10px] font-black uppercase text-cyan-400 tracking-wider mb-1 flex items-center justify-center gap-1.5">
+                    <Anchor className="w-3.5 h-3.5" /> Diving Mode
                   </div>
                   <div className="text-2xl font-black text-cyan-300">{records?.diveCount ?? 0}</div>
-                  <div className="text-[9px] text-slate-500">
+                  <div className="text-[10px] text-slate-400 mt-0.5">
                     {records?.uniqueDiveJobs ?? 0} Dives
                   </div>
                 </div>
@@ -1802,7 +1921,7 @@ export function InspectionSummaryPanel({
                 <span className="text-[10px] font-bold text-slate-400">
                   {(records?.rovCount ?? 0) > 0 ? "ROV Only" : "Diving Only"} ·{" "}
                   {(records?.rovCount ?? 0) > 0 ? records?.uniqueRovJobs : records?.uniqueDiveJobs}{" "}
-                  Deployments
+                  Deployments ({records?.rovCount ?? records?.diveCount ?? 0} records)
                 </span>
               </div>
             )}
@@ -2514,6 +2633,24 @@ export function InspectionSummaryPanel({
                   </div>
                 </div>
 
+                {/* Mode Breakdown for Anomalies */}
+                {(anomalies.rov !== undefined || anomalies.dive !== undefined) && (
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-700/40">
+                    <div className="bg-blue-950/20 border border-blue-500/20 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-blue-400 flex items-center gap-1.5">
+                        <Ship className="w-3 h-3" /> ROV Anomalies
+                      </span>
+                      <span className="text-sm font-black text-blue-300 font-mono">{anomalies.rov ?? 0}</span>
+                    </div>
+                    <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-cyan-400 flex items-center gap-1.5">
+                        <Anchor className="w-3 h-3" /> Diving Anomalies
+                      </span>
+                      <span className="text-sm font-black text-cyan-300 font-mono">{anomalies.dive ?? 0}</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* By Priority (P1, P2, P3 etc.) */}
                 {anomalies.byPriority && Object.keys(anomalies.byPriority).length > 0 && (
                   <div className="border-t border-slate-700/40 pt-3">
@@ -2670,6 +2807,24 @@ export function InspectionSummaryPanel({
                     </div>
                   </div>
                 </div>
+
+                {/* Mode Breakdown for Findings */}
+                {(findings.rov !== undefined || findings.dive !== undefined) && (
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-700/40">
+                    <div className="bg-blue-950/20 border border-blue-500/20 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-blue-400 flex items-center gap-1.5">
+                        <Ship className="w-3 h-3" /> ROV Findings
+                      </span>
+                      <span className="text-sm font-black text-blue-300 font-mono">{findings.rov ?? 0}</span>
+                    </div>
+                    <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-cyan-400 flex items-center gap-1.5">
+                        <Anchor className="w-3 h-3" /> Diving Findings
+                      </span>
+                      <span className="text-sm font-black text-cyan-300 font-mono">{findings.dive ?? 0}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* By Priority */}
                 {findings.byPriority && Object.keys(findings.byPriority).length > 0 && (

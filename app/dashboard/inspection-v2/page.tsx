@@ -48,6 +48,7 @@ export default function InspectionLanding() {
     const [sowReports, setSOWReports] = useState<SOWReport[]>([]);
     const [rawSowItems, setRawSowItems] = useState<any[]>([]);
     const [anomalyCount, setAnomalyCount] = useState<number>(0);
+    const [anomalyStats, setAnomalyStats] = useState<{ total: number; rov: number; dive: number }>({ total: 0, rov: 0, dive: 0 });
 
     const [selectedJobPack, setSelectedJobPack] = useState<string>("");
     const [selectedStructure, setSelectedStructure] = useState<string>("");
@@ -248,21 +249,40 @@ export default function InspectionLanding() {
             fetchAnomalyCount(structId, jpId, sowReportNo);
         } else {
             setAnomalyCount(0);
+            setAnomalyStats({ total: 0, rov: 0, dive: 0 });
         }
 
         async function fetchAnomalyCount(structId: string, jpId: string, sowReportNo: string) {
             try {
                 // Parse prefix e.g., platform-1 or pipeline-1
                 const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
-                const { count, error } = await supabase
+                const { data, error } = await supabase
                     .from("insp_anomalies")
-                    .select("anomaly_id, insp_records!inner(structure_id, jobpack_id, sow_report_no)", { count: "exact", head: true })
+                    .select("anomaly_id, insp_records!inner(structure_id, jobpack_id, sow_report_no, rov_job_id, dive_job_id, inspection_type_code)")
                     .eq("insp_records.structure_id", parseInt(rawId))
                     .eq("insp_records.jobpack_id", parseInt(jpId))
                     .eq("insp_records.sow_report_no", sowReportNo);
 
-                if (!error && count !== null) {
-                    setAnomalyCount(count);
+                if (!error && data) {
+                    let rov = 0;
+                    let dive = 0;
+                    data.forEach((item: any) => {
+                        const r = item.insp_records;
+                        const code = String(r?.inspection_type_code || "").trim().toUpperCase();
+                        if (r?.rov_job_id) {
+                            rov++;
+                        } else if (r?.dive_job_id) {
+                            dive++;
+                        } else if (code.startsWith("R")) {
+                            rov++;
+                        } else if (code.startsWith("D")) {
+                            dive++;
+                        } else {
+                            rov++;
+                        }
+                    });
+                    setAnomalyCount(data.length);
+                    setAnomalyStats({ total: data.length, rov, dive });
                 }
             } catch (err) {
                 console.error("Error fetching anomaly count:", err);
@@ -281,14 +301,36 @@ export default function InspectionLanding() {
         const total = currentReportItems.length;
         if (total === 0) return null;
 
+        const isRovItem = (item: any) => {
+            const code = String(item.inspection_code || "").trim().toUpperCase();
+            const desc = String(item.scope_description || item.inspection_name || item.notes || "").toUpperCase();
+            if (code.startsWith("R") && code !== "RISER" && code !== "RB") return true;
+            if (desc.includes("ROV")) return true;
+            return false;
+        };
+
+        const isDivingItem = (item: any) => {
+            const code = String(item.inspection_code || "").trim().toUpperCase();
+            const desc = String(item.scope_description || item.inspection_name || item.notes || "").toUpperCase();
+            if (code.startsWith("D") && code !== "DEBRIS" && code !== "DK") return true;
+            if (["BSINS", "CVINS", "ACFMC", "MPINS", "SZONE", "SANI", "ANMAIN"].includes(code)) return true;
+            if (desc.includes("DIVING") || desc.includes("DIVE")) return true;
+            return false;
+        };
+
         const completedItems = currentReportItems.filter((item) => item.status === "completed");
         const incompleteItems = currentReportItems.filter((item) => item.status === "incomplete");
         const pendingItems = currentReportItems.filter(
             (item) => item.status === "pending" || !item.status
         );
 
-        let rovDone = 0;
-        let diveDone = 0;
+        let rovCompleted = 0;
+        let diveCompleted = 0;
+        let rovIncomplete = 0;
+        let diveIncomplete = 0;
+        let rovPending = 0;
+        let divePending = 0;
+
         let fieldJoints = 0;
         let anodes = 0;
         let spans = 0;
@@ -299,12 +341,19 @@ export default function InspectionLanding() {
         currentReportItems.forEach((item) => {
             const code = String(item.inspection_code || "").toUpperCase();
             const desc = String(item.scope_description || item.notes || "").toUpperCase();
-            const status = String(item.status || "").toLowerCase();
+            const status = String(item.status || "").toLowerCase().trim();
 
-            if (status === "completed" || code.startsWith("R") || code.startsWith("D")) {
-                if (code.startsWith("R")) rovDone++;
-                else if (code.startsWith("D")) diveDone++;
-                else rovDone++;
+            const isDive = isDivingItem(item);
+
+            if (status === "completed") {
+                if (isDive) diveCompleted++;
+                else rovCompleted++;
+            } else if (status === "incomplete" || status === "skipped") {
+                if (isDive) diveIncomplete++;
+                else rovIncomplete++;
+            } else {
+                if (isDive) divePending++;
+                else rovPending++;
             }
 
             if (code.includes("FJ") || desc.includes("JOINT") || desc.includes("FIELD JOINT")) fieldJoints++;
@@ -359,10 +408,16 @@ export default function InspectionLanding() {
         return {
             total,
             completed: completedItems.length,
+            completedRov: rovCompleted,
+            completedDive: diveCompleted,
+            rovDone: rovCompleted,
+            diveDone: diveCompleted,
             incomplete: incompleteItems.length,
+            incompleteRov: rovIncomplete,
+            incompleteDive: diveIncomplete,
             pending: pendingItems.length,
-            rovDone,
-            diveDone,
+            pendingRov: rovPending,
+            pendingDive: divePending,
             fieldJoints,
             anodes,
             spans,
@@ -1114,6 +1169,7 @@ export default function InspectionLanding() {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3 pt-1">
+                                    {/* 1. Completed Card */}
                                     <div className="p-3 rounded-xl bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <CheckCircle2 className="h-3 w-3 text-emerald-500" />
@@ -1139,17 +1195,18 @@ export default function InspectionLanding() {
                                                 <>
                                                     <div className="flex justify-between">
                                                         <span>ROV:</span>
-                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.rovDone}</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.completedRov}</span>
                                                     </div>
                                                     <div className="flex justify-between">
                                                         <span>Diving:</span>
-                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.diveDone}</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.completedDive}</span>
                                                     </div>
                                                 </>
                                             )}
                                         </div>
                                     </div>
 
+                                    {/* 2. Anomalies Card */}
                                     <div className="p-3 rounded-xl bg-slate-55/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <AlertTriangle className="h-3 w-3 text-amber-500" />
@@ -1160,9 +1217,24 @@ export default function InspectionLanding() {
                                                 {anomalyCount}
                                             </span>
                                         </div>
-                                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium mt-1">
-                                            {selectedStructureData?.type === "pipeline" ? "Pipeline findings & defects" : "Reported findings"}
-                                        </span>
+                                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[9px] font-semibold text-slate-500 flex flex-col gap-0.5">
+                                            {sowReportStats.isPipeline ? (
+                                                <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium">
+                                                    Pipeline findings & defects
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <div className="flex justify-between">
+                                                        <span>ROV:</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{anomalyStats.rov}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Diving:</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{anomalyStats.dive}</span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {selectedStructureData?.type === "pipeline" && (
@@ -1200,6 +1272,7 @@ export default function InspectionLanding() {
                                         </div>
                                     )}
 
+                                    {/* 3. Incomplete Card */}
                                     <div className="p-3 rounded-xl bg-slate-55/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <AlertCircle className="h-3 w-3 text-rose-500" />
@@ -1210,11 +1283,27 @@ export default function InspectionLanding() {
                                                 {sowReportStats.isPipeline ? `${sowReportStats.skippedLength.toFixed(3)} km` : sowReportStats.incomplete}
                                             </span>
                                         </div>
-                                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium mt-1">
-                                            {sowReportStats.isPipeline ? "Skipped / Incomplete part" : "Needs attention"}
-                                        </span>
+                                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[9px] font-semibold text-slate-500 flex flex-col gap-0.5">
+                                            {sowReportStats.isPipeline ? (
+                                                <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium">
+                                                    Skipped / Incomplete part
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <div className="flex justify-between">
+                                                        <span>ROV:</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.incompleteRov}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Diving:</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.incompleteDive}</span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
 
+                                    {/* 4. Pending Card */}
                                     <div className="p-3 rounded-xl bg-slate-55/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-850 shadow-sm flex flex-col justify-between">
                                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <HelpCircle className="h-3 w-3 text-slate-400" />
@@ -1225,9 +1314,24 @@ export default function InspectionLanding() {
                                                 {sowReportStats.isPipeline ? `${sowReportStats.pendingLength.toFixed(3)} km` : sowReportStats.pending}
                                             </span>
                                         </div>
-                                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium mt-1">
-                                            {sowReportStats.isPipeline ? "Pending length to inspect" : "Not yet started"}
-                                        </span>
+                                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[9px] font-semibold text-slate-500 flex flex-col gap-0.5">
+                                            {sowReportStats.isPipeline ? (
+                                                <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium">
+                                                    Pending length to inspect
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <div className="flex justify-between">
+                                                        <span>ROV:</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.pendingRov}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Diving:</span>
+                                                        <span className="text-slate-700 dark:text-slate-300 font-bold">{sowReportStats.pendingDive}</span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

@@ -209,6 +209,23 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         const sowItems = allSowItems;
 
+        const isRovSowItem = (item: any) => {
+            const code = String(item.inspection_code || "").trim().toUpperCase();
+            const name = String(item.inspection_name || "").toUpperCase();
+            if (code.startsWith("R") && code !== "RISER" && code !== "RB") return true;
+            if (name.includes("ROV")) return true;
+            return false;
+        };
+
+        const isDivingSowItem = (item: any) => {
+            const code = String(item.inspection_code || "").trim().toUpperCase();
+            const name = String(item.inspection_name || "").toUpperCase();
+            if (code.startsWith("D") && code !== "DEBRIS" && code !== "DK") return true;
+            if (["BSINS", "CVINS", "ACFMC", "MPINS", "SZONE", "SANI", "ANMAIN"].includes(code)) return true;
+            if (name.includes("DIVING") || name.includes("DIVE")) return true;
+            return false;
+        };
+
         const totalSow = sowItems.length;
         const completedSow = sowItems.filter((i: any) => i.status === "completed").length;
         const incompleteSow = sowItems.filter((i: any) => i.status === "incomplete").length;
@@ -218,6 +235,22 @@ export const GET = withTenant(async (request, { companyId }) => {
         const completedPct = totalSow > 0 ? Math.round((completedSow / totalSow) * 100) : 0;
         const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
         const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
+
+        // ROV SOW Breakdown
+        const rovSowItems = sowItems.filter(isRovSowItem);
+        const rovSowTotal = rovSowItems.length;
+        const rovSowCompleted = rovSowItems.filter((i: any) => i.status === "completed").length;
+        const rovSowIncomplete = rovSowItems.filter((i: any) => i.status === "incomplete").length;
+        const rovSowPending = rovSowItems.filter((i: any) => i.status === "pending").length;
+        const rovSowCompletionPct = rovSowTotal > 0 ? Math.round(((rovSowCompleted + rovSowIncomplete) / rovSowTotal) * 100) : 0;
+
+        // Diving SOW Breakdown
+        const diveSowItems = sowItems.filter(isDivingSowItem);
+        const diveSowTotal = diveSowItems.length;
+        const diveSowCompleted = diveSowItems.filter((i: any) => i.status === "completed").length;
+        const diveSowIncomplete = diveSowItems.filter((i: any) => i.status === "incomplete").length;
+        const diveSowPending = diveSowItems.filter((i: any) => i.status === "pending").length;
+        const diveSowCompletionPct = diveSowTotal > 0 ? Math.round(((diveSowCompleted + diveSowIncomplete) / diveSowTotal) * 100) : 0;
 
         const outstandingTasks: any[] = [];
         sowItemsToProcess.forEach((item: any) => {
@@ -1430,18 +1463,60 @@ export const GET = withTenant(async (request, { companyId }) => {
                 };
             });
 
+        // Mode breakdown for record statuses
+        const completedRov = rawRecords.filter((r: any) => r.status === 'COMPLETED' && !!r.rov_job_id).length;
+        const completedDive = rawRecords.filter((r: any) => r.status === 'COMPLETED' && !!r.dive_job_id && !r.rov_job_id).length;
+        const incompleteRov = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && !!r.rov_job_id).length;
+        const incompleteDive = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && !!r.dive_job_id && !r.rov_job_id).length;
+
+        const anomalyRov = anomalyRecords.filter((r: any) => !!r.rov_job_id).length;
+        const anomalyDive = anomalyRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
+        const findingRov = findingRecords.filter((r: any) => !!r.rov_job_id).length;
+        const findingDive = findingRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
+
         return NextResponse.json({
             data: {
                 componentSummary,
                 inspectionTypeSummary,
                 sow_summary: sowSummary,
-                sow: { total: totalSow, completed: completedSow, incomplete: incompleteSow, pending: pendingSow, completionPct, completedPct, incompletePct, pendingPct },
+                sow: {
+                    total: totalSow,
+                    completed: completedSow,
+                    incomplete: incompleteSow,
+                    pending: pendingSow,
+                    completionPct,
+                    completedPct,
+                    incompletePct,
+                    pendingPct,
+                    rov: {
+                        total: rovSowTotal,
+                        completed: rovSowCompleted,
+                        incomplete: rovSowIncomplete,
+                        pending: rovSowPending,
+                        completionPct: rovSowCompletionPct,
+                    },
+                    dive: {
+                        total: diveSowTotal,
+                        completed: diveSowCompleted,
+                        incomplete: diveSowIncomplete,
+                        pending: diveSowPending,
+                        completionPct: diveSowCompletionPct,
+                    },
+                },
                 records: { 
                     total: rawRecords.length, 
-                    completed: rawRecords.filter((r: any) => r.status === 'COMPLETED').length, 
-                    incomplete: rawRecords.filter((r: any) => r.status === 'INCOMPLETE').length, 
+                    completed: rawRecords.filter((r: any) => r.status === 'COMPLETED').length,
+                    completedRov,
+                    completedDive,
+                    incomplete: rawRecords.filter((r: any) => r.status === 'INCOMPLETE').length,
+                    incompleteRov,
+                    incompleteDive,
                     anomaly: anomalyValidTotal, 
+                    anomalyRov,
+                    anomalyDive,
                     finding: findingValidTotal, 
+                    findingRov,
+                    findingDive,
                     rovCount: rovRecords.length, 
                     diveCount: diveRecords.length, 
                     hasBothModes, 
@@ -1488,6 +1563,8 @@ export const GET = withTenant(async (request, { companyId }) => {
                 },
                 anomalies: {
                     total: anomalyValidTotal,
+                    rov: anomalyRov,
+                    dive: anomalyDive,
                     rectified: rectifiedCount,
                     open: anomalyValidTotal - rectifiedCount,
                     byPriority: anomalyByPriority,
