@@ -25,7 +25,7 @@ export class CaissonSupport extends THREE.Group {
 
     let baseColorHex = options.color ?? '#facc15'; // Safety Yellow
     if (options.isSelected) {
-      baseColorHex = '#2563eb';
+      baseColorHex = '#f97316';
     } else if (options.isHovered) {
       baseColorHex = '#fef08a';
     }
@@ -34,12 +34,12 @@ export class CaissonSupport extends THREE.Group {
       color: new THREE.Color(baseColorHex),
       metalness: 0.5,
       roughness: 0.3,
-      emissive: options.isSelected ? new THREE.Color('#1d4ed8') : options.isHovered ? new THREE.Color('#eab308') : new THREE.Color('#000000'),
+      emissive: options.isSelected ? new THREE.Color('#ea580c') : options.isHovered ? new THREE.Color('#eab308') : new THREE.Color('#000000'),
       emissiveIntensity: options.isSelected ? 0.7 : options.isHovered ? 0.3 : 0,
     });
 
     const darkMaterial = new THREE.MeshStandardMaterial({
-      color: options.isSelected ? new THREE.Color('#1d4ed8') : new THREE.Color('#1e293b'),
+      color: options.isSelected ? new THREE.Color('#ea580c') : new THREE.Color('#1e293b'),
       metalness: 0.8,
       roughness: 0.2,
     });

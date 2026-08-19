@@ -141,7 +141,7 @@ const ComponentMesh = ({
     const isInspectionHighlighted = isInspectionMode && isStatusChecked;
 
     const displayColor = isSelected
-        ? "#2563eb"
+        ? "#f97316"
         : hovered
             ? "#60a5fa"
             : isInspectionHighlighted
@@ -479,7 +479,7 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]"
+                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
                                 : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
@@ -624,7 +624,7 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]"
+                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
                                 : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
@@ -694,7 +694,7 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]"
+                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
                                 : "bg-slate-900/90 text-slate-100 border-slate-700"
                                 }`}
                         >
@@ -756,7 +756,7 @@ const ComponentMesh = ({
 
                 {showLabel && (
                     <Html distanceFactor={15} position={[0, 0.5, 0]} center zIndexRange={[10, 0]}>
-                        <div className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(37,99,235,0.4)]" : "bg-slate-900/90 text-slate-100 border-slate-700"}`}>
+                        <div className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]" : "bg-slate-900/90 text-slate-100 border-slate-700"}`}>
                             {labelText}
                         </div>
                     </Html>
@@ -893,7 +893,7 @@ const ComponentMesh = ({
                     >
                         <div
                             className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
-                                ? "bg-blue-600 text-white border-blue-400 scale-110 opacity-100"
+                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100"
                                 : "bg-white/90 text-blue-900 border-blue-200"
                                 }`}
                         >
@@ -1095,17 +1095,20 @@ function ResetViewHandler({ trigger }: { trigger: number }) {
 
 function CameraRig({
     selectedPos,
+    selectedCompId,
     isActivated,
     isDirectClickRef,
     focusTargetPos,
 }: {
     selectedPos: THREE.Vector3 | null;
+    selectedCompId?: number;
     isActivated: boolean;
     isDirectClickRef: React.MutableRefObject<boolean>;
     focusTargetPos: THREE.Vector3 | null;
 }) {
     const { camera, controls } = useThree();
     const animRef = useRef<number | null>(null);
+    const prevSelectedCompIdRef = useRef<number | undefined>(undefined);
 
     useEffect(() => {
         if (!isActivated || !controls) return;
@@ -1152,8 +1155,16 @@ function CameraRig({
         if (!isActivated) return;
         if (isDirectClickRef.current) {
             isDirectClickRef.current = false;
+            prevSelectedCompIdRef.current = selectedCompId;
             return;
         }
+        
+        // If the same component is still selected (data just refreshed), don't move camera
+        if (prevSelectedCompIdRef.current === selectedCompId) {
+            return;
+        }
+        prevSelectedCompIdRef.current = selectedCompId;
+
         if (selectedPos && controls && !focusTargetPos) {
             const target = new THREE.Vector3(selectedPos.x, selectedPos.y, selectedPos.z);
             const offset = new THREE.Vector3(15, 10, 15);
@@ -1165,7 +1176,7 @@ function CameraRig({
                 (controls as any).update();
             }
         }
-    }, [selectedPos, camera, controls, isActivated, isDirectClickRef, focusTargetPos]);
+    }, [selectedPos, selectedCompId, camera, controls, isActivated, isDirectClickRef, focusTargetPos]);
 
     return null;
 }
@@ -1329,7 +1340,7 @@ function InstancedComponentViewer({
             const isConductor = code === "CD" || code === "CS" || code.includes("COND") || code === "CO";
 
             const defaultColor = isSelected
-                ? "#2563eb"
+                ? "#f97316"
                 : isPile
                     ? "#475569"
                     : isRiser
@@ -1405,7 +1416,7 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#2563eb" : "#cbd5e1");
+            color.set(isSelected ? "#f97316" : "#cbd5e1");
             mesh.setColorAt(i, color);
         });
 
@@ -1433,7 +1444,7 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#2563eb" : "#94a3b8");
+            color.set(isSelected ? "#f97316" : "#94a3b8");
             mesh.setColorAt(i, color);
         });
 
@@ -1457,7 +1468,7 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#2563eb" : "#d97706");
+            color.set(isSelected ? "#f97316" : "#d97706");
             mesh.setColorAt(i, color);
         });
 
@@ -1529,8 +1540,8 @@ function InstancedComponentViewer({
                 memberRadius = th * 0.5;
             }
             
-            // Standoff distance (default 0.15 if perfectly on centerline)
-            let standoffDist = closestDist > 0.001 ? Math.max(closestDist - memberRadius, 0.1) : 0.15;
+            // Standoff distance (uniform 0.15m standoff from member surface across all anodes)
+            let standoffDist = 0.15;
             
             // Parse clock position
             const md = item.comp?.metadata || item.comp || item;
@@ -1554,70 +1565,72 @@ function InstancedComponentViewer({
             let refVec = new THREE.Vector3();
             const isVertical = Math.abs(cylDir.y) > 0.8;
             
-            refVec.set(closestPoint.x - platformCenter.x, 0, closestPoint.z - platformCenter.z).normalize();
-            if (refVec.lengthSq() < 0.001) refVec.set(1, 0, 0);
-
-            // For horizontal members, rotate around Global Y-axis (compass style)
-            const rotAxis = isVertical ? cylDir : new THREE.Vector3(0, 1, 0);
             if (isVertical) {
-                refVec.sub(cylDir.clone().multiplyScalar(refVec.dot(cylDir))).normalize();
+                refVec.set(closestPoint.x - platformCenter.x, 0, closestPoint.z - platformCenter.z).normalize();
+                if (refVec.lengthSq() < 0.001) refVec.set(1, 0, 0);
+            } else {
+                refVec.set(0, 1, 0);
             }
 
-            // Rotate refVec by clock angle clockwise around vertical/member axis
+            // Ensure refVec is strictly perpendicular to cylDir for all members
+            refVec.sub(cylDir.clone().multiplyScalar(refVec.dot(cylDir))).normalize();
+            if (refVec.lengthSq() < 0.001) {
+                refVec.set(1, 0, 0).sub(cylDir.clone().multiplyScalar(cylDir.x)).normalize();
+            }
+
+            // Always rotate around member axis (cylDir)
+            const rotAxis = cylDir;
+
+            // Rotate refVec by clock angle clockwise around member axis
             const clockAngle = (clockPos / 12) * Math.PI * 2;
             let normal = refVec.clone().applyAxisAngle(rotAxis, -clockAngle).normalize();
             
-            // Dynamically reposition the anode based on the computed normal and standoff
+            // Dynamically reposition the anode based on the computed normal and uniform standoff
             pos = closestPoint.clone().add(normal.clone().multiplyScalar(memberRadius + standoffDist));
             closestDist = memberRadius + standoffDist;
             
-            // Anode properties
+            // Anode stub properties (balanced, thicker stubs for visual uniformity)
             const anodeLength = 0.8;
             const anodeWidth = 0.15;
             const anodeHeight = 0.15;
-            const stubRadius = 0.05;
-            const bendRadius = 0.08;
-            const penetration = 0.05;
+            const stubRadius = 0.035; // increased for better balance
+            const axialLen = 0.12;    // longer axial extension
+            const penetration = 0.04;
             
             // Render Main Anode Body (Box)
-            // BoxGeometry args are [width(x), height(y), depth(z)]. We want length along Y axis to match cylDir.
             const boxQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cylDir);
             boxMatrix.compose(pos, boxQuat, new THREE.Vector3(anodeWidth, anodeLength, anodeHeight));
             boxMesh.setMatrixAt(i, boxMatrix);
             
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            const defaultColor = isSelected ? "#2563eb" : "#e2e8f0"; // light grey/zinc
-            color.set(defaultColor);
+            const bodyColor = isSelected ? "#f97316" : "#e2e8f0"; // light grey/zinc for anode body
+            const stubColor = isSelected ? "#f97316" : "#94a3b8"; // steel grey for steel core stubs
+            
+            color.set(bodyColor);
             boxMesh.setColorAt(i, color);
             
             // End points of the anode body
             const end1 = pos.clone().add(cylDir.clone().multiplyScalar(anodeLength / 2));
             const end2 = pos.clone().sub(cylDir.clone().multiplyScalar(anodeLength / 2));
             
-            // Axial stubs extend total 0.1m outward (including bend radius)
-            const totalAxialLen = 0.1;
-            const axialLen = Math.max(totalAxialLen - bendRadius, 0.01);
+            // Axial corner positions extending outward along cylDir
+            const corner1 = end1.clone().add(cylDir.clone().multiplyScalar(axialLen));
+            const corner2 = end2.clone().sub(cylDir.clone().multiplyScalar(axialLen));
             
+            // Axial stub center positions
             const axialStub1Pos = end1.clone().add(cylDir.clone().multiplyScalar(axialLen / 2));
             const axialStub2Pos = end2.clone().sub(cylDir.clone().multiplyScalar(axialLen / 2));
             
-            // The outer tips are the theoretical sharp corners
-            const outerTip1 = end1.clone().add(cylDir.clone().multiplyScalar(totalAxialLen));
-            const outerTip2 = end2.clone().add(cylDir.clone().multiplyScalar(-totalAxialLen));
+            // Radial standoff distance to main member surface
+            const radialLen = standoffDist + penetration;
             
-            // Standoff is distance from pos to surface of the member
-            const standoff = pos.distanceTo(closestPoint) - memberRadius;
-            const totalRadialLen = Math.max(standoff, bendRadius + 0.01) + penetration;
-            const radialLen = Math.max(totalRadialLen - bendRadius, 0.01);
+            // Radial stub center positions (extending from corners inwards towards member centerline along -normal)
+            const radialStub1Pos = corner1.clone().sub(normal.clone().multiplyScalar(radialLen / 2));
+            const radialStub2Pos = corner2.clone().sub(normal.clone().multiplyScalar(radialLen / 2));
             
-            // The radial stub starts after the bendRadius drop-off from the outer tip
-            const radialStart1 = outerTip1.clone().sub(normal.clone().multiplyScalar(bendRadius));
-            const radialStart2 = outerTip2.clone().sub(normal.clone().multiplyScalar(bendRadius));
-            
-            const radialStub1Pos = radialStart1.clone().sub(normal.clone().multiplyScalar(radialLen / 2));
-            const radialStub2Pos = radialStart2.clone().sub(normal.clone().multiplyScalar(radialLen / 2));
-            
+            color.set(stubColor);
+
             // Axial Stub 1 & 2 (parallel to cylinder direction)
             const stubQuatAxial = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cylDir);
             stubMatrix.compose(axialStub1Pos, stubQuatAxial, new THREE.Vector3(stubRadius, axialLen, stubRadius));
@@ -1628,8 +1641,8 @@ function InstancedComponentViewer({
             stubMesh.setMatrixAt(stubIndex++, stubMatrix);
             stubMesh.setColorAt(stubIndex - 1, color);
             
-            // Radial Stub 1 & 2 (parallel to normal vector pointing outwards, so we align Y with normal)
-            const stubQuatRadial = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+            // Radial Stub 1 & 2 (parallel to -normal pointing into main member)
+            const stubQuatRadial = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal.clone().negate());
             stubMatrix.compose(radialStub1Pos, stubQuatRadial, new THREE.Vector3(stubRadius, radialLen, stubRadius));
             stubMesh.setMatrixAt(stubIndex++, stubMatrix);
             stubMesh.setColorAt(stubIndex - 1, color);
@@ -1638,23 +1651,15 @@ function InstancedComponentViewer({
             stubMesh.setMatrixAt(stubIndex++, stubMatrix);
             stubMesh.setColorAt(stubIndex - 1, color);
             
-            // Elbow 1 & 2 (Torus geometries for smooth corners)
-            const elbow1Pos = outerTip1.clone().sub(normal.clone().multiplyScalar(bendRadius)).sub(cylDir.clone().multiplyScalar(bendRadius));
-            const elbow2Pos = outerTip2.clone().sub(normal.clone().multiplyScalar(bendRadius)).add(cylDir.clone().multiplyScalar(bendRadius));
+            // Elbow Joint Spheres 1 & 2 (Sphere nodes at corner bend)
+            const elbowQuat = new THREE.Quaternion();
+            const elbowScale = new THREE.Vector3(stubRadius * 1.3, stubRadius * 1.3, stubRadius * 1.3);
             
-            const makeElbowMatrix = (p: THREE.Vector3, xAxis: THREE.Vector3, yAxis: THREE.Vector3) => {
-                const zAxis = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
-                const m = new THREE.Matrix4();
-                m.makeBasis(xAxis, yAxis, zAxis);
-                m.setPosition(p);
-                return m;
-            };
-            
-            const elbow1Matrix = makeElbowMatrix(elbow1Pos, normal, cylDir);
+            const elbow1Matrix = new THREE.Matrix4().compose(corner1, elbowQuat, elbowScale);
             elbowMesh.setMatrixAt(elbowIndex++, elbow1Matrix);
             elbowMesh.setColorAt(elbowIndex - 1, color);
             
-            const elbow2Matrix = makeElbowMatrix(elbow2Pos, normal, cylDir.clone().negate());
+            const elbow2Matrix = new THREE.Matrix4().compose(corner2, elbowQuat, elbowScale);
             elbowMesh.setMatrixAt(elbowIndex++, elbow2Matrix);
             elbowMesh.setColorAt(elbowIndex - 1, color);
             
@@ -1777,7 +1782,7 @@ function InstancedComponentViewer({
                     ref={anodeElbowRef}
                     args={[undefined, undefined, anodes.length * 2]}
                 >
-                    <torusGeometry args={[0.08, 0.05, 8, 12, Math.PI / 2]} />
+                    <sphereGeometry args={[1, 16, 16]} />
                     <meshStandardMaterial metalness={0.5} roughness={0.5} />
                 </instancedMesh>
             )}
@@ -2257,6 +2262,10 @@ export function Structural3DViewer({
 
         // 1. Explicit Component Specifications FACE Field Check (if specified)
         if (compFace) {
+            if (compFace === "N/A" || compFace === "NA" || compFace === "NONE") {
+                return fUpper === compFace;
+            }
+
             const compFacesArray = compFace.split(',').map((f: string) => f.trim()).filter(Boolean);
             
             const isMatch = compFacesArray.some((cf: string) => {
@@ -2331,7 +2340,7 @@ export function Structural3DViewer({
         }
 
         // 6. Foundation member label check (e.g. leg-A1, face-ROW A-0)
-        const labelUpper = (layout.label || layout.id || "").toUpperCase();
+        const labelUpper = String(layout.label || layout.id || "").toUpperCase();
         if (labelUpper.startsWith("LEG-")) {
             const legName = labelUpper.replace("LEG-", "");
             if (rowMatch && legName.startsWith(rowMatch[1].toUpperCase())) return true;
@@ -2572,7 +2581,7 @@ export function Structural3DViewer({
                         {/* Action Trigger Card */}
                         <button
                             onClick={handleActivate}
-                            className="group relative flex flex-col items-center justify-center p-6 bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] border border-blue-400/30 rounded-2xl shadow-lg hover:shadow-blue-500/20 transition-all duration-300 w-full max-w-sm overflow-hidden"
+                            className="group relative flex flex-col items-center justify-center p-6 bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] border border-orange-400/30 rounded-2xl shadow-lg hover:shadow-blue-500/20 transition-all duration-300 w-full max-w-sm overflow-hidden"
                         >
                             <div className="absolute inset-0 bg-radial-gradient from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
@@ -2613,14 +2622,16 @@ export function Structural3DViewer({
                 <color attach="background" args={["#ffffff"]} />
                 <fog attach="fog" args={["#ffffff", 40, 220]} />
                 <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
-                <CameraRig selectedPos={selectedPos} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} />
+                <CameraRig selectedPos={selectedPos} selectedCompId={selectedCompId} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
 
-                <ambientLight intensity={0.35} />
-                <hemisphereLight intensity={0.3} color="#bae6fd" groundColor="#0f172a" />
+                <ambientLight intensity={0.65} />
+                <hemisphereLight intensity={0.5} color="#bae6fd" groundColor="#0f172a" />
+                
+                {/* Primary Key Light */}
                 <directionalLight
                     position={[40, 80, 40]}
-                    intensity={1.2}
+                    intensity={1.0}
                     castShadow
                     shadow-mapSize={[2048, 2048]}
                     shadow-bias={-0.0001}
@@ -2632,6 +2643,13 @@ export function Structural3DViewer({
                     shadow-camera-top={60}
                     shadow-camera-bottom={-60}
                 />
+                
+                {/* Secondary Back-fill Light */}
+                <directionalLight position={[-40, 80, -40]} intensity={0.6} />
+                
+                {/* Tertiary Under-fill Light */}
+                <directionalLight position={[0, -80, 0]} intensity={0.3} />
+
                 <spotLight position={[-40, 60, -40]} angle={0.3} penumbra={1} intensity={0.8} />
 
 
@@ -2784,11 +2802,11 @@ export function Structural3DViewer({
                             setFocusTargetPos(null);
                             setFocusedCompName(null);
                         }}
-                        className="px-4 py-2 rounded-full bg-blue-600/95 hover:bg-blue-700 text-white text-xs font-bold shadow-2xl border border-blue-400 backdrop-blur transition-all flex items-center gap-2.5 cursor-pointer"
+                        className="px-4 py-2 rounded-full bg-orange-500/95 hover:bg-blue-700 text-white text-xs font-bold shadow-2xl border border-orange-400 backdrop-blur transition-all flex items-center gap-2.5 cursor-pointer"
                     >
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                         <span>Camera Focused: <strong className="text-blue-100">{focusedCompName || "Component"}</strong></span>
-                        <span className="text-[10px] bg-blue-950/80 text-blue-200 px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold border border-blue-400/30">Click to Unlock</span>
+                        <span className="text-[10px] bg-blue-950/80 text-blue-200 px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold border border-orange-400/30">Click to Unlock</span>
                     </button>
                 </div>
             )}
@@ -2936,7 +2954,7 @@ export function Structural3DViewer({
                         className={cn(
                             "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
                             selectedElevations.length > 0
-                                ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
+                                ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
                                 : "border-slate-200 text-slate-500"
                         )}
                     >
@@ -3012,7 +3030,7 @@ export function Structural3DViewer({
                         className={cn(
                             "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
                             selectedFaces.length > 0
-                                ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
+                                ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
                                 : "border-slate-200 text-slate-500"
                         )}
                     >
@@ -3084,7 +3102,7 @@ export function Structural3DViewer({
                         className={cn(
                             "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
                             openDropdown === "display"
-                                ? "border-blue-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
+                                ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
                                 : "border-slate-200 text-slate-500"
                         )}
                     >
