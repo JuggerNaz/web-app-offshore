@@ -288,7 +288,12 @@ const ComponentMesh = ({
             const compAnyObj = component as any;
             const assocIdVal = md?.associated_comp_id || compAnyObj?.associated_component_id || compAnyObj?.associated_id;
             if (assocIdVal) {
-                targetRiser = allLayouts.find((l: any) => l.component?.id === assocIdVal || l.id === assocIdVal);
+                const assocIdStr = String(assocIdVal).trim();
+                targetRiser = allLayouts.find((l: any) => {
+                    const lCompId = String(l.component?.id || l.component?.comp_id || "").trim();
+                    const lId = String(l.id || l.comp_id || "").trim();
+                    return (lCompId && lCompId === assocIdStr) || (lId && lId === assocIdStr);
+                });
             }
             if (!targetRiser && clampInfo) {
                 targetRiser = allLayouts.find((l: any) => {

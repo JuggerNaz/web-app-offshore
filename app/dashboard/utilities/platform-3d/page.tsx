@@ -140,13 +140,13 @@ export default function Platform3DPage() {
     };
     const components: Component[] = useMemo(() => {
         const all = componentsData?.data || [];
-        const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+        const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RB", "SD", "FA"];
         return all
             .filter((c: any) => {
                 if (c.is_deleted) return false;
                 const code = (c.code || "").trim().toUpperCase();
                 const qIdUpper = (c.q_id || "").toUpperCase();
-                const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
+                const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM");
                 if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) {
                     return false;
                 }

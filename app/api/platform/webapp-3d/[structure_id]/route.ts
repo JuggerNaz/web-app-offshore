@@ -279,19 +279,28 @@ export const GET = withAuth(
       }
       // Fallback: Generate 3D component coordinates dynamically on the fly
       componentsToEnrich = (mathResult.componentLayouts || []).map((m: any) => {
-        const start = m.start || [0, 0, 0];
-        const end = m.end || [0, 0, 0];
-        const posX = (start[0] + end[0]) / 2;
-        const posY = (start[1] + end[1]) / 2;
-        const posZ = (start[2] + end[2]) / 2;
+        const c = m.component || m;
+        const sX = m.start?.x ?? m.start?.[0] ?? 0;
+        const sY = m.start?.y ?? m.start?.[1] ?? 0;
+        const sZ = m.start?.z ?? m.start?.[2] ?? 0;
+        const eX = m.end?.x ?? m.end?.[0] ?? sX;
+        const eY = m.end?.y ?? m.end?.[1] ?? sY;
+        const eZ = m.end?.z ?? m.end?.[2] ?? sZ;
+        const posX = (sX + eX) / 2;
+        const posY = (sY + eY) / 2;
+        const posZ = (sZ + eZ) / 2;
+        const compIdVal = c.id ? String(c.id) : (m.id ? String(m.id) : `${c.q_id || "COMP"}-${Math.random()}`);
         return {
-          component_id: m.id?.toString() || `${m.q_id || "COMP"}-${Math.random()}`,
-          start_x: start[0],
-          start_y: start[1],
-          start_z: start[2],
-          end_x: end[0],
-          end_y: end[1],
-          end_z: end[2],
+          component_id: compIdVal,
+          comp_id: c.id || c.comp_id || m.id,
+          q_id: c.q_id || m.q_id,
+          code: c.code || m.code,
+          start_x: sX,
+          start_y: sY,
+          start_z: sZ,
+          end_x: eX,
+          end_y: eY,
+          end_z: eZ,
           pos_x: posX,
           pos_y: posY,
           pos_z: posZ,
@@ -301,11 +310,13 @@ export const GET = withAuth(
           scale_x: m.scale?.[0] || 1,
           scale_y: m.scale?.[1] || 1,
           scale_z: m.scale?.[2] || 1,
-          shape_type: m.shape || "cylinder",
-          dimensions: { length: m.length, radius: m.thickness, offset: m.offsetDistance },
+          shape_type: m.shape || m.shape_type || c.shape_type || "cylinder",
+          dimensions: { length: m.length, radius: m.thickness || 0.3, offset: m.offsetDistance },
+          thickness: m.thickness || 0.3,
           color_hex: m.color || "#64748b",
           visibility_flag: true,
-          has_geometry_issue: false
+          has_geometry_issue: false,
+          structure_components: c
         };
       });
 
@@ -316,6 +327,9 @@ export const GET = withAuth(
             const insertData = componentsToEnrich.map((item: any) => ({
               structure_id: structureIdNum,
               component_id: item.component_id,
+              comp_id: item.comp_id ? Number(item.comp_id) : null,
+              q_id: item.q_id || null,
+              code: item.code || null,
               start_x: item.start_x,
               start_y: item.start_y,
               start_z: item.start_z,
@@ -333,6 +347,7 @@ export const GET = withAuth(
               scale_z: item.scale_z,
               shape_type: item.shape_type,
               dimensions: item.dimensions,
+              thickness: item.thickness,
               color_hex: item.color_hex,
               material_type: "steel",
               opacity: 1.0,
