@@ -99,6 +99,7 @@ interface InspectionHeaderProps {
     onResetLayout?: () => void;
     closedPanels?: Array<{ id: string; name: string }>;
     onRestorePanel?: (id: string) => void;
+    onRestoreAllPanels?: () => void;
     onUpdateSowReportNo?: (newReportNo: string) => void;
     onOpenGeodetic?: () => void;
 }
@@ -113,8 +114,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     setInspectionLocation,
     router,
     searchParams,
-    allInspectionTypes,
-    currentRecords,
+    allInspectionTypes = [],
+    currentRecords = [],
     generateInspectionReportByType,
     generateSeabedReport,
     generateMGIReport,
@@ -127,19 +128,18 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateJTISIReport,
     generateITISIReport,
     generateAnodeReport,
-    generateDivingAnodeReport,
-    generateDivingACFMCReport,
-    generateDivingPLCOReport,
-    generateROVRWDIReport,
     generateCPReport,
     generateRSWNIReport,
     generateRGVIReport,
     generateGVINSReport,
-    generateRCASNReport,
     generateSZONEReport,
     generateCPCLBReport,
     generateUTCLBReport,
-
+    generateDivingAnodeReport,
+    generateDivingACFMCReport,
+    generateDivingPLCOReport,
+    generateROVRWDIReport,
+    generateRCASNReport,
     generateRCASNSketchReport,
     generateRCONDReport,
     generateRCONDSketchReport,
@@ -158,6 +158,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     onResetLayout,
     closedPanels,
     onRestorePanel,
+    onRestoreAllPanels,
     onUpdateSowReportNo,
     onOpenGeodetic
 }) => {
@@ -472,23 +473,46 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 <Button 
                                     variant="ghost" 
                                     size="sm" 
-                                    className="text-slate-300 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 hover:bg-slate-700/50 rounded"
+                                    className={`text-slate-300 hover:text-white h-7 px-2 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 hover:bg-slate-700/50 rounded transition-all ${
+                                        closedPanels && closedPanels.length > 0 ? "bg-amber-500/10 text-amber-300 border border-amber-500/30" : ""
+                                    }`}
                                     title="Dock station window settings and layout control"
                                 >
-                                    <LayoutGrid className="w-3.5 h-3.5 text-blue-400" />
+                                    <LayoutGrid className={`w-3.5 h-3.5 ${closedPanels && closedPanels.length > 0 ? "text-amber-400" : "text-blue-400"}`} />
                                     <span>Dock Settings</span>
+                                    {closedPanels && closedPanels.length > 0 && (
+                                        <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/30 text-amber-200 border border-amber-500/50 rounded-full leading-none">
+                                            {closedPanels.length}
+                                        </span>
+                                    )}
                                     <ChevronDown className="w-3 h-3 text-slate-400" />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-64 bg-slate-900 border-slate-700 text-slate-200 shadow-xl">
                                 <div className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-800 flex items-center justify-between">
                                     <span>Dock Station Controls</span>
+                                    {closedPanels && closedPanels.length > 0 ? (
+                                        <span className="text-[9px] text-amber-400 font-bold">{closedPanels.length} Closed</span>
+                                    ) : (
+                                        <span className="text-[9px] text-emerald-400 font-bold">All Open</span>
+                                    )}
                                 </div>
                                 
-                                {closedPanels && closedPanels.length > 0 && (
+                                {closedPanels && closedPanels.length > 0 ? (
                                     <>
-                                        <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-cyan-400">
-                                            Reopen Closed Windows ({closedPanels.length})
+                                        <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-cyan-400 flex items-center justify-between">
+                                            <span>Reopen Closed Windows ({closedPanels.length})</span>
+                                            {closedPanels.length > 1 && onRestoreAllPanels && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onRestoreAllPanels();
+                                                    }}
+                                                    className="text-[9px] text-blue-400 hover:text-blue-300 font-bold normal-case tracking-normal hover:underline"
+                                                >
+                                                    Restore All
+                                                </button>
+                                            )}
                                         </div>
                                         {closedPanels.map((panel) => (
                                             <DropdownMenuItem
@@ -497,16 +521,21 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                                 className="text-xs font-medium hover:bg-slate-800 focus:bg-slate-800 cursor-pointer text-slate-200 flex items-center justify-between py-1.5 px-3"
                                             >
                                                 <span className="flex items-center gap-2">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                                                     {panel.name}
                                                 </span>
-                                                <span className="text-[9px] font-bold uppercase text-blue-400 bg-blue-950/60 border border-blue-800 px-1.5 py-0.5 rounded">
+                                                <span className="text-[9px] font-bold uppercase text-cyan-400 bg-cyan-950/60 border border-cyan-800 px-1.5 py-0.5 rounded hover:bg-cyan-900">
                                                     Open
                                                 </span>
                                             </DropdownMenuItem>
                                         ))}
                                         <div className="my-1 border-t border-slate-800" />
                                     </>
+                                ) : (
+                                    <div className="px-3 py-2 text-[10px] text-slate-400 flex items-center gap-2 border-b border-slate-800/60">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                        <span>All workspace panels are open</span>
+                                    </div>
                                 )}
 
                                 <DropdownMenuItem 

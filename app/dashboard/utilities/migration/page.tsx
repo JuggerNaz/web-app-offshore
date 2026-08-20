@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +57,7 @@ export default function MigrationDashboard() {
   const [oracleCompany, setOracleCompany] = useState<any | null>(null);
   const [oraclePreference, setOraclePreference] = useState<any | null>(null);
   const [dbComponents, setDbComponents] = useState<Record<string, string>>({});
+  const [compTypeMeta, setCompTypeMeta] = useState<Record<string, { plat?: number; pipe?: number; sbm?: number; tank?: number }>>({});
 
   const [activeTab, setActiveTab] = useState("connection");
   const [mappingStructureType, setMappingStructureType] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
@@ -144,9 +145,25 @@ export default function MigrationDashboard() {
 
   // Mapping State
   const [selectedMappingEntity, setSelectedMappingEntity] = useState<string>("STRUCTURE");
-  const activeMappingKey = selectedMappingEntity === "STRUCTURE" 
-    ? `STRUCTURE_${mappingStructureType}` 
-    : selectedMappingEntity;
+
+  const getActiveMappingKey = (entity: string, structType: "PLATFORM" | "PIPELINE") => {
+    if (entity === "STRUCTURE") {
+      return `STRUCTURE_${structType}`;
+    }
+    if (entity.toUpperCase() === "AN") {
+      return `AN_${structType}`;
+    }
+    return entity;
+  };
+
+  const activeMappingKey = getActiveMappingKey(selectedMappingEntity, mappingStructureType);
+
+  const handleSwitchStructureType = (type: "PLATFORM" | "PIPELINE") => {
+    setMappingStructureType(type);
+    if (type === "PIPELINE" && ["STR_ELV", "STR_LEVEL", "STR_FACES"].includes(selectedMappingEntity)) {
+      setSelectedMappingEntity("STRUCTURE");
+    }
+  };
 
   const [mappings, setMappings] = useState<Record<string, { oracleCol: string; pgCol: string }[]>>({
     "STRUCTURE_PLATFORM": [
@@ -355,13 +372,22 @@ export default function MigrationDashboard() {
     async function loadDbComponents() {
       try {
         const supabase = createClient();
-        const { data, error } = await supabase.from('components').select('code, name');
+        const { data, error } = await supabase.from('components').select('code, name, descrip, plat, pipe, sbm, tank');
         if (!error && data) {
           const mapping: Record<string, string> = {};
+          const metaMap: Record<string, any> = {};
           data.forEach((c: any) => {
-            mapping[c.code.toUpperCase()] = c.name;
+            const codeUpper = String(c.code).toUpperCase().trim();
+            mapping[codeUpper] = c.descrip || c.name || codeUpper;
+            metaMap[codeUpper] = {
+              plat: c.plat !== null && c.plat !== undefined ? Number(c.plat) : 1,
+              pipe: c.pipe !== null && c.pipe !== undefined ? Number(c.pipe) : 0,
+              sbm: c.sbm !== null && c.sbm !== undefined ? Number(c.sbm) : 0,
+              tank: c.tank !== null && c.tank !== undefined ? Number(c.tank) : 0
+            };
           });
           setDbComponents(mapping);
+          setCompTypeMeta(metaMap);
         }
       } catch (err) {
         console.error("Failed to load components from database:", err);
@@ -376,6 +402,25 @@ export default function MigrationDashboard() {
       localStorage.setItem("migration_db_config", JSON.stringify(config));
     }
   }, [config]);
+
+  // Filter components list dynamically based on structure type (pipe = 1 vs plat = 1)
+  const filteredSummary = useMemo(() => {
+    return summary.filter((s: any) => {
+      const codeUpper = String(s.CODE || "").toUpperCase().trim();
+      const meta = compTypeMeta[codeUpper];
+      if (mappingStructureType === "PIPELINE") {
+        if (meta && meta.pipe !== undefined) {
+          return meta.pipe === 1;
+        }
+        return s.PIPE === undefined || Number(s.PIPE) === 1;
+      } else {
+        if (meta && meta.plat !== undefined) {
+          return meta.plat === 1;
+        }
+        return s.PLAT === undefined || Number(s.PLAT) === 1;
+      }
+    });
+  }, [summary, compTypeMeta, mappingStructureType]);
 
   // Copy mappings to clipboard and state
   const handleSelectInspectionMapping = async (type: "ROV" | "DIVING", code: string, tableName: string) => {
@@ -743,6 +788,7 @@ export default function MigrationDashboard() {
         body: JSON.stringify({
           config,
           structureId: selectedStructureId,
+          structureType: mappingStructureType,
           mappings: payloadMappings,
           selectedInspNo: componentsOnly ? undefined : (selectedJobpack?.INSPNO || selectedJobpack?.inspno),
           legacyAttachmentPath: config.legacyAttachmentPath,
@@ -921,7 +967,13 @@ export default function MigrationDashboard() {
 
     // Auto-detect structure type (PIPELINE vs PLATFORM)
     const selectedStrObj = structures.find(s => String(s.STR_ID || s.str_id) === String(strId));
-    const isPipe = selectedStrObj?.PTYPE === "PIPE" || selectedStrObj?.PTYPE === "PIPELINE" || selectedStrObj?.ptype === "PIPE";
+    const isPipe = selectedStrObj?.PTYPE === "PIPE" || 
+      selectedStrObj?.PTYPE === "PIPELINE" || 
+      selectedStrObj?.ptype === "PIPE" ||
+      selectedStrObj?.STR_TYPE === "PIPE" ||
+      selectedStrObj?.STR_TYPE === "PIPELINE" ||
+      selectedStrObj?.str_type === "PIPE" ||
+      selectedStrObj?.type === "pipeline";
     if (isPipe) {
       setMappingStructureType("PIPELINE");
     } else {
@@ -1607,14 +1659,33 @@ export default function MigrationDashboard() {
                         {/* Breakdown List grouped by Section */}
                         <div className="space-y-4">
                           {(() => {
+                            const selectedStructure = structures.find((s: any) => String(s.STR_ID || s.str_id || s.id) === String(selectedStructureId));
+                            const isPipeStruct = 
+                              mappingStructureType === "PIPELINE" ||
+                              selectedStructure?.PTYPE === "PIPE" ||
+                              selectedStructure?.PTYPE === "PIPELINE" ||
+                              selectedStructure?.STR_TYPE === "PIPE" ||
+                              selectedStructure?.STR_TYPE === "PIPELINE" ||
+                              selectedStructure?.type === "PIPELINE" ||
+                              selectedStructure?.type === "pipeline";
+                            const structType = isPipeStruct ? "PIPELINE" : "PLATFORM";
+
                             const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO", "U_MGI_PROFILE"];
-                            const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
+                            const platformSystemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
+                            const pipelineSystemKeys = ["STRUCTURE", "U_PIPEGEO", "PIPE_GEO", "U_ASSOC"];
+                            const systemKeys = isPipeStruct ? pipelineSystemKeys : platformSystemKeys;
+
                             const jobInspectionKeys = [
                               "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
                               "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT", "EXSUM"
                             ];
 
-                            const reportEntries = Object.entries(migrationReport);
+                            const rawReportEntries = Object.entries(migrationReport);
+                            // For pipeline, exclude platform-only tables (STR_ELV, STR_LEVEL, STR_FACES) from the report
+                            const reportEntries = isPipeStruct
+                              ? rawReportEntries.filter(([k]) => !["STR_ELV", "STR_LEVEL", "STR_FACES"].includes(k.toUpperCase()))
+                              : rawReportEntries;
+
                             const isJobInspKey = (key: string) =>
                               jobInspectionKeys.includes(key) || key.startsWith("INSP_ROV_") || key.startsWith("INSP_DIVING_");
                             const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
@@ -1626,8 +1697,8 @@ export default function MigrationDashboard() {
 
                             const sections = [
                               { title: "1. Reference Libraries", items: libItems },
-                              { title: "2. Structural Framework & Levels", items: systemItems },
-                              { title: "3. Offshore Assets & Components", items: componentItems },
+                              { title: isPipeStruct ? "2. Pipeline Structure & Geodetics" : "2. Structural Framework & Levels", items: systemItems },
+                              { title: isPipeStruct ? "3. Pipeline Assets & Components" : "3. Offshore Assets & Components", items: componentItems },
                               { title: "4. Relational SOW, Jobs & Logs", items: jobInspItems }
                             ].filter(s => s.items.length > 0);
 
@@ -1641,7 +1712,7 @@ export default function MigrationDashboard() {
                                     <span className="w-14 text-right">Oracle</span>
                                     <span className="w-14 text-right">Postgres</span>
                                     <span className="w-24 text-right">Accuracy</span>
-<span className="w-16 text-right">Status</span>
+                                    <span className="w-16 text-right">Status</span>
                                   </div>
                                 </div>
                                 <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-60 overflow-y-auto">
@@ -1650,8 +1721,6 @@ export default function MigrationDashboard() {
                                     const rejectedRecords = item.oracleRows - item.migratedRows;
                                     const itemPercent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
                                     
-                                    const selectedStructure = structures.find((s: any) => String(s.STR_ID) === selectedStructureId);
-                                    const structType = selectedStructure?.PTYPE === "PIPE" ? "PIPELINE" : "PLATFORM";
                                     const mapNames = getTableMappingNames(key, structType);
                                     
                                     return (
@@ -2041,9 +2110,9 @@ export default function MigrationDashboard() {
 
                           {/* 3. Mapped Component List Preflight */}
                           {(() => {
-                            const mappedRows = summary.filter((r: any) => !!mappings[r.CODE]);
-                            const totalOracleMappedCount = mappedRows.reduce((sum, r) => sum + Number(r.ROW_COUNT), 0);
-                            const totalPgMappedCount = mappedRows.reduce((sum, r) => sum + Number(r.PG_ROW_COUNT || 0), 0);
+                            const mappedRows = filteredSummary.filter((r: any) => !!mappings[r.CODE]);
+                            const totalOracleMappedCount = mappedRows.reduce((sum: number, r: any) => sum + Number(r.ROW_COUNT), 0);
+                            const totalPgMappedCount = mappedRows.reduce((sum: number, r: any) => sum + Number(r.PG_ROW_COUNT || 0), 0);
                             return (
                               <Card className="border-indigo-100 dark:border-indigo-900/40 shadow-sm bg-indigo-50/5 dark:bg-slate-950/20 col-span-1 overflow-hidden">
                                 <CardHeader className="bg-indigo-50/20 dark:bg-indigo-950/10 border-b border-indigo-100/50 dark:border-indigo-900/20 py-3 flex flex-row items-center justify-between">
@@ -2076,7 +2145,7 @@ export default function MigrationDashboard() {
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
-                                        {mappedRows.map((row: any, idx) => {
+                                        {mappedRows.map((row: any, idx: number) => {
                                           const isSynced = row.ROW_COUNT === row.PG_ROW_COUNT;
                                           return (
                                             <tr key={idx} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
@@ -2182,8 +2251,8 @@ export default function MigrationDashboard() {
 
                           {/* Unmapped Component List Preflight */}
                           {(() => {
-                            const unmappedRows = summary.filter((r: any) => !mappings[r.CODE]);
-                            const totalUnmappedCount = unmappedRows.reduce((sum, r) => sum + Number(r.ROW_COUNT), 0);
+                            const unmappedRows = filteredSummary.filter((r: any) => !mappings[r.CODE]);
+                            const totalUnmappedCount = unmappedRows.reduce((sum: number, r: any) => sum + Number(r.ROW_COUNT), 0);
                             return (
                               <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50/5 col-span-1 xl:col-span-2 overflow-hidden">
                                 <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 py-3 flex flex-row items-center justify-between">
@@ -2210,7 +2279,7 @@ export default function MigrationDashboard() {
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
-                                        {unmappedRows.map((row: any, idx) => (
+                                        {unmappedRows.map((row: any, idx: number) => (
                                           <tr key={idx} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
                                             <td className="px-4 py-2.5 flex items-center gap-2">
                                               <span className="text-[10px] font-black border px-2 py-0.5 rounded-md uppercase tracking-wider bg-slate-50 dark:bg-slate-900/40 text-slate-550 dark:text-slate-400 border-slate-200 dark:border-slate-800 shrink-0">
@@ -2488,13 +2557,13 @@ export default function MigrationDashboard() {
                   </div>
                   <div className="flex bg-slate-200/50 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700">
                     <button
-                      onClick={() => setMappingStructureType("PLATFORM")}
+                      onClick={() => handleSwitchStructureType("PLATFORM")}
                       className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-md transition-all ${mappingStructureType === "PLATFORM" ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-700 dark:text-indigo-400" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"}`}
                     >
                       Platform View
                     </button>
                     <button
-                      onClick={() => setMappingStructureType("PIPELINE")}
+                      onClick={() => handleSwitchStructureType("PIPELINE")}
                       className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-md transition-all ${mappingStructureType === "PIPELINE" ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-700 dark:text-indigo-400" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"}`}
                     >
                       Pipeline View
@@ -2540,36 +2609,43 @@ export default function MigrationDashboard() {
                           </span>
                           <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["COMMENT"] || []).length}</span>
                         </button>
-                        <button
-                          onClick={() => setSelectedMappingEntity("STR_ELV")}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_ELV" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
-                        >
-                          <span className="flex flex-col items-start gap-0.5">
-                            <span>Str_Elv</span>
-                            <span className="text-[8px] opacity-75 font-mono lowercase">STR_ELV → str_elv</span>
-                          </span>
-                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_ELV"] || []).length}</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedMappingEntity("STR_LEVEL")}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_LEVEL" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
-                        >
-                          <span className="flex flex-col items-start gap-0.5">
-                            <span>Str_Level</span>
-                            <span className="text-[8px] opacity-75 font-mono lowercase">STR_LEVEL → str_level</span>
-                          </span>
-                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_LEVEL"] || []).length}</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedMappingEntity("STR_FACES")}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_FACES" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
-                        >
-                          <span className="flex flex-col items-start gap-0.5">
-                            <span>Str_Faces</span>
-                            <span className="text-[8px] opacity-75 font-mono lowercase">STR_FACES → str_faces</span>
-                          </span>
-                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_FACES"] || []).length}</span>
-                        </button>
+
+                        {/* Structural Child Tables: Only displayed for PLATFORM */}
+                        {mappingStructureType === "PLATFORM" && (
+                          <>
+                            <button
+                              onClick={() => setSelectedMappingEntity("STR_ELV")}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_ELV" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                            >
+                              <span className="flex flex-col items-start gap-0.5">
+                                <span>Str_Elv</span>
+                                <span className="text-[8px] opacity-75 font-mono lowercase">STR_ELV → str_elv</span>
+                              </span>
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_ELV"] || []).length}</span>
+                            </button>
+                            <button
+                              onClick={() => setSelectedMappingEntity("STR_LEVEL")}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_LEVEL" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                            >
+                              <span className="flex flex-col items-start gap-0.5">
+                                <span>Str_Level</span>
+                                <span className="text-[8px] opacity-75 font-mono lowercase">STR_LEVEL → str_level</span>
+                              </span>
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_LEVEL"] || []).length}</span>
+                            </button>
+                            <button
+                              onClick={() => setSelectedMappingEntity("STR_FACES")}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_FACES" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                            >
+                              <span className="flex flex-col items-start gap-0.5">
+                                <span>Str_Faces</span>
+                                <span className="text-[8px] opacity-75 font-mono lowercase">STR_FACES → str_faces</span>
+                              </span>
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_FACES"] || []).length}</span>
+                            </button>
+                          </>
+                        )}
+
                         <button
                           onClick={() => setSelectedMappingEntity("JOBPACK_SOW")}
                           className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "JOBPACK_SOW" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
@@ -2584,7 +2660,7 @@ export default function MigrationDashboard() {
                         <div className="pt-4 pb-1">
                           <Label className="text-[10px] font-black uppercase text-slate-400">Components</Label>
                         </div>
-                        {summary.map(s => {
+                        {filteredSummary.map((s: any) => {
                           let resolvedCompSpec = `${s.CODE}_COMP`;
                           if (s.CODE.toLowerCase() === 'an') {
                             resolvedCompSpec = mappingStructureType === "PLATFORM" ? "AN_COMP_PLAT" : "AN_COMP_PIPE";

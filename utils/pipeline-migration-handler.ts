@@ -376,13 +376,15 @@ export async function migratePipelineComponents(ctx: PipelineMigrationContext) {
     const defaultPipelineQid = `PIPE-${resolvedStructureId}`;
     const defaultPipeComp = {
       structure_id: resolvedStructureId,
+      comp_id: 999999,
       code: "PIPE",
+      id_no: "PIPE-MAIN-01",
       q_id: defaultPipelineQid,
-      name: `Pipeline Main Line (${resolvedStructureId})`,
       is_deleted: false,
       metadata: {
         unitSystem: isImperial ? "Imperial" : "Metric",
         type: "PIPELINE",
+        description: `Pipeline Main Line (${resolvedStructureId})`
       },
     };
 
@@ -408,14 +410,14 @@ export async function migratePipelineComponents(ctx: PipelineMigrationContext) {
         structure_id: resolvedStructureId,
         comp_id: oracleCompId,
         code: code,
-        id_no: idNo,
+        id_no: idNo || qid || `COMP-${oracleCompId}`,
         q_id: qid,
-        name: descrip || `${code} ${qid}`,
         is_deleted: false,
         metadata: {
           unitSystem: isImperial ? "Imperial" : "Metric",
           oracleCompId: oracleCompId,
           code: code,
+          description: descrip || `${code} ${qid}`,
         },
       };
 
@@ -523,16 +525,46 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
     report[reportKey].oracleRows = rows.length;
     logs.push(`[Pipeline Engine] Found ${rows.length} NAVIG survey records in Oracle. Processing & matching Event Menus in Metric units...`);
 
-    // Fetch default pipeline component ID for fallback
+    // Fetch default pipeline component ID for fallback, or auto-create one if none exists
     let defaultCompId = compIdMap.get(0) || compIdMap.get(999999) || null;
     if (!defaultCompId) {
-      const { data: cData } = await supabase
-        .from("structure_components")
+      const { data: cData } = await (supabase.from as any)("structure_components")
         .select("id")
         .eq("structure_id", resolvedStructureId)
         .limit(1)
         .maybeSingle();
       if (cData) defaultCompId = Number(cData.id);
+    }
+
+    if (!defaultCompId) {
+      logs.push(`[Pipeline Engine] No component found for structure ${resolvedStructureId}. Auto-creating default Pipeline component...`);
+      const defaultCompRecord = {
+        structure_id: resolvedStructureId,
+        comp_id: 999999,
+        id_no: "PIPE-MAIN-01",
+        q_id: `PIPE-${resolvedStructureId}`,
+        code: "PIPE",
+        is_deleted: false,
+        metadata: {
+          kp_start: 0,
+          kp_end: 10000,
+          description: "Default Pipeline Trunkline / Main Segment"
+        }
+      };
+
+      const { data: createdComp, error: compErr } = await (supabase.from as any)("structure_components")
+        .insert(defaultCompRecord)
+        .select("id")
+        .single();
+
+      if (createdComp) {
+        defaultCompId = Number(createdComp.id);
+        compIdMap.set(0, defaultCompId);
+        compIdMap.set(999999, defaultCompId);
+        logs.push(`[Pipeline Engine] Created default pipeline component ID: ${defaultCompId}`);
+      } else if (compErr) {
+        logs.push(`[Pipeline Engine] Error auto-creating default component: ${compErr.message}`);
+      }
     }
 
     const recordsToInsert: any[] = [];
@@ -595,6 +627,10 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       const pgTapeId = tapesCache.get(tapeKey) || null;
 
       const pgCompId = compIdMap.get(compId) || defaultCompId;
+      if (!pgCompId) {
+        logs.push(`[Pipeline Engine] Warning: Skipping row ${oracleInspId} because component_id could not be resolved.`);
+        continue;
+      }
 
       // SOW Report Number Resolution
       const exactSowKey = `${inspNo}_${compId}_NAVIG`;
@@ -642,7 +678,6 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         raw_type: rawType,
         raw_pos: rawPos,
         raw_descr: rawDescr,
-        raw_record: r,
       };
 
       if (hasAnomaly) {
@@ -660,35 +695,54 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         tape_id: pgTapeId,
         sow_report_no: sowReportNo,
         inspection_type_code: "NAVIG",
-        date: inspDate,
-        time: inspTime,
-        elevation: depthNum !== null ? `${depthNum}` : null,
-        fp_kp: kpNum,
+        inspection_date: inspDate,
+        inspection_time: inspTime,
+        elevation: depthNum,
+        fp_kp: kpNum !== null ? String(kpNum) : null,
         has_anomaly: hasAnomaly,
-        remarks: eventMatched.findings || rawDescr,
-        description: eventMatched.eventDescription || rawDescr,
+        description: eventMatched.eventDescription || rawDescr || "ROV Pipeline Navigation Event",
         inspection_data: inspectionData,
         status: "COMPLETED",
         _oracle_insp_id: oracleInspId,
       });
     }
 
-    // Batch insert into insp_records
+    // Batch insert into insp_records with sub-chunk fallback on statement timeout
     let migratedCount = 0;
-    const batchSize = 100;
+    const batchSize = 50;
 
     for (let b = 0; b < recordsToInsert.length; b += batchSize) {
       const batch = recordsToInsert.slice(b, b + batchSize);
       const insertPayload = batch.map(({ _oracle_insp_id, ...rec }) => rec);
 
-      const { data: inserted, error: insErr } = await supabase
-        .from("insp_records")
+      const { data: inserted, error: insErr } = await (supabase.from as any)("insp_records")
         .insert(insertPayload)
         .select("insp_id");
 
       if (insErr) {
-        logs.push(`[Pipeline Engine] ERROR inserting NAVIG batch ${b}: ${insErr.message}`);
-        report[reportKey].errors.push(insErr.message);
+        logs.push(`[Pipeline Engine] Notice: Batch insert at offset ${b} (${insErr.message}). Retrying in small sub-chunks...`);
+        // Retry in small sub-chunks of 15 to bypass statement timeouts
+        const subChunkSize = 15;
+        for (let sc = 0; sc < batch.length; sc += subChunkSize) {
+          const subBatch = batch.slice(sc, sc + subChunkSize);
+          const subPayload = subBatch.map(({ _oracle_insp_id, ...rec }) => rec);
+          const { data: subInserted, error: subErr } = await (supabase.from as any)("insp_records")
+            .insert(subPayload)
+            .select("insp_id");
+
+          if (subErr) {
+            logs.push(`[Pipeline Engine] ERROR inserting sub-chunk at ${b + sc}: ${subErr.message}`);
+            report[reportKey].errors.push(subErr.message);
+          } else if (subInserted) {
+            migratedCount += subInserted.length;
+            subInserted.forEach((newRec: any, idxInSub: number) => {
+              const origOracleId = subBatch[idxInSub]._oracle_insp_id;
+              if (origOracleId && newRec.insp_id) {
+                inspIdCache.set(origOracleId, Number(newRec.insp_id));
+              }
+            });
+          }
+        }
       } else if (inserted) {
         migratedCount += inserted.length;
         inserted.forEach((newRec: any, idxInBatch: number) => {
@@ -703,10 +757,22 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
     logs.push(`[Pipeline Engine] Successfully migrated ${migratedCount} ROV NAVIG inspection records!`);
     report[reportKey].status = "success";
     report[reportKey].migratedRows = migratedCount;
+    report["INSP_ROV"] = {
+      status: "success",
+      oracleRows: rows.length,
+      migratedRows: migratedCount,
+      errors: report[reportKey].errors
+    };
 
   } catch (err: any) {
     logs.push(`[Pipeline Engine] ERROR in migratePipelineNavigInspections: ${err.message}`);
     report[reportKey].errors.push(err.message);
+    report["INSP_ROV"] = {
+      status: "failed",
+      oracleRows: 0,
+      migratedRows: 0,
+      errors: [err.message]
+    };
   }
 }
 

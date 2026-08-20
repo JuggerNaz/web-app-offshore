@@ -194,7 +194,7 @@ import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { WorkspaceResources } from "./components/WorkspaceResources";
 import { useROVConnection } from "@/components/rov-connection-provider";
-import { Layout, Model, TabNode, IJsonModel } from "flexlayout-react";
+import { Layout, Model, TabNode, TabSetNode, Actions, DockLocation, IJsonModel } from "flexlayout-react";
 import "flexlayout-react/style/dark.css";
 import { DiverLogPanel } from "./_components/panels/DiverLogPanel";
 import { DiverLogPanelPipeline } from "./_components/panels/DiverLogPanelPipeline";
@@ -242,6 +242,32 @@ function V10PreviewLayout() {
   const initialMode = searchParams.get("mode") as "DIVING" | "ROV" | null;
   const hasAutoDisconnectedRef = useRef(false);
   const hasAutoEditedRef = useRef(false);
+
+  const jpParam = searchParams.get("jpName");
+  const strParam = searchParams.get("structName");
+  const sowParam = searchParams.get("sowReport");
+  const jtParam = searchParams.get("jobType");
+
+  // Header Data
+  const [headerData, setHeaderData] = useState<{
+    jobpackName: string;
+    platformName: string;
+    sowReportNo: string;
+    jobType: string;
+    structureType: "platform" | "pipeline";
+    waterDepth: number;
+    vessel: string;
+    kp?: string;
+    structureName?: string;
+  }>({
+    jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
+    platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
+    sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
+    jobType: jtParam || "",
+    structureType: "platform" as "platform" | "pipeline",
+    waterDepth: 0,
+    vessel: "N/A",
+  });
 
   // Jotai State Sync for Dialog
   const [, setGlobalUrlId] = useAtom(urlId);
@@ -398,7 +424,15 @@ function V10PreviewLayout() {
 
   // --- DOCKABLE LAYOUT STATE ---
   const [layoutModel, setLayoutModel] = useState<Model | null>(null);
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const [videoLogExpanded, setVideoLogExpanded] = useState(false);
+
+  const isPipe = Boolean(
+    isPipeline ||
+    headerData?.structureType === "pipeline" ||
+    (typeof pathname === "string" && pathname.includes("pipeline")) ||
+    searchParams.get("structure")?.toUpperCase().includes("PIPELINE")
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -420,14 +454,15 @@ function V10PreviewLayout() {
       return node;
     };
 
-    const savedLayout = localStorage.getItem("inspection-workspace-layout-v2");
+    const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
+    const savedLayout = localStorage.getItem(storageKey) || (!isPipe ? localStorage.getItem("inspection-workspace-layout-v2") : null);
     if (savedLayout && savedLayout !== "[object Object]" && savedLayout.startsWith("{")) {
       try {
         let parsed = JSON.parse(savedLayout);
-        if (typeof parsed === 'string') {
+        if (typeof parsed === "string") {
           parsed = JSON.parse(parsed);
         }
-        if (!isPipeline && parsed && parsed.layout) {
+        if (!isPipe && parsed && parsed.layout) {
           parsed.layout = stripPipelinePanelsFromLayout(parsed.layout);
           if (Array.isArray(parsed.borders)) {
             parsed.borders = parsed.borders.map(stripPipelinePanelsFromLayout).filter(Boolean);
@@ -480,7 +515,7 @@ function V10PreviewLayout() {
                 type: "tabset",
                 weight: 35,
                 children: [
-                  { type: "tab", name: "Diver Log", component: "opsLog" },
+                  { type: "tab", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log", component: "opsLog" },
                 ],
               },
               {
@@ -527,10 +562,10 @@ function V10PreviewLayout() {
                 type: "tabset",
                 weight: 30,
                 children: [
-                  { type: "tab", name: "Component List", component: "components" },
+                  { type: "tab", name: isPipe ? "Pipeline Event Menu" : "Component List", component: "components" },
                 ],
               },
-              ...(isPipeline ? [
+              ...(isPipe ? [
                 {
                   type: "tabset" as const,
                   weight: 22,
@@ -553,21 +588,27 @@ function V10PreviewLayout() {
       },
     };
     setLayoutModel(Model.fromJson(defaultModel));
-  }, []);
+  }, [isPipe, inspMethod]);
 
   const onLayoutChange = useCallback((model: Model) => {
-    localStorage.setItem("inspection-workspace-layout-v2", JSON.stringify(model.toJson()));
+    const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(model.toJson()));
+    } catch (e) {}
     setLayoutModel(model);
-  }, []);
+    setLayoutVersion((v) => v + 1);
+  }, [isPipe]);
 
   const handleResetLayout = useCallback(() => {
     if (confirm("Are you sure you want to reset the cockpit layout to default? All panel positions will be restored.")) {
+      const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
+      localStorage.removeItem(storageKey);
       localStorage.removeItem("inspection-workspace-layout-v2");
       window.location.reload();
     }
-  }, []);
+  }, [isPipe]);
 
-  // Track closed floating panels so user can reopen individually
+  // Track closed floating/docked panels so user can reopen individually from Dock Settings
   const allWorkspacePanels = useMemo(() => {
     const list = [
       { id: "opsLog", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log" },
@@ -575,69 +616,151 @@ function V10PreviewLayout() {
       { id: "videoPreview", name: "Photo / Video Grab" },
       { id: "form", name: "Inspection Form" },
       { id: "events", name: "Captured Events" },
-      { id: "components", name: "Component List" },
+      { id: "components", name: isPipe ? "Pipeline Event Menu" : "Component List" },
       { id: "history", name: "History Data" },
     ];
-    if (isPipeline) {
+    if (isPipe) {
       list.push({ id: "inspectionInfo", name: "Inspection Info" });
       list.push({ id: "quickShortcuts", name: "Quick Log" });
     }
     return list;
-  }, [inspMethod, isPipeline]);
+  }, [inspMethod, isPipe]);
 
   const closedPanels = useMemo(() => {
     if (!layoutModel) return [];
     const openComponents = new Set<string>();
-    const visitNode = (node: any) => {
-      if (node.component) {
-        openComponents.add(node.component);
-      }
-      if (node.children) {
-        node.children.forEach(visitNode);
-      }
-    };
+
+    try {
+      layoutModel.visitNodes((node) => {
+        if (node.getType() === "tab") {
+          const comp = (node as TabNode).getComponent();
+          if (comp) {
+            openComponents.add(comp);
+          }
+        }
+      });
+    } catch (e) {
+      console.error("Error visiting layout nodes", e);
+    }
+
     try {
       const json = layoutModel.toJson();
-      visitNode(json.layout);
-      if (json.borders) {
-        json.borders.forEach(visitNode);
+      const visitJsonNode = (node: any) => {
+        if (!node) return;
+        if (node.component) {
+          openComponents.add(node.component);
+        }
+        if (Array.isArray(node.children)) {
+          node.children.forEach(visitJsonNode);
+        }
+      };
+      if (json.layout) visitJsonNode(json.layout);
+      if (json.borders && Array.isArray(json.borders)) {
+        json.borders.forEach(visitJsonNode);
       }
     } catch (e) {
-      console.error("Error inspecting layout nodes", e);
+      console.error("Error inspecting layout json", e);
     }
+
     return allWorkspacePanels.filter((p) => !openComponents.has(p.id));
-  }, [layoutModel, allWorkspacePanels]);
+  }, [layoutModel, layoutVersion, allWorkspacePanels]);
 
   const handleRestorePanel = useCallback((panelId: string) => {
     if (!layoutModel) return;
     try {
-      const json = layoutModel.toJson();
       const panelInfo = allWorkspacePanels.find((p) => p.id === panelId);
       const tabName = panelInfo?.name || panelId;
-      
-      const newTab = { type: "tab", name: tabName, component: panelId };
+      const newTabJson = { type: "tab", name: tabName, component: panelId, enableClose: true };
 
-      // Find first row or tabset to insert tab into
-      const layoutObj = json.layout as any;
-      if (layoutObj && layoutObj.children && layoutObj.children.length > 0) {
-        const firstRow = layoutObj.children[0];
-        if (firstRow && firstRow.children && firstRow.children.length > 0) {
-          const firstTabset = firstRow.children[0];
-          if (firstTabset && firstTabset.children) {
-            firstTabset.children.push(newTab);
+      // Preferred sibling associations for natural docking locations
+      const leftPanels = ["opsLog", "videoLog", "videoPreview"];
+      const rightPanels = ["events", "components", "history", "inspectionInfo", "quickShortcuts"];
+      const targetSiblings = leftPanels.includes(panelId)
+        ? leftPanels.filter((id) => id !== panelId)
+        : rightPanels.includes(panelId)
+        ? rightPanels.filter((id) => id !== panelId)
+        : ["form"];
+
+      let targetTabSetId: string | null = null;
+
+      // 1. Search for a tabset containing a sibling panel
+      layoutModel.visitNodes((node) => {
+        if (!targetTabSetId && node.getType() === "tabset") {
+          const tabsetNode = node as TabSetNode;
+          const children = tabsetNode.getChildren();
+          const hasSibling = children.some((child) => {
+            if (child.getType() === "tab") {
+              const comp = (child as TabNode).getComponent();
+              return comp && targetSiblings.includes(comp);
+            }
+            return false;
+          });
+          if (hasSibling) {
+            targetTabSetId = tabsetNode.getId();
+          }
+        }
+      });
+
+      // 2. If no sibling tabset found, find active tabset or first tabset
+      if (!targetTabSetId) {
+        const activeTabset = layoutModel.getActiveTabset();
+        if (activeTabset) {
+          targetTabSetId = activeTabset.getId();
+        } else {
+          const firstTabset = layoutModel.getFirstTabSet();
+          if (firstTabset) {
+            targetTabSetId = firstTabset.getId();
           }
         }
       }
-      const updatedModel = Model.fromJson(json);
-      onLayoutChange(updatedModel);
-      toast.success(`Reopened ${tabName} window`);
+
+      // 3. If any tabset node found, add the tab directly via FlexLayout Actions
+      if (targetTabSetId) {
+        layoutModel.doAction(Actions.addNode(newTabJson, targetTabSetId, DockLocation.CENTER, -1, true));
+      } else {
+        // 4. If no tabsets exist (all were closed), add to root row
+        const rootRow = layoutModel.getRootRow();
+        if (rootRow) {
+          layoutModel.doAction(Actions.addNode(newTabJson, rootRow.getId(), DockLocation.CENTER, -1, true));
+        } else {
+          // 5. Fallback json construction
+          const json = layoutModel.toJson();
+          if (!json.layout) {
+            json.layout = { type: "row", weight: 100, children: [] };
+          }
+          if (!Array.isArray(json.layout.children)) {
+            json.layout.children = [];
+          }
+          json.layout.children.push({
+            type: "tabset",
+            weight: 50,
+            children: [newTabJson],
+          });
+          const restoredModel = Model.fromJson(json);
+          setLayoutModel(restoredModel);
+        }
+      }
+
+      const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(layoutModel.toJson()));
+      } catch (e) {}
+
+      setLayoutModel(layoutModel);
+      setLayoutVersion((v) => v + 1);
+      toast.success(`Restored ${tabName} to dock panel`);
     } catch (err) {
       console.error("Failed to restore panel", err);
-      // Fallback reset
-      localStorage.removeItem("inspection-workspace-layout-v2");
-      window.location.reload();
+      toast.error("Could not restore panel. Resetting layout may be required.");
     }
-  }, [layoutModel, allWorkspacePanels, onLayoutChange]);
+  }, [layoutModel, allWorkspacePanels, isPipe]);
+
+  const handleRestoreAllPanels = useCallback(() => {
+    if (!layoutModel || closedPanels.length === 0) return;
+    closedPanels.forEach((p) => {
+      handleRestorePanel(p.id);
+    });
+  }, [layoutModel, closedPanels, handleRestorePanel]);
 
 
   // Fetch Global Unit Preference
@@ -1563,44 +1686,148 @@ function V10PreviewLayout() {
   }, [anomalyData.defectCode, defectCodes, allDefectTypes, supabase]);
 
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
-  const jpParam = searchParams.get("jpName");
-  const strParam = searchParams.get("structName");
-  const sowParam = searchParams.get("sowReport");
-  const jtParam = searchParams.get("jobType");
 
-  // Header Data
-  const [headerData, setHeaderData] = useState<{
-    jobpackName: string;
-    platformName: string;
-    sowReportNo: string;
-    jobType: string;
-    structureType: "platform" | "pipeline";
-    waterDepth: number;
-    vessel: string;
-    kp?: string;
-    structureName?: string;
-  }>({
-    jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
-    platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
-    sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
-    jobType: jtParam || "",
-    structureType: "platform" as "platform" | "pipeline",
-    waterDepth: 0,
-    vessel: "N/A",
-  });
+  // Resolve or Auto-Create Pipeline Component based on KP / FP location
+  const resolvePipelineComponent = useCallback(
+    async (targetKp?: number | string | null) => {
+      const parsedKp = targetKp !== undefined && targetKp !== null && targetKp !== "" ? parseFloat(String(targetKp)) : null;
+      const parsedStructId = parseInt(structureId || "0");
+      if (!parsedStructId) return null;
+
+      // 1. Check loaded SOW and non-SOW components first
+      const candidateComps = [...(componentsSow || []), ...(componentsNonSow || [])];
+
+      if (parsedKp !== null && !isNaN(parsedKp) && candidateComps.length > 0) {
+        // A. Match KP range: start_kp <= parsedKp <= end_kp
+        const matchedRange = candidateComps.find((c: any) => {
+          const raw = c.raw || c;
+          const startKp = parseFloat(raw.start_kp ?? raw.metadata?.start_kp ?? raw.metadata?.kp_from ?? raw.kp_from ?? -1);
+          const endKp = parseFloat(raw.end_kp ?? raw.metadata?.end_kp ?? raw.metadata?.kp_to ?? raw.kp_to ?? -1);
+          if (startKp >= 0 && endKp >= startKp) {
+            return parsedKp >= startKp && parsedKp <= endKp;
+          }
+          return false;
+        });
+        if (matchedRange) {
+          return matchedRange;
+        }
+
+        // B. Match exact KP or QID containing KP range pattern (e.g. "KP 0.0 - 2.5")
+        const matchedExact = candidateComps.find((c: any) => {
+          const raw = c.raw || c;
+          const compKp = parseFloat(raw.kp ?? raw.metadata?.kp ?? raw.fp_kp ?? raw.metadata?.fp_kp ?? -1);
+          if (compKp >= 0 && Math.abs(compKp - parsedKp) < 0.050) {
+            return true;
+          }
+          const qIdStr = String(c.q_id || c.name || "").toUpperCase();
+          if (qIdStr.includes("KP") || qIdStr.includes("-")) {
+            const rangeMatch = qIdStr.match(/(\d+\.?\d*)\s*[-–toTO]+\s*(\d+\.?\d*)/);
+            if (rangeMatch) {
+              const s = parseFloat(rangeMatch[1]);
+              const e = parseFloat(rangeMatch[2]);
+              if (!isNaN(s) && !isNaN(e) && parsedKp >= Math.min(s, e) && parsedKp <= Math.max(s, e)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        });
+        if (matchedExact) {
+          return matchedExact;
+        }
+      }
+
+      // 2. If user already selected a valid component, return it
+      if (selectedComp && selectedComp.id && selectedComp.id !== 999999) {
+        return selectedComp;
+      }
+
+      // 3. Query existing structure_components from database
+      try {
+        const { data: dbComps } = await supabase
+          .from("structure_components")
+          .select("id, q_id, name, type, metadata")
+          .eq("structure_id", parsedStructId);
+
+        if (dbComps && dbComps.length > 0) {
+          // Try matching by KP range on db components
+          if (parsedKp !== null && !isNaN(parsedKp)) {
+            const dbMatch = dbComps.find((c: any) => {
+              const startKp = parseFloat(c.metadata?.start_kp ?? c.metadata?.kp_from ?? -1);
+              const endKp = parseFloat(c.metadata?.end_kp ?? c.metadata?.kp_to ?? -1);
+              if (startKp >= 0 && endKp >= startKp) {
+                return parsedKp >= startKp && parsedKp <= endKp;
+              }
+              return false;
+            });
+            if (dbMatch) {
+              return {
+                id: dbMatch.id,
+                q_id: dbMatch.q_id,
+                name: dbMatch.name,
+                type: dbMatch.type || "PIPELINE",
+                raw: dbMatch,
+              };
+            }
+          }
+
+          // Use first component in database
+          return {
+            id: dbComps[0].id,
+            q_id: dbComps[0].q_id || headerData.structureName || "PIPELINE-01",
+            name: dbComps[0].name || headerData.structureName || "Pipeline Main Line",
+            type: dbComps[0].type || "PIPELINE",
+            raw: dbComps[0],
+          };
+        }
+
+        // 4. Auto-create default pipeline component in structure_components if none exist
+        const defaultQid = (headerData && headerData.platformName !== "N/A" && headerData.platformName) ? headerData.platformName : "PIPELINE-01";
+        const defaultName = (headerData && headerData.platformName !== "N/A" && headerData.platformName) ? headerData.platformName : "Pipeline Main Line";
+        const totalLen = parseFloat((headerData as any)?.totalLength || (headerData as any)?.length_km || "10.000") || 10.000;
+
+        const { data: createdComp, error: createErr } = await supabase
+          .from("structure_components")
+          .insert({
+            structure_id: parsedStructId,
+            q_id: defaultQid,
+            name: defaultName,
+            type: "PIPELINE",
+            metadata: {
+              start_kp: 0.000,
+              end_kp: totalLen,
+              length_km: totalLen,
+              auto_created: true,
+            },
+          })
+          .select("id, q_id, name, type, metadata")
+          .single();
+
+        if (!createErr && createdComp) {
+          queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+          return {
+            id: createdComp.id,
+            q_id: createdComp.q_id,
+            name: createdComp.name,
+            type: createdComp.type || "PIPELINE",
+            raw: createdComp,
+          };
+        }
+      } catch (err) {
+        console.warn("[resolvePipelineComponent] Auto-resolving component warning:", err);
+      }
+
+      return null;
+    },
+    [structureId, componentsSow, componentsNonSow, selectedComp, supabase, headerData, queryClient]
+  );
 
   // Auto-initialize Pipeline component and NAVIG inspection spec when in pipeline workspace mode
   useEffect(() => {
-    if ((isPipeline || headerData?.structureType === "pipeline") && !selectedComp) {
-      const defaultComp = (componentsSow && componentsSow.length > 0)
-        ? componentsSow[0]
-        : {
-            id: 999999,
-            q_id: (headerData && headerData.platformName !== "N/A") ? headerData.platformName : "PIPELINE-01",
-            name: (headerData && headerData.platformName !== "N/A") ? headerData.platformName : "Pipeline Main Line",
-            type: "PIPELINE",
-          };
-      setSelectedComp(defaultComp);
+    if ((isPipeline || headerData?.structureType === "pipeline") && (!selectedComp || selectedComp.id === 999999)) {
+      resolvePipelineComponent(headerData?.kp || "0.000").then((comp) => {
+        if (comp) setSelectedComp(comp);
+      });
       if (!activeSpec) {
         const navigSpec = allInspectionTypes.find(
           (t: any) => t.code === "NAVIG" || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
@@ -1608,7 +1835,7 @@ function V10PreviewLayout() {
         setActiveSpec(navigSpec ? navigSpec.code : "NAVIG");
       }
     }
-  }, [isPipeline, headerData, selectedComp, componentsSow, allInspectionTypes, activeSpec]);
+  }, [isPipeline, headerData, selectedComp, resolvePipelineComponent, allInspectionTypes, activeSpec]);
 
   // AUTO-GENERATE ANOMALY / FINDING REFERENCE NO WHEN TYPE CHANGES OR WHEN MISSING
   useEffect(() => {
@@ -7322,33 +7549,13 @@ function V10PreviewLayout() {
     const specId = (navigSpec?.id && navigSpec.id !== 1) ? navigSpec.id : 30;
     setActiveSpec(specCode);
 
-    let targetComp = selectedComp;
-    if (!targetComp) {
-      targetComp = (componentsSow && componentsSow.length > 0) ? componentsSow[0] : null;
-    }
+    const parsedEventKp = evtData.kp !== undefined && evtData.kp !== null && evtData.kp !== ""
+      ? parseFloat(String(evtData.kp))
+      : (headerData.kp ? parseFloat(String(headerData.kp)) : 0);
 
-    if (!targetComp && (isPipeline || headerData.structureType === "pipeline") && structureId) {
-      try {
-        const parsedStructId = parseInt(structureId);
-        const { data: existingComps } = await supabase
-          .from("structure_components")
-          .select("id, q_id, name, type")
-          .eq("structure_id", parsedStructId)
-          .limit(1);
-
-        if (existingComps && existingComps.length > 0) {
-          targetComp = { id: existingComps[0].id, q_id: existingComps[0].q_id || headerData.structureName || "PIPELINE-01", name: existingComps[0].name || headerData.structureName || "Pipeline Main Line", type: existingComps[0].type || "PIPELINE" };
-          setSelectedComp(targetComp);
-        } else {
-          const { data: createdComp, error: createErr } = await supabase
-            .from("structure_components")
-            .insert({ structure_id: parsedStructId, q_id: headerData.structureName || "PIPELINE-01", name: headerData.structureName || "Pipeline Main Line", type: "PIPELINE" })
-            .select("id, q_id, name, type").single();
-          if (!createErr && createdComp) { targetComp = createdComp; setSelectedComp(targetComp); }
-        }
-      } catch (compErr) {
-        console.warn("[handlePipelineEventSelect] Auto-creating Pipeline component warning:", compErr);
-      }
+    let targetComp = await resolvePipelineComponent(parsedEventKp);
+    if (targetComp) {
+      setSelectedComp(targetComp);
     }
 
     if (!targetComp?.id || targetComp.id === 999999) {
@@ -7432,7 +7639,7 @@ function V10PreviewLayout() {
     }
   }, [
     manualOverride, activeDep, tapeId, tapeNo, vidState, vidTimer, formatTime,
-    allInspectionTypes, selectedComp, componentsSow, isPipeline, headerData, structureId,
+    allInspectionTypes, resolvePipelineComponent, isPipeline, headerData, structureId,
     supabase, inspectionDirection, inspectionLocation, activeCompanyId, inspMethod,
     jobPackId, setDynamicProps, setActiveSpec, setSelectedComp, setEditingRecordId,
     syncDeploymentState, queryClient,
@@ -7699,170 +7906,7 @@ function V10PreviewLayout() {
               structureId={structureId || undefined}
               sowReportNo={headerData.sowReportNo}
               jobPackId={jobPackId || undefined}
-              onSelectEvent={async (evtData) => {
-                if (!manualOverride) {
-                  if (!activeDep?.id || activeDep?.id === "AWAITING") {
-                    toast.error("Cannot capture event: Active Dive No. / ROV Job is required in Live Mode. Please select or start a deployment first.");
-                    return;
-                  }
-                  if (!tapeId || !tapeNo || vidState !== "RECORDING") {
-                    toast.error("Cannot capture event: Active Video Tape and active Video Log recording are required in Live Mode. Please start the video log first.");
-                    return;
-                  }
-                }
-
-                const currentCounter = formatTime(vidTimer);
-
-                const navigSpec = allInspectionTypes.find(
-                  (t: any) => t.id === 30 || (t.code && (t.code === "NAVIG" || t.code === "RNAVIG")) || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
-                );
-                const specCode = navigSpec?.code || "NAVIG";
-                const specId = (navigSpec?.id && navigSpec.id !== 1) ? navigSpec.id : 30;
-                setActiveSpec(specCode);
-
-                let targetComp = selectedComp;
-                if (!targetComp) {
-                  targetComp = (componentsSow && componentsSow.length > 0)
-                    ? componentsSow[0]
-                    : null;
-                }
-
-                // Auto-create or resolve a default Pipeline component in structure_components if not present
-                if (!targetComp && (isPipeline || headerData.structureType === "pipeline") && structureId) {
-                  try {
-                    const parsedStructId = parseInt(structureId);
-                    const { data: existingComps } = await supabase
-                      .from("structure_components")
-                      .select("id, q_id, name, type")
-                      .eq("structure_id", parsedStructId)
-                      .limit(1);
-
-                    if (existingComps && existingComps.length > 0) {
-                      targetComp = {
-                        id: existingComps[0].id,
-                        q_id: existingComps[0].q_id || headerData.structureName || "PIPELINE-01",
-                        name: existingComps[0].name || headerData.structureName || "Pipeline Main Line",
-                        type: existingComps[0].type || "PIPELINE",
-                      };
-                      setSelectedComp(targetComp);
-                    } else {
-                      const { data: createdComp, error: createErr } = await supabase
-                        .from("structure_components")
-                        .insert({
-                          structure_id: parsedStructId,
-                          q_id: headerData.structureName || "PIPELINE-01",
-                          name: headerData.structureName || "Pipeline Main Line",
-                          type: "PIPELINE",
-                        })
-                        .select("id, q_id, name, type")
-                        .single();
-
-                      if (!createErr && createdComp) {
-                        targetComp = createdComp;
-                        setSelectedComp(targetComp);
-                      }
-                    }
-                  } catch (compErr) {
-                    console.warn("[onSelectEvent] Auto-creating Pipeline component warning:", compErr);
-                  }
-                }
-
-                if (!targetComp?.id || targetComp.id === 999999) {
-                  toast.error("Cannot save inspection event: A registered Component is required. Please select or register a Component first.");
-                  return;
-                }
-
-                const validCompId = targetComp.id;
-                const validCompType = (isPipeline || headerData.structureType === "pipeline")
-                  ? "PP"
-                  : (targetComp?.raw?.code || targetComp?.raw?.metadata?.comp_type || targetComp?.type || "PP");
-
-                const now = new Date();
-                const formattedDate = now.toISOString().split("T")[0];
-                const formattedTime = now.toTimeString().split(" ")[0];
-
-                const eventProps = {
-                  event_name: evtData.eventName,
-                  event_type: evtData.eventType,
-                  event_position: evtData.eventPosition || evtData.actionName || evtData.eventCategory,
-                  event_description: evtData.eventDescription || evtData.description,
-                  findings: evtData.findings || "",
-                  inspection_date: formattedDate,
-                  inspection_time: formattedTime,
-                  flow_direction: inspectionDirection,
-                  insp_mode: inspectionLocation,
-                  inspection_direction: inspectionDirection,
-                  inspection_location: inspectionLocation,
-                  kp: evtData.kp || headerData.kp || "0.0000",
-                  fp_kp: evtData.kp || headerData.kp || "0.0000",
-                  northing: evtData.northing || "",
-                  easting: evtData.easting || "",
-                  depth: evtData.depth || "",
-                  verification_depth: evtData.depth || "",
-                  cp_fg_rdg: evtData.cp_fg_rdg || evtData.cp_fg || "",
-                  cp_fg: evtData.cp_fg_rdg || evtData.cp_fg || "",
-                  rov_heading: evtData.rov_heading || evtData.heading || "",
-                  heading: evtData.rov_heading || evtData.heading || "",
-                  tape_count_no: currentCounter,
-                  counter: currentCounter,
-                  _meta_timecode: currentCounter,
-                };
-
-                setDynamicProps((prev: any) => ({
-                  ...prev,
-                  ...eventProps,
-                }));
-
-                try {
-                  const userRes = await supabase.auth.getUser();
-                  const user = userRes?.data?.user;
-                  const evAny = evtData as any;
-                  const isAnomaly = Boolean(evAny?.isAnomaly || evAny?.hasAnomaly || String(evAny?.status || "").toUpperCase() === "ANOMALY");
-
-                  const recordPayload: Record<string, any> = {
-                    company_id: activeCompanyId,
-                    [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep?.id ? Number(activeDep.id) : null,
-                    structure_id: structureId ? parseInt(structureId) : null,
-                    component_id: validCompId,
-                    component_type: validCompType,
-                    jobpack_id: jobPackId ? parseInt(jobPackId) : null,
-                    sow_report_no: headerData.sowReportNo || null,
-                    inspection_type_id: specId,
-                    inspection_type_code: specCode,
-                    inspection_date: formattedDate,
-                    inspection_time: formattedTime,
-                    status: isAnomaly ? "Anomaly" : "COMPLETED",
-                    has_anomaly: isAnomaly,
-                    tape_id: tapeId || null,
-                    tape_count_no: vidTimer,
-                    elevation: eventProps.depth || null,
-                    fp_kp: parseFloat(String(eventProps.kp)) || 0,
-                    cr_user: user?.id || "system",
-                    cr_date: now.toISOString(),
-                    inspection_data: eventProps,
-                  };
-
-                  const { data: newRecord, error: insErr } = await supabase
-                    .from("insp_records")
-                    .insert(recordPayload)
-                    .select("insp_id")
-                    .single();
-
-                  if (insErr) {
-                    console.error("[onSelectEvent] Error inserting insp_records row:", insErr);
-                    toast.error(`Event captured, but database insert failed: ${insErr.message}`);
-                  } else if (newRecord) {
-                    setEditingRecordId(newRecord.insp_id);
-                    syncDeploymentState();
-                    queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
-                    queryClient.invalidateQueries({ queryKey: ["sow-data"] });
-                    toast.success(`Event captured & record #${newRecord.insp_id} created: ${evtData.eventName} > ${evtData.eventType}`);
-                  }
-                } catch (err: any) {
-                  console.error("[onSelectEvent] Unexpected error inserting insp_records:", err);
-                  toast.error(`Event captured locally: ${evtData.eventName}`);
-                }
-              }}
+              onSelectEvent={handlePipelineEventSelect}
             />
           );
         } else {
@@ -8086,6 +8130,7 @@ function V10PreviewLayout() {
         onResetLayout={handleResetLayout}
         closedPanels={closedPanels}
         onRestorePanel={handleRestorePanel}
+        onRestoreAllPanels={handleRestoreAllPanels}
       />
 
       {/* -- GEODETIC PARAMETERS DIALOG -------------------------------------- */}

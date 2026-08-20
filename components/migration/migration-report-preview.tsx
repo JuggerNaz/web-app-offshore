@@ -251,7 +251,7 @@ export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "P
     case "LOGS_MOVEMENTS":
       return { oracle: "LOGS", pg: isPlat ? "insp_rov_movements" : "insp_dive_movements" };
     case "VIDEO":
-      return { oracle: isPlat ? "PLATG/PLATGI" : "video", pg: "insp_video_logs" };
+      return { oracle: isPlat ? "PLATG/PLATGI" : "NAVIG", pg: "insp_video_logs" };
     case "ANOMALY":
       return { oracle: "U_DEFECT", pg: "insp_anomalies" };
     case "ATTACHMENT":
@@ -280,12 +280,12 @@ export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "P
       return { oracle: "COMP_NOT_INSP", pg: "insp_records" };
     default:
       if (upperKey.startsWith("INSP_ROV_")) {
-        return { oracle: "PLATGI", pg: "insp_records" };
+        return { oracle: isPlat ? "PLATGI" : "NAVIG", pg: "insp_records" };
       } else if (upperKey.startsWith("INSP_DIV_")) {
         const divCode = upperKey.replace("INSP_DIV_", "");
         return { oracle: divCode, pg: "insp_records" };
       } else if (upperKey.startsWith("INSP_ROV")) {
-        return { oracle: "PLATGI", pg: "insp_records" };
+        return { oracle: isPlat ? "PLATGI" : "NAVIG", pg: "insp_records" };
       } else if (upperKey.startsWith("INSP_DIVING")) {
         return { oracle: "ALLINSPID", pg: "insp_records" };
       } else {
@@ -408,21 +408,36 @@ export default function MigrationReportPreview({
     "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT", "EXSUM"
   ];
 
+  const isPipeStruct = selectedStructure?.PTYPE === "PIPE" || 
+    selectedStructure?.PTYPE === "PIPELINE" || 
+    selectedStructure?.STR_TYPE === "PIPE" || 
+    selectedStructure?.STR_TYPE === "PIPELINE" || 
+    selectedStructure?.type === "PIPELINE" || 
+    selectedStructure?.type === "pipeline";
+
   const groupedReport = (() => {
-    const reportEntries = Object.entries(migrationReport);
+    const rawEntries = Object.entries(migrationReport);
+    const reportEntries = isPipeStruct
+      ? rawEntries.filter(([k]) => !["STR_ELV", "STR_LEVEL", "STR_FACES"].includes(k.toUpperCase()))
+      : rawEntries;
+
     const isJobInspKey = (key: string) =>
       jobInspectionKeys.includes(key) || key.startsWith("INSP_ROV_") || key.startsWith("INSP_DIVING_");
     const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
-    const systemItems = reportEntries.filter(([key]) => systemKeys.includes(key));
+    const pipelineSystemKeys = ["STRUCTURE", "U_PIPEGEO", "PIPE_GEO", "U_ASSOC"];
+    const platformSystemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
+    const activeSystemKeys = isPipeStruct ? pipelineSystemKeys : platformSystemKeys;
+
+    const systemItems = reportEntries.filter(([key]) => activeSystemKeys.includes(key));
     const jobInspItems = reportEntries.filter(([key]) => isJobInspKey(key));
     const componentItems = reportEntries.filter(([key]) => 
-      !libKeys.includes(key) && !systemKeys.includes(key) && !isJobInspKey(key)
+      !libKeys.includes(key) && !activeSystemKeys.includes(key) && !isJobInspKey(key)
     );
 
     return [
       { section: "Library Configuration Section", items: libItems },
-      { section: "Structure & Framework Section", items: systemItems },
-      { section: "Offshore Component Section", items: componentItems },
+      { section: isPipeStruct ? "Pipeline Structure & Geodetics" : "Structure & Framework Section", items: systemItems },
+      { section: isPipeStruct ? "Pipeline Component Section" : "Offshore Component Section", items: componentItems },
       { section: "Inspection, Jobs & Anomalies Section", items: jobInspItems }
     ].filter(g => g.items.length > 0);
   })();
@@ -632,8 +647,12 @@ export default function MigrationReportPreview({
       doc.setTextColor(30, 41, 59);
       doc.text("DETAILED DATA TRANSLATION BREAKDOWN", 15, companyPreferenceY);
 
-      const structType = selectedStructure?.PTYPE === "PIPE" ? "PIPELINE" : "PLATFORM";
-      const tableRows = Object.entries(migrationReport).map(([key, item]) => {
+      const structType = isPipeStruct ? "PIPELINE" : "PLATFORM";
+      const rawEntries = Object.entries(migrationReport);
+      const filteredEntries = isPipeStruct
+        ? rawEntries.filter(([k]) => !["STR_ELV", "STR_LEVEL", "STR_FACES"].includes(k.toUpperCase()))
+        : rawEntries;
+      const tableRows = filteredEntries.map(([key, item]) => {
         const percent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
         let statusText = "SUCCESSFUL";
         if (item.status === "skipped") statusText = "SKIPPED";
@@ -1728,7 +1747,12 @@ ${inspectorName}
                               statusText = "FAILED";
                             }
 
-                            const mapNames = getTableMappingNames(key, selectedStructure?.PTYPE === "PIPE" ? "PIPELINE" : "PLATFORM");
+                            const isPipeStruct = selectedStructure?.PTYPE === "PIPE" || 
+                              selectedStructure?.PTYPE === "PIPELINE" || 
+                              selectedStructure?.STR_TYPE === "PIPE" || 
+                              selectedStructure?.STR_TYPE === "PIPELINE" || 
+                              selectedStructure?.type === "pipeline";
+                            const mapNames = getTableMappingNames(key, isPipeStruct ? "PIPELINE" : "PLATFORM");
 
                             return (
                               <tr key={key} className={`hover:bg-slate-50/20 transition-colors ${

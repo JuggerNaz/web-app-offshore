@@ -38,6 +38,7 @@ export type VisualizationMode =
     | "DEFAULT"
     | "ANOMALY_PRIORITY"
     | "FINDING_CATEGORY"
+    | "INSPECTION_STATUS"
     | "PENDING_TASK"
     | "INCOMPLETE_RECORD"
     | "RECTIFIED_ANOMALY"
@@ -146,14 +147,14 @@ const ComponentMesh = ({
     const defaultMeshColor = isAnode
         ? "#F8FAFC"
         : isWeld
-            ? "#cbd5e1"
+            ? "#94a3b8"
             : isClamp
                 ? "#f97316"
                 : isRiser
                     ? "#334155"
                     : isConductor
                         ? "#475569"
-                        : "#cbd5e1";
+                        : "#94a3b8";
 
     const isInspectionHighlighted = isInspectionMode && isStatusChecked;
 
@@ -499,12 +500,6 @@ const ComponentMesh = ({
             >
                 <primitive object={fenderGroup} />
 
-                {/* Large click/hover target wrapper for Fender cage */}
-                <mesh castShadow={false} receiveShadow={false}>
-                    <boxGeometry args={[spanWidth + 0.4, fenderHeight, 1.0]} />
-                    <meshBasicMaterial transparent opacity={0} />
-                </mesh>
-
                 {showLabel && (
                     <Html
                         distanceFactor={15}
@@ -714,12 +709,6 @@ const ComponentMesh = ({
             >
                 <primitive object={caissonSupportGroup} />
 
-                {/* Click target wrapper */}
-                <mesh castShadow={false} receiveShadow={false}>
-                    <boxGeometry args={[(baseThickness || 0.3) + 0.8, 0.7, (baseThickness || 0.3) + 0.8]} />
-                    <meshBasicMaterial transparent opacity={0.01} depthWrite={false} />
-                </mesh>
-
                 {showLabel && (
                     <Html
                         distanceFactor={15}
@@ -782,12 +771,6 @@ const ComponentMesh = ({
                 }}
             >
                 <primitive object={riserClampGroup} />
-                
-                {/* Click target wrapper */}
-                <mesh castShadow={false} receiveShadow={false}>
-                    <boxGeometry args={[(baseThickness || 0.3) + 1.0, 1.2, (baseThickness || 0.3) + 1.0]} />
-                    <meshBasicMaterial transparent opacity={0.01} depthWrite={false} />
-                </mesh>
 
                 {showLabel && (
                     <Html distanceFactor={15} position={[0, 0.5, 0]} center zIndexRange={[10, 0]}>
@@ -1124,6 +1107,19 @@ function ResetViewHandler({ trigger }: { trigger: number }) {
     return null;
 }
 
+function CameraHeadlight({ intensity = 0.85 }: { intensity?: number }) {
+    const lightRef = useRef<THREE.DirectionalLight>(null);
+    const { camera } = useThree();
+
+    useFrame(() => {
+        if (lightRef.current) {
+            lightRef.current.position.copy(camera.position);
+        }
+    });
+
+    return <directionalLight ref={lightRef} intensity={intensity} />;
+}
+
 
 
 
@@ -1391,7 +1387,7 @@ function InstancedComponentViewer({
                         ? "#334155"
                         : isConductor
                             ? "#475569"
-                            : "#cbd5e1";
+                            : "#94a3b8";
 
             const finalColor = getComponentColorByMode(
                 item.comp,
@@ -1475,7 +1471,7 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            const baseColor = isSelected ? "#2563eb" : "#cbd5e1";
+            const baseColor = isSelected ? "#2563eb" : "#94a3b8";
             const finalColor = getComponentColorByMode(item.comp, isSelected, colorMode, currentRecords, historicalRecords, selectedCampaignId, baseColor, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent);
             color.set(finalColor);
             mesh.setColorAt(i, color);
@@ -1796,7 +1792,7 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <cylinderGeometry args={[0.5, 0.5, 1, 12]} />
-                    <meshStandardMaterial metalness={0.4} roughness={0.3} />
+                    <meshStandardMaterial metalness={0.25} roughness={0.45} />
                 </instancedMesh>
             )}
 
@@ -1832,7 +1828,7 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <boxGeometry args={[1, 1, 1]} />
-                    <meshStandardMaterial metalness={0.5} roughness={0.5} />
+                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
                 </instancedMesh>
             )}
 
@@ -1843,7 +1839,7 @@ function InstancedComponentViewer({
                     args={[undefined, undefined, anodes.length * 4]}
                 >
                     <cylinderGeometry args={[1, 1, 1, 12]} />
-                    <meshStandardMaterial metalness={0.5} roughness={0.5} />
+                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
                 </instancedMesh>
             )}
 
@@ -1854,7 +1850,7 @@ function InstancedComponentViewer({
                     args={[undefined, undefined, anodes.length * 2]}
                 >
                     <torusGeometry args={[0.08, 0.05, 8, 12, Math.PI / 2]} />
-                    <meshStandardMaterial metalness={0.5} roughness={0.5} />
+                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
                 </instancedMesh>
             )}
 
@@ -1890,7 +1886,7 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <cylinderGeometry args={[0.5, 0.5, 1, 32]} />
-                    <meshStandardMaterial metalness={0.7} roughness={0.3} emissive="#000000" emissiveIntensity={0} />
+                    <meshStandardMaterial metalness={0.3} roughness={0.4} />
                 </instancedMesh>
             )}
 
@@ -1997,7 +1993,7 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <sphereGeometry args={[0.5, 16, 16]} />
-                    <meshStandardMaterial metalness={0.5} roughness={0.2} emissive="#000000" emissiveIntensity={0} />
+                    <meshStandardMaterial metalness={0.3} roughness={0.4} />
                 </instancedMesh>
             )}
 
@@ -2032,8 +2028,74 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <boxGeometry args={[1, 1, 1]} />
-                    <meshStandardMaterial metalness={0.3} roughness={0.4} />
+                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
                 </instancedMesh>
+            )}
+
+            {/* 3D Floating Anomaly & Status Markers in Color Overlay Mode */}
+            {colorMode !== "DEFAULT" && (
+                <>
+                    {cylinders.concat(welds).concat(anodes).concat(spheres).map((item, idx) => {
+                        const s = toVec3(item.start || item.position);
+                        const e = toVec3(item.end || item.position);
+                        const center = new THREE.Vector3((s.x + e.x) / 2, (s.y + e.y) / 2, (s.z + e.z) / 2);
+
+                        const compId = item.comp?.id || item.id;
+                        const isSelected = selectedCompId === compId;
+
+                        const finalColor = getComponentColorByMode(
+                            item.comp,
+                            isSelected,
+                            colorMode,
+                            currentRecords,
+                            historicalRecords,
+                            selectedCampaignId,
+                            "#cbd5e1",
+                            libraryColors,
+                            selectedPriorityFilter,
+                            inspectionModeFilter,
+                            priorityScope,
+                            compareWithCurrent
+                        );
+
+                        // Only show floating badge for active colored components (skip uninspected/clean/base)
+                        const isDimmed = finalColor === "#1e293b" || finalColor === "#64748b" || finalColor === "#475569" || finalColor === "#334155" || finalColor === "#cbd5e1" || finalColor === "#10b981";
+                        if (isDimmed) return null;
+
+                        const qId = item.comp?.q_id || item.q_id || "";
+
+                        return (
+                            <Html
+                                key={`anomaly-marker-${item.id || idx}`}
+                                position={[center.x, center.y + 0.4, center.z]}
+                                center
+                                distanceFactor={22}
+                                zIndexRange={[20, 0]}
+                            >
+                                <div
+                                    onClick={(evt) => {
+                                        evt.stopPropagation();
+                                        isDirectClickRef.current = true;
+                                        if (onSelectComponent) onSelectComponent(item.comp);
+                                    }}
+                                    onDoubleClick={(evt) => {
+                                        evt.stopPropagation();
+                                        isDirectClickRef.current = true;
+                                        if (onDoubleClickComponent) onDoubleClickComponent(item.comp, center);
+                                    }}
+                                    style={{ backgroundColor: finalColor }}
+                                    className={`px-1.5 py-0.5 rounded-full text-[9px] font-black text-white shadow-xl cursor-pointer select-none transition-all flex items-center gap-1 border border-white/90 ring-2 ring-black/50 hover:scale-125 ${
+                                        isSelected ? "scale-125 ring-4 ring-blue-400 font-extrabold" : ""
+                                    }`}
+                                    title={`${qId} (Click to inspect)`}
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0 shadow" />
+                                    <span className="tracking-tight">{qId}</span>
+                                </div>
+                            </Html>
+                        );
+                    })}
+                </>
             )}
 
             {/* Procedural Components (Fenders & Riser Guards) */}
@@ -2131,15 +2193,17 @@ function getComponentColorByMode(
     });
 
     switch (mode) {
-        case "ANOMALY_PRIORITY": {
+        case "ANOMALY_PRIORITY":
+        case "RECTIFIED_ANOMALY": {
             if (compCurrentRecords.length === 0) {
-                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
-                return libraryColors["UNINSPECTED"] || "#64748b";
+                return defaultColor;
             }
             let highestSeverity = 0; // 5: Priority 1, 4: Priority 2, 3: Priority 3, 2: Priority 4
             let hasFinding = false;
             let findingSeverity = 0; // 4: Finding P1, 3: Finding P2, 2: Finding P3, 1: Observation
             let findingPriorityCode = "";
+            let hasAnomaly = false;
+            let allAnomaliesRectified = true;
 
             compCurrentRecords.forEach((r: any) => {
                 const ft = String(r.finding_type || r.findingType || r.record_category || r.category || "").toUpperCase();
@@ -2149,6 +2213,11 @@ function getComponentColorByMode(
                 const prio = (r.priority || r.priority_code || r.anomaly_class || r.severity || r.anomaly_grade || r.class || "").toString().toUpperCase();
 
                 if (isAnomaly && (priorityScope === "BOTH" || priorityScope === "ANOMALY")) {
+                    hasAnomaly = true;
+                    const isRect = Boolean(r.rectified || r.is_rectified || String(r.status || "").toUpperCase() === "RECTIFIED" || r.repaired);
+                    if (!isRect) {
+                        allAnomaliesRectified = false;
+                    }
                     if (prio.includes("PRIORITY 1") || prio === "P1" || prio.includes("CLASS A") || prio.includes("CRITICAL") || prio === "1") {
                         highestSeverity = Math.max(highestSeverity, 5);
                     } else if (prio.includes("PRIORITY 2") || prio === "P2" || prio.includes("CLASS B") || prio.includes("HIGH") || prio === "2") {
@@ -2176,20 +2245,23 @@ function getComponentColorByMode(
             });
 
             let finalCode = "CLEAN";
-            let colorHex = libraryColors["CLEAN"] || "#10b981";
+            let colorHex = defaultColor;
 
-            if (highestSeverity === 5) {
+            if (hasAnomaly && allAnomaliesRectified) {
+                finalCode = "RECTIFIED";
+                colorHex = libraryColors["RECTIFIED"] || libraryColors["REPAIRED"] || "#15803d";
+            } else if (highestSeverity === 5) {
                 finalCode = "PRIORITY 1";
-                colorHex = libraryColors["PRIORITY 1"] || libraryColors["P1"] || "#ef4444";
+                colorHex = libraryColors["PRIORITY 1"] || libraryColors["P1"] || libraryColors["1"] || "#ef4444";
             } else if (highestSeverity === 4) {
                 finalCode = "PRIORITY 2";
-                colorHex = libraryColors["PRIORITY 2"] || libraryColors["P2"] || "#f97316";
+                colorHex = libraryColors["PRIORITY 2"] || libraryColors["P2"] || libraryColors["2"] || "#f97316";
             } else if (highestSeverity === 3) {
                 finalCode = "PRIORITY 3";
-                colorHex = libraryColors["PRIORITY 3"] || libraryColors["P3"] || "#eab308";
+                colorHex = libraryColors["PRIORITY 3"] || libraryColors["P3"] || libraryColors["3"] || "#eab308";
             } else if (highestSeverity === 2) {
                 finalCode = "PRIORITY 4";
-                colorHex = libraryColors["PRIORITY 4"] || libraryColors["P4"] || "#84cc16";
+                colorHex = libraryColors["PRIORITY 4"] || libraryColors["P4"] || libraryColors["4"] || "#84cc16";
             } else if (hasFinding) {
                 if (findingSeverity === 4) {
                     finalCode = "FINDING P1";
@@ -2212,13 +2284,14 @@ function getComponentColorByMode(
             if (selectedPriorityFilter) {
                 const selUpper = selectedPriorityFilter.toUpperCase();
                 const isMatch = selectedPriorityFilter === finalCode ||
+                    (selUpper === "RECTIFIED" && finalCode === "RECTIFIED") ||
                     (selUpper.includes("P1") && finalCode === "PRIORITY 1") ||
                     (selUpper.includes("P2") && finalCode === "PRIORITY 2") ||
                     (selUpper.includes("P3") && finalCode === "PRIORITY 3") ||
                     (selUpper.includes("P4") && finalCode === "PRIORITY 4") ||
                     (selUpper.includes("OBS") && (finalCode === "OBSERVATION" || finalCode === "FINDING"));
 
-                if (!isMatch) return "#1e293b";
+                if (!isMatch) return defaultColor;
             }
 
             return colorHex;
@@ -2226,8 +2299,7 @@ function getComponentColorByMode(
 
         case "FINDING_CATEGORY": {
             if (compCurrentRecords.length === 0) {
-                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
-                return libraryColors["UNINSPECTED"] || "#64748b";
+                return defaultColor;
             }
             let categoryType = "";
 
@@ -2248,8 +2320,10 @@ function getComponentColorByMode(
                 }
             });
 
+            if (!categoryType) return defaultColor;
+
             let finalCode = "CLEAN";
-            let colorHex = libraryColors["CLEAN"] || "#10b981";
+            let colorHex = defaultColor;
 
             if (categoryType === "CORROSION") { finalCode = "CORROSION"; colorHex = libraryColors["CORROSION"] || "#ec4899"; }
             else if (categoryType === "MARINE_GROWTH") { finalCode = "MARINE_GROWTH"; colorHex = libraryColors["MARINE_GROWTH"] || "#06b6d4"; }
@@ -2258,44 +2332,44 @@ function getComponentColorByMode(
             else if (categoryType === "SCOUR") { finalCode = "SCOUR"; colorHex = libraryColors["SCOUR"] || "#3b82f6"; }
             else if (categoryType === "GENERAL") { finalCode = "GENERAL"; colorHex = libraryColors["GENERAL"] || "#0284c7"; }
 
-            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return "#1e293b";
+            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return defaultColor;
 
             return colorHex;
         }
 
-        case "PENDING_TASK": {
+        case "INSPECTION_STATUS":
+        case "PENDING_TASK":
+        case "INCOMPLETE_RECORD": {
+            const hasIncomplete = compCurrentRecords.some((r: any) => 
+                String(r.record_status || r.status || "").toUpperCase() === "INCOMPLETE" || 
+                Boolean(r.is_incomplete) || 
+                Boolean(r.incomplete_reason)
+            );
+            
             const taskStatuses = comp.taskStatuses || comp.tasks || [];
-            if (!taskStatuses || taskStatuses.length === 0) {
-                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
-                return "#475569";
-            }
-            const hasCompleted = taskStatuses.some((t: any) => t.status === "COMPLETED" || t.status === "COMPLETE");
-            const hasInProgress = taskStatuses.some((t: any) => t.status === "IN_PROGRESS" || t.status === "STARTED");
-            const hasPending = taskStatuses.some((t: any) => !t.status || t.status === "PENDING" || t.status === "NOT_STARTED");
+            const hasTaskCompleted = taskStatuses.some((t: any) => t.status === "COMPLETED" || t.status === "COMPLETE");
+            const hasTaskInProgress = taskStatuses.some((t: any) => t.status === "IN_PROGRESS" || t.status === "STARTED");
+            const hasTaskPending = taskStatuses.some((t: any) => !t.status || t.status === "PENDING" || t.status === "NOT_STARTED");
 
             let finalCode = "PENDING";
-            if (hasCompleted && !hasPending && !hasInProgress) finalCode = "COMPLETED";
-            else if (hasInProgress) finalCode = "IN_PROGRESS";
+            let colorHex = "#f59e0b";
 
-            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return "#1e293b";
-
-            if (finalCode === "COMPLETED") return "#10b981";
-            if (finalCode === "IN_PROGRESS") return "#0284c7";
-            return "#f59e0b";
-        }
-
-        case "INCOMPLETE_RECORD": {
-            if (compCurrentRecords.length === 0) {
-                if (selectedPriorityFilter && selectedPriorityFilter !== "UNINSPECTED") return "#1e293b";
-                return "#475569";
+            if (compCurrentRecords.length === 0 && taskStatuses.length === 0) {
+                return defaultColor;
+            } else if (hasIncomplete) {
+                finalCode = "INCOMPLETE";
+                colorHex = "#e11d48";
+            } else if ((compCurrentRecords.length > 0 || hasTaskCompleted) && !hasTaskPending && !hasTaskInProgress) {
+                finalCode = "COMPLETE";
+                colorHex = "#10b981";
+            } else {
+                finalCode = "PENDING";
+                colorHex = "#f59e0b";
             }
-            const hasIncomplete = compCurrentRecords.some((r: any) => String(r.record_status || r.status || "").toUpperCase() === "INCOMPLETE" || r.is_incomplete);
-            const finalCode = hasIncomplete ? "INCOMPLETE" : "COMPLETE";
 
-            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return "#1e293b";
+            if (selectedPriorityFilter && selectedPriorityFilter !== finalCode) return defaultColor;
 
-            if (hasIncomplete) return "#e11d48";
-            return "#10b981";
+            return colorHex;
         }
 
         case "RECTIFIED_ANOMALY": {
@@ -2775,6 +2849,17 @@ export function Structural3DViewer({
                         const rawCode = String(item.code_1).trim();
                         const codeUpper = rawCode.toUpperCase();
                         map[codeUpper] = col;
+
+                        // Create aliases for standard priorities
+                        if (codeUpper === "P1" || codeUpper === "1" || codeUpper === "PRIORITY 1") {
+                            map["P1"] = col; map["1"] = col; map["PRIORITY 1"] = col;
+                        } else if (codeUpper === "P2" || codeUpper === "2" || codeUpper === "PRIORITY 2") {
+                            map["P2"] = col; map["2"] = col; map["PRIORITY 2"] = col;
+                        } else if (codeUpper === "P3" || codeUpper === "3" || codeUpper === "PRIORITY 3") {
+                            map["P3"] = col; map["3"] = col; map["PRIORITY 3"] = col;
+                        } else if (codeUpper === "P4" || codeUpper === "4" || codeUpper === "PRIORITY 4") {
+                            map["P4"] = col; map["4"] = col; map["PRIORITY 4"] = col;
+                        }
 
                         // Deduplicate by priority code so each priority appears ONCE
                         if (!seenCodes.has(codeUpper)) {
@@ -3400,11 +3485,11 @@ export function Structural3DViewer({
                 <CameraRig selectedPos={selectedPos} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
 
-                <ambientLight intensity={0.35} />
-                <hemisphereLight intensity={0.3} color="#bae6fd" groundColor="#0f172a" />
+                <ambientLight intensity={0.45} />
+                <hemisphereLight intensity={0.35} color="#e2e8f0" groundColor="#334155" />
                 <directionalLight
                     position={[40, 80, 40]}
-                    intensity={1.2}
+                    intensity={0.7}
                     castShadow
                     shadow-mapSize={[2048, 2048]}
                     shadow-bias={-0.0001}
@@ -3416,7 +3501,10 @@ export function Structural3DViewer({
                     shadow-camera-top={60}
                     shadow-camera-bottom={-60}
                 />
-                <spotLight position={[-40, 60, -40]} angle={0.3} penumbra={1} intensity={0.8} />
+                <directionalLight position={[-40, 50, -40]} intensity={0.4} />
+                <directionalLight position={[0, -30, 0]} intensity={0.2} />
+                <spotLight position={[-40, 60, -40]} angle={0.3} penumbra={1} intensity={0.4} />
+                <CameraHeadlight intensity={0.4} />
 
 
                 <Bounds fit clip margin={1.0}>
@@ -3638,8 +3726,7 @@ export function Structural3DViewer({
                             <span>
                                 {colorMode === "DEFAULT" && (compactMode ? "3D Color" : "Color Overlay")}
                                 {colorMode === "ANOMALY_PRIORITY" && "Anomaly Priority"}
-                                {colorMode === "PENDING_TASK" && "Pending Tasks"}
-                                {colorMode === "INCOMPLETE_RECORD" && "Incomplete Records"}
+                                {(colorMode === "INSPECTION_STATUS" || colorMode === "PENDING_TASK" || colorMode === "INCOMPLETE_RECORD") && "Inspection Status"}
                                 {colorMode === "RECTIFIED_ANOMALY" && "Rectified"}
                                 {colorMode === "INSPECTION_TASK_TYPE" && "Task Type"}
                                 {colorMode === "HISTORICAL_COMPARE" && "Historical Compare"}
@@ -3671,11 +3758,9 @@ export function Structural3DViewer({
                                 <div className="flex flex-col gap-1 text-[10px]">
                                     {[
                                         { mode: "DEFAULT", label: "Standard Metallic 3D", desc: "Default material rendering" },
-                                        { mode: "ANOMALY_PRIORITY", label: "🔴 Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4 & Findings" },
+                                        { mode: "ANOMALY_PRIORITY", label: "🔴 Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4, Findings & Rectified" },
                                         { mode: "FINDING_CATEGORY", label: "🔍 Finding Category", desc: "Color by Corrosion, Marine Growth, Coating, Debris, Scour" },
-                                        { mode: "PENDING_TASK", label: "🟡 Pending Tasks Status", desc: "Completed vs In-Progress vs Pending" },
-                                        { mode: "INCOMPLETE_RECORD", label: "🟣 Incomplete Records", desc: "Highlight incomplete inspection forms" },
-                                        { mode: "RECTIFIED_ANOMALY", label: "🔵 Anomaly Rectified / Repaired", desc: "Rectified vs active open anomalies" },
+                                        { mode: "INSPECTION_STATUS", label: "📊 Inspection Status", desc: "Complete vs Incomplete vs Pending" },
                                         { mode: "INSPECTION_TASK_TYPE", label: "🎨 Inspection Task Type", desc: "Color code by FMD, UT, Anode, GVINS" },
                                         { mode: "HISTORICAL_COMPARE", label: "📜 Historical Jobpack Compare", desc: "Compare past campaign anomalies vs present" }
                                     ].map(opt => (
@@ -4177,8 +4262,7 @@ export function Structural3DViewer({
                             <span>
                                 {colorMode === "ANOMALY_PRIORITY" && "Anomaly Priority & Finding Key"}
                                 {colorMode === "FINDING_CATEGORY" && "Finding Category Key"}
-                                {colorMode === "PENDING_TASK" && "Pending Tasks Status Key"}
-                                {colorMode === "INCOMPLETE_RECORD" && "Incomplete Records Key"}
+                                {(colorMode === "INSPECTION_STATUS" || colorMode === "PENDING_TASK" || colorMode === "INCOMPLETE_RECORD") && "Inspection Status Key"}
                                 {colorMode === "RECTIFIED_ANOMALY" && "Rectified Anomaly Key"}
                                 {colorMode === "INSPECTION_TASK_TYPE" && (
                                     campaignTaskMode === "ROV" ? "Inspection Task Spec Key (ROV Campaign)" :
@@ -4294,23 +4378,21 @@ export function Structural3DViewer({
                                             { code: "FINDING P1", label: "Finding P1", color: libraryColors["FINDING P1"] || "#ef4444" },
                                             { code: "FINDING P2", label: "Finding P2", color: libraryColors["FINDING P2"] || "#f97316" },
                                             { code: "FINDING P3", label: "Finding P3", color: libraryColors["FINDING P3"] || "#0284c7" },
-                                            { code: "CLEAN", label: "Clean", color: libraryColors["CLEAN"] || "#10b981" },
-                                            { code: "UNINSPECTED", label: "Uninspected", color: libraryColors["UNINSPECTED"] || "#64748b" }
+                                            { code: "RECTIFIED", label: "Rectified", color: libraryColors["RECTIFIED"] || libraryColors["REPAIRED"] || "#15803d" },
                                         ] : libraryPriorityList.length > 0 ? [
                                             ...libraryPriorityList,
                                             { code: "OBSERVATION", label: "Observation", color: libraryColors["OBSERVATION"] || "#d97706" },
-                                            { code: "CLEAN", label: "Clean", color: libraryColors["CLEAN"] || "#10b981" },
-                                            { code: "UNINSPECTED", label: "Uninspected", color: libraryColors["UNINSPECTED"] || "#64748b" }
+                                            { code: "RECTIFIED", label: "Rectified", color: libraryColors["RECTIFIED"] || libraryColors["REPAIRED"] || "#15803d" },
                                         ] : [
-                                            { code: "PRIORITY 1", label: "Priority 1", color: "#ef4444" },
-                                            { code: "PRIORITY 2", label: "Priority 2", color: "#f97316" },
-                                            { code: "PRIORITY 3", label: "Priority 3", color: "#eab308" },
-                                            { code: "PRIORITY 4", label: "Priority 4", color: "#84cc16" },
-                                            { code: "OBSERVATION", label: "Observation", color: "#d97706" },
-                                            { code: "CLEAN", label: "Clean", color: "#10b981" },
-                                            { code: "UNINSPECTED", label: "Uninspected", color: "#64748b" },
+                                            { code: "PRIORITY 1", label: "Priority 1", color: libraryColors["PRIORITY 1"] || libraryColors["P1"] || "#ef4444" },
+                                            { code: "PRIORITY 2", label: "Priority 2", color: libraryColors["PRIORITY 2"] || libraryColors["P2"] || "#f97316" },
+                                            { code: "PRIORITY 3", label: "Priority 3", color: libraryColors["PRIORITY 3"] || libraryColors["P3"] || "#eab308" },
+                                            { code: "PRIORITY 4", label: "Priority 4", color: libraryColors["PRIORITY 4"] || libraryColors["P4"] || "#84cc16" },
+                                            { code: "OBSERVATION", label: "Observation", color: libraryColors["OBSERVATION"] || "#d97706" },
+                                            { code: "RECTIFIED", label: "Rectified", color: libraryColors["RECTIFIED"] || libraryColors["REPAIRED"] || "#15803d" },
                                         ]
                                     ).filter(item => {
+                                        if (item.code === "CLEAN" || item.code === "UNINSPECTED") return false;
                                         if (priorityScope === "ANOMALY") {
                                             return item.code !== "FINDING" && item.code !== "OBSERVATION" && !item.code.startsWith("FINDING P");
                                         }
@@ -4384,41 +4466,12 @@ export function Structural3DViewer({
                             </>
                         )}
 
-                        {colorMode === "PENDING_TASK" && (
+                        {(colorMode === "INSPECTION_STATUS" || colorMode === "PENDING_TASK" || colorMode === "INCOMPLETE_RECORD") && (
                             <>
                                 {[
-                                    { code: "COMPLETED", label: "Completed", colorHex: "#10b981" },
-                                    { code: "IN_PROGRESS", label: "In Progress", colorHex: "#0284c7" },
-                                    { code: "PENDING", label: "Pending", colorHex: "#f59e0b" },
-                                ].map((item) => {
-                                    const isSelected = selectedPriorityFilter === item.code;
-                                    return (
-                                        <button
-                                            key={item.code}
-                                            onClick={() => setSelectedPriorityFilter(isSelected ? null : item.code)}
-                                            className={cn(
-                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all cursor-pointer border select-none text-[9px]",
-                                                isSelected
-                                                    ? "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-lg scale-105 ring-2 ring-amber-400/50"
-                                                    : selectedPriorityFilter
-                                                    ? "opacity-40 border-transparent hover:opacity-100 hover:bg-slate-800"
-                                                    : "bg-slate-800/40 border-slate-700/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:scale-105"
-                                            )}
-                                        >
-                                            <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: item.colorHex }} />
-                                            <span>{item.label}</span>
-                                        </button>
-                                    );
-                                })}
-                            </>
-                        )}
-
-                        {colorMode === "INCOMPLETE_RECORD" && (
-                            <>
-                                {[
-                                    { code: "INCOMPLETE", label: "Incomplete Record", colorHex: "#e11d48" },
                                     { code: "COMPLETE", label: "Complete", colorHex: "#10b981" },
-                                    { code: "UNINSPECTED", label: "Uninspected", colorHex: "#64748b" },
+                                    { code: "INCOMPLETE", label: "Incomplete", colorHex: "#e11d48" },
+                                    { code: "PENDING", label: "Pending", colorHex: "#f59e0b" },
                                 ].map((item) => {
                                     const isSelected = selectedPriorityFilter === item.code;
                                     return (

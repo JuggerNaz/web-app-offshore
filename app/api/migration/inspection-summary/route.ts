@@ -239,6 +239,32 @@ export const POST = withAuth(
           }
         }
 
+        // Directly query NAVIG table for ROV Pipeline survey events
+        try {
+          let navigCountQuery = `SELECT COUNT(*) AS REC_COUNT FROM NAVIG WHERE STR_ID = :strId`;
+          const binds: any = { strId: str_id };
+          if (inspno) {
+            navigCountQuery += ` AND (INSPNO = :inspNo OR INSPNO IS NULL)`;
+            binds.inspNo = String(inspno);
+          }
+          const navRes = await connection.execute(navigCountQuery, binds);
+          const navCount = Number(navRes.rows?.[0]?.REC_COUNT || navRes.rows?.[0]?.[0] || 0);
+          if (navCount > 0) {
+            const existingNav = rovInspections.find((i: any) => i.code.toUpperCase() === 'NAVIG');
+            if (existingNav) {
+              existingNav.count = Math.max(existingNav.count, navCount);
+            } else {
+              rovInspections.push({
+                code: 'NAVIG',
+                name: 'ROV Pipeline Navigation / Survey',
+                count: navCount
+              });
+            }
+          }
+        } catch (navErr: any) {
+          console.warn("Direct NAVIG table query failed:", navErr.message);
+        }
+
         // Direct check on NAVIG table for Pipeline ROV survey records
         try {
           const rawInspNo = String(inspno).trim();

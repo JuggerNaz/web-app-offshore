@@ -271,12 +271,28 @@
       "oracleCol": "DESG_LIFE"
     },
     {
-      "pgCol": "st_north",
-      "oracleCol": "ST_NORTH"
+      "pgCol": "st_loc",
+      "oracleCol": "ST_LOC"
     },
     {
-      "pgCol": "st_east",
-      "oracleCol": "ST_EAST"
+      "pgCol": "end_loc",
+      "oracleCol": "END_LOC"
+    },
+    {
+      "pgCol": "st_x",
+      "oracleCol": "ST_X"
+    },
+    {
+      "pgCol": "st_y",
+      "oracleCol": "ST_Y"
+    },
+    {
+      "pgCol": "end_x",
+      "oracleCol": "END_X"
+    },
+    {
+      "pgCol": "end_y",
+      "oracleCol": "END_Y"
     },
     {
       "pgCol": "depth",
@@ -284,7 +300,7 @@
     },
     {
       "pgCol": "an_qty",
-      "oracleCol": "AN_QTY"
+      "oracleCol": "an_QTY"
     },
     {
       "pgCol": "an_type",
@@ -292,47 +308,95 @@
     },
     {
       "pgCol": "inst_ctr",
-      "oracleCol": "INST_CTR"
+      "oracleCol": "inst_ctr"
+    },
+    {
+      "pgCol": "desg_press",
+      "oracleCol": "desg_PRESS"
+    },
+    {
+      "pgCol": "oper_press",
+      "oracleCol": "oper_press"
     },
     {
       "pgCol": "wall_thk",
       "oracleCol": "WALL_THK"
     },
     {
+      "pgCol": "st_fp",
+      "oracleCol": "st_FP"
+    },
+    {
+      "pgCol": "end_fp",
+      "oracleCol": "end_fp"
+    },
+    {
+      "pgCol": "material",
+      "oracleCol": "material"
+    },
+    {
       "pgCol": "process",
-      "oracleCol": "PROCESS"
-    },
-    {
-      "pgCol": "plegs",
-      "oracleCol": "PLEGS"
-    },
-    {
-      "pgCol": "cr_user",
-      "oracleCol": "CR_USER"
-    },
-    {
-      "pgCol": "cr_date",
-      "oracleCol": "CR_DATE"
-    },
-    {
-      "pgCol": "line_diam",
-      "oracleCol": "LINE_DIAM"
-    },
-    {
-      "pgCol": "plength",
-      "oracleCol": "PLENGTH"
-    },
-    {
-      "pgCol": "burial",
-      "oracleCol": "BURIAL"
+      "oracleCol": "process"
     },
     {
       "pgCol": "conc_ctg",
-      "oracleCol": "CONC_CTG"
+      "oracleCol": "conc_ctg"
     },
     {
-      "pgCol": "oper_press",
-      "oracleCol": "OPER_PRESS"
+      "pgCol": "cp_system",
+      "oracleCol": "cp_system"
+    },
+    {
+      "pgCol": "span_oper",
+      "oracleCol": "span_oper"
+    },
+    {
+      "pgCol": "fp_tolerance",
+      "oracleCol": "fp_tolerance"
+    },
+    {
+      "pgCol": "burial",
+      "oracleCol": "burial"
+    },
+    {
+      "pgCol": "conc_ctg_per",
+      "oracleCol": "conc_ctg_per"
+    },
+    {
+      "pgCol": "plength",
+      "oracleCol": "plength"
+    },
+    {
+      "pgCol": "ra_qty",
+      "oracleCol": "ra_qty"
+    },
+    {
+      "pgCol": "ra_type",
+      "oracleCol": "ra_type"
+    },
+    {
+      "pgCol": "sent",
+      "oracleCol": "sent"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "cr_user"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "cr_date"
+    },
+    {
+      "pgCol": "def_unit",
+      "oracleCol": "def_unit"
+    },
+    {
+      "pgCol": "workunit",
+      "oracleCol": "workunit"
+    },
+    {
+      "pgCol": "line_diam",
+      "oracleCol": "line_diam"
     }
   ],
   "STR_ELV": [
@@ -466,23 +530,31 @@
     },
     {
       "pgCol": "job.rov_operator",
-      "oracleCol": "DIVER"
+      "oracleCol": "DIVR"
     },
     {
       "pgCol": "job.rov_supervisor",
-      "oracleCol": "SUPERVISOR"
+      "oracleCol": "SUPV"
     },
     {
       "pgCol": "job.report_coordinator",
-      "oracleCol": "REP_CO"
+      "oracleCol": "REP_CORD"
     },
     {
       "pgCol": "job.deployment_date",
-      "oracleCol": "LOG_DATE"
+      "oracleCol": "insp_DATE"
     },
     {
       "pgCol": "movement.remarks",
       "oracleCol": "LOG_DETAIL"
+    },
+    {
+      "oracleCol": "str_iD",
+      "pgCol": "structure_id"
+    },
+    {
+      "oracleCol": "inspno",
+      "pgCol": "jobpack_id"
     }
   ],
   "LOGS_DIVE": [
@@ -3009,6 +3081,64 @@
       "oracleCol": "DEL"
     }
   ],
+  "INSP_DIVING_SZONE": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "cp_rdg",
+      "oracleCol": "cp_rdg"
+    },
+    {
+      "pgCol": "ut_3_o_clock",
+      "oracleCol": "c03"
+    },
+    {
+      "pgCol": "ut_6_o_clock",
+      "oracleCol": "c06"
+    },
+    {
+      "pgCol": "ut_9_o_clock",
+      "oracleCol": "c09"
+    },
+    {
+      "pgCol": "ut_12_o_clock",
+      "oracleCol": "c12"
+    },
+    {
+      "pgCol": "nominal_thickness",
+      "oracleCol": "nom_thk"
+    },
+    {
+      "pgCol": "coating_coverage_percent",
+      "oracleCol": "coat_coverage"
+    }
+  ],
   "PG": [
     {
       "pgCol": "structure_id",
@@ -3491,6 +3621,36 @@
     {
       "pgCol": "metadata.del",
       "oracleCol": "DEL"
+    }
+  ],
+  "INSP_DIVING_VIDEO": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
     }
   ],
   "IT": [
@@ -4049,64 +4209,6 @@
     {
       "pgCol": "soft_circum",
       "oracleCol": "soft_circum"
-    }
-  ],
-  "INSP_DIVING_SZONE": [
-    {
-      "pgCol": "oracle_insp_id",
-      "oracleCol": "INSP_ID"
-    },
-    {
-      "pgCol": "component_id",
-      "oracleCol": "COMP_ID"
-    },
-    {
-      "pgCol": "jobpack_id",
-      "oracleCol": "INSPNO"
-    },
-    {
-      "pgCol": "tape_id",
-      "oracleCol": "TAPE_NO"
-    },
-    {
-      "pgCol": "dive_job_id",
-      "oracleCol": "DIVE_NO"
-    },
-    {
-      "pgCol": "inspection_date",
-      "oracleCol": "INSP_DATE"
-    },
-    {
-      "pgCol": "inspection_time",
-      "oracleCol": "INSP_TIME"
-    },
-    {
-      "pgCol": "cp_rdg",
-      "oracleCol": "cp_rdg"
-    },
-    {
-      "pgCol": "ut_3_o_clock",
-      "oracleCol": "c03"
-    },
-    {
-      "pgCol": "ut_6_o_clock",
-      "oracleCol": "c06"
-    },
-    {
-      "pgCol": "ut_9_o_clock",
-      "oracleCol": "c09"
-    },
-    {
-      "pgCol": "ut_12_o_clock",
-      "oracleCol": "c12"
-    },
-    {
-      "pgCol": "nominal_thickness",
-      "oracleCol": "nom_thk"
-    },
-    {
-      "pgCol": "coating_coverage_percent",
-      "oracleCol": "coat_coverage"
     }
   ],
   "INSP_DIVING_PL_AN": [
@@ -4691,7 +4793,7 @@
       "oracleCol": "cp_rdg"
     }
   ],
-  "INSP_DIVING_VIDEO": [
+  "INSP_ROV_NAVIG": [
     {
       "pgCol": "oracle_insp_id",
       "oracleCol": "INSP_ID"
@@ -4709,16 +4811,144 @@
       "oracleCol": "TAPE_NO"
     },
     {
-      "pgCol": "dive_job_id",
+      "pgCol": "rov_job_id",
       "oracleCol": "DIVE_NO"
     },
     {
       "pgCol": "inspection_date",
-      "oracleCol": "INSP_DATE"
+      "oracleCol": "I_DATE"
     },
     {
       "pgCol": "inspection_time",
-      "oracleCol": "INSP_TIME"
+      "oracleCol": "TIME"
+    },
+    {
+      "pgCol": "inspection_data.northing",
+      "oracleCol": "NORTHING"
+    },
+    {
+      "pgCol": "inspection_data.easting",
+      "oracleCol": "EASTING"
+    },
+    {
+      "pgCol": "inspection_data.depth",
+      "oracleCol": "DEPTH"
+    },
+    {
+      "pgCol": "inspection_data.cp_rdg",
+      "oracleCol": "CP_RDG"
+    },
+    {
+      "pgCol": "fp_kp",
+      "oracleCol": "FP"
+    },
+    {
+      "pgCol": "inspection_data.event_name",
+      "oracleCol": "EVENT"
+    },
+    {
+      "pgCol": "inspection_data.event_type",
+      "oracleCol": "TYPE"
+    },
+    {
+      "pgCol": "inspection_data.event_position",
+      "oracleCol": "POS"
+    },
+    {
+      "pgCol": "inspection_data.event_description",
+      "oracleCol": "DESC"
+    },
+    {
+      "pgCol": "inspection_data.cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "inspection_data.cr_date",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "inspection_data.flow_direction",
+      "oracleCol": "FLOW_MODE"
+    },
+    {
+      "pgCol": "inspection_data.insp_mode",
+      "oracleCol": "INSP_MODE"
+    },
+    {
+      "pgCol": "inspection_data.cp_fg_rdg",
+      "oracleCol": "CP_FG"
+    },
+    {
+      "pgCol": "inspection_data.rov_heading",
+      "oracleCol": "ROV_HEAD"
+    },
+    {
+      "pgCol": "inspection_data.raw_fp",
+      "oracleCol": "RAW_FP"
+    },
+    {
+      "pgCol": "inspection_data.raw_northing",
+      "oracleCol": "RAW_NORTHING"
+    },
+    {
+      "pgCol": "inspection_data..raw_easting",
+      "oracleCol": "RAW_EASTING"
+    },
+    {
+      "pgCol": "inspection_data.raw_length",
+      "oracleCol": "RAW_LENGTH"
+    },
+    {
+      "pgCol": "inspection_data.crossing_line",
+      "oracleCol": "C_LINE"
+    },
+    {
+      "pgCol": "inspection_data.crossing_fp",
+      "oracleCol": "C_FP"
+    },
+    {
+      "pgCol": "inspection_data.crossing_gap",
+      "oracleCol": "C_GAP"
+    },
+    {
+      "pgCol": "inspection_data.crossing_type",
+      "oracleCol": "C_TYPE"
+    },
+    {
+      "pgCol": "inspection_data.crossing_angle",
+      "oracleCol": "C_ANGLE"
+    },
+    {
+      "pgCol": "inspection_data.num_supports",
+      "oracleCol": "C_SS"
+    },
+    {
+      "pgCol": "inspection_data.length",
+      "oracleCol": "LENGTH"
+    },
+    {
+      "pgCol": "inspection_data.height",
+      "oracleCol": "HEIGHT"
+    },
+    {
+      "pgCol": "description",
+      "oracleCol": "COMMENTS"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "CR_DATE"
+    },
+    {
+      "pgCol": "has_anomlay",
+      "oracleCol": "DEFECT"
+    },
+    {
+      "pgCol": "inspection_data.findings",
+      "oracleCol": "COMMENTS"
     }
   ]
 }

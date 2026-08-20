@@ -271,20 +271,6 @@ export const POST = withAuth(
         console.warn("Failed to fetch PREFERENCE details:", e.message);
       }
 
-      // Append Postgres counts to component summary list
-      const summaryWithPg = summary.map((row: any) => {
-        const rowObj = typeof row === 'object' && row !== null ? row : {};
-        const codeVal = String(rowObj.CODE || rowObj[1] || "").toUpperCase().trim();
-        const rowCount = Number(rowObj.ROW_COUNT || rowObj[3] || 0);
-        return {
-          STR_ID: rowObj.STR_ID || rowObj[0],
-          CODE: codeVal,
-          NAME: rowObj.NAME || rowObj[2],
-          ROW_COUNT: rowCount,
-          PG_ROW_COUNT: pgComponentCounts[codeVal] || 0
-        };
-      });
-
       let isPipe = false;
       try {
         const rPipe = await connection.execute(`SELECT PTYPE FROM v_structure WHERE STR_ID = :strId`, { strId: str_id });
@@ -293,6 +279,57 @@ export const POST = withAuth(
           isPipe = true;
         }
       } catch (e) {}
+
+      // Fetch component reference table from Supabase to filter by pipe=1 or plat=1
+      let dbComponentsMap: Map<string, { descrip?: string; plat?: number; pipe?: number }> = new Map();
+      try {
+        const { data: dbComps } = await supabase.from('components').select('code, descrip, name, plat, pipe');
+        if (dbComps && dbComps.length > 0) {
+          dbComps.forEach((c: any) => {
+            if (c.code) {
+              dbComponentsMap.set(String(c.code).toUpperCase().trim(), {
+                descrip: c.descrip || c.name,
+                plat: Number(c.plat),
+                pipe: Number(c.pipe)
+              });
+            }
+          });
+        }
+      } catch (e) {}
+
+      // Append Postgres counts to component summary list, filtered by structure type (pipe=1 vs plat=1)
+      const summaryWithPg = summary
+        .map((row: any) => {
+          const rowObj = typeof row === 'object' && row !== null ? row : {};
+          const codeVal = String(rowObj.CODE || rowObj[1] || "").toUpperCase().trim();
+          const rowCount = Number(rowObj.ROW_COUNT || rowObj[3] || 0);
+          const dbMeta = dbComponentsMap.get(codeVal);
+          return {
+            STR_ID: rowObj.STR_ID || rowObj[0],
+            CODE: codeVal,
+            NAME: dbMeta?.descrip || rowObj.NAME || rowObj[2],
+            ROW_COUNT: rowCount,
+            PG_ROW_COUNT: pgComponentCounts[codeVal] || 0,
+            PIPE: dbMeta?.pipe ?? 1,
+            PLAT: dbMeta?.plat ?? 1,
+          };
+        })
+        .filter((item: any) => {
+          const dbMeta = dbComponentsMap.get(item.CODE);
+          if (isPipe) {
+            // For pipeline, only list components where pipe = 1
+            if (dbMeta && dbMeta.pipe !== undefined) {
+              return dbMeta.pipe === 1;
+            }
+            return true;
+          } else {
+            // For platform, only list components where plat = 1
+            if (dbMeta && dbMeta.plat !== undefined) {
+              return dbMeta.plat === 1;
+            }
+            return true;
+          }
+        });
 
       const frameworkList: any[] = [
         { code: isPipe ? "STRUCTURE_PIPELINE" : "STRUCTURE", name: isPipe ? "Pipeline Master (U_PIPELINE)" : "Structure Master (PLATFORM)", row_count: Number(strCount), pg_row_count: pgStrCount }
@@ -318,6 +355,7 @@ export const POST = withAuth(
 
       return NextResponse.json({ 
         success: true, 
+        isPipe,
         data: summaryWithPg,
         company: companyDetails,
         preference: preferenceDetails,

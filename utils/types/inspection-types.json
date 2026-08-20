@@ -2257,6 +2257,16 @@
                     "hidden": true
                 },
                 {
+                    "name": "raw_length",
+                    "label": "Raw Length",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": false,
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "hidden": true
+                },
+                {
                     "name": "crossing_angle",
                     "label": "Crossing Angle",
                     "type": "number",

@@ -654,6 +654,7 @@ function fillRecordUnits(rec: Record<string, any>, isImp: boolean, compCode?: st
 interface MigrationPayload {
   config: OracleConnectionConfig;
   structureId: string;
+  structureType?: "PLATFORM" | "PIPELINE";
   mappings: Record<string, { oracleCol: string; pgCol: string }[]>;
   selectedInspNo?: string;
   legacyAttachmentPath?: string;
@@ -681,7 +682,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload format" }, { status: 400 });
   }
 
-  const { config, structureId, mappings, selectedInspNo: rawSelectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
+  const { config, structureId, structureType: rawStructureType, mappings, selectedInspNo: rawSelectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
   const selectedInspNo = rawSelectedInspNo || (payload as any).inspNo;
   if (!config || !structureId || !mappings) {
     return NextResponse.json({ error: "Missing required payload parameters" }, { status: 400 });
@@ -1052,290 +1053,310 @@ export async function POST(request: NextRequest) {
 
     logs.push(`Started migration for Structure ID: ${structureId}`);
 
-    // Query Structure Unit Type (DEF_UNIT)
+    // Auto-detect Structure Type (PIPELINE vs PLATFORM), Unit Type (DEF_UNIT), and Structure Title
+    let structureType = (rawStructureType || "").toUpperCase();
     let structureUnit = "METRIC";
+
     try {
-      const unitResult = await oracleConn.execute(
-        `SELECT DEF_UNIT FROM v_structure WHERE STR_ID = :strId`,
+      const typeResult = await oracleConn.execute(
+        `SELECT PTYPE, STR_TYPE, DEF_UNIT, NAME, TITLE FROM v_structure WHERE STR_ID = :strId`,
         { strId: structureId }
       );
-      if (unitResult.rows && unitResult.rows.length > 0) {
-        const row: any = unitResult.rows[0];
-        const val = String((row.DEF_UNIT || row[0]) || "").toUpperCase().trim();
-        if (val === "IMPERIAL" || val === "METRIC") {
-          structureUnit = val;
+      if (typeResult.rows && typeResult.rows.length > 0) {
+        const row: any = typeResult.rows[0];
+        const ptypeVal = String((row.PTYPE || row.STR_TYPE || row[0] || row[1]) || "").toUpperCase().trim();
+        if (ptypeVal === "PIPE" || ptypeVal === "PIPELINE") {
+          structureType = "PIPELINE";
+        } else if (ptypeVal === "PLAT" || ptypeVal === "PLATFORM") {
+          structureType = "PLATFORM";
+        }
+
+        const unitVal = String((row.DEF_UNIT || row[2]) || "").toUpperCase().trim();
+        if (unitVal === "IMPERIAL" || unitVal === "METRIC") {
+          structureUnit = unitVal;
+        }
+
+        if (!structureTitle) {
+          structureTitle = String((row.NAME || row.TITLE || row[3] || row[4]) || "").trim();
         }
       }
-    } catch (unitErr: any) {
-      logs.push(`WARNING: Could not fetch DEF_UNIT from v_structure: ${unitErr.message}`);
+    } catch (typeErr: any) {
+      logs.push(`WARNING: Could not fetch structure metadata from v_structure: ${typeErr.message}`);
+      // Fallback check against U_PIPELINE table in Oracle
+      try {
+        const pipeCheck = await oracleConn.execute(
+          `SELECT COUNT(*) as CNT FROM U_PIPELINE WHERE PIPE_ID = :strId OR STR_ID = :strId`,
+          { strId: structureId }
+        );
+        const cnt = Number(pipeCheck.rows?.[0]?.CNT || pipeCheck.rows?.[0]?.[0] || 0);
+        if (cnt > 0) structureType = "PIPELINE";
+      } catch (_) {}
     }
+
+    if (!structureType) {
+      structureType = "PLATFORM";
+    }
+
+    const isPipeline = structureType === "PIPELINE";
+    let targetTable = isPipeline ? "u_pipeline" : "platform";
+
+    logs.push(`Structure Type determined as: ${structureType} (Target: ${targetTable})`);
     logs.push(`Structure Unit Type determined as: ${structureUnit}`);
     const isImperial = structureUnit === "IMPERIAL";
 
-    // Query Structure Name/Title from Oracle
-    try {
-      const nameResult = await oracleConn.execute(
-        `SELECT NAME FROM v_structure WHERE STR_ID = :strId`,
-        { strId: structureId }
-      );
-      if (nameResult.rows && nameResult.rows.length > 0) {
-        const row: any = nameResult.rows[0];
-        structureTitle = String(row.NAME || row[0] || "").trim();
-      }
-    } catch (nameErr1: any) {
+    // Query Structure Name/Title fallback if not found
+    if (!structureTitle) {
       try {
-        const nameResult2 = await oracleConn.execute(
-          `SELECT TITLE FROM v_structure WHERE STR_ID = :strId`,
-          { strId: structureId }
-        );
-        if (nameResult2.rows && nameResult2.rows.length > 0) {
-          const row: any = nameResult2.rows[0];
-          structureTitle = String(row.TITLE || row[0] || "").trim();
+        const nameQuery = isPipeline
+          ? `SELECT TITLE FROM U_PIPELINE WHERE PIPE_ID = :strId`
+          : `SELECT TITLE FROM PLATFORM WHERE PLAT_ID = :strId`;
+        const nameResult = await oracleConn.execute(nameQuery, { strId: structureId });
+        if (nameResult.rows && nameResult.rows.length > 0) {
+          const row: any = nameResult.rows[0];
+          structureTitle = String(row.TITLE || row.NAME || row[0] || "").trim();
         }
-      } catch (nameErr2: any) {
-        logs.push(`WARNING: Could not fetch NAME or TITLE from Oracle v_structure: ${nameErr2.message}`);
-      }
+      } catch (_) {}
     }
+
     if (structureTitle) {
       logs.push(`Legacy Structure Name resolved as: "${structureTitle}"`);
     }
 
-    let targetTable = "platform";
     let structureSuccess = true; // Default to true if skipped
 
     // --- 1. MIGRATE STRUCTURE ---
-    await writeStreamEvent({ type: "progress", current: 2, total: 9, label: "Migrating primary Structure master...", percent: 15 });
-    const strMappings = mappings["STRUCTURE"] || [];
+    await writeStreamEvent({ type: "progress", current: 2, total: 9, label: `Migrating primary ${structureType} Structure master...`, percent: 15 });
+    const strMappings = isPipeline
+      ? (mappings["STRUCTURE_PIPELINE"] || mappings["STRUCTURE"] || [])
+      : (mappings["STRUCTURE_PLATFORM"] || mappings["STRUCTURE"] || []);
+
     if (strMappings.length > 0) {
       structureSuccess = false; // must succeed if mapped
       report["STRUCTURE"].status = "failed"; // set to failed by default once mapped, success later
 
-      // Build dynamic SELECT query based on mapped Oracle columns
-      const oracleColumns = strMappings.map(m => m.oracleCol).filter(Boolean);
-      if (oracleColumns.length > 0) {
-        // Dynamically determine the source table based on primary key mappings
-        let oracleTable = 'v_structure';
-        let idCol = 'STR_ID';
+      let oracleTable = isPipeline ? 'U_PIPELINE' : 'PLATFORM';
+      let idCol = isPipeline ? 'PIPE_ID' : 'PLAT_ID';
 
-        if (oracleColumns.includes('PLAT_ID')) {
-          oracleTable = 'PLATFORM';
-          idCol = 'PLAT_ID';
-        } else if (oracleColumns.includes('PIPE_ID')) {
-          oracleTable = 'U_PIPELINE';
-          idCol = 'PIPE_ID';
+      // Build dynamic SELECT query based on mapped Oracle columns
+      const oracleColumns = strMappings.map((m: any) => m.oracleCol).filter(Boolean);
+      let rows: any[] = [];
+
+      if (oracleColumns.length > 0) {
+        try {
+          const strQuery = `SELECT ${oracleColumns.join(', ')} FROM ${oracleTable} WHERE ${idCol} = :strId`;
+          const strResult = await oracleConn.execute(strQuery, { strId: structureId });
+          rows = strResult.rows as any[];
+        } catch (tableErr: any) {
+          logs.push(`Querying ${oracleTable} failed (${tableErr.message}). Trying fallback from v_structure...`);
+          try {
+            const fallbackCols = oracleColumns.filter((c: string) => c !== 'PLAT_ID' && c !== 'PIPE_ID');
+            const strQuery2 = `SELECT ${fallbackCols.join(', ')} FROM v_structure WHERE STR_ID = :strId`;
+            const strResult2 = await oracleConn.execute(strQuery2, { strId: structureId });
+            rows = strResult2.rows as any[];
+          } catch (vErr: any) {
+            logs.push(`Querying v_structure fallback failed: ${vErr.message}`);
+          }
         }
 
-        const strQuery = `SELECT ${oracleColumns.join(', ')} FROM ${oracleTable} WHERE ${idCol} = :strId`;
-        try {
-          const strResult = await oracleConn.execute(strQuery, { strId: structureId });
-          const rows = strResult.rows as any[];
+        if (rows && rows.length > 0) {
+          report["STRUCTURE"].oracleRows = 1;
+          const oracleData = rows[0];
 
-          if (rows && rows.length > 0) {
-            report["STRUCTURE"].oracleRows = 1;
-            const oracleData = rows[0];
+          // Map to Postgres format
+          const pgRecord: Record<string, any> = {};
+          strMappings.forEach((mapping: any) => {
+            if (mapping.oracleCol && mapping.pgCol && oracleData[mapping.oracleCol] !== undefined) {
+              let val = oracleData[mapping.oracleCol];
 
-            // Map to Postgres format
-            const pgRecord: Record<string, any> = {};
-            strMappings.forEach(mapping => {
-              if (mapping.oracleCol && mapping.pgCol && oracleData[mapping.oracleCol] !== undefined) {
-                let val = oracleData[mapping.oracleCol];
-
-                // Prevent timezone recognition issues
-                if (typeof val === 'string' && val.toLowerCase().includes('gmt')) {
-                  val = formatLocalISOString(val);
-                }
-
-                val = coerceValue(mapping.pgCol, val);
-                setNestedProperty(pgRecord, mapping.pgCol, val);
+              // Prevent timezone recognition issues
+              if (typeof val === 'string' && val.toLowerCase().includes('gmt')) {
+                val = formatLocalISOString(val);
               }
-            });
 
-            // Set structure spec unit defaults
-            fillRecordUnits(pgRecord, isImperial);
-
-            // Determine target table based on PTYPE (Platform or Pipeline)
-            const ptypeMappedField = strMappings.find(m => m.oracleCol.toUpperCase() === "PTYPE")?.pgCol;
-            if (ptypeMappedField && pgRecord[ptypeMappedField] === "PIPE") {
-              targetTable = "u_pipeline";
-            } else if (oracleData["PTYPE"] === "PIPE") {
-              targetTable = "u_pipeline";
+              val = coerceValue(mapping.pgCol, val);
+              setNestedProperty(pgRecord, mapping.pgCol, val);
             }
+          });
 
-            const conflictCol = targetTable === "u_pipeline" ? "pipe_id" : "plat_id";
+          // Set structure spec unit defaults
+          fillRecordUnits(pgRecord, isImperial);
 
-            // Fix mapped id key to avoid conflict
-            if (pgRecord.id !== undefined) {
-              if (pgRecord[conflictCol] === undefined) {
-                pgRecord[conflictCol] = pgRecord.id;
-              }
-              delete pgRecord.id;
-            }
+          const conflictCol = isPipeline ? "pipe_id" : "plat_id";
 
-            // Ensure structural primary key is present
+          // Fix mapped id key to avoid conflict
+          if (pgRecord.id !== undefined) {
             if (pgRecord[conflictCol] === undefined) {
-              pgRecord[conflictCol] = resolvedStructureId;
+              pgRecord[conflictCol] = pgRecord.id;
             }
+            delete pgRecord.id;
+          }
 
-            // --- 3-CASE CONFLICT RESOLUTION ---
-            const titleMapping = strMappings.find(
-              m => m.oracleCol.toUpperCase() === "TITLE" || m.oracleCol.toUpperCase() === "NAME"
-            );
-            const titlePgCol = titleMapping?.pgCol || "title";
-            const incomingTitle = String(oracleData[titleMapping?.oracleCol || "TITLE"] || "").trim();
+          // Ensure structural primary key is present
+          if (pgRecord[conflictCol] === undefined) {
+            pgRecord[conflictCol] = resolvedStructureId;
+          }
 
-            logs.push(`Analyzing structure database conflicts in Postgres...`);
+          // --- 3-CASE CONFLICT RESOLUTION ---
+          const titleMapping = strMappings.find(
+            m => m.oracleCol.toUpperCase() === "TITLE" || m.oracleCol.toUpperCase() === "NAME"
+          );
+          const titlePgCol = titleMapping?.pgCol || "title";
+          const incomingTitle = String(oracleData[titleMapping?.oracleCol || "TITLE"] || "").trim();
 
-            // Fetch by ID
-            const { data: existingById, error: errById } = await supabase
-              .from(targetTable as any)
-              .select(`${conflictCol}, ${titlePgCol}`)
-              .eq(conflictCol, Number(structureId))
-              .maybeSingle();
+          logs.push(`Analyzing structure database conflicts in Postgres...`);
 
-            if (errById) {
-              logs.push(`WARNING: Checking structure by ID failed: ${errById.message}`);
-            }
+          // Fetch by ID
+          const { data: existingById, error: errById } = await supabase
+            .from(targetTable as any)
+            .select(`${conflictCol}, ${titlePgCol}`)
+            .eq(conflictCol, Number(structureId))
+            .maybeSingle();
 
-            // Fetch by Title (case-insensitive)
-            const { data: existingByTitle, error: errByTitle } = await supabase
-              .from(targetTable as any)
-              .select(`${conflictCol}, ${titlePgCol}`)
-              .ilike(titlePgCol, incomingTitle)
-              .maybeSingle();
+          if (errById) {
+            logs.push(`WARNING: Checking structure by ID failed: ${errById.message}`);
+          }
 
-            if (errByTitle) {
-              logs.push(`WARNING: Checking structure by Title failed: ${errByTitle.message}`);
-            }
+          // Fetch by Title (case-insensitive)
+          const { data: existingByTitle, error: errByTitle } = await supabase
+            .from(targetTable as any)
+            .select(`${conflictCol}, ${titlePgCol}`)
+            .ilike(titlePgCol, incomingTitle)
+            .maybeSingle();
 
-            if (existingByTitle) {
-              // Case 2: Different ID, Same Title (Alignment / Subsequent migration) -> Reuse the existing Postgres ID
-              resolvedStructureId = Number((existingByTitle as any)[conflictCol]);
-              (pgRecord as any)[conflictCol] = resolvedStructureId;
-              logs.push(`Case 2 Match: Title "${incomingTitle}" already exists in Postgres with ID ${resolvedStructureId}. Reusing this ID for migration.`);
-            } else if (existingById) {
-              const existingTitle = String((existingById as any)[titlePgCol] || "").trim();
-              if (existingTitle.toLowerCase() !== incomingTitle.toLowerCase()) {
-                // Case 1: Same ID, Different Title (Collision) -> Generate a new Postgres ID
-                const { data: maxResult, error: maxErr } = await supabase
-                  .from(targetTable as any)
-                  .select(conflictCol)
-                  .order(conflictCol, { ascending: false })
-                  .limit(1)
-                  .maybeSingle();
+          if (errByTitle) {
+            logs.push(`WARNING: Checking structure by Title failed: ${errByTitle.message}`);
+          }
 
-                if (maxErr) {
-                  logs.push(`WARNING: Fetching max ID failed: ${maxErr.message}`);
-                }
+          if (existingByTitle) {
+            // Case 2: Different ID, Same Title (Alignment / Subsequent migration) -> Reuse the existing Postgres ID
+            resolvedStructureId = Number((existingByTitle as any)[conflictCol]);
+            (pgRecord as any)[conflictCol] = resolvedStructureId;
+            logs.push(`Case 2 Match: Title "${incomingTitle}" already exists in Postgres with ID ${resolvedStructureId}. Reusing this ID for migration.`);
+          } else if (existingById) {
+            const existingTitle = String((existingById as any)[titlePgCol] || "").trim();
+            if (existingTitle.toLowerCase() !== incomingTitle.toLowerCase()) {
+              // Case 1: Same ID, Different Title (Collision) -> Generate a new Postgres ID
+              const { data: maxResult, error: maxErr } = await supabase
+                .from(targetTable as any)
+                .select(conflictCol)
+                .order(conflictCol, { ascending: false })
+                .limit(1)
+                .maybeSingle();
 
-                const maxId = maxResult ? Number((maxResult as any)[conflictCol]) : 0;
-                resolvedStructureId = Math.max(maxId, 10000) + 1;
-                (pgRecord as any)[conflictCol] = resolvedStructureId;
-
-                logs.push(`Case 1 Match: ID ${structureId} is already occupied by "${existingTitle}". Generated safe new Postgres ID ${resolvedStructureId} for "${incomingTitle}".`);
-              } else {
-                // Same ID, Same Title (Re-migration / Update of same structure) -> Normal flow
-                resolvedStructureId = Number(structureId);
-                (pgRecord as any)[conflictCol] = resolvedStructureId;
-                logs.push(`Case 3 Match: Identical structure "${incomingTitle}" (ID ${structureId}) already exists. Updating in-place.`);
+              if (maxErr) {
+                logs.push(`WARNING: Fetching max ID failed: ${maxErr.message}`);
               }
+
+              const maxId = maxResult ? Number((maxResult as any)[conflictCol]) : 0;
+              resolvedStructureId = Math.max(maxId, 10000) + 1;
+              (pgRecord as any)[conflictCol] = resolvedStructureId;
+
+              logs.push(`Case 1 Match: ID ${structureId} is already occupied by "${existingTitle}". Generated safe new Postgres ID ${resolvedStructureId} for "${incomingTitle}".`);
             } else {
-              // Case 3: No matching ID and no matching Title -> Normal flow
+              // Same ID, Same Title (Re-migration / Update of same structure) -> Normal flow
               resolvedStructureId = Number(structureId);
               (pgRecord as any)[conflictCol] = resolvedStructureId;
-              logs.push(`Case 3 Match: No existing ID or Title matches in Postgres. Migrating with original Oracle ID ${resolvedStructureId}.`);
-            }
-
-            // Ensure the parent record exists in public.structure first to satisfy the foreign key constraint
-            const parentStructureObj = {
-              str_id: resolvedStructureId,
-              str_type: targetTable === 'u_pipeline' ? 'PIPELINE' : 'PLATFORM'
-            };
-            const { error: parentStructureErr } = await supabase
-              .from("structure" as any)
-              .upsert(parentStructureObj as any, { onConflict: 'str_id' });
-            if (parentStructureErr) {
-              logs.push(`WARNING: Failed to insert parent structure record: ${parentStructureErr.message}`);
-            }
-
-            // Insert/Upsert in Supabase
-            const { error: insertErr } = await supabase
-              .from(targetTable as any)
-              .upsert(pgRecord as any, { onConflict: conflictCol })
-              .select();
-
-            if (insertErr) {
-              logs.push(`ERROR inserting structure: ${insertErr.message}`);
-              report["STRUCTURE"].errors.push(insertErr.message);
-            } else {
-              logs.push(`Successfully migrated Structure!`);
-              report["STRUCTURE"].status = "success";
-              report["STRUCTURE"].migratedRows = 1;
-              structureSuccess = true;
-              structureTitle = incomingTitle;
-
-              // If PIPELINE structure, also migrate Geodetic Parameters from PIPE_GEO (fallback to U_PIPEGEO)
-              if (targetTable === 'u_pipeline') {
-                try {
-                  logs.push(`[Pipeline Route] Checking PIPE_GEO / U_PIPEGEO for geodetic parameters (STR_ID: ${structureId})...`);
-                  let geoRes: any = null;
-                  try {
-                    geoRes = await oracleConn.execute(
-                      `SELECT * FROM PIPE_GEO WHERE STR_ID = :strId`,
-                      { strId: structureId }
-                    );
-                  } catch (e1: any) {
-                    try {
-                      geoRes = await oracleConn.execute(
-                        `SELECT * FROM PIPE_GEO WHERE PIPE_ID = :strId`,
-                        { strId: structureId }
-                      );
-                    } catch (e2: any) {
-                      try {
-                        geoRes = await oracleConn.execute(
-                          `SELECT * FROM U_PIPEGEO WHERE STR_ID = :strId`,
-                          { strId: structureId }
-                        );
-                      } catch (e3: any) {
-                        logs.push(`[Pipeline Route] Note on PIPE_GEO / U_PIPEGEO queries: ${e3.message}`);
-                      }
-                    }
-                  }
-
-                  if (geoRes && geoRes.rows && geoRes.rows.length > 0) {
-                    const geoRow = geoRes.rows[0];
-                    const geoRecord = {
-                      str_id: resolvedStructureId,
-                      geo_proj_nam: geoRow.GEO_PROJ_NAM || geoRow.PROJ_NAM || geoRow.PROJECTION || "Timbalai 1948 RSO Borneo Feet (BRS0)",
-                      geo_datum: geoRow.GEO_DATUM || geoRow.DATUM || "Timbalai 1948",
-                      geo_elli_sph: geoRow.GEO_ELLI_SPH || geoRow.ELLIPSOID || geoRow.SPHEROID || "Everest 1830 Modified",
-                      geo_units: geoRow.GEO_UNITS || geoRow.UNITS || (isImperial ? "Feet" : "Meters"),
-                      geo_dir: geoRow.GEO_DIR || geoRow.DATUM_SHIFT || "WGS-84 To Timbalai",
-                      geo_dx: geoRow.GEO_DX !== undefined ? Number(geoRow.GEO_DX) : (geoRow.DX !== undefined ? Number(geoRow.DX) : 0),
-                      geo_dx_u: isImperial ? "ft" : "m",
-                      geo_dy: geoRow.GEO_DY !== undefined ? Number(geoRow.GEO_DY) : (geoRow.DY !== undefined ? Number(geoRow.DY) : 0),
-                      geo_dy_u: isImperial ? "ft" : "m",
-                      geo_dz: geoRow.GEO_DZ !== undefined ? Number(geoRow.GEO_DZ) : (geoRow.DZ !== undefined ? Number(geoRow.DZ) : 0),
-                      geo_dz_u: isImperial ? "ft" : "m",
-                      cr_user: geoRow.CR_USER ? String(geoRow.CR_USER) : null,
-                      cr_date: geoRow.CR_DATE ? new Date(geoRow.CR_DATE).toISOString() : null,
-                      workunit: geoRow.WORKUNIT ? String(geoRow.WORKUNIT) : null,
-                    };
-                    await (supabase.from as any)("u_pipegeo").upsert(geoRecord, { onConflict: "str_id" });
-                    logs.push(`[Pipeline Route] Successfully migrated Geodetic parameters into u_pipegeo.`);
-                  }
-                } catch (geoErr: any) {
-                  logs.push(`[Pipeline Route] Note on PIPE_GEO / U_PIPEGEO: ${geoErr.message}`);
-                }
-              }
+              logs.push(`Case 3 Match: Identical structure "${incomingTitle}" (ID ${structureId}) already exists. Updating in-place.`);
             }
           } else {
-            logs.push(`WARNING: Structure ID ${structureId} not found in ${oracleTable}.`);
-            report["STRUCTURE"].errors.push(`Structure ID not found in ${oracleTable}`);
+            // Case 3: No matching ID and no matching Title -> Normal flow
+            resolvedStructureId = Number(structureId);
+            (pgRecord as any)[conflictCol] = resolvedStructureId;
+            logs.push(`Case 3 Match: No existing ID or Title matches in Postgres. Migrating with original Oracle ID ${resolvedStructureId}.`);
           }
-        } catch (err: any) {
-          logs.push(`ERROR querying Oracle Structure: ${err.message}`);
-          report["STRUCTURE"].errors.push(err.message);
+
+          // Ensure the parent record exists in public.structure first to satisfy the foreign key constraint
+          const parentStructureObj = {
+            str_id: resolvedStructureId,
+            str_type: targetTable === 'u_pipeline' ? 'PIPELINE' : 'PLATFORM'
+          };
+          const { error: parentStructureErr } = await supabase
+            .from("structure" as any)
+            .upsert(parentStructureObj as any, { onConflict: 'str_id' });
+          if (parentStructureErr) {
+            logs.push(`WARNING: Failed to insert parent structure record: ${parentStructureErr.message}`);
+          }
+
+          // Insert/Upsert in Supabase
+          const { error: insertErr } = await supabase
+            .from(targetTable as any)
+            .upsert(pgRecord as any, { onConflict: conflictCol })
+            .select();
+
+          if (insertErr) {
+            logs.push(`ERROR inserting structure: ${insertErr.message}`);
+            report["STRUCTURE"].errors.push(insertErr.message);
+          } else {
+            logs.push(`Successfully migrated Structure!`);
+            report["STRUCTURE"].status = "success";
+            report["STRUCTURE"].migratedRows = 1;
+            structureSuccess = true;
+            structureTitle = incomingTitle;
+
+            // If PIPELINE structure, also migrate Geodetic Parameters from PIPE_GEO (fallback to U_PIPEGEO)
+            if (targetTable === 'u_pipeline') {
+              try {
+                logs.push(`[Pipeline Route] Checking PIPE_GEO / U_PIPEGEO for geodetic parameters (STR_ID: ${structureId})...`);
+                let geoRes: any = null;
+                try {
+                  geoRes = await oracleConn.execute(
+                    `SELECT * FROM PIPE_GEO WHERE STR_ID = :strId`,
+                    { strId: structureId }
+                  );
+                } catch (e1: any) {
+                  try {
+                    geoRes = await oracleConn.execute(
+                      `SELECT * FROM PIPE_GEO WHERE PIPE_ID = :strId`,
+                      { strId: structureId }
+                    );
+                  } catch (e2: any) {
+                    try {
+                      geoRes = await oracleConn.execute(
+                        `SELECT * FROM U_PIPEGEO WHERE STR_ID = :strId`,
+                        { strId: structureId }
+                      );
+                    } catch (e3: any) {
+                      logs.push(`[Pipeline Route] Note on PIPE_GEO / U_PIPEGEO queries: ${e3.message}`);
+                    }
+                  }
+                }
+
+                if (geoRes && geoRes.rows && geoRes.rows.length > 0) {
+                  const geoRow = geoRes.rows[0];
+                  const geoRecord = {
+                    str_id: resolvedStructureId,
+                    geo_proj_nam: geoRow.GEO_PROJ_NAM || geoRow.PROJ_NAM || geoRow.PROJECTION || "Timbalai 1948 RSO Borneo Feet (BRS0)",
+                    geo_datum: geoRow.GEO_DATUM || geoRow.DATUM || "Timbalai 1948",
+                    geo_elli_sph: geoRow.GEO_ELLI_SPH || geoRow.ELLIPSOID || geoRow.SPHEROID || "Everest 1830 Modified",
+                    geo_units: geoRow.GEO_UNITS || geoRow.UNITS || (isImperial ? "Feet" : "Meters"),
+                    geo_dir: geoRow.GEO_DIR || geoRow.DATUM_SHIFT || "WGS-84 To Timbalai",
+                    geo_dx: geoRow.GEO_DX !== undefined ? Number(geoRow.GEO_DX) : (geoRow.DX !== undefined ? Number(geoRow.DX) : 0),
+                    geo_dx_u: isImperial ? "ft" : "m",
+                    geo_dy: geoRow.GEO_DY !== undefined ? Number(geoRow.GEO_DY) : (geoRow.DY !== undefined ? Number(geoRow.DY) : 0),
+                    geo_dy_u: isImperial ? "ft" : "m",
+                    geo_dz: geoRow.GEO_DZ !== undefined ? Number(geoRow.GEO_DZ) : (geoRow.DZ !== undefined ? Number(geoRow.DZ) : 0),
+                    geo_dz_u: isImperial ? "ft" : "m",
+                    cr_user: geoRow.CR_USER ? String(geoRow.CR_USER) : null,
+                    cr_date: geoRow.CR_DATE ? new Date(geoRow.CR_DATE).toISOString() : null,
+                    workunit: geoRow.WORKUNIT ? String(geoRow.WORKUNIT) : null,
+                  };
+                  await (supabase.from as any)("u_pipegeo").upsert(geoRecord, { onConflict: "str_id" });
+                  logs.push(`[Pipeline Route] Successfully migrated Geodetic parameters into u_pipegeo.`);
+                  report["U_PIPEGEO"] = { status: "success", oracleRows: 1, migratedRows: 1, errors: [] };
+                }
+              } catch (geoErr: any) {
+                logs.push(`[Pipeline Route] Note on PIPE_GEO / U_PIPEGEO: ${geoErr.message}`);
+              }
+            }
+          }
+        } else {
+          logs.push(`WARNING: Structure ID ${structureId} not found in ${oracleTable}.`);
+          report["STRUCTURE"].errors.push(`Structure ID not found in ${oracleTable}`);
         }
+      } else {
+        logs.push("Skipped Structure migration (No columns mapped).");
+        report["STRUCTURE"].status = "skipped";
+        structureSuccess = true;
       }
     } else {
       logs.push("Skipped Structure migration (No mappings defined).");
@@ -1348,9 +1369,12 @@ export async function POST(request: NextRequest) {
     const compTypeCache = new Map<number, string>();
 
     // --- 1.5 MIGRATE STRUCTURAL CHILD TABLES ---
-    await writeStreamEvent({ type: "progress", current: 3, total: 9, label: "Copying structural elevations & levels...", percent: 25 });
-    const structuralTables = ["STR_ELV", "STR_LEVEL", "STR_FACES"];
-    if (structureSuccess) {
+    await writeStreamEvent({ type: "progress", current: 3, total: 9, label: isPipeline ? "Skipping structural elevations & levels (Pipeline)..." : "Copying structural elevations & levels...", percent: 25 });
+    const structuralTables = isPipeline ? [] : ["STR_ELV", "STR_LEVEL", "STR_FACES"];
+    if (isPipeline) {
+      logs.push("Skipped Structural Elevations, Levels & Faces (Not applicable to Pipeline).");
+    }
+    if (structureSuccess && structuralTables.length > 0) {
       for (const childTable of structuralTables) {
         const childMappings = mappings[childTable] || [];
         if (childMappings.length > 0) {
@@ -1444,11 +1468,22 @@ export async function POST(request: NextRequest) {
       "LOGS_JOBS", "LOGS_MOVEMENTS", "LOGS_ROV", "LOGS_DIVE",
       "VIDEO", "ANOMALY", "U_ASSOC", "INSP_ATTACHMENT"
     ];
+    // Fetch valid component codes from Postgres components table based on structure type
+    let allowedTypeCodes: Set<string> | null = null;
+    try {
+      const typeColumn = isPipeline ? 'pipe' : 'plat';
+      const { data: validComps } = await supabase.from('components').select('code').eq(typeColumn, 1);
+      if (validComps && validComps.length > 0) {
+        allowedTypeCodes = new Set(validComps.map((c: any) => String(c.code).toUpperCase().trim()));
+      }
+    } catch (_) {}
+
     const componentCodes = Object.keys(mappings).filter(k =>
       !nonComponentKeys.includes(k) &&
       !childTables.includes(k) &&
       !k.startsWith("INSP_ROV") &&
-      !k.startsWith("INSP_DIV")
+      !k.startsWith("INSP_DIV") &&
+      (!allowedTypeCodes || allowedTypeCodes.has(k.toUpperCase()))
     );
 
     if (structureSuccess) {
@@ -1488,11 +1523,12 @@ export async function POST(request: NextRequest) {
 
       await writeStreamEvent({ type: "progress", current: 4, total: 9, label: "Processing mapped components...", percent: 40 });
       for (const code of componentCodes) {
-        const compMappings = mappings[code] || [];
+        const compMappings = (code.toUpperCase() === "AN")
+          ? (isPipeline ? (mappings["AN_PIPELINE"] || mappings["AN"] || []) : (mappings["AN_PLATFORM"] || mappings["AN"] || []))
+          : (mappings[code] || []);
         if (compMappings.length === 0) continue;
 
-        report[code] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [] };
-        logs.push(`Migrating ${code} components...`);
+        logs.push(`Checking ${code} components...`);
         const oracleColumns = compMappings.map(m => m.oracleCol).filter(Boolean);
 
         if (oracleColumns.length > 0) {
@@ -1546,7 +1582,8 @@ export async function POST(request: NextRequest) {
             }
 
             if (rows && rows.length > 0) {
-              report[code].oracleRows = rows.length;
+              report[code] = { status: "pending", oracleRows: rows.length, migratedRows: 0, errors: [] };
+              logs.push(`Migrating ${rows.length} ${code} components...`);
               const pgRecords = rows.map(oracleData => {
                 const isDeletedVal = oracleData['DEL'];
                 const pgRecord: Record<string, any> = {
@@ -2784,6 +2821,31 @@ export async function POST(request: NextRequest) {
                   divingInspections.push(item);
                 }
               }
+
+              // Also directly check Oracle NAVIG table for ROV pipeline survey events
+              try {
+                const navigCheck = await oracleConn.execute(
+                  `SELECT COUNT(*) as CNT FROM NAVIG WHERE STR_ID = :strId AND (INSPNO = :inspNo OR INSPNO IS NULL)`,
+                  { strId: structureId, inspNo: oracleInspNo }
+                );
+                const navCnt = Number(navigCheck.rows?.[0]?.CNT || navigCheck.rows?.[0]?.[0] || 0);
+                if (navCnt > 0) {
+                  if (!rovInspections.some(i => i.code.toUpperCase() === 'NAVIG')) {
+                    rovInspections.push({
+                      code: 'NAVIG',
+                      name: 'ROV Pipeline Navigation / Survey'
+                    });
+                  }
+                }
+              } catch (_) {}
+
+              // Fallback: ensure NAVIG is registered for Pipeline ROV mode
+              if (rovInspections.length === 0) {
+                rovInspections.push({
+                  code: 'NAVIG',
+                  name: 'ROV Pipeline Navigation / Survey'
+                });
+              }
             }
 
             logs.push(`Found active inspection types in Oracle: ROV = [${rovInspections.map(i => i.code).join(',')}], Diving = [${divingInspections.map(i => i.code).join(',')}]`);
@@ -3429,7 +3491,7 @@ export async function POST(request: NextRequest) {
                   rov_serial_no: 'ROV-01',
                   rov_operator: op,
                   rov_supervisor: sv,
-                  rov_report_coordinator: co,
+                  report_coordinator: co,
                   deployment_date: deploymentDate,
                   start_time: formatTimeOnly(firstItem.standard.LOG_TIME),
                   end_time: formatTimeOnly(lastItem.standard.LOG_TIME),
@@ -3593,7 +3655,7 @@ export async function POST(request: NextRequest) {
         const navigCols = await getOracleTableColumns(oracleConn, 'NAVIG');
         const tapeLogRows: any[] = [];
 
-        if (targetTable === 'u_pipeline' && navigCols.size > 0) {
+        if ((isPipeline || targetTable === 'u_pipeline' || structureType === 'PIPELINE') && navigCols.size > 0) {
           const dateCol = navigCols.has('INSP_DATE') ? 'INSP_DATE' : (navigCols.has('I_DATE') ? 'I_DATE' : 'I_DATE');
           const timeCol = navigCols.has('INSP_TIME') ? 'INSP_TIME' : (navigCols.has('I_TIME') ? 'I_TIME' : 'I_TIME');
           const descCol = navigCols.has('DESCR') ? 'DESCR' : (navigCols.has('FINDINGS') ? 'FINDINGS' : (navigCols.has('DESCRIPTION') ? 'DESCRIPTION' : 'EVENT'));
@@ -3677,7 +3739,7 @@ export async function POST(request: NextRequest) {
             tapeGroups.get(key)!.push(row);
           });
 
-          logs.push(`Migrating unique ROV tapes parsed from 'PLATGI'...`);
+          logs.push(`Migrating unique ROV tapes parsed from '${isPipeline ? 'NAVIG' : 'PLATGI'}'...`);
           for (const [tapeNo, groupRows] of Array.from(tapeGroups.entries())) {
             // Sort chronologically by date, time, and counter_no
             const sortedRows = groupRows.sort((a, b) => {
@@ -4649,7 +4711,7 @@ export async function POST(request: NextRequest) {
           let qCols: string[] = [];
 
           if (isRov) {
-            if (targetTable === 'u_pipeline') {
+            if (targetTable === 'u_pipeline' || isPipeline || structureType === 'PIPELINE') {
               logs.push(`[Pipeline Route] Running dedicated ROV Pipeline Navigation Survey migration from NAVIG table...`);
               await migratePipelineNavigInspections({
                 oracleConn,
@@ -4861,7 +4923,11 @@ export async function POST(request: NextRequest) {
 
           if (primaryInspections.length === 0) {
             logs.push(`No ${isRov ? 'ROV' : 'Diving'} primary inspection records found in Oracle.`);
-            report[reportKey].status = "success";
+            if (isPipeline && !isRov) {
+              delete report[reportKey];
+            } else {
+              report[reportKey].status = "success";
+            }
             return;
           }
 
