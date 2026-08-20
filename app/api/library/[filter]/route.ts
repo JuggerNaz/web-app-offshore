@@ -121,6 +121,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   // Check if an item with the same category (lib_code) and ID/Value (lib_id) already exists (including soft-deleted)
   if (libId) {
+    if (String(libId).length > 12) {
+      return NextResponse.json({ error: "Value/Code cannot exceed 12 characters." }, { status: 400 });
+    }
+
     const { data: existing } = await supabase
       .from("u_lib_list")
       .select("*")

@@ -5,6 +5,7 @@ import { Fender } from "./Fender";
 import { RiserGuard } from "./RiserGuard";
 import { CaissonSupport } from "./CaissonSupport";
 import { RiserClamp } from "./RiserClamp";
+import { PileLeg } from "./PileLeg";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
     OrbitControls,
@@ -74,6 +75,79 @@ function parseRiserClampInfo(qId: string) {
     }
 
     return { riserNum, targetY };
+}
+
+function PileLegMeshComponent({
+    position,
+    euler,
+    safeMeshLength,
+    baseThickness,
+    isSelected,
+    hovered,
+    setHovered,
+    isInspectionHighlighted,
+    inspectionStatus,
+    onClick,
+    onDoubleClick,
+    showLabel,
+    labelText,
+    flipCrowns
+}: any) {
+    const pileLegGroup = useMemo(() => {
+        let legColor = "#facc15";
+        if (isInspectionHighlighted) {
+            if (inspectionStatus === "HAS_ANOMALY") legColor = "#ef4444";
+            else if (inspectionStatus === "NO_ANOMALY") legColor = "#10b981";
+            else legColor = "#94a3b8";
+        }
+        return new PileLeg({
+            length: safeMeshLength,
+            radius: Math.max(baseThickness / 2, 0.75), // Force a large minimum radius (1.5m diameter) for Pile Legs
+            color: legColor,
+            isSelected,
+            isHovered: hovered,
+            flipCrowns
+        });
+    }, [safeMeshLength, baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus, flipCrowns]);
+
+    return (
+        <group
+            position={[position.x, position.y, position.z]}
+            rotation={euler}
+            onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+            }}
+            onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (onDoubleClick) onDoubleClick();
+            }}
+            onPointerOver={(e) => {
+                e.stopPropagation();
+                setHovered(true);
+            }}
+            onPointerOut={(e) => {
+                e.stopPropagation();
+                setHovered(false);
+            }}
+        >
+            <primitive object={pileLegGroup} />
+
+            {/* Click target wrapper */}
+            <mesh castShadow={false} receiveShadow={false}>
+                <cylinderGeometry args={[Math.max(baseThickness / 2, 0.75) + 0.4, Math.max(baseThickness / 2, 0.75) + 0.4, safeMeshLength, 16]} />
+                <meshBasicMaterial transparent opacity={0} />
+            </mesh>
+
+            {showLabel && (
+                <Html distanceFactor={15} position={[0, safeMeshLength / 2 + 0.5, 0]} center zIndexRange={[10, 0]}>
+                    <div className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]" : "bg-slate-900/90 text-slate-100 border-slate-700"}`}>
+                        {labelText}
+                    </div>
+                </Html>
+            )}
+        </group>
+    );
 }
 
 const ComponentMesh = ({
@@ -287,15 +361,32 @@ const ComponentMesh = ({
                 const rStart = new THREE.Vector3(...(targetRiser.start || targetRiser.position || [0, 0, 0]));
                 const rEnd = new THREE.Vector3(...(targetRiser.end || targetRiser.position || rStart));
                 const targetMd = targetRiser.component?.metadata || targetRiser.metadata || targetRiser;
-                const { offsetStart, offsetEnd } = computeRiserOffsetEndpoints(rStart, rEnd, 0.75, 0.08, targetMd);
+                const { offsetStart, offsetEnd, outwardDir } = computeRiserOffsetEndpoints(rStart, rEnd, 0.75, 0.08, targetMd);
 
-                const targetY = clampInfo ? clampInfo.targetY : position.y;
+                const rawMetaElv = (md?.elv_1 !== undefined && md?.elv_1 !== null && md?.elv_1 !== "")
+                    ? md.elv_1
+                    : (md?.elv_2 !== undefined && md?.elv_2 !== null && md?.elv_2 !== "")
+                        ? md.elv_2
+                        : null;
+                const parsedMetaElv = rawMetaElv !== null ? parseFloat(rawMetaElv) : NaN;
+
+                const targetY = !isNaN(parsedMetaElv)
+                    ? parsedMetaElv
+                    : (clampInfo ? clampInfo.targetY : position.y);
+
                 const t = Math.max(0, Math.min(1, (targetY - offsetStart.y) / (offsetEnd.y - offsetStart.y || 1)));
                 position = offsetStart.clone().lerp(offsetEnd, t);
                 
                 if (offsetEnd.distanceTo(offsetStart) > 0.001) {
                     direction = offsetEnd.clone().sub(offsetStart).normalize();
-                    quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+                    const zAxis = outwardDir ? outwardDir.clone().normalize() : new THREE.Vector3(0, 0, 1);
+                    const yAxis = direction.clone();
+                    const xAxis = new THREE.Vector3().crossVectors(yAxis, zAxis).normalize();
+                    zAxis.crossVectors(xAxis, yAxis).normalize(); // Ensure orthogonality
+                    
+                    const m = new THREE.Matrix4();
+                    m.makeBasis(xAxis, yAxis, zAxis);
+                    quaternion.setFromRotationMatrix(m);
                     euler.setFromQuaternion(quaternion);
                 }
                 
@@ -762,6 +853,30 @@ const ComponentMesh = ({
                     </Html>
                 )}
             </group>
+        );
+    }
+
+    const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE");
+    const isPileLegComponent = code === "PL" || isPile || qIdUpper.includes("PILE LEG") || qIdUpper.includes("PILE_LEG");
+
+    if (isPileLegComponent && length > 0.001) {
+        return (
+            <PileLegMeshComponent
+                position={position}
+                euler={euler}
+                safeMeshLength={safeMeshLength}
+                baseThickness={baseThickness}
+                isSelected={isSelected}
+                hovered={hovered}
+                setHovered={setHovered}
+                isInspectionHighlighted={isInspectionHighlighted}
+                inspectionStatus={inspectionStatus}
+                onClick={onClick}
+                onDoubleClick={onDoubleClick}
+                showLabel={showLabel}
+                labelText={labelText}
+                flipCrowns={startVec.y < endVec.y}
+            />
         );
     }
 
@@ -2160,7 +2275,12 @@ export function Structural3DViewer({
                 ? [Number(dbItem.end_x), Number(dbItem.end_y), Number(dbItem.end_z)]
                 : (dbItem.end || [Number(dbItem.pos_x || 0), Number(dbItem.pos_y || 0), Number(dbItem.pos_z || 0)]);
 
-            if (isPile && Math.abs(startVec[1] - endVec[1]) < 0.1) {
+            const distStartEnd = Math.sqrt(
+                Math.pow(startVec[0] - endVec[0], 2) +
+                Math.pow(startVec[1] - endVec[1], 2) +
+                Math.pow(startVec[2] - endVec[2], 2)
+            );
+            if (isPile && distStartEnd < 0.001) {
                 endVec = [startVec[0], startVec[1] - 2.0, startVec[2]];
             }
 

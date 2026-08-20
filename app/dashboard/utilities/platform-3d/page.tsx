@@ -18,7 +18,8 @@ import {
     AlertTriangle,
     Printer,
     LayoutGrid,
-    List
+    List,
+    Boxes
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +102,8 @@ export default function Platform3DPage() {
     const [isFallbackDialogOpen, setIsFallbackDialogOpen] = useState(false);
     const [isPrintFaceDialogOpen, setIsPrintFaceDialogOpen] = useState(false);
     const [isResyncing3D, setIsResyncing3D] = useState(false);
+    const [isRestructuring3D, setIsRestructuring3D] = useState(false);
+    const [sceneVersion, setSceneVersion] = useState(0);
     const [useWebapp3dConnection, setUseWebapp3dConnection] = useState(true);
 
     const [, setGlobalUrlId] = useAtom(urlId);
@@ -157,6 +160,27 @@ export default function Platform3DPage() {
             toast.error("Error resynchronizing 3D cache.", { position: "bottom-right" });
         } finally {
             setIsResyncing3D(false);
+        }
+    };
+
+    const handleRestructure3D = async () => {
+        if (!selectedPlatform) return;
+        setIsRestructuring3D(true);
+        try {
+            const res = await fetch(`/api/platform/webapp-3d/${selectedPlatform.plat_id}?resync=true`, { method: "POST" });
+            if (!res.ok) {
+                toast.error("Failed to resynchronize server 3D cache.", { position: "bottom-right" });
+            }
+            await mutateComponents();
+            if (mutateWebapp3d) await mutateWebapp3d();
+
+            setSceneVersion(prev => prev + 1);
+
+            toast.success("Platform 3D structure rebuilt & remounted successfully!", { position: "bottom-right" });
+        } catch (e) {
+            toast.error("Error restructuring 3D model.", { position: "bottom-right" });
+        } finally {
+            setIsRestructuring3D(false);
         }
     };
     const components: Component[] = useMemo(() => {
@@ -360,16 +384,30 @@ export default function Platform3DPage() {
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
-                        {/* Print Face Button */}
-                        <Button
+                        {/* 1. Re-sync 3D Cache Button */}
+                        <Button 
                             variant="outline"
                             size="sm"
-                            onClick={() => setIsPrintFaceDialogOpen(true)}
-                            className="h-9 px-3 gap-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)] transition-all"
-                            title="Print 2D CAD Structural Elevation Sketch for Selected Platform Face"
+                            onClick={handleResync3DCache}
+                            disabled={isResyncing3D || isRestructuring3D}
+                            className="h-9 px-3 gap-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all shadow-xs"
+                            title="Re-sync 3D positioning cache for all platform components"
                         >
-                            <Printer className="h-3.5 w-3.5" />
-                            <span>Print Face</span>
+                            <RefreshCw className={cn("h-3.5 w-3.5", isResyncing3D && "animate-spin")} />
+                            <span>{isResyncing3D ? "Resynchronizing..." : "Re-sync 3D Cache"}</span>
+                        </Button>
+
+                        {/* 2. Restructure 3D Button */}
+                        <Button 
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRestructure3D}
+                            disabled={isResyncing3D || isRestructuring3D}
+                            className="h-9 px-3 gap-2 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-xs font-bold text-indigo-700 dark:text-indigo-300 transition-all shadow-xs"
+                            title="Re-render and restructure all 3D components in their updated positions"
+                        >
+                            <Boxes className={cn("h-3.5 w-3.5", isRestructuring3D && "animate-spin")} />
+                            <span>{isRestructuring3D ? "Restructuring..." : "Restructure 3D"}</span>
                         </Button>
 
                         {/* Fallback Warning Badge */}
@@ -386,16 +424,16 @@ export default function Platform3DPage() {
                             </Button>
                         )}
 
-                        <Button 
+                        {/* 3. Print Face Button */}
+                        <Button
                             variant="outline"
                             size="sm"
-                            onClick={handleResync3DCache}
-                            disabled={isResyncing3D}
-                            className="h-9 px-3 gap-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all shadow-xs"
-                            title="Re-sync 3D positioning cache for all platform components"
+                            onClick={() => setIsPrintFaceDialogOpen(true)}
+                            className="h-9 px-3 gap-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)] transition-all"
+                            title="Print 2D CAD Structural Elevation Sketch for Selected Platform Face"
                         >
-                            <RefreshCw className={cn("h-3.5 w-3.5", isResyncing3D && "animate-spin")} />
-                            <span>{isResyncing3D ? "Resynchronizing..." : "Re-sync 3D Cache"}</span>
+                            <Printer className="h-3.5 w-3.5" />
+                            <span>Print Face</span>
                         </Button>
                     </div>
                 </div>
@@ -411,6 +449,7 @@ export default function Platform3DPage() {
                         ) : null}
                         
                         <Structural3DViewer 
+                            key={`scene-v-${sceneVersion}`}
                             components={components} 
                             platformDetails={platformDetails}
                             elevations={elevations}

@@ -183,7 +183,7 @@ export const GET = withAuth(
           let eY = mathLayout?.end?.y ?? mathLayout?.end?.[1] ?? (item.end_y || sY);
           let eZ = mathLayout?.end?.z ?? mathLayout?.end?.[2] ?? (item.end_z || sZ);
 
-          if (sY === eY) {
+          if (sX === eX && sY === eY && sZ === eZ) {
             eY = sY - 2.0;
           }
 

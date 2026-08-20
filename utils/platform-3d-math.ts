@@ -39,26 +39,42 @@ export function computeRiserOffsetEndpoints(
 
     // 1. Determine normal direction from leg metadata
     if (sLegStr && fLegStr) {
-        const sRow = sLegStr.charAt(0);
-        const fRow = fLegStr.charAt(0);
-        if ((sRow === 'A' || sRow === 'B') && sRow === fRow) {
-            // Row A or Row B face (runs horizontally in X, face normal in Z)
-            isNormalZ = true;
-        } else if (sLegStr !== fLegStr && sLegStr.replace(/[AB]/, '') === fLegStr.replace(/[AB]/, '')) {
-            // Cross end column face (runs horizontally in Z, face normal in X)
-            isNormalZ = false;
+        const sMatch = sLegStr.match(/^([A-Z]+)(\d+)$/i) || sLegStr.match(/^(\d+)([A-Z]+)$/i);
+        const fMatch = fLegStr.match(/^([A-Z]+)(\d+)$/i) || fLegStr.match(/^(\d+)([A-Z]+)$/i);
+
+        if (sMatch && fMatch) {
+            const sRow = sMatch[1].toUpperCase();
+            const fRow = fMatch[1].toUpperCase();
+            const sCol = sMatch[2];
+            const fCol = fMatch[2];
+
+            if (sRow === fRow) {
+                // Shared row face (e.g., A1-A2, B1-B2, C1-C2, D1-D2) -> face normal is along Z
+                isNormalZ = true;
+            } else if (sCol && fCol && sCol === fCol) {
+                // Shared column face (e.g., A1-B1, A2-B2, A3-C3) -> face normal is along X
+                isNormalZ = false;
+            }
+        } else {
+            const sRow = sLegStr.charAt(0);
+            const fRow = fLegStr.charAt(0);
+            if (sRow === fRow) {
+                isNormalZ = true;
+            } else if (sLegStr !== fLegStr && sLegStr.replace(/[A-Z]/g, '') === fLegStr.replace(/[A-Z]/g, '')) {
+                isNormalZ = false;
+            }
         }
     } else if (sLegStr || fLegStr) {
-        const leg = sLegStr || fLegStr;
-        if (leg.startsWith('A') || leg.startsWith('B')) {
+        const leg = (sLegStr || fLegStr).toUpperCase();
+        if (/^[A-Z]\d+$/i.test(leg) || /^ROW/i.test(leg)) {
             isNormalZ = true;
         }
     }
 
     // 2. Explicit face string overrides
-    if (faceStr.includes("ROW A") || faceStr.includes("ROW B") || faceStr.includes("FACE A") || faceStr.includes("FACE B")) {
+    if (/(?:ROW|FACE)\s*[A-Z]/i.test(faceStr) || faceStr.includes("NORTH") || faceStr.includes("SOUTH")) {
         isNormalZ = true;
-    } else if (faceStr.includes("ROW 1") || faceStr.includes("ROW 3") || faceStr.includes("SIDE")) {
+    } else if (/(?:ROW|FACE)\s*\d+/i.test(faceStr) || faceStr.includes("SIDE") || faceStr.includes("EAST") || faceStr.includes("WEST")) {
         isNormalZ = false;
     } else if (!sLegStr && !fLegStr && !faceStr) {
         // Fallback: If Z offset from center is significant, treat as Row face (normal in Z)
@@ -1176,38 +1192,66 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             const isPointNodeWeld = isWeld && (!md.s_node || !md.f_node || md.s_node === md.f_node || md.s_node.toString().toUpperCase() === extractBareNode(c.q_id));
 
             if (isPile) {
-                const legMatch = qIdUpper.match(/(?:LEG\s*|PL\s*|PILE\s*|LEG\-?)([A-Z0-9]+)/i) || qIdUpper.match(/([A-Z]\d+)/i);
+                const legMatch = qIdUpper.match(/PILE\s*LEG\s*([A-Z0-9]+)/i) || qIdUpper.match(/(?:LEG\s*|PL\s*|PILE\s*|LEG\-?)([A-Z0-9]+)/i) || qIdUpper.match(/([A-Z]\d+)/i);
                 const targetLeg = (md.s_leg || md.f_leg || md.leg || (legMatch?.[1]) || "").toUpperCase();
 
-                const nodeMatch = (qIdUpper.match(/(?:WN\s*|N\s*)?(\d+)/i) || [])[1];
-                const targetNode = String(md.s_node || md.f_node || md.start_node || md.end_node || nodeMatch || "").toUpperCase().trim();
+                let resolvedStart = hasStartNode ? startNode?.clone() : undefined;
+                let resolvedEnd = hasEndNode ? endNode?.clone() : undefined;
 
-                const nodePos = (targetNode ? lookupNode(targetNode, targetLeg) : undefined) ||
-                                (targetNode ? lookupNode(targetNode, undefined) : undefined) ||
-                                (hasStartNode ? startNode : hasEndNode ? endNode : undefined);
-
-                const yTop = nodePos ? nodePos.y : (md.elv_1 ? sanitizeElevation(md.elv_1) : minElv);
-                const pileLength = md.length ? Math.abs(parseFloat(md.length)) : 2.0;
-                const yBottom = yTop - pileLength;
-
-                let topCoords = nodePos ? nodePos.clone() : new THREE.Vector3(0, yTop, 0);
-                if (!nodePos && targetLeg) {
-                    const cTop = getLegCoordsAtElv(targetLeg, yTop);
-                    topCoords.set(cTop.x, yTop, cTop.z);
+                if (!resolvedStart && md.elv_1 !== undefined) {
+                    const y1 = sanitizeElevation(md.elv_1);
+                    const legName = (md.s_leg || targetLeg || "").toUpperCase();
+                    if (legName) {
+                        const coords = getLegCoordsAtElv(legName, y1);
+                        resolvedStart = new THREE.Vector3(coords.x, y1, coords.z);
+                    }
                 }
 
-                let bottomCoords = new THREE.Vector3();
-                if (targetLeg) {
-                    const cBot = getLegCoordsAtElv(targetLeg, yBottom);
-                    bottomCoords.set(cBot.x, yBottom, cBot.z);
+                if (!resolvedEnd && md.elv_2 !== undefined) {
+                    const y2 = sanitizeElevation(md.elv_2);
+                    const legName = (md.f_leg || targetLeg || "").toUpperCase();
+                    if (legName) {
+                        const coords = getLegCoordsAtElv(legName, y2);
+                        resolvedEnd = new THREE.Vector3(coords.x, y2, coords.z);
+                    }
+                }
+
+                if (resolvedStart && resolvedEnd && resolvedStart.distanceTo(resolvedEnd) > 0.001) {
+                    start.copy(resolvedStart);
+                    end.copy(resolvedEnd);
+                    thickness = 0.2;
+                    resolved = true;
                 } else {
-                    bottomCoords.set(topCoords.x, yBottom, topCoords.z);
-                }
+                    const nodeMatch = (qIdUpper.match(/(?:WN\s*|N\s*)?(\d+)/i) || [])[1];
+                    const targetNode = String(md.s_node || md.f_node || md.start_node || md.end_node || nodeMatch || "").toUpperCase().trim();
 
-                start.copy(topCoords);
-                end.copy(bottomCoords);
-                thickness = 0.2;
-                resolved = true;
+                    const nodePos = (targetNode ? lookupNode(targetNode, targetLeg) : undefined) ||
+                                    (targetNode ? lookupNode(targetNode, undefined) : undefined) ||
+                                    (hasStartNode ? startNode : hasEndNode ? endNode : undefined);
+
+                    const yTop = nodePos ? nodePos.y : (md.elv_1 !== undefined ? sanitizeElevation(md.elv_1) : minElv);
+                    const pileLength = md.length ? Math.abs(parseFloat(md.length)) : 2.0;
+                    const yBottom = yTop - pileLength;
+
+                    let topCoords = nodePos ? nodePos.clone() : new THREE.Vector3(0, yTop, 0);
+                    if (!nodePos && targetLeg) {
+                        const cTop = getLegCoordsAtElv(targetLeg, yTop);
+                        topCoords.set(cTop.x, yTop, cTop.z);
+                    }
+
+                    let bottomCoords = new THREE.Vector3();
+                    if (targetLeg) {
+                        const cBot = getLegCoordsAtElv(targetLeg, yBottom);
+                        bottomCoords.set(cBot.x, yBottom, cBot.z);
+                    } else {
+                        bottomCoords.set(topCoords.x, yBottom, topCoords.z);
+                    }
+
+                    start.copy(topCoords);
+                    end.copy(bottomCoords);
+                    thickness = 0.2;
+                    resolved = true;
+                }
             } else if (md.associated_comp_id && code !== "VM") {
                 if (code !== "WN") {
                     pendingAttachments.push(c);
