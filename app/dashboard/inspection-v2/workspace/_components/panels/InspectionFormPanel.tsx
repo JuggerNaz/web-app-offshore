@@ -65,6 +65,7 @@ interface InspectionFormPanelProps {
   handlePrintAnomaly: (rec: any) => void;
   validateAnomalyRef: (ref: string) => Promise<boolean>;
   setPrevRefNo: (val: string) => void;
+  criteriaRules?: any[];
 }
 
 export function InspectionFormPanel({
@@ -124,6 +125,7 @@ export function InspectionFormPanel({
   handlePrintAnomaly,
   validateAnomalyRef,
   setPrevRefNo,
+  criteriaRules = [],
 }: InspectionFormPanelProps) {
   return (
     <Card className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 border-none rounded-none shadow-none overflow-hidden">
@@ -290,6 +292,7 @@ export function InspectionFormPanel({
                 }}
                 validateAnomalyRef={validateAnomalyRef}
                 setPrevRefNo={setPrevRefNo}
+                criteriaRules={criteriaRules}
               />
             )}
           </div>

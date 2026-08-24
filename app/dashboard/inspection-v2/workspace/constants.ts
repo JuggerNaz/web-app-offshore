@@ -32,6 +32,17 @@ export const COMPONENT_CONDITION_LIST = [
     "Ruptured", "Fittings", "Other Defect"
 ];
 
+export const DEBRIS_LIST = [
+    "Scaffolding Pole", "Wire Rope", "Tyre", "Drill Pipe / String", "Anode Sled", "Grout Bag", 
+    "Chain / Shackle", "Steel Scrap", "Synthetic Sling", "Wood / Timber", "Metal Drum / Barrel", 
+    "Rope / Line", "Plastic Debris", "Concrete Block", "None"
+];
+
+export const DEBRIS_MATERIAL_LIST = [
+    "Metallic", "Steel", "Aluminium", "Plastic / Synthetic", "Rubber", "Concrete / Grout", 
+    "Wood / Timber", "Textile / Rope", "Non-Metallic", "Unknown"
+];
+
 export const ANODE_TYPE_LIST = [
     "Zn - Zinc", "Al - Aluminum", "Mg - Magnesium", "Other"
 ];

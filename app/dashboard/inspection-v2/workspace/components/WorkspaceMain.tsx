@@ -126,6 +126,7 @@ interface WorkspaceMainProps {
   setEditingAttachment: (att: any) => void;
   deletedAttachmentIds: string[];
   setDeletedAttachmentIds: (ids: string[] | ((prev: string[]) => string[])) => void;
+  criteriaRules?: any[];
 }
 
 export function WorkspaceMain(props: WorkspaceMainProps) {
@@ -727,6 +728,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 setDeletedAttachmentIds={setDeletedAttachmentIds}
                 validateAnomalyRef={validateAnomalyRef}
                 setPrevRefNo={setPrevRefNo}
+                criteriaRules={props.criteriaRules || []}
               />
             )}
           </div>

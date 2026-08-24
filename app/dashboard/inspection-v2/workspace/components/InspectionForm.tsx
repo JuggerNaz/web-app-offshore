@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
 import { FindingsSuggestionEngine } from "./FindingsSuggestionEngine";
+import { VoiceInspectionAssistant } from "@/components/inspection/VoiceInspectionAssistant";
 import { createClient } from "@/utils/supabase/client";
 import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 import inspectionSpecs from "@/utils/types/inspection-types.json";
@@ -88,6 +89,7 @@ interface InspectionFormProps {
     onPrintReport?: () => void;
     validateAnomalyRef: (ref: string) => Promise<boolean>;
     setPrevRefNo: (val: string) => void;
+    criteriaRules?: any[];
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -143,8 +145,70 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     onDeleteRecord,
     onPrintReport,
     validateAnomalyRef,
-    setPrevRefNo
+    setPrevRefNo,
+    criteriaRules = []
 }) => {
+    const [activeCriteriaRules, setActiveCriteriaRules] = React.useState<any[]>(criteriaRules || []);
+
+    // Sync from prop
+    React.useEffect(() => {
+        if (criteriaRules && criteriaRules.length > 0) {
+            setActiveCriteriaRules(criteriaRules);
+        }
+    }, [criteriaRules]);
+
+    // Live query and realtime subscription to defect_criteria_rules for user-defined criteria
+    React.useEffect(() => {
+        if (!supabase) return;
+        const fetchLiveRules = async () => {
+            let group = selectedComp?.structureGroup || selectedComp?.raw?.metadata?.structure_group || "Primary";
+            if (group === "Primary Member") group = "Primary";
+
+            const { data } = await supabase
+                .from("defect_criteria_rules")
+                .select("*")
+                .or(`structure_group.eq.${group},structure_group.eq.All Structure Groups`)
+                .order("rule_order");
+
+            if (data && data.length > 0) {
+                setActiveCriteriaRules(
+                    data.map((r: any) => ({
+                        id: String(r.id),
+                        fieldName: r.field_name,
+                        priorityId: r.priority_id,
+                        defectCodeId: r.defect_code_id,
+                        defectTypeId: r.defect_type_id,
+                        thresholdValue: r.threshold_value,
+                        thresholdOperator: r.threshold_operator,
+                        thresholdText: r.threshold_text,
+                        alertMessage: r.alert_message,
+                        order: r.rule_order,
+                        evaluationPriority: r.evaluation_priority,
+                        autoFlag: r.auto_flag,
+                        findings: r.findings,
+                    }))
+                );
+            }
+        };
+
+        fetchLiveRules();
+
+        const channel = supabase
+            .channel("realtime-insp-form-criteria-rules")
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "defect_criteria_rules" },
+                () => {
+                    fetchLiveRules();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [selectedComp, supabase]);
+
     const refInputRef = React.useRef<HTMLInputElement>(null);
     const isAnomaly = findingType === 'Anomaly';
     const ringClass = isAnomaly ? "focus:ring-red-500" : "focus:ring-blue-500";
@@ -746,6 +810,316 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         }
     }, [isEditing, activeSpec, selectedComp, vidTimer]);
 
+    const availableFieldNames = React.useMemo(() => {
+        return (resolvedFields || []).map((f: any) => f?.name).filter(Boolean);
+    }, [resolvedFields]);
+
+    const handleVoiceExtractionApplied = React.useCallback((parsed: any) => {
+        if (!parsed) return;
+
+        // 1. Set Raw Voice Transcript
+        if (parsed.raw_transcript && handleDynamicPropChange) {
+            handleDynamicPropChange('raw_voice_transcript', parsed.raw_transcript);
+        }
+
+        // 2. Auto-populate Form Props
+        if (parsed.extracted_fields && handleDynamicPropChange) {
+            const lowerTranscript = String(parsed.raw_transcript || "").toLowerCase();
+            const isExplicitAdditionalCp = 
+                lowerTranscript.includes("another cp") ||
+                lowerTranscript.includes("second cp") ||
+                lowerTranscript.includes("2nd cp") ||
+                lowerTranscript.includes("3rd cp") ||
+                lowerTranscript.includes("third cp") ||
+                lowerTranscript.includes("additional cp") ||
+                lowerTranscript.includes("extra cp") ||
+                lowerTranscript.includes("subsequent cp");
+
+            const isExplicitAdditionalUt = 
+                lowerTranscript.includes("another ut") ||
+                lowerTranscript.includes("second ut") ||
+                lowerTranscript.includes("2nd ut") ||
+                lowerTranscript.includes("3rd ut") ||
+                lowerTranscript.includes("third ut") ||
+                lowerTranscript.includes("additional ut") ||
+                lowerTranscript.includes("extra ut") ||
+                lowerTranscript.includes("another thickness") ||
+                lowerTranscript.includes("additional thickness");
+
+            const hasExistingPrimaryCp = 
+                dynamicProps?.cp_rdg !== undefined && 
+                dynamicProps?.cp_rdg !== null && 
+                dynamicProps?.cp_rdg !== "" && 
+                dynamicProps?.cp_rdg !== "--";
+
+            Object.entries(parsed.extracted_fields).forEach(([key, val]) => {
+                if (val !== undefined && val !== null && val !== "") {
+                    if ((key === 'cp_rdg' || key === 'cp_fg_rdg' || key === 'cp_reading' || key === 'cp') && isExplicitAdditionalCp && hasExistingPrimaryCp) {
+                        return; // Do not overwrite primary CP if user explicitly requested an additional CP
+                    }
+                    if ((key.startsWith('ut_') || key === 'min_reading') && isExplicitAdditionalUt) {
+                        return; // Do not overwrite default UT columns if user explicitly requested an additional UT
+                    }
+                    handleDynamicPropChange(key, val);
+                }
+            });
+
+            // Explicit CP field alias synchronization for all spec variants (cp_rdg, cp_fg_rdg, cp_reading, cp)
+            const cpVal = parsed.extracted_fields.cp_rdg ?? 
+                          parsed.extracted_fields.cp_fg_rdg ?? 
+                          parsed.extracted_fields.cp_reading ?? 
+                          parsed.extracted_fields.cp ??
+                          parsed.extracted_fields.cp_potential;
+            if (cpVal !== undefined && cpVal !== null && cpVal !== "") {
+                if (isExplicitAdditionalCp && hasExistingPrimaryCp) {
+                    // Route to additional CP readings table instead of overwriting the first one
+                    const existingCp = Array.isArray(dynamicProps?.cp_rdg_additional) 
+                        ? dynamicProps.cp_rdg_additional 
+                        : (Array.isArray(dynamicProps?.cp_readings_additional) ? dynamicProps.cp_readings_additional : []);
+                    const newEntry = {
+                        id: Math.random().toString(36).substring(2, 9),
+                        reading: cpVal,
+                        location: 'Additional CP',
+                        notes: 'Voice captured',
+                    };
+                    handleDynamicPropChange('cp_rdg_additional', [...existingCp, newEntry]);
+                    handleDynamicPropChange('cp_readings_additional', [...existingCp, newEntry]);
+                } else {
+                    handleDynamicPropChange('cp_rdg', cpVal);
+                    handleDynamicPropChange('cp_fg_rdg', cpVal);
+                    handleDynamicPropChange('cp_reading', cpVal);
+                    handleDynamicPropChange('cp', cpVal);
+                }
+            }
+
+            // Explicit Additional UT check when speaking "another UT reading"
+            if (isExplicitAdditionalUt) {
+                const rawUtVal = parsed.extracted_fields.ut_12_o_clock ?? 
+                                 parsed.extracted_fields.ut_3_o_clock ?? 
+                                 parsed.extracted_fields.ut_6_o_clock ?? 
+                                 parsed.extracted_fields.ut_9_o_clock ?? 
+                                 parsed.extracted_fields.min_reading;
+                if (rawUtVal !== undefined && rawUtVal !== null && rawUtVal !== "") {
+                    const existingUt = Array.isArray(dynamicProps?.ut_readings_additional) ? dynamicProps.ut_readings_additional : [];
+                    const newUtEntry = {
+                        id: Math.random().toString(36).substring(2, 9),
+                        reading: rawUtVal,
+                        location: 'Additional UT',
+                        notes: 'Voice captured',
+                    };
+                    handleDynamicPropChange('ut_readings_additional', [...existingUt, newUtEntry]);
+                }
+            }
+
+            // Explicit Marine Growth (Hard & Soft) alias synchronization
+            const hardMgVal = parsed.extracted_fields.marine_growth_hard ?? 
+                              parsed.extracted_fields.mgi_hard_growth ?? 
+                              parsed.extracted_fields.mgi_hard_coverage ?? 
+                              parsed.extracted_fields.hard_coverage;
+            if (hardMgVal !== undefined && hardMgVal !== null && hardMgVal !== "") {
+                handleDynamicPropChange('marine_growth_hard', hardMgVal);
+                handleDynamicPropChange('mgi_hard_growth', hardMgVal);
+                handleDynamicPropChange('mgi_hard_coverage', hardMgVal);
+            }
+
+            const softMgVal = parsed.extracted_fields.marine_growth_soft ?? 
+                              parsed.extracted_fields.mgi_soft_growth ?? 
+                              parsed.extracted_fields.mgi_soft_coverage ?? 
+                              parsed.extracted_fields.soft_coverage;
+            if (softMgVal !== undefined && softMgVal !== null && softMgVal !== "") {
+                handleDynamicPropChange('marine_growth_soft', softMgVal);
+                handleDynamicPropChange('mgi_soft_growth', softMgVal);
+                handleDynamicPropChange('mgi_soft_coverage', softMgVal);
+            }
+        }
+
+        // 3. Set Findings Summary
+        if (parsed.findings_summary && setRecordNotes) {
+            setRecordNotes(parsed.findings_summary);
+        }
+
+        // 4. Validate Defect Acceptance Criteria (User-Defined Database Rules + Built-in Domain Rules)
+        let computedFindingType: any = parsed.finding_type || 'Complete';
+        let computedDefectCode = parsed.defect_code || '';
+        let computedDefectType = parsed.defect_type || '';
+        let computedPriority = parsed.priority || 'Medium';
+        let computedRecommendation = parsed.recommendations || '';
+        let criteriaBreachReason = '';
+
+        // 4A. Check against Active User-Defined Criteria Rules from Database
+        const mergedProps = { ...dynamicProps, ...parsed.extracted_fields };
+        if (activeCriteriaRules && activeCriteriaRules.length > 0) {
+            for (const rule of activeCriteriaRules) {
+                const fName = rule.fieldName || "*";
+                const targetFields = fName === "*"
+                    ? ["*"]
+                    : fName.split(",").map((f: string) => f.trim().toLowerCase().replace(/[^a-z0-9]/g, "")).filter(Boolean);
+
+                const relevantFields = fName === "*"
+                    ? Object.keys(mergedProps).filter((k) => !isNaN(parseFloat(mergedProps[k])))
+                    : Object.keys(mergedProps).filter((k) => {
+                        const kClean = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+                        return targetFields.some((tf: string) => tf === kClean);
+                    });
+
+                for (const field of relevantFields) {
+                    const rawVal = mergedProps[field];
+                    if (rawVal === undefined || rawVal === null || rawVal === "") continue;
+
+                    let isMatch = false;
+                    const numVal = parseFloat(rawVal);
+                    const isNumeric = !isNaN(numVal) && !isNaN(parseFloat(String(rawVal)));
+
+                    if (isNumeric && rule.thresholdOperator && rule.thresholdValue !== undefined && rule.thresholdValue !== null) {
+                        const target = Number(rule.thresholdValue);
+                        if (rule.thresholdOperator === ">") isMatch = numVal > target;
+                        else if (rule.thresholdOperator === "<") isMatch = numVal < target;
+                        else if (rule.thresholdOperator === ">=") isMatch = numVal >= target;
+                        else if (rule.thresholdOperator === "<=") isMatch = numVal <= target;
+                        else if (rule.thresholdOperator === "==") isMatch = numVal === target;
+                        else if (rule.thresholdOperator === "!=") isMatch = numVal !== target;
+                    } else if (rule.thresholdText) {
+                        const actualText = String(rawVal).trim().toLowerCase();
+                        const targetText = String(rule.thresholdText).trim().toLowerCase();
+                        if (rule.thresholdOperator === "==") isMatch = actualText === targetText;
+                        else if (rule.thresholdOperator === "!=") isMatch = actualText !== targetText;
+                        else isMatch = actualText.includes(targetText);
+                    }
+
+                    if (isMatch) {
+                        computedFindingType = 'Anomaly';
+                        if (rule.defectCodeId) {
+                            const foundDc = defectCodes?.find((dc: any) => dc.id === rule.defectCodeId || dc.name === rule.defectCodeId);
+                            if (foundDc) computedDefectCode = foundDc.name || foundDc.label || foundDc.code || rule.defectCodeId;
+                        }
+                        if (rule.defectTypeId) {
+                            const foundDt = allDefectTypes?.find((dt: any) => dt.id === rule.defectTypeId || dt.name === rule.defectTypeId);
+                            if (foundDt) computedDefectType = foundDt.name || foundDt.label || foundDt.type || rule.defectTypeId;
+                        }
+                        if (rule.priorityId) {
+                            const foundPr = priorities?.find((p: any) => p.id === rule.priorityId || p.name === rule.priorityId);
+                            if (foundPr) computedPriority = foundPr.name || foundPr.label || rule.priorityId;
+                        }
+                        criteriaBreachReason = rule.alertMessage || `Field ${field} (${rawVal}) breached user criteria rule (${rule.thresholdOperator || ''} ${rule.thresholdValue ?? rule.thresholdText ?? ''})`;
+                        if (setLastAutoMatchedRuleId) {
+                            setLastAutoMatchedRuleId(rule.id);
+                        }
+                        break;
+                    }
+                }
+                if (computedFindingType === 'Anomaly' && criteriaBreachReason) break;
+            }
+        }
+
+        // 4B. Check Default Domain Rules if no custom rule breached
+        if (!criteriaBreachReason) {
+            // Check CP criteria (-800mV to -1050mV)
+            const cpNum = parseFloat(parsed.extracted_fields?.cp_rdg ?? dynamicProps?.cp_rdg);
+            if (!isNaN(cpNum) && cpNum !== 0) {
+                if (cpNum > -800) {
+                    computedFindingType = 'Anomaly';
+                    computedDefectCode = 'Cathodic Protection';
+                    computedDefectType = `CP Under-Protection (${cpNum}mV > -800mV Criteria)`;
+                    computedPriority = 'High';
+                    criteriaBreachReason = `CP reading ${cpNum}mV is outside -800mV to -1050mV protection limit.`;
+                    if (!computedRecommendation) {
+                        computedRecommendation = 'Inspect sacrificial anodes and evaluate CP retrofit requirements.';
+                    }
+                } else if (cpNum < -1150) {
+                    computedFindingType = 'Anomaly';
+                    computedDefectCode = 'Cathodic Protection';
+                    computedDefectType = `CP Over-Protection (${cpNum}mV < -1150mV Criteria)`;
+                    computedPriority = 'High';
+                    criteriaBreachReason = `CP reading ${cpNum}mV is outside -1150mV limit (Over-protection risk).`;
+                }
+            }
+
+            // Check Coating condition criteria
+            const coatVal = String(parsed.extracted_fields?.coating_condition || dynamicProps?.coating_condition || '').toLowerCase();
+            if (coatVal.includes('bare metal') || coatVal.includes('cracked')) {
+                computedFindingType = 'Anomaly';
+                if (!computedDefectCode) computedDefectCode = 'Coating';
+                if (!computedDefectType) computedDefectType = parsed.extracted_fields?.coating_condition || 'Coating Breakdown';
+                criteriaBreachReason = `Coating breakdown detected (${parsed.extracted_fields?.coating_condition || 'Bare Metal'}).`;
+            }
+
+            // Check Component condition criteria
+            const compVal = String(parsed.extracted_fields?.component_condition || dynamicProps?.component_condition || '').toLowerCase();
+            if (compVal.includes('dent') || compVal.includes('rupture') || compVal.includes('defect')) {
+                computedFindingType = 'Anomaly';
+                if (!computedDefectCode) computedDefectCode = compVal.includes('dent') ? 'Mechanical Damage / Dent' : 'Structural Defect';
+                if (!computedDefectType) computedDefectType = parsed.extracted_fields?.component_condition || 'Structural Damage';
+                computedPriority = 'High';
+                criteriaBreachReason = `Structural defect detected (${parsed.extracted_fields?.component_condition || 'Dent / Rupture'}).`;
+            }
+
+            // Check Debris criteria
+            const debVal = parsed.extracted_fields?.debris || dynamicProps?.debris;
+            if (debVal && debVal !== 'None') {
+                if (computedFindingType !== 'Anomaly') {
+                    computedFindingType = 'Finding';
+                    if (!computedDefectCode) computedDefectCode = 'Debris';
+                    if (!computedDefectType) computedDefectType = `${debVal} (${parsed.extracted_fields?.debris_material || 'Debris'})`;
+                }
+            }
+        }
+
+        // Update Finding / Anomaly State
+        if (setFindingType) {
+            setFindingType(computedFindingType);
+            if (computedFindingType === 'Anomaly' || computedFindingType === 'Finding') {
+                setIsManualOverride(true);
+            }
+        }
+
+        // Update Anomaly / Finding Details
+        if (computedDefectCode || computedRecommendation || computedPriority || computedDefectType) {
+            setAnomalyData((prev: any) => ({
+                ...prev,
+                defectCode: computedDefectCode || prev.defectCode,
+                defectType: computedDefectType || prev.defectType,
+                priority: computedPriority || prev.priority || 'Medium',
+                recommendedAction: computedRecommendation || prev.recommendedAction,
+            }));
+        }
+
+        if (criteriaBreachReason) {
+            toast.warning(`⚠️ Defect Criteria Breached: Flagged as ${computedFindingType}!`, {
+                description: criteriaBreachReason,
+            });
+        }
+
+        // 6. Append Additional Readings (UT / CP / etc.)
+        if (Array.isArray(parsed.additional_readings) && parsed.additional_readings.length > 0 && handleDynamicPropChange) {
+            const utReadings = parsed.additional_readings.filter((r: any) => r.type === 'UT');
+            if (utReadings.length > 0) {
+                const existing = Array.isArray(dynamicProps?.ut_readings_additional) ? dynamicProps.ut_readings_additional : [];
+                const formatted = utReadings.map((r: any) => ({
+                    id: Math.random().toString(36).substring(2, 9),
+                    reading: r.reading,
+                    location: r.location || (r.clock_position ? `${r.clock_position} o'clock` : ''),
+                    notes: r.notes || 'Voice captured',
+                }));
+                handleDynamicPropChange('ut_readings_additional', [...existing, ...formatted]);
+            }
+
+            const cpReadings = parsed.additional_readings.filter((r: any) => r.type === 'CP');
+            if (cpReadings.length > 0) {
+                const existingCp = Array.isArray(dynamicProps?.cp_rdg_additional) 
+                    ? dynamicProps.cp_rdg_additional 
+                    : (Array.isArray(dynamicProps?.cp_readings_additional) ? dynamicProps.cp_readings_additional : []);
+                const formattedCp = cpReadings.map((r: any) => ({
+                    id: Math.random().toString(36).substring(2, 9),
+                    reading: r.reading,
+                    location: r.location || '',
+                    notes: r.notes || 'Voice captured',
+                }));
+                handleDynamicPropChange('cp_rdg_additional', [...existingCp, ...formattedCp]);
+                handleDynamicPropChange('cp_readings_additional', [...existingCp, ...formattedCp]);
+            }
+        }
+    }, [handleDynamicPropChange, setRecordNotes, setFindingType, setIsManualOverride, setAnomalyData, dynamicProps]);
+
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">
             <div className="px-3 py-1.5 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800">
@@ -778,6 +1152,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             <span className="font-mono text-[10px] font-bold leading-none mt-0.5">{formatTime(currentDisplayCount)}</span>
                         </div>
                     </div>
+                    <VoiceInspectionAssistant
+                        inspMethod={inspMethod}
+                        structureType={headerData?.structureType || (isRov ? 'platform' : 'platform')}
+                        componentInfo={{
+                            name: selectedComp?.name,
+                            type: selectedComp?.raw?.code || selectedComp?.component_type || selectedComp?.type,
+                            elevation: getFormDepth(),
+                            depth: getFormDepth(),
+                        }}
+                        activeSpec={activeSpec || ''}
+                        availableFields={availableFieldNames}
+                        onApplyExtraction={handleVoiceExtractionApplied}
+                    />
                     <div className="flex items-center gap-1">
                         {onPrintReport && (findingType === 'Anomaly' || findingType === 'Finding') && (
                             <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Print Report"><Printer className="w-3.5 h-3.5" /></button>
@@ -1620,7 +2007,22 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
                                 <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Findings</label>
-                                <FindingsSuggestionEngine supabase={supabase} componentType={selectedComp?.raw?.type || ""} inspectionTypeCode={activeSpec || ""} formData={dynamicProps} onSelect={(val) => { if (recordNotes && recordNotes.trim()) setRecordNotes(`${recordNotes.trim()}\n${val}`); else setRecordNotes(val); }} currentFinding={recordNotes} />
+                                <div className="flex items-center gap-1.5">
+                                    <VoiceInspectionAssistant
+                                        inspMethod={inspMethod}
+                                        structureType={headerData?.structureType || (isRov ? 'platform' : 'platform')}
+                                        componentInfo={{
+                                            name: selectedComp?.name,
+                                            type: selectedComp?.raw?.code || selectedComp?.component_type || selectedComp?.type,
+                                            elevation: getFormDepth(),
+                                            depth: getFormDepth(),
+                                        }}
+                                        activeSpec={activeSpec || ''}
+                                        availableFields={availableFieldNames}
+                                        onApplyExtraction={handleVoiceExtractionApplied}
+                                    />
+                                    <FindingsSuggestionEngine supabase={supabase} componentType={selectedComp?.raw?.type || ""} inspectionTypeCode={activeSpec || ""} formData={dynamicProps} onSelect={(val) => { if (recordNotes && recordNotes.trim()) setRecordNotes(`${recordNotes.trim()}\n${val}`); else setRecordNotes(val); }} currentFinding={recordNotes} />
+                                </div>
                             </div>
                             <textarea value={recordNotes} onChange={(e) => setRecordNotes(e.target.value)} placeholder="Observation specifics..." className="w-full min-h-[80px] rounded-lg border border-slate-300 dark:border-slate-700 p-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50 dark:bg-slate-950/50 dark:text-slate-200 shadow-inner"></textarea>
                         </div>

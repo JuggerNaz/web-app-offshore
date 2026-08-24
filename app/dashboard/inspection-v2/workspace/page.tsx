@@ -7857,6 +7857,7 @@ function V10PreviewLayout() {
             handleDeleteTaskFromScope={handleDeleteTaskFromScope}
             validateAnomalyRef={validateAnomalyRef}
             setPrevRefNo={setPrevRefNo}
+            criteriaRules={criteriaRules}
           />
         );
         break;
