@@ -236,22 +236,31 @@ export default function MigrationDashboard() {
       { oracleCol: "PTYPE", pgCol: "ptype" },
       { oracleCol: "INST_DATE", pgCol: "inst_date" },
       { oracleCol: "DESG_LIFE", pgCol: "desg_life" },
-      { oracleCol: "ST_NORTH", pgCol: "st_north" },
-      { oracleCol: "ST_EAST", pgCol: "st_east" },
+      { oracleCol: "ST_LOC", pgCol: "st_loc" },
+      { oracleCol: "END_LOC", pgCol: "end_loc" },
+      { oracleCol: "ST_X", pgCol: "st_x" },
+      { oracleCol: "ST_Y", pgCol: "st_y" },
+      { oracleCol: "END_X", pgCol: "end_x" },
+      { oracleCol: "END_Y", pgCol: "end_y" },
       { oracleCol: "DEPTH", pgCol: "depth" },
       { oracleCol: "AN_QTY", pgCol: "an_qty" },
       { oracleCol: "AN_TYPE", pgCol: "an_type" },
       { oracleCol: "INST_CTR", pgCol: "inst_ctr" },
+      { oracleCol: "DESG_PRESS", pgCol: "desg_press" },
+      { oracleCol: "OPER_PRESS", pgCol: "oper_press" },
       { oracleCol: "WALL_THK", pgCol: "wall_thk" },
+      { oracleCol: "ST_FP", pgCol: "st_fp" },
+      { oracleCol: "END_FP", pgCol: "end_fp" },
+      { oracleCol: "MATERIAL", pgCol: "material" },
       { oracleCol: "PROCESS", pgCol: "process" },
-      { oracleCol: "PLEGS", pgCol: "plegs" },
+      { oracleCol: "CONC_CTG", pgCol: "conc_ctg" },
+      { oracleCol: "CP_SYSTEM", pgCol: "cp_system" },
+      { oracleCol: "SPAN_OPER", pgCol: "span_oper" },
       { oracleCol: "CR_USER", pgCol: "cr_user" },
       { oracleCol: "CR_DATE", pgCol: "cr_date" },
       { oracleCol: "LINE_DIAM", pgCol: "line_diam" },
       { oracleCol: "PLENGTH", pgCol: "plength" },
-      { oracleCol: "BURIAL", pgCol: "burial" },
-      { oracleCol: "CONC_CTG", pgCol: "conc_ctg" },
-      { oracleCol: "OPER_PRESS", pgCol: "oper_press" }
+      { oracleCol: "BURIAL", pgCol: "burial" }
     ],
     "STR_ELV": [
       { oracleCol: "PLAT_ID", pgCol: "plat_id" },
@@ -549,9 +558,17 @@ export default function MigrationDashboard() {
     );
 
     if (compConfig) {
-      specTableName = `${entity}_COMP`.toUpperCase();
-      if (entity.toLowerCase() === "an") {
-        specTableName = mappingStructureType === "PLATFORM" ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+      const codeUpper = entity.toUpperCase();
+      if (mappingStructureType === "PIPELINE") {
+        if (codeUpper === "AN") specTableName = "AN_COMP_PIPE";
+        else if (codeUpper === "PC") specTableName = "PC_COMP_PIPE";
+        else if (codeUpper === "RC") specTableName = "RC_COMP_PIPE";
+        else specTableName = `${codeUpper}_COMP`;
+      } else {
+        if (codeUpper === "AN") specTableName = "AN_COMP_PLAT";
+        else if (codeUpper === "RC") specTableName = "RC_COMP_PLAT";
+        else if (codeUpper === "IT") specTableName = "IT_COMP_PLAT";
+        else specTableName = `${codeUpper}_COMP`;
       }
       fields = compConfig.fields.map((f: any) => f.name);
     } else if (entity.startsWith("INSP_ROV_") || entity.startsWith("INSP_DIV_")) {
@@ -1676,8 +1693,9 @@ export default function MigrationDashboard() {
                             const systemKeys = isPipeStruct ? pipelineSystemKeys : platformSystemKeys;
 
                             const jobInspectionKeys = [
-                              "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
-                              "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT", "EXSUM"
+                              "JOBPACK", "U_SOW", "JOBPACK_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "LOGS_ROV", "LOGS_DIVE",
+                              "VIDEO", "VIDEO_TAPES", "VIDEO_LOGS", "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT",
+                              "INSP_ATTACHMENT", "EXSUM", "COMP_NOT_INSP"
                             ];
 
                             const rawReportEntries = Object.entries(migrationReport);
@@ -1686,8 +1704,15 @@ export default function MigrationDashboard() {
                               ? rawReportEntries.filter(([k]) => !["STR_ELV", "STR_LEVEL", "STR_FACES"].includes(k.toUpperCase()))
                               : rawReportEntries;
 
-                            const isJobInspKey = (key: string) =>
-                              jobInspectionKeys.includes(key) || key.startsWith("INSP_ROV_") || key.startsWith("INSP_DIVING_");
+                            const isJobInspKey = (key: string) => {
+                              const upper = key.toUpperCase();
+                              return (
+                                jobInspectionKeys.includes(upper) ||
+                                upper.startsWith("INSP_") ||
+                                upper.startsWith("VIDEO_") ||
+                                upper.startsWith("LOGS_")
+                              );
+                            };
                             const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
                             const systemItems = reportEntries.filter(([key]) => systemKeys.includes(key));
                             const jobInspItems = reportEntries.filter(([key]) => isJobInspKey(key));
@@ -1737,7 +1762,7 @@ export default function MigrationDashboard() {
                                           <div className="flex flex-col gap-1.5">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                {(() => {
-                                                 const isComp = !["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC", "ATTACHMENT", "COMMENT", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "ANOMALY", "INSP_ATTACHMENT"].includes(key.toUpperCase());
+                                                 const isComp = !isJobInspKey(key) && !libKeys.includes(key) && !systemKeys.includes(key);
                                                  if (isComp) {
                                                    let colorClass = "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200/40 dark:border-indigo-900/30";
                                                    let label = "Component";
@@ -2661,9 +2686,16 @@ export default function MigrationDashboard() {
                           <Label className="text-[10px] font-black uppercase text-slate-400">Components</Label>
                         </div>
                         {filteredSummary.map((s: any) => {
-                          let resolvedCompSpec = `${s.CODE}_COMP`;
-                          if (s.CODE.toLowerCase() === 'an') {
-                            resolvedCompSpec = mappingStructureType === "PLATFORM" ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+                          const codeUpper = s.CODE.toUpperCase();
+                          let resolvedCompSpec = `${codeUpper}_COMP`;
+                          if (mappingStructureType === "PIPELINE") {
+                            if (codeUpper === 'AN') resolvedCompSpec = "AN_COMP_PIPE";
+                            else if (codeUpper === 'PC') resolvedCompSpec = "PC_COMP_PIPE";
+                            else if (codeUpper === 'RC') resolvedCompSpec = "RC_COMP_PIPE";
+                          } else {
+                            if (codeUpper === 'AN') resolvedCompSpec = "AN_COMP_PLAT";
+                            else if (codeUpper === 'RC') resolvedCompSpec = "RC_COMP_PLAT";
+                            else if (codeUpper === 'IT') resolvedCompSpec = "IT_COMP_PLAT";
                           }
                           return (
                             <button
@@ -2836,9 +2868,16 @@ export default function MigrationDashboard() {
                               pgDesc = "Normalized inspection records (inspection_data JSONB)";
                               pkCol = "INSP_ID";
                             } else {
-                              let specTable = `${selectedMappingEntity}_COMP`;
-                              if (selectedMappingEntity.toLowerCase() === 'an') {
-                                specTable = isPlat ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+                              const codeUpper = selectedMappingEntity.toUpperCase();
+                              let specTable = `${codeUpper}_COMP`;
+                              if (!isPlat) {
+                                if (codeUpper === 'AN') specTable = "AN_COMP_PIPE";
+                                else if (codeUpper === 'PC') specTable = "PC_COMP_PIPE";
+                                else if (codeUpper === 'RC') specTable = "RC_COMP_PIPE";
+                              } else {
+                                if (codeUpper === 'AN') specTable = "AN_COMP_PLAT";
+                                else if (codeUpper === 'RC') specTable = "RC_COMP_PLAT";
+                                else if (codeUpper === 'IT') specTable = "IT_COMP_PLAT";
                               }
                               oracleTable = `ALLCOMPID + ${specTable}`;
                               oracleDesc = `Legacy detailed spec view joined with ${specTable}`;

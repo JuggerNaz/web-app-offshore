@@ -59,9 +59,16 @@ export default function Spec1Pipeline({ data }: Props) {
 
   const normalizeDate = (value: string | null | undefined) => {
     if (!value) return "";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    if (typeof value === "string") {
+      const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (match) return match[1];
+    }
     const d = new Date(value);
-    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+    if (isNaN(d.getTime())) return "";
+    const yr = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${yr}-${mo}-${da}`;
   };
 
   const initialData = data
@@ -72,6 +79,16 @@ export default function Spec1Pipeline({ data }: Props) {
     resolver: zodResolver(PipelineSchema),
     defaultValues: initialData,
   });
+
+  // Re-sync form state when SWR data loads or changes
+  useEffect(() => {
+    if (data) {
+      form.reset({
+        ...data,
+        inst_date: normalizeDate((data as any).inst_date)
+      });
+    }
+  }, [data, form]);
 
   const defUnit = form.watch("def_unit") || settingsData?.data?.def_unit || "METRIC";
   const isImperial = defUnit === "IMPERIAL";

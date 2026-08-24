@@ -300,7 +300,7 @@
     },
     {
       "pgCol": "an_qty",
-      "oracleCol": "an_QTY"
+      "oracleCol": "AN_QTY"
     },
     {
       "pgCol": "an_type",
@@ -308,15 +308,15 @@
     },
     {
       "pgCol": "inst_ctr",
-      "oracleCol": "inst_ctr"
+      "oracleCol": "INST_CTR"
     },
     {
       "pgCol": "desg_press",
-      "oracleCol": "desg_PRESS"
+      "oracleCol": "DESG_PRESS"
     },
     {
       "pgCol": "oper_press",
-      "oracleCol": "oper_press"
+      "oracleCol": "OPER_PRESS"
     },
     {
       "pgCol": "wall_thk",
@@ -324,79 +324,71 @@
     },
     {
       "pgCol": "st_fp",
-      "oracleCol": "st_FP"
+      "oracleCol": "ST_FP"
     },
     {
       "pgCol": "end_fp",
-      "oracleCol": "end_fp"
+      "oracleCol": "END_FP"
     },
     {
       "pgCol": "material",
-      "oracleCol": "material"
+      "oracleCol": "MATERIAL"
     },
     {
       "pgCol": "process",
-      "oracleCol": "process"
+      "oracleCol": "PROCESS"
+    },
+    {
+      "pgCol": "medium",
+      "oracleCol": "MEDIUM"
     },
     {
       "pgCol": "conc_ctg",
-      "oracleCol": "conc_ctg"
-    },
-    {
-      "pgCol": "cp_system",
-      "oracleCol": "cp_system"
-    },
-    {
-      "pgCol": "span_oper",
-      "oracleCol": "span_oper"
-    },
-    {
-      "pgCol": "fp_tolerance",
-      "oracleCol": "fp_tolerance"
-    },
-    {
-      "pgCol": "burial",
-      "oracleCol": "burial"
+      "oracleCol": "CONC_CTG"
     },
     {
       "pgCol": "conc_ctg_per",
-      "oracleCol": "conc_ctg_per"
+      "oracleCol": "CONC_CTG_PER"
     },
     {
-      "pgCol": "plength",
-      "oracleCol": "plength"
+      "pgCol": "corr_ctg",
+      "oracleCol": "CORR_CTG"
     },
     {
-      "pgCol": "ra_qty",
-      "oracleCol": "ra_qty"
+      "pgCol": "cp_system",
+      "oracleCol": "CP_SYSTEM"
     },
     {
-      "pgCol": "ra_type",
-      "oracleCol": "ra_type"
+      "pgCol": "span_cons",
+      "oracleCol": "SPAN_CONS"
     },
     {
-      "pgCol": "sent",
-      "oracleCol": "sent"
-    },
-    {
-      "pgCol": "cr_user",
-      "oracleCol": "cr_user"
-    },
-    {
-      "pgCol": "cr_date",
-      "oracleCol": "cr_date"
-    },
-    {
-      "pgCol": "def_unit",
-      "oracleCol": "def_unit"
-    },
-    {
-      "pgCol": "workunit",
-      "oracleCol": "workunit"
+      "pgCol": "span_oper",
+      "oracleCol": "SPAN_OPER"
     },
     {
       "pgCol": "line_diam",
-      "oracleCol": "line_diam"
+      "oracleCol": "LINE_DIAM"
+    },
+    {
+      "pgCol": "plength",
+      "oracleCol": "PLENGTH"
+    },
+    {
+      "pgCol": "burial",
+      "oracleCol": "BURIAL"
+    },
+    {
+      "pgCol": "def_unit",
+      "oracleCol": "DEF_UNIT"
+    },
+    {
+      "pgCol": "cr_user",
+      "oracleCol": "CR_USER"
+    },
+    {
+      "pgCol": "cr_date",
+      "oracleCol": "CR_DATE"
     }
   ],
   "STR_ELV": [

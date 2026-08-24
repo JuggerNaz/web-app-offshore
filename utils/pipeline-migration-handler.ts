@@ -201,47 +201,94 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
 
     report["STRUCTURE_PIPELINE"].oracleRows = 1;
 
+    const getCol = (r: any, keys: string[]) => {
+      for (const k of keys) {
+        const v = r[k] ?? r[k.toLowerCase()] ?? r[k.toUpperCase()];
+        if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+      }
+      return null;
+    };
+
     // Determine unit defaults based on source unit
-    const defUnit = String(pipeRow.DEF_UNIT || (isImperial ? "I" : "M")).toUpperCase();
-    const isImp = defUnit.startsWith("I");
+    const defUnitRaw = String(getCol(pipeRow, ['DEF_UNIT']) || (isImperial ? "I" : "M")).toUpperCase();
+    const isImp = defUnitRaw.startsWith("I") || defUnitRaw === "1" || defUnitRaw === "FT";
 
-    const pipeTitle = String(pipeRow.TITLE || pipeRow.NAME || `PIPELINE-${structureId}`).trim();
-    const pipeField = String(pipeRow.PFIELD || pipeRow.FIELD || "").trim();
-    const pipeDesc = String(pipeRow.PDESC || pipeRow.DESCRIP || "").trim();
+    const pipeTitle = String(getCol(pipeRow, ['TITLE', 'NAME']) || `PIPELINE-${structureId}`).trim();
+    const pipeField = String(getCol(pipeRow, ['PFIELD', 'FIELD']) || "").trim();
+    const pipeDesc = String(getCol(pipeRow, ['PDESC', 'DESCRIP', 'DESCRIPTION']) || "").trim();
 
-    // Map units for numeric spec fields
+    // Clean Date (preserve exact local calendar date YYYY-MM-DD without UTC timezone rollback)
+    let instDateStr: string | null = null;
+    const rawInstDate = getCol(pipeRow, ['INST_DATE', 'I_DATE']);
+    if (rawInstDate) {
+      try {
+        const d = new Date(rawInstDate);
+        if (!isNaN(d.getTime())) {
+          const yr = d.getFullYear();
+          const mo = String(d.getMonth() + 1).padStart(2, '0');
+          const da = String(d.getDate()).padStart(2, '0');
+          instDateStr = `${yr}-${mo}-${da}`;
+        }
+      } catch (_) {}
+    }
+
+    const plengthVal = getCol(pipeRow, ['PLENGTH', 'LENGTH']) !== null ? Number(getCol(pipeRow, ['PLENGTH', 'LENGTH'])) : null;
+    const endFpVal = getCol(pipeRow, ['END_FP', 'END_KP', 'TO_KP', 'TO_FP']) !== null ? Number(getCol(pipeRow, ['END_FP', 'END_KP', 'TO_KP', 'TO_FP'])) : (plengthVal !== null ? plengthVal : null);
+
+    // Map all technical, location & path specs
     const pgPipeRecord: Record<string, any> = {
       pipe_id: resolvedStructureId,
       title: pipeTitle,
       pfield: pipeField,
       pdesc: pipeDesc,
       ptype: "PIPE",
-      def_unit: isImp ? "Imperial" : "Metric",
-      inst_date: pipeRow.INST_DATE ? new Date(pipeRow.INST_DATE).toISOString() : null,
-      desg_life: pipeRow.DESG_LIFE ? Number(pipeRow.DESG_LIFE) : null,
-      st_north: pipeRow.ST_NORTH !== undefined ? Number(pipeRow.ST_NORTH) : null,
-      st_east: pipeRow.ST_EAST !== undefined ? Number(pipeRow.ST_EAST) : null,
-      depth: pipeRow.DEPTH !== undefined ? Number(pipeRow.DEPTH) : null,
+      def_unit: isImp ? "IMPERIAL" : "METRIC",
+      inst_date: instDateStr,
+      desg_life: getCol(pipeRow, ['DESG_LIFE', 'DESIGN_LIFE']) !== null ? Number(getCol(pipeRow, ['DESG_LIFE', 'DESIGN_LIFE'])) : null,
+      depth: getCol(pipeRow, ['DEPTH', 'WATER_DEPTH']) !== null ? Number(getCol(pipeRow, ['DEPTH', 'WATER_DEPTH'])) : null,
       depth_u: isImp ? "ft" : "m",
-      line_diam: pipeRow.LINE_DIAM !== undefined ? Number(pipeRow.LINE_DIAM) : null,
-      line_diam_u: isImp ? "in" : "mm",
-      wall_thk: pipeRow.WALL_THK !== undefined ? Number(pipeRow.WALL_THK) : null,
-      wall_thk_u: isImp ? "in" : "mm",
-      plength: pipeRow.PLENGTH !== undefined ? Number(pipeRow.PLENGTH) : null,
+      process: getCol(pipeRow, ['PROCESS']) ? String(getCol(pipeRow, ['PROCESS'])).trim() : null,
+
+      // Starts At
+      st_loc: getCol(pipeRow, ['ST_LOC', 'START_LOC', 'FROM_LOC']) ? String(getCol(pipeRow, ['ST_LOC', 'START_LOC', 'FROM_LOC'])).trim() : null,
+      st_fp: getCol(pipeRow, ['ST_FP', 'ST_KP', 'START_KP', 'START_FP']) !== null ? Number(getCol(pipeRow, ['ST_FP', 'ST_KP', 'START_KP', 'START_FP'])) : (pipeRow.ST_FP !== undefined ? Number(pipeRow.ST_FP) : null),
+      st_x: getCol(pipeRow, ['ST_X', 'ST_EAST', 'START_EAST', 'START_X']) !== null ? String(getCol(pipeRow, ['ST_X', 'ST_EAST', 'START_EAST', 'START_X'])).trim() : null,
+      st_y: getCol(pipeRow, ['ST_Y', 'ST_NORTH', 'START_NORTH', 'START_Y']) !== null ? String(getCol(pipeRow, ['ST_Y', 'ST_NORTH', 'START_NORTH', 'START_Y'])).trim() : null,
+
+      // Ends At
+      end_loc: getCol(pipeRow, ['END_LOC', 'TO_LOC']) ? String(getCol(pipeRow, ['END_LOC', 'TO_LOC'])).trim() : null,
+      end_fp: endFpVal,
+      end_x: getCol(pipeRow, ['END_X', 'END_EAST', 'TO_EAST', 'TO_X']) !== null ? String(getCol(pipeRow, ['END_X', 'END_EAST', 'TO_EAST', 'TO_X'])).trim() : null,
+      end_y: getCol(pipeRow, ['END_Y', 'END_NORTH', 'TO_NORTH', 'TO_Y']) !== null ? String(getCol(pipeRow, ['END_Y', 'END_NORTH', 'TO_NORTH', 'TO_Y'])).trim() : null,
+
+      // Dimensions & Parameters
+      plength: plengthVal !== null ? plengthVal : endFpVal,
       plength_u: isImp ? "mile" : "km",
-      burial: pipeRow.BURIAL !== undefined ? Number(pipeRow.BURIAL) : null,
-      burial_u: isImp ? "ft" : "m",
-      conc_ctg: pipeRow.CONC_CTG !== undefined ? Number(pipeRow.CONC_CTG) : null,
-      conc_ctg_u: isImp ? "in" : "mm",
-      oper_press: pipeRow.OPER_PRESS !== undefined ? Number(pipeRow.OPER_PRESS) : null,
-      oper_press_u: isImp ? "psi" : "bar",
-      an_qty: pipeRow.AN_QTY ? Number(pipeRow.AN_QTY) : null,
-      an_type: pipeRow.AN_TYPE ? String(pipeRow.AN_TYPE) : null,
-      inst_ctr: pipeRow.INST_CTR ? String(pipeRow.INST_CTR) : null,
-      process: pipeRow.PROCESS ? String(pipeRow.PROCESS) : null,
-      plegs: pipeRow.PLEGS ? String(pipeRow.PLEGS) : null,
-      cr_user: pipeRow.CR_USER ? String(pipeRow.CR_USER) : null,
-      cr_date: pipeRow.CR_DATE ? new Date(pipeRow.CR_DATE).toISOString() : null,
+      line_diam: getCol(pipeRow, ['LINE_DIAM', 'DIAMETER', 'DIAM']) !== null ? Number(getCol(pipeRow, ['LINE_DIAM', 'DIAMETER', 'DIAM'])) : null,
+      line_diam_u: isImp ? "in" : "mm",
+      wall_thk: getCol(pipeRow, ['WALL_THK', 'WALL_THICKNESS', 'THK']) !== null ? Number(getCol(pipeRow, ['WALL_THK', 'WALL_THICKNESS', 'THK'])) : null,
+      wall_thk_u: isImp ? "in" : "mm",
+      material: getCol(pipeRow, ['MATERIAL', 'MAT']) ? String(getCol(pipeRow, ['MATERIAL', 'MAT'])).trim() : null,
+
+      // Protection & Coatings
+      cp_system: getCol(pipeRow, ['CP_SYSTEM', 'CP_SYS']) ? String(getCol(pipeRow, ['CP_SYSTEM', 'CP_SYS'])).trim() : null,
+      corr_ctg: getCol(pipeRow, ['CORR_CTG', 'CORROSION_COATING']) ? String(getCol(pipeRow, ['CORR_CTG', 'CORROSION_COATING'])).trim() : null,
+      conc_ctg: getCol(pipeRow, ['CONC_CTG', 'CONCRETE_COATING']) ? String(getCol(pipeRow, ['CONC_CTG', 'CONCRETE_COATING'])).trim() : null,
+      conc_ctg_per: getCol(pipeRow, ['CONC_CTG_PER', 'CONC_PER', 'CONCRETE_PCT']) !== null ? Number(getCol(pipeRow, ['CONC_CTG_PER', 'CONC_PER', 'CONCRETE_PCT'])) : null,
+
+      // Pressures & Spans
+      desg_press: getCol(pipeRow, ['DESG_PRESS', 'DESIGN_PRESSURE']) !== null ? Number(getCol(pipeRow, ['DESG_PRESS', 'DESIGN_PRESSURE'])) : null,
+      oper_press: getCol(pipeRow, ['OPER_PRESS', 'OPERATING_PRESSURE']) !== null ? Number(getCol(pipeRow, ['OPER_PRESS', 'OPERATING_PRESSURE'])) : null,
+      burial: getCol(pipeRow, ['BURIAL', 'LINE_BURIED', 'BURIAL_PCT']) !== null ? Number(getCol(pipeRow, ['BURIAL', 'LINE_BURIED', 'BURIAL_PCT'])) : null,
+      span_cons: getCol(pipeRow, ['SPAN_CONS', 'CONST_SPAN']) !== null ? Number(getCol(pipeRow, ['SPAN_CONS', 'CONST_SPAN'])) : null,
+      span_oper: getCol(pipeRow, ['SPAN_OPER', 'OPER_SPAN']) !== null ? Number(getCol(pipeRow, ['SPAN_OPER', 'OPER_SPAN'])) : null,
+
+      an_qty: getCol(pipeRow, ['AN_QTY']) ? Number(getCol(pipeRow, ['AN_QTY'])) : null,
+      an_type: getCol(pipeRow, ['AN_TYPE']) ? String(getCol(pipeRow, ['AN_TYPE'])).trim() : null,
+      inst_ctr: getCol(pipeRow, ['INST_CTR', 'CONTRACTOR']) ? String(getCol(pipeRow, ['INST_CTR', 'CONTRACTOR'])).trim() : null,
+      plegs: getCol(pipeRow, ['PLEGS']) ? String(getCol(pipeRow, ['PLEGS'])).trim() : null,
+      cr_user: getCol(pipeRow, ['CR_USER']) ? String(getCol(pipeRow, ['CR_USER'])).trim() : null,
+      cr_date: getCol(pipeRow, ['CR_DATE']) ? new Date(getCol(pipeRow, ['CR_DATE'])).toISOString() : null,
     };
 
     // 1. Ensure parent record in structure table
@@ -260,6 +307,57 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
 
     if (pipeErr) {
       throw pipeErr;
+    }
+
+    // 3. Ensure Default Component exists with KP matching pipeline length
+    const resolvedPipeLength = plengthVal !== null ? plengthVal : (endFpVal !== null ? endFpVal : 10.6);
+    const { data: existingComp } = await (supabase.from as any)("structure_components")
+      .select("id")
+      .eq("structure_id", resolvedStructureId)
+      .limit(1)
+      .maybeSingle();
+
+    const defaultCompMetadata = {
+      kp_start: 0,
+      kp_end: resolvedPipeLength,
+      start_kp: 0,
+      end_kp: resolvedPipeLength,
+      kp: `0.000 - ${resolvedPipeLength}`,
+      kp_u: "km",
+      kp_unit: "km",
+      start_kp_unit: "km",
+      end_kp_unit: "km",
+      description: "Default Pipeline Trunkline / Main Segment",
+      length: resolvedPipeLength,
+      st_loc: pgPipeRecord.st_loc,
+      end_loc: pgPipeRecord.end_loc,
+      easting: pgPipeRecord.st_x,
+      northing: pgPipeRecord.st_y,
+      st_x: pgPipeRecord.st_x,
+      st_y: pgPipeRecord.st_y,
+      end_x: pgPipeRecord.end_x,
+      end_y: pgPipeRecord.end_y,
+      easting_unit: "m",
+      northing_unit: "m",
+    };
+
+    if (!existingComp) {
+      const defaultCompRecord = {
+        structure_id: resolvedStructureId,
+        comp_id: 999999,
+        id_no: "PIPE-MAIN-01",
+        q_id: `PIPE-${resolvedStructureId}`,
+        code: "PIPE",
+        is_deleted: false,
+        metadata: defaultCompMetadata
+      };
+      await (supabase.from as any)("structure_components").insert(defaultCompRecord);
+      logs.push(`[Pipeline Engine] Auto-created default pipeline component with KP Range 0.000 - ${resolvedPipeLength} km`);
+    } else if (existingComp.comp_id === 999999 || existingComp.id_no === "PIPE-MAIN-01") {
+      await (supabase.from as any)("structure_components")
+        .update({ metadata: defaultCompMetadata })
+        .eq("id", existingComp.id);
+      logs.push(`[Pipeline Engine] Updated default pipeline component with KP Range 0.000 - ${resolvedPipeLength} km`);
     }
 
     logs.push(`[Pipeline Engine] Successfully migrated pipeline master "${pipeTitle}" (ID: ${resolvedStructureId}, Units: ${isImp ? "Imperial" : "Metric"})!`);
@@ -460,6 +558,7 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
     supabase,
     structureId,
     resolvedStructureId,
+    isImperial,
     selectedInspNo,
     compIdMap,
     jpIdMap,
@@ -481,25 +580,12 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
   logs.push(`[Pipeline Engine] Fetching ROV survey records from Oracle NAVIG table (STR_ID: ${structureId})...`);
 
   try {
-    // 1. Query NAVIG table columns
-    let navigQuery = `
-      SELECT 
-        n.INSP_ID, n.STR_ID, n.INSPNO, n.COMP_ID, n.INSP_DATE, n.INSP_TIME,
-        n.DIVE_NO, n.TAPE_NO, n.COUNTER, n.TIMECODE,
-        n.FP_KP, n.KP, n.EASTING, n.E_COORD, n.NORTHING, n.N_COORD,
-        n.DEPTH, n.WATER_DEPTH, n.ELEVATION,
-        n.CP_RDG, n.CP_READING, n.EVENT, n.EVENT_NAME, n.TYPE, n.EVENT_TYPE,
-        n.POS, n.POSITION, n.DESCR, n.EVENT_DESC, n.DESCRIPTION,
-        n.ANOM_NO, n.DEFECT, n.SEVERITY, n.PRIORITY,
-        n.CORR_CTG, n.AN_QTY, n.REMARKS, n.COMMENTS
-      FROM NAVIG n
-      WHERE n.STR_ID = :strId AND n.INSP_ID IS NOT NULL AND n.INSP_ID > 0
-    `;
-
+    // 1. Query NAVIG table with SELECT * to guarantee all legacy columns are extracted
+    let navigQuery = `SELECT * FROM NAVIG WHERE STR_ID = :strId AND INSP_ID IS NOT NULL AND INSP_ID > 0`;
     if (selectedInspNo) {
-      navigQuery += ` AND n.INSPNO = :inspNo`;
+      navigQuery += ` AND INSPNO = :inspNo`;
     }
-    navigQuery += ` ORDER BY n.INSP_ID ASC`;
+    navigQuery += ` ORDER BY INSP_ID ASC`;
 
     const binds: any = { strId: structureId };
     if (selectedInspNo) binds.inspNo = selectedInspNo;
@@ -509,10 +595,8 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       const res = await oracleConn.execute(navigQuery, binds);
       rows = res.rows || [];
     } catch (queryErr: any) {
-      logs.push(`[Pipeline Engine] Full NAVIG query failed (${queryErr.message}). Trying fallback SELECT * FROM NAVIG...`);
-      let fallbackQuery = `SELECT * FROM NAVIG WHERE STR_ID = :strId AND INSP_ID IS NOT NULL AND INSP_ID > 0`;
-      if (selectedInspNo) fallbackQuery += ` AND INSPNO = :inspNo`;
-      const fbRes = await oracleConn.execute(fallbackQuery, binds);
+      logs.push(`[Pipeline Engine] Primary NAVIG query failed (${queryErr.message}). Retrying...`);
+      const fbRes = await oracleConn.execute(`SELECT * FROM NAVIG WHERE STR_ID = :strId`, { strId: structureId });
       rows = fbRes.rows || [];
     }
 
@@ -523,7 +607,7 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
     }
 
     report[reportKey].oracleRows = rows.length;
-    logs.push(`[Pipeline Engine] Found ${rows.length} NAVIG survey records in Oracle. Processing & matching Event Menus in Metric units...`);
+    logs.push(`[Pipeline Engine] Found ${rows.length} NAVIG survey records in Oracle. Unit mode: ${isImperial ? "IMPERIAL" : "METRIC"}. Processing...`);
 
     // Fetch default pipeline component ID for fallback, or auto-create one if none exists
     let defaultCompId = compIdMap.get(0) || compIdMap.get(999999) || null;
@@ -538,6 +622,18 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
 
     if (!defaultCompId) {
       logs.push(`[Pipeline Engine] No component found for structure ${resolvedStructureId}. Auto-creating default Pipeline component...`);
+      
+      let pipeKpEnd = 10.6;
+      try {
+        const { data: pData } = await (supabase.from as any)("u_pipeline")
+          .select("plength, end_fp")
+          .eq("pipe_id", resolvedStructureId)
+          .maybeSingle();
+        if (pData?.plength || pData?.end_fp) {
+          pipeKpEnd = Number(pData.plength || pData.end_fp);
+        }
+      } catch (_) {}
+
       const defaultCompRecord = {
         structure_id: resolvedStructureId,
         comp_id: 999999,
@@ -547,8 +643,10 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         is_deleted: false,
         metadata: {
           kp_start: 0,
-          kp_end: 10000,
-          description: "Default Pipeline Trunkline / Main Segment"
+          kp_end: pipeKpEnd,
+          kp_u: "km",
+          description: "Default Pipeline Trunkline / Main Segment",
+          length: pipeKpEnd,
         }
       };
 
@@ -574,49 +672,136 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       const oracleInspId = Number(r.INSP_ID || r.insp_id);
       if (!oracleInspId) continue;
 
-      const inspNo = String(r.INSPNO || r.inspno || "").trim();
-      const compId = Number(r.COMP_ID || r.comp_id || 0);
-      const diveNo = r.DIVE_NO !== undefined ? String(r.DIVE_NO).trim() : "";
-      const tapeNo = r.TAPE_NO !== undefined ? String(r.TAPE_NO).trim() : "";
+      const getVal = (keys: string[]) => {
+        for (const k of keys) {
+          const v = (r as any)[k] ?? (r as any)[k.toLowerCase()] ?? (r as any)[k.toUpperCase()];
+          if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+        }
+        return null;
+      };
+
+      const inspNo = String(getVal(['INSPNO']) || "").trim();
+      const compId = Number(getVal(['COMP_ID']) || 0);
+      const diveNo = String(getVal(['DIVE_NO']) || "").trim();
+      const tapeNo = String(getVal(['TAPE_NO']) || "").trim();
 
       // Clean Date & Time
       let inspDate: string = new Date().toISOString().split("T")[0];
-      if (r.INSP_DATE) {
+      const rawDate = getVal(['INSP_DATE', 'I_DATE', 'CR_DATE']);
+      if (rawDate) {
         try {
-          const d = new Date(r.INSP_DATE);
+          const d = new Date(rawDate);
           if (!isNaN(d.getTime())) inspDate = d.toISOString().split("T")[0];
         } catch (_) {}
       }
 
       let inspTime = "12:00:00";
-      if (r.INSP_TIME) {
-        const tStr = String(r.INSP_TIME).trim();
+      const rawTime = getVal(['INSP_TIME', 'I_TIME']);
+      if (rawTime) {
+        const tStr = String(rawTime).trim();
         if (tStr.includes(":")) inspTime = tStr.length === 5 ? `${tStr}:00` : tStr;
       }
 
-      // Metric numeric extraction
-      const rawKp = r.FP_KP !== undefined ? r.FP_KP : (r.KP !== undefined ? r.KP : null);
+      // Numeric extraction
+      const rawKp = getVal(['FP_KP', 'KP']);
       const kpNum = rawKp !== null && !isNaN(Number(rawKp)) ? Number(rawKp) : 0;
 
-      const rawEast = r.EASTING !== undefined ? r.EASTING : (r.E_COORD !== undefined ? r.E_COORD : null);
+      const rawEast = getVal(['EASTING', 'E_COORD', 'EAST']);
       const eastNum = rawEast !== null && !isNaN(Number(rawEast)) ? Number(rawEast) : null;
 
-      const rawNorth = r.NORTHING !== undefined ? r.NORTHING : (r.N_COORD !== undefined ? r.N_COORD : null);
+      const rawNorth = getVal(['NORTHING', 'N_COORD', 'NORTH']);
       const northNum = rawNorth !== null && !isNaN(Number(rawNorth)) ? Number(rawNorth) : null;
 
-      const rawDepth = r.DEPTH !== undefined ? r.DEPTH : (r.WATER_DEPTH !== undefined ? r.WATER_DEPTH : (r.ELEVATION !== undefined ? r.ELEVATION : null));
+      const rawDepth = getVal(['DEPTH', 'WATER_DEPTH', 'ELEVATION']);
       const depthNum = rawDepth !== null && !isNaN(Number(rawDepth)) ? Number(rawDepth) : null;
 
-      const rawCp = r.CP_RDG !== undefined ? r.CP_RDG : (r.CP_READING !== undefined ? r.CP_READING : null);
+      const rawCp = getVal(['CP_RDG', 'CP_READING', 'CP']);
       const cpVal = rawCp !== null && !isNaN(Number(rawCp)) ? Number(rawCp) : null;
 
-      const rawEvent = r.EVENT || r.EVENT_NAME || "";
-      const rawType = r.TYPE || r.EVENT_TYPE || "";
-      const rawPos = r.POS || r.POSITION || "";
-      const rawDescr = r.DESCR || r.EVENT_DESC || r.DESCRIPTION || r.REMARKS || "";
+      const rawEvent = String(getVal(['EVENT', 'EVENT_NAME', 'EVT']) || "").trim();
+      const rawType = String(getVal(['TYPE', 'EVENT_TYPE', 'TYP']) || "").trim();
+      const rawPos = String(getVal(['POS', 'POSITION']) || "").trim();
+      const rawDescr = String(getVal(['DESC', 'DESCR', 'EVENT_DESC', 'DESCRIPTION', 'FINDINGS']) || "").trim();
+      const rawComments = String(getVal(['COMMENTS', 'REMARKS', 'COMMENT', 'REMARK']) || "").trim();
 
-      // Match with Event Menu defaults
-      const eventMatched = matchPipelineEventMenu(rawEvent, rawType, rawPos, rawDescr);
+      // Dimensions & Span/Burial/Scour fields
+      const rawLength = getVal(['LENGTH', 'LEN', 'SPAN_LEN', 'BURIAL_LEN', 'SCOUR_LEN', 'SCOUR_LENGTH', 'LENGTH_M', 'LENGTH_FT']);
+      const lengthNum = rawLength !== null && !isNaN(Number(rawLength)) ? Number(rawLength) : null;
+
+      const rawHeight = getVal(['HEIGHT', 'HGT', 'SPAN_HGT', 'SCOUR_DEPTH', 'SCOUR_HGT', 'SCOUR_HEIGHT', 'DEP_SCOUR', 'HEIGHT_MM', 'HEIGHT_IN']);
+      const heightNum = rawHeight !== null && !isNaN(Number(rawHeight)) ? Number(rawHeight) : null;
+
+      const rawCoverage = getVal(['COVERAGE', 'COV', 'COVERAGE_PCT']);
+      const coverageNum = rawCoverage !== null && !isNaN(Number(rawCoverage)) ? Number(rawCoverage) : null;
+
+      // Crossing details
+      const rawCLin = String(getVal(['C_LIN', 'CLIN', 'C_LINE', 'CROSSING_LINE', 'LINE']) || "").trim();
+      const rawCGap = String(getVal(['C_GAP', 'CGAP', 'GAP', 'CROSSING_GAP']) || "").trim();
+      const rawCFp = String(getVal(['C_FP', 'CFP', 'CROSSING_KP', 'CROSSING_FP']) || "").trim();
+      const rawCSs = String(getVal(['C_SS', 'CSS', 'SUPPORTS', 'CROSSING_SUPPORTS', 'NUM_SUPPORTS']) || "").trim();
+      const rawCType = String(getVal(['C_TYPE', 'CTYPE', 'CROSSING_TYPE']) || "").trim();
+
+      // Unit formatting: Length in m / ft, Height (Span/Scour) in mm / in
+      let lengthPrimary = "";
+      let lengthSecondary = "";
+      let lengthM: number | null = null;
+      let lengthFt: number | null = null;
+      if (lengthNum !== null) {
+        if (isImperial) {
+          lengthPrimary = `${lengthNum.toFixed(2)}ft`;
+          lengthSecondary = `${(lengthNum / 3.28084).toFixed(2)}m`;
+          lengthM = Number((lengthNum / 3.28084).toFixed(2));
+          lengthFt = lengthNum;
+        } else {
+          lengthPrimary = `${lengthNum.toFixed(2)}m`;
+          lengthSecondary = `${(lengthNum * 3.28084).toFixed(2)}ft`;
+          lengthM = lengthNum;
+          lengthFt = Number((lengthNum * 3.28084).toFixed(2));
+        }
+      }
+
+      let heightPrimary = "";
+      let heightSecondary = "";
+      let heightMm: number | null = null;
+      let heightIn: number | null = null;
+      if (heightNum !== null) {
+        if (isImperial) {
+          // Imperial: inches (in)
+          heightPrimary = `${heightNum.toFixed(2)}in`;
+          heightSecondary = `${(heightNum * 25.4).toFixed(1)}mm`;
+          heightMm = Number((heightNum * 25.4).toFixed(1));
+          heightIn = heightNum;
+        } else {
+          // Metric: millimeters (mm) - NEVER meters for scour/span height!
+          heightPrimary = `${heightNum.toFixed(1)}mm`;
+          heightSecondary = `${(heightNum / 25.4).toFixed(2)}in`;
+          heightMm = heightNum;
+          heightIn = Number((heightNum / 25.4).toFixed(2));
+        }
+      }
+
+      // Match with Event Menu defaults for supplementary metadata
+      const eventMatched = matchPipelineEventMenu(rawEvent, rawType, rawPos, rawDescr || rawComments);
+
+      // Prioritize actual Oracle fields, fallback to matched defaults
+      const finalEventName = rawEvent || eventMatched.eventName || "-";
+      const finalEventType = rawType || eventMatched.eventType || "-";
+      const finalEventPosition = rawPos || eventMatched.eventPosition || "-";
+
+      let finalEventDescription = rawDescr;
+      if (!finalEventDescription) {
+        if (lengthNum !== null && heightNum !== null) {
+          finalEventDescription = `LENGTH:${lengthPrimary}/${lengthSecondary}  HEIGHT:${heightPrimary}/${heightSecondary}`;
+        } else if (lengthNum !== null) {
+          finalEventDescription = `LENGTH:${lengthPrimary}/${lengthSecondary}${coverageNum !== null ? ` COVERAGE:${coverageNum}%` : ''}`;
+        } else if (heightNum !== null) {
+          finalEventDescription = `HEIGHT:${heightPrimary}/${heightSecondary}`;
+        } else {
+          finalEventDescription = rawComments || eventMatched.eventDescription || "-";
+        }
+      }
+
+      const finalFindings = rawComments || rawDescr || eventMatched.findings || "-";
 
       // Foreign key resolution
       const pgJobpackId = jpIdMap.get(inspNo) || null;
@@ -635,39 +820,116 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       // SOW Report Number Resolution
       const exactSowKey = `${inspNo}_${compId}_NAVIG`;
       const codeSowKey = `code_${inspNo}_NAVIG`;
-      const sowReportNo = sowReportMap.get(exactSowKey) || sowReportMap.get(codeSowKey) || jobpackDefaultPrefixMap.get(inspNo) || "13124";
+      const sowReportNo = sowReportMap.get(exactSowKey) || sowReportMap.get(codeSowKey) || sowReportMap.get(`${inspNo}_NAVIG`) || jobpackDefaultPrefixMap.get(inspNo) || "13124";
 
-      const hasAnomaly = !!(r.ANOM_NO || r.DEFECT || eventMatched.categoryType === "ANOMALY");
+      // Anomaly detection: ONLY if ANOM_NO is a real reference or DEFECT is explicitly positive/true
+      const rawAnomNo = String(getVal(['ANOM_NO', 'ANOMALY_NO']) || "").trim();
+      const hasRealAnomNo = (
+        rawAnomNo !== "" &&
+        rawAnomNo !== "0" &&
+        rawAnomNo !== "-" &&
+        rawAnomNo.toUpperCase() !== "NO" &&
+        rawAnomNo.toUpperCase() !== "N" &&
+        rawAnomNo.toUpperCase() !== "NULL" &&
+        rawAnomNo.toUpperCase() !== "NONE"
+      );
 
-      // Construct comprehensive JSONB inspection_data with all Metric survey fields
+      const rawDefect = getVal(['DEFECT']);
+      let hasDefectFlag = false;
+      if (rawDefect !== null && rawDefect !== undefined) {
+        const dStr = String(rawDefect).trim().toUpperCase();
+        if (dStr === "1" || dStr === "YES" || dStr === "Y" || dStr === "TRUE" || (!isNaN(Number(dStr)) && Number(dStr) > 0)) {
+          hasDefectFlag = true;
+        }
+      }
+
+      const hasAnomaly = hasRealAnomNo || hasDefectFlag;
+
+      // Construct comprehensive JSONB inspection_data with all Metric / Imperial survey fields
       const inspectionData: Record<string, any> = {
-        // Event fields matched with pipeline event menu
-        eventName: eventMatched.eventName,
-        eventType: eventMatched.eventType,
-        eventPosition: eventMatched.eventPosition,
-        eventDescription: eventMatched.eventDescription,
-        findings: eventMatched.findings,
-        findingType: eventMatched.findingType,
+        // Snake_case keys expected by Workspace Table and Inspection Form
+        event_name: finalEventName,
+        event_type: finalEventType,
+        event_position: finalEventPosition,
+        event_description: finalEventDescription,
+        comments: rawComments || rawDescr || "",
+        remarks: rawComments || rawDescr || "",
+        findings: finalFindings,
+        finding_type: hasAnomaly ? "Anomaly" : "Complete",
+        findingType: hasAnomaly ? "Anomaly" : "Complete",
+        actionName: finalEventName,
+        eventCategory: finalEventType,
 
-        // Metric Navigation Parameters
+        // CamelCase keys
+        eventName: finalEventName,
+        eventType: finalEventType,
+        eventPosition: finalEventPosition,
+        eventDescription: finalEventDescription,
+
+        // Dimensions & Units (Scour and Span height unit in mm / in)
+        length: lengthNum,
+        length_u: isImperial ? "ft" : "m",
+        length_primary: lengthPrimary,
+        length_secondary: lengthSecondary,
+        length_m: lengthM,
+        length_ft: lengthFt,
+        lengthValueNum: lengthNum,
+
+        height: heightNum,
+        height_u: isImperial ? "in" : "mm",
+        height_unit: isImperial ? "in" : "mm",
+        height_primary: heightPrimary,
+        height_secondary: heightSecondary,
+        height_mm: heightMm,
+        height_in: heightIn,
+        heightValueNum: heightNum,
+
+        // Scour specific fields
+        scour_depth: heightNum,
+        scour_depth_u: isImperial ? "in" : "mm",
+        scour_height: heightNum,
+        scour_height_u: isImperial ? "in" : "mm",
+        scour_length: lengthNum,
+        scour_length_u: isImperial ? "ft" : "m",
+        scour_location: rawPos || "SEABED",
+
+        coverage: coverageNum,
+        coverage_pct: coverageNum,
+
+        // Crossing Parameters
+        crossing_line: rawCLin,
+        crossing_gap: rawCGap,
+        crossing_kp: rawCFp,
+        crossing_supports: rawCSs,
+        crossing_type: rawCType,
+        c_lin: rawCLin,
+        c_gap: rawCGap,
+        c_fp: rawCFp,
+        c_ss: rawCSs,
+        c_type: rawCType,
+
+        // Navigation Parameters
         kp: kpNum,
         fp_kp: kpNum,
         easting: eastNum !== null ? eastNum : "-",
         northing: northNum !== null ? northNum : "-",
         depth: depthNum !== null ? depthNum : "-",
         water_depth: depthNum !== null ? depthNum : "-",
-        depth_u: "m",
+        depth_u: isImperial ? "ft" : "m",
         kp_u: "km",
-        coords_u: "m",
+        coords_u: isImperial ? "ft" : "m",
 
         // Cathodic Protection
         cp_reading: cpVal !== null ? cpVal : "",
         cp_rdg: cpVal !== null ? cpVal : "",
+        cp_reading_mv: cpVal !== null ? cpVal : "",
+        cp: cpVal !== null ? cpVal : "",
         cp_u: "mV",
 
         // Video & Survey Reference
-        timecode: r.TIMECODE || r.COUNTER || "-",
-        counter: r.COUNTER || r.TIMECODE || "-",
+        timecode: getVal(['TIMECODE', 'COUNTER']) || "-",
+        counter: getVal(['COUNTER', 'TIMECODE']) || "-",
+        _meta_timecode: getVal(['TIMECODE', 'COUNTER']) || "-",
         dive_no: diveNo,
         tape_no: tapeNo,
         sow_report_no: sowReportNo,
@@ -678,13 +940,19 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         raw_type: rawType,
         raw_pos: rawPos,
         raw_descr: rawDescr,
+        raw_comments: rawComments,
+        raw_length: rawLength,
+        raw_height: rawHeight,
+        raw_coverage: rawCoverage,
       };
 
       if (hasAnomaly) {
         inspectionData.has_anomaly = true;
-        inspectionData.anomaly_no = r.ANOM_NO || `A-${oracleInspId}`;
-        inspectionData.priority = r.PRIORITY || r.SEVERITY || "P1";
+        inspectionData.anomaly_no = getVal(['ANOM_NO', 'ANOMALY_NO']) || `A-${oracleInspId}`;
+        inspectionData.priority = getVal(['PRIORITY', 'SEVERITY']) || "P1";
       }
+
+      const finalIsoDate = `${inspDate}T${inspTime}.000Z`;
 
       recordsToInsert.push({
         structure_id: resolvedStructureId,
@@ -697,10 +965,12 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         inspection_type_code: "NAVIG",
         inspection_date: inspDate,
         inspection_time: inspTime,
+        cr_date: finalIsoDate,
+        cr_user: 'migration',
         elevation: depthNum,
         fp_kp: kpNum !== null ? String(kpNum) : null,
         has_anomaly: hasAnomaly,
-        description: eventMatched.eventDescription || rawDescr || "ROV Pipeline Navigation Event",
+        description: finalEventDescription !== "-" ? finalEventDescription : (rawComments || (finalEventName !== "-" ? finalEventName : "ROV Pipeline Navigation Event")),
         inspection_data: inspectionData,
         status: "COMPLETED",
         _oracle_insp_id: oracleInspId,

@@ -251,7 +251,10 @@ export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "P
     case "LOGS_MOVEMENTS":
       return { oracle: "LOGS", pg: isPlat ? "insp_rov_movements" : "insp_dive_movements" };
     case "VIDEO":
-      return { oracle: isPlat ? "PLATG/PLATGI" : "NAVIG", pg: "insp_video_logs" };
+    case "VIDEO_TAPES":
+      return { oracle: isPlat ? "PLATGI / LOGS" : "NAVIG / LOGS", pg: "insp_video_tapes" };
+    case "VIDEO_LOGS":
+      return { oracle: isPlat ? "PLATGI / LOGS" : "NAVIG / LOGS", pg: "insp_video_logs" };
     case "ANOMALY":
       return { oracle: "U_DEFECT", pg: "insp_anomalies" };
     case "ATTACHMENT":
@@ -289,10 +292,16 @@ export const getTableMappingNames = (key: string, structureType: "PLATFORM" | "P
       } else if (upperKey.startsWith("INSP_DIVING")) {
         return { oracle: "ALLINSPID", pg: "insp_records" };
       } else {
-        // Component types (e.g. BAN)
+        // Component types (e.g. AN, PC, RC, MB, etc.)
         let specTable = `${upperKey}_COMP`;
-        if (upperKey === 'AN') {
-          specTable = isPlat ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+        if (!isPlat) {
+          if (upperKey === 'AN') specTable = "AN_COMP_PIPE";
+          else if (upperKey === 'PC') specTable = "PC_COMP_PIPE";
+          else if (upperKey === 'RC') specTable = "RC_COMP_PIPE";
+        } else {
+          if (upperKey === 'AN') specTable = "AN_COMP_PLAT";
+          else if (upperKey === 'RC') specTable = "RC_COMP_PLAT";
+          else if (upperKey === 'IT') specTable = "IT_COMP_PLAT";
         }
         return {
           oracle: `ALLCOMPID + ${specTable}`,
@@ -404,8 +413,9 @@ export default function MigrationReportPreview({
   const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO", "U_MGI_PROFILE"];
   const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
   const jobInspectionKeys = [
-    "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
-    "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT", "EXSUM"
+    "JOBPACK", "U_SOW", "JOBPACK_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "LOGS_ROV", "LOGS_DIVE",
+    "VIDEO", "VIDEO_TAPES", "VIDEO_LOGS", "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT",
+    "INSP_ATTACHMENT", "EXSUM", "COMP_NOT_INSP"
   ];
 
   const isPipeStruct = selectedStructure?.PTYPE === "PIPE" || 
@@ -421,8 +431,15 @@ export default function MigrationReportPreview({
       ? rawEntries.filter(([k]) => !["STR_ELV", "STR_LEVEL", "STR_FACES"].includes(k.toUpperCase()))
       : rawEntries;
 
-    const isJobInspKey = (key: string) =>
-      jobInspectionKeys.includes(key) || key.startsWith("INSP_ROV_") || key.startsWith("INSP_DIVING_");
+    const isJobInspKey = (key: string) => {
+      const upper = key.toUpperCase();
+      return (
+        jobInspectionKeys.includes(upper) ||
+        upper.startsWith("INSP_") ||
+        upper.startsWith("VIDEO_") ||
+        upper.startsWith("LOGS_")
+      );
+    };
     const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
     const pipelineSystemKeys = ["STRUCTURE", "U_PIPEGEO", "PIPE_GEO", "U_ASSOC"];
     const platformSystemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];

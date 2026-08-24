@@ -965,35 +965,36 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                               </td>
                             );
                           case 'cr_date':
+                            const recordDate = r.cr_date || (r.inspection_date ? (r.inspection_time ? `${r.inspection_date}T${r.inspection_time}` : r.inspection_date) : null);
                             return (
                               <td key={col.id} className="px-3 py-3 text-slate-600 dark:text-slate-400 align-top">
-                                <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{r.cr_date ? format(new Date(r.cr_date), 'dd MMM') : '-'}</div>
-                                <div className="text-[10px] opacity-70 mt-0.5">{r.cr_date ? format(new Date(r.cr_date), 'HH:mm') : '-'}</div>
+                                <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{recordDate ? format(new Date(recordDate), 'dd MMM yyyy') : '-'}</div>
+                                <div className="text-[10px] opacity-70 mt-0.5">{recordDate ? format(new Date(recordDate), 'HH:mm') : '-'}</div>
                               </td>
                             );
                           case 'event_name':
                             return (
                               <td key={col.id} className="px-3 py-3 align-top font-bold text-slate-800 dark:text-slate-100">
-                                <span className="text-xs">{r.inspection_data?.event_name || r.inspection_data?.actionName || "-"}</span>
+                                <span className="text-xs">{r.inspection_data?.event_name || r.inspection_data?.eventName || r.inspection_data?.actionName || r.inspection_data?.raw_event || "-"}</span>
                               </td>
                             );
                           case 'event_type':
                             return (
                               <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
-                                <span className="text-xs font-semibold">{r.inspection_data?.event_type || r.inspection_type?.name || r.inspection_type_code || "-"}</span>
+                                <span className="text-xs font-semibold">{r.inspection_data?.event_type || r.inspection_data?.eventType || r.inspection_data?.raw_type || (r.inspection_type_code !== 'NAVIG' ? (r.inspection_type?.name || r.inspection_type_code) : "-")}</span>
                               </td>
                             );
                           case 'event_position':
                             return (
                               <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
-                                <span className="text-xs">{r.inspection_data?.event_position || r.inspection_data?.eventCategory || "-"}</span>
+                                <span className="text-xs">{r.inspection_data?.event_position || r.inspection_data?.eventPosition || r.inspection_data?.raw_pos || r.inspection_data?.eventCategory || "-"}</span>
                               </td>
                             );
                           case 'event_description':
                             return (
                               <td key={col.id} className="px-3 py-3 align-top text-slate-600 dark:text-slate-300">
-                                <span className="text-xs line-clamp-2 max-w-[280px]" title={r.inspection_data?.event_description || r.description || r.inspection_data?.findings}>
-                                  {r.inspection_data?.event_description || r.description || r.inspection_data?.findings || "-"}
+                                <span className="text-xs line-clamp-2 max-w-[280px]" title={r.inspection_data?.event_description || r.inspection_data?.eventDescription || r.description || r.inspection_data?.raw_descr || r.inspection_data?.comments || r.inspection_data?.findings}>
+                                  {r.inspection_data?.event_description || r.inspection_data?.eventDescription || r.description || r.inspection_data?.raw_descr || r.inspection_data?.comments || r.inspection_data?.findings || "-"}
                                 </span>
                               </td>
                             );

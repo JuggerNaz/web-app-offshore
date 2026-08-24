@@ -578,18 +578,18 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
-        kp: component.metadata?.kp ?? "",
-        kp_unit: component.metadata?.kp_unit ?? "",
-        start_kp: component.metadata?.start_kp ?? "",
-        start_kp_unit: component.metadata?.start_kp_unit ?? "",
-        end_kp: component.metadata?.end_kp ?? "",
-        end_kp_unit: component.metadata?.end_kp_unit ?? "",
-        easting: component.metadata?.easting ?? "",
-        easting_unit: component.metadata?.easting_unit ?? "",
-        northing: component.metadata?.northing ?? "",
-        northing_unit: component.metadata?.northing_unit ?? "",
+        kp: component.metadata?.kp ?? (component.metadata?.end_kp !== undefined ? `${component.metadata?.start_kp ?? 0} - ${component.metadata?.end_kp}` : (component.metadata?.kp_end !== undefined ? `${component.metadata?.kp_start ?? 0} - ${component.metadata?.kp_end}` : "")) ?? "",
+        kp_unit: component.metadata?.kp_unit ?? component.metadata?.kp_u ?? "km",
+        start_kp: component.metadata?.start_kp ?? component.metadata?.kp_start ?? "0",
+        start_kp_unit: component.metadata?.start_kp_unit ?? component.metadata?.kp_u ?? "km",
+        end_kp: component.metadata?.end_kp ?? component.metadata?.kp_end ?? "",
+        end_kp_unit: component.metadata?.end_kp_unit ?? component.metadata?.kp_u ?? "km",
+        easting: component.metadata?.easting ?? component.metadata?.st_x ?? "",
+        easting_unit: component.metadata?.easting_unit ?? "m",
+        northing: component.metadata?.northing ?? component.metadata?.st_y ?? "",
+        northing_unit: component.metadata?.northing_unit ?? "m",
         depth: component.metadata?.depth ?? "",
-        depth_unit: component.metadata?.depth_unit ?? "",
+        depth_unit: component.metadata?.depth_unit ?? "m",
 
         additionalInfo: (() => {
           const info = {
@@ -1687,7 +1687,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
 
                 {pageType === "pipeline" && (
                   <>
-                    {component?.code?.toLowerCase() === "pp" ? (
+                    {["pp", "pipe", "pl"].includes(component?.code?.toLowerCase() || "") ? (
                       <div className="col-span-12 grid grid-cols-5 gap-6">
                         <div className="space-y-2">
                           <Label

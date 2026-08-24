@@ -25,9 +25,23 @@ export const getDefaultUnit = (category: string | null, isImperial: boolean, fie
   const code = componentCode?.toLowerCase() || '';
   const lowerField = fieldName?.toLowerCase() || '';
 
-  // Overrides for specific fields often used for elevations or short distances
+  // Overrides for specific fields often used for elevations, depths, coordinates, or span distances (meters/feet, NOT mm)
   if (category?.toLowerCase() === 'length') {
-    if (lowerField.includes('elv') || lowerField.includes('elevation') || lowerField.includes('dist')) {
+    if (
+      lowerField.includes('elv') ||
+      lowerField.includes('elevation') ||
+      lowerField.includes('dist') ||
+      lowerField.includes('depth') ||
+      lowerField.includes('water_depth') ||
+      lowerField.includes('easting') ||
+      lowerField.includes('northing') ||
+      lowerField.includes('st_x') ||
+      lowerField.includes('st_y') ||
+      lowerField.includes('end_x') ||
+      lowerField.includes('end_y') ||
+      lowerField.includes('span_cons') ||
+      lowerField.includes('span_oper')
+    ) {
       return isImperial ? 'ft' : 'm';
     }
   }
