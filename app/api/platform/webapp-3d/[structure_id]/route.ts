@@ -80,7 +80,7 @@ export const GET = withAuth(
       .select(`
         *,
         structure_components (
-          id, q_id, code, name, is_deleted
+          id, q_id, code, name, is_deleted, metadata
         )
       `)
       .eq("structure_id", structureIdNum);
@@ -183,7 +183,9 @@ export const GET = withAuth(
           let eY = mathLayout?.end?.y ?? mathLayout?.end?.[1] ?? (item.end_y || sY);
           let eZ = mathLayout?.end?.z ?? mathLayout?.end?.[2] ?? (item.end_z || sZ);
 
-          if (sX === eX && sY === eY && sZ === eZ) {
+          const isSingleNodePoint = (sX === eX && sY === eY && sZ === eZ);
+
+          if (isSingleNodePoint) {
             eY = sY - 2.0;
           }
 
@@ -195,6 +197,7 @@ export const GET = withAuth(
             end_x: eX,
             end_y: eY,
             end_z: eZ,
+            is_single_node: isSingleNodePoint,
             pos_x: (sX + eX) / 2,
             pos_y: (sY + eY) / 2,
             pos_z: (sZ + eZ) / 2,
@@ -310,7 +313,9 @@ export const GET = withAuth(
           dimensions: { length: m.length, radius: m.thickness, offset: m.offsetDistance },
           color_hex: m.color || "#64748b",
           visibility_flag: true,
-          has_geometry_issue: false
+          has_geometry_issue: false,
+          structure_components: m.component || m,
+          metadata: m.component?.metadata || m.metadata
         };
       });
 

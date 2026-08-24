@@ -62,7 +62,8 @@ export class PileLeg extends THREE.Group {
         // ----------------------------------------------------
         const crownGroup = new THREE.Group();
         const crownHeight = Math.min(1.2, length * 0.3);
-        const crownCenterY = yTop - topSign * (crownHeight / 2);
+        const horizontalMemberRadius = 1.0; // Offset by 1m so it's not buried inside the horizontal cross member
+        const crownCenterY = yTop - topSign * (crownHeight / 2 + horizontalMemberRadius);
         crownGroup.position.set(0, crownCenterY, 0);
 
         // A. Square Outer Collar / Box Wrapper
@@ -133,7 +134,7 @@ export class PileLeg extends THREE.Group {
         // ----------------------------------------------------
         const botCrownGroup = new THREE.Group();
         const botCrownHeight = Math.min(0.6, length * 0.15);
-        const botCrownCenterY = yBot - botSign * (botCrownHeight / 2);
+        const botCrownCenterY = yBot - botSign * (botCrownHeight / 2 + horizontalMemberRadius);
         botCrownGroup.position.set(0, botCrownCenterY, 0);
 
         // A. Lower Flange Collar Plate

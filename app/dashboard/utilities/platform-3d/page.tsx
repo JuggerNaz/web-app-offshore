@@ -42,6 +42,8 @@ const Structural3DViewer = dynamic(
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { WincairsFallbackDialog } from "@/components/dialogs/wincairs-fallback-dialog";
 import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
+import { PlatformSpecsDialog } from "@/components/dialogs/platform-specs-dialog";
+import { ExternalLink } from "lucide-react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 
@@ -71,6 +73,7 @@ export default function Platform3DPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
     const [isSpecOpen, setIsSpecOpen] = useState(false);
+    const [isPlatformSpecsOpen, setIsPlatformSpecsOpen] = useState(false);
 
     // View Mode State (Icon / Card view vs Listing / Table view)
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -311,9 +314,19 @@ export default function Platform3DPage() {
                                 <div className="h-1 w-1 rounded-full bg-slate-300" />
                                 <span>{selectedPlatform.ptype || "PLATFORM"}</span>
                             </div>
-                            <h1 className="text-xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none">
-                                {selectedPlatform.title}
-                            </h1>
+                            <button
+                                type="button"
+                                onClick={() => setIsPlatformSpecsOpen(true)}
+                                className="group flex items-center gap-2 text-left cursor-pointer transition-all focus:outline-none"
+                                title="Click to view Platform Specifications"
+                            >
+                                <h1 className="text-xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                    {selectedPlatform.title}
+                                </h1>
+                                <span className="p-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/60 opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                </span>
+                            </button>
                         </div>
                     </div>
 
@@ -510,6 +523,14 @@ export default function Platform3DPage() {
                     componentLayouts={webapp3dData?.components && webapp3dData.components.length > 0 ? webapp3dData.components : (components || [])}
                     foundationMembers={webapp3dData?.foundationMembers || []}
                     elevations={elevations}
+                />
+
+                {/* Platform Specifications View-Only Popup Modal */}
+                <PlatformSpecsDialog
+                    open={isPlatformSpecsOpen}
+                    onOpenChange={setIsPlatformSpecsOpen}
+                    platformDetails={platformDetails}
+                    isLoading={isPlatformDetailLoading}
                 />
             </div>
         );

@@ -33,6 +33,9 @@ interface Component3D {
     q_id: string;
     code: string | null;
     metadata: any;
+    s_node?: string;
+    f_node?: string;
+    is_single_node?: boolean;
 }
 
 interface Structural3DViewerProps {
@@ -856,10 +859,15 @@ const ComponentMesh = ({
         );
     }
 
-    const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE");
-    const isPileLegComponent = code === "PL" || isPile || qIdUpper.includes("PILE LEG") || qIdUpper.includes("PILE_LEG");
+    const sNodeStr = String(compAny?.s_node || md?.s_node || "").trim().toUpperCase();
+    const fNodeStr = String(compAny?.f_node || md?.f_node || "").trim().toUpperCase();
+    const hasTwoNodes = Boolean(sNodeStr && fNodeStr && sNodeStr !== fNodeStr && sNodeStr !== "N/A" && fNodeStr !== "N/A");
+    const isSingleNode = Boolean(compAny?.is_single_node || md?.is_single_node) || (Boolean(sNodeStr && fNodeStr) && sNodeStr === fNodeStr);
 
-    if (isPileLegComponent && length > 0.001) {
+    const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE");
+    const isPileLegComponent = (code === "PL" || isPile || qIdUpper.includes("PILE LEG") || qIdUpper.includes("PILE_LEG")) && !isSingleNode && (hasTwoNodes || length > 2.01 || (length > 0.001 && length !== 2.0));
+
+    if (isPileLegComponent) {
         return (
             <PileLegMeshComponent
                 position={position}
@@ -1325,6 +1333,14 @@ function InstancedComponentViewer({
 
     const [hoveredComp, setHoveredComp] = useState<any | null>(null);
 
+    const toVec3 = (v: any): THREE.Vector3 => {
+        if (!v) return new THREE.Vector3(0, 0, 0);
+        if (v instanceof THREE.Vector3) return v.clone();
+        if (Array.isArray(v)) return new THREE.Vector3(Number(v[0]) || 0, Number(v[1]) || 0, Number(v[2]) || 0);
+        if (typeof v === "object") return new THREE.Vector3(Number(v.x) || 0, Number(v.y) || 0, Number(v.z) || 0);
+        return new THREE.Vector3(0, 0, 0);
+    };
+
     const { mainMemberIds, mainNodeIds } = useMemo(() => {
         return getMainLegElementSets(layouts);
     }, [layouts]);
@@ -1366,8 +1382,19 @@ function InstancedComponentViewer({
 
             const isClamp = code === "CL" || code.includes("CLAM") || (code === "SUPP" && qIdUpper.includes("RIS"));
             const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
+            
+            const sNode = String(comp?.s_node || comp?.metadata?.s_node || layout?.s_node || "").trim().toUpperCase();
+            const fNode = String(comp?.f_node || comp?.metadata?.f_node || layout?.f_node || "").trim().toUpperCase();
+            const hasTwoNodes = Boolean(sNode && fNode && sNode !== fNode && sNode !== "N/A" && fNode !== "N/A");
+            const startVec = toVec3(layout.start || layout.position);
+            const endVec = toVec3(layout.end || layout.position);
+            const dist = startVec.distanceTo(endVec);
+            const isSingleNode = Boolean(layout?.is_single_node || comp?.is_single_node || comp?.metadata?.is_single_node) || (Boolean(sNode && fNode) && sNode === fNode) || Math.abs(dist - 2.0) < 0.0001;
 
-            if (isFender || isRiserGuard || isRiser || isClamp || isCaissonSupport) {
+            const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE");
+            const isPileLegComponent = (code === "PL" || isPile || qIdUpper.includes("PILE LEG") || qIdUpper.includes("PILE_LEG")) && !isSingleNode && (hasTwoNodes || dist > 0.001);
+
+            if (isFender || isRiserGuard || isRiser || isClamp || isCaissonSupport || isPileLegComponent) {
                 custom.push({ ...layout, comp, code });
                 return;
             }
@@ -1393,14 +1420,6 @@ function InstancedComponentViewer({
 
         return { cylinders: cyl, welds: wld, spheres: sph, boxes: box, customLayouts: custom, anodes: ands };
     }, [layouts]);
-
-    const toVec3 = (v: any): THREE.Vector3 => {
-        if (!v) return new THREE.Vector3(0, 0, 0);
-        if (v instanceof THREE.Vector3) return v.clone();
-        if (Array.isArray(v)) return new THREE.Vector3(Number(v[0]) || 0, Number(v[1]) || 0, Number(v[2]) || 0);
-        if (typeof v === "object") return new THREE.Vector3(Number(v.x) || 0, Number(v.y) || 0, Number(v.z) || 0);
-        return new THREE.Vector3(0, 0, 0);
-    };
 
     // Apply matrices and colors for Cylinders
     useLayoutEffect(() => {
@@ -2280,6 +2299,8 @@ export function Structural3DViewer({
                 Math.pow(startVec[1] - endVec[1], 2) +
                 Math.pow(startVec[2] - endVec[2], 2)
             );
+            const isSingleNodePile = distStartEnd < 0.001 || Boolean(dbItem.is_single_node);
+
             if (isPile && distStartEnd < 0.001) {
                 endVec = [startVec[0], startVec[1] - 2.0, startVec[2]];
             }
@@ -2294,6 +2315,12 @@ export function Structural3DViewer({
                     ? "NO_ANOMALY"
                     : "NOT_INSPECTED";
 
+            const sNodeMap = String(comp?.s_node || comp?.metadata?.s_node || "").trim().toUpperCase();
+            const fNodeMap = String(comp?.f_node || comp?.metadata?.f_node || "").trim().toUpperCase();
+            const hasTwoNodesMap = Boolean(sNodeMap && fNodeMap && sNodeMap !== fNodeMap && sNodeMap !== "N/A" && fNodeMap !== "N/A");
+
+            const isPileLegComponent = (code === "PL" || isPile || q_id.includes("PILE LEG") || q_id.includes("PILE_LEG")) && !isSingleNodePile && (hasTwoNodesMap || distStartEnd > 0.001);
+
             return {
                 id: Number(baseCompIdStr) || dbItem.component_id,
                 q_id: q_id,
@@ -2305,7 +2332,7 @@ export function Structural3DViewer({
                 rotation: [dbItem.rot_x || 0, dbItem.rot_y || 0, dbItem.rot_z || 0],
                 scale: [dbItem.scale_x || 1, dbItem.scale_y || 1, dbItem.scale_z || 1],
                 color: finalColor,
-                thickness: isPile ? 0.08 : (dbItem.thickness || dbItem.dimensions?.radius || (isWeld ? 0.25 : 0.5)),
+                thickness: (isPile && !isPileLegComponent) ? 0.08 : (dbItem.thickness || dbItem.dimensions?.radius || (isWeld ? 0.25 : (isPileLegComponent ? 2.5 : 0.5))),
                 length: dbItem.dimensions?.length || 1,
                 offsetDistance: dbItem.dimensions?.offset || 0,
                 shape: dbItem.shape_type,
