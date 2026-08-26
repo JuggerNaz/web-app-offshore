@@ -541,12 +541,12 @@
       "oracleCol": "LOG_DETAIL"
     },
     {
-      "oracleCol": "str_iD",
-      "pgCol": "structure_id"
+      "pgCol": "structure_id",
+      "oracleCol": "str_iD"
     },
     {
-      "oracleCol": "inspno",
-      "pgCol": "jobpack_id"
+      "pgCol": "jobpack_id",
+      "oracleCol": "inspno"
     }
   ],
   "LOGS_DIVE": [
@@ -3073,64 +3073,6 @@
       "oracleCol": "DEL"
     }
   ],
-  "INSP_DIVING_SZONE": [
-    {
-      "pgCol": "oracle_insp_id",
-      "oracleCol": "INSP_ID"
-    },
-    {
-      "pgCol": "component_id",
-      "oracleCol": "COMP_ID"
-    },
-    {
-      "pgCol": "jobpack_id",
-      "oracleCol": "INSPNO"
-    },
-    {
-      "pgCol": "tape_id",
-      "oracleCol": "TAPE_NO"
-    },
-    {
-      "pgCol": "dive_job_id",
-      "oracleCol": "DIVE_NO"
-    },
-    {
-      "pgCol": "inspection_date",
-      "oracleCol": "INSP_DATE"
-    },
-    {
-      "pgCol": "inspection_time",
-      "oracleCol": "INSP_TIME"
-    },
-    {
-      "pgCol": "cp_rdg",
-      "oracleCol": "cp_rdg"
-    },
-    {
-      "pgCol": "ut_3_o_clock",
-      "oracleCol": "c03"
-    },
-    {
-      "pgCol": "ut_6_o_clock",
-      "oracleCol": "c06"
-    },
-    {
-      "pgCol": "ut_9_o_clock",
-      "oracleCol": "c09"
-    },
-    {
-      "pgCol": "ut_12_o_clock",
-      "oracleCol": "c12"
-    },
-    {
-      "pgCol": "nominal_thickness",
-      "oracleCol": "nom_thk"
-    },
-    {
-      "pgCol": "coating_coverage_percent",
-      "oracleCol": "coat_coverage"
-    }
-  ],
   "PG": [
     {
       "pgCol": "structure_id",
@@ -3613,36 +3555,6 @@
     {
       "pgCol": "metadata.del",
       "oracleCol": "DEL"
-    }
-  ],
-  "INSP_DIVING_VIDEO": [
-    {
-      "pgCol": "oracle_insp_id",
-      "oracleCol": "INSP_ID"
-    },
-    {
-      "pgCol": "component_id",
-      "oracleCol": "COMP_ID"
-    },
-    {
-      "pgCol": "jobpack_id",
-      "oracleCol": "INSPNO"
-    },
-    {
-      "pgCol": "tape_id",
-      "oracleCol": "TAPE_NO"
-    },
-    {
-      "pgCol": "dive_job_id",
-      "oracleCol": "DIVE_NO"
-    },
-    {
-      "pgCol": "inspection_date",
-      "oracleCol": "INSP_DATE"
-    },
-    {
-      "pgCol": "inspection_time",
-      "oracleCol": "INSP_TIME"
     }
   ],
   "IT": [
@@ -4201,6 +4113,64 @@
     {
       "pgCol": "soft_circum",
       "oracleCol": "soft_circum"
+    }
+  ],
+  "INSP_DIVING_SZONE": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    },
+    {
+      "pgCol": "cp_rdg",
+      "oracleCol": "cp_rdg"
+    },
+    {
+      "pgCol": "ut_3_o_clock",
+      "oracleCol": "c03"
+    },
+    {
+      "pgCol": "ut_6_o_clock",
+      "oracleCol": "c06"
+    },
+    {
+      "pgCol": "ut_9_o_clock",
+      "oracleCol": "c09"
+    },
+    {
+      "pgCol": "ut_12_o_clock",
+      "oracleCol": "c12"
+    },
+    {
+      "pgCol": "nominal_thickness",
+      "oracleCol": "nom_thk"
+    },
+    {
+      "pgCol": "coating_coverage_percent",
+      "oracleCol": "coat_coverage"
     }
   ],
   "INSP_DIVING_PL_AN": [
@@ -4785,6 +4755,36 @@
       "oracleCol": "cp_rdg"
     }
   ],
+  "INSP_DIVING_VIDEO": [
+    {
+      "pgCol": "oracle_insp_id",
+      "oracleCol": "INSP_ID"
+    },
+    {
+      "pgCol": "component_id",
+      "oracleCol": "COMP_ID"
+    },
+    {
+      "pgCol": "jobpack_id",
+      "oracleCol": "INSPNO"
+    },
+    {
+      "pgCol": "tape_id",
+      "oracleCol": "TAPE_NO"
+    },
+    {
+      "pgCol": "dive_job_id",
+      "oracleCol": "DIVE_NO"
+    },
+    {
+      "pgCol": "inspection_date",
+      "oracleCol": "INSP_DATE"
+    },
+    {
+      "pgCol": "inspection_time",
+      "oracleCol": "INSP_TIME"
+    }
+  ],
   "INSP_ROV_NAVIG": [
     {
       "pgCol": "oracle_insp_id",
@@ -4941,6 +4941,10 @@
     {
       "pgCol": "inspection_data.findings",
       "oracleCol": "COMMENTS"
+    },
+    {
+      "oracleCol": "COUNTER_NO",
+      "pgCol": "tape_count_no"
     }
   ]
 }

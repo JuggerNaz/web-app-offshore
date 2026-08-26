@@ -387,6 +387,9 @@ function formatComponentTypeName(code: string): string {
 }
 
 const INSPECTION_TYPE_NAMES: Record<string, string> = {
+  "NAVIG": "Pipeline Navigation Inspection",
+  "ROVCLB": "ROV Sensor Calibration",
+  "PLATGI": "Platform General Visual Inspection",
   "BSINS": "Bolted Support Inspection (Diving)",
   "CLEAN": "Cleaning Inspection",
   "CPSURV": "CP Survey / Cathodic Protection",
@@ -419,6 +422,7 @@ const INSPECTION_TYPE_NAMES: Record<string, string> = {
   "UTCLB": "UT Thickness Calibration",
   "ACFMC": "ACFM Crack Inspection (Diving)",
   "PLCO": "Pipeline Crossing Inspection",
+  "PL_CO": "Pipeline Crossing Inspection",
   "GVINS": "General Visual Inspection (Diving)",
   "MPINS": "Magnetic Particle Inspection (Diving)"
 };

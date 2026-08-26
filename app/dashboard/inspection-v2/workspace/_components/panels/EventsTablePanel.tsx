@@ -89,6 +89,17 @@ export function EventsTablePanel({
   editingRecordId,
 }: EventsTablePanelProps) {
   function formatCounter(seconds: number | string): string {
+    if (seconds === undefined || seconds === null || seconds === "") return "00:00:00";
+    const str = String(seconds).trim();
+    if (str.includes(":")) {
+      const parts = str.split(":").map((p) => p.trim());
+      if (parts.length === 3) {
+        return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}:${parts[2].padStart(2, "0")}`;
+      }
+      if (parts.length === 2) {
+        return `00:${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+      }
+    }
     const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
     if (isNaN(totalSeconds)) return "00:00:00";
     const h = Math.floor(totalSeconds / 3600);
@@ -314,6 +325,15 @@ export function EventsTablePanel({
                           <div className="text-sm font-medium">
                             {(() => {
                               if (!r.inspection_date) return "-";
+                              const dStr = String(r.inspection_date).trim().split('T')[0];
+                              const match = dStr.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+                              if (match) {
+                                const year = match[1];
+                                const monthIdx = parseInt(match[2], 10) - 1;
+                                const day = match[3].padStart(2, '0');
+                                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                return `${day} ${monthNames[monthIdx] || match[2]} ${year}`;
+                              }
                               const dateObj = new Date(r.inspection_date);
                               return !isNaN(dateObj.getTime()) ? format(dateObj, "dd MMM yyyy") : r.inspection_date;
                             })()}
@@ -382,13 +402,15 @@ export function EventsTablePanel({
                       return <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top">{(() => { const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp; return cp ? <span className="font-mono text-xs">{cp}</span> : <span className="text-slate-300 dark:text-slate-600">-</span>; })()}</td>;
                     case "dive_no":
                       return <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200"><span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300 dark:text-slate-600">-</span>}</span></td>;
-                    case "tape_no":
+                    case "tape_no": {
+                      const counterDisplay = r.inspection_data?._meta_timecode || r.inspection_data?.counter_no || r.inspection_data?.counter || r.inspection_data?.timecode || r.tape_count_no;
                       return (
                         <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
                           <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300 dark:text-slate-600">-</span>}</span>
-                          {(r.inspection_data?._meta_timecode || r.tape_count_no) && <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" />{formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}</div>}
+                          {counterDisplay && <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" />{formatCounter(counterDisplay)}</div>}
                         </td>
                       );
+                    }
                     default: return null;
                   }
                 })}

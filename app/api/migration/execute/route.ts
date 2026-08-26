@@ -56,58 +56,53 @@ async function getOracleTableColumns(oracleConn: any, tableName: string): Promis
 }
 
 function cleanOracleDate(str: string): string {
-  const s = str.trim().toUpperCase();
-  if (!s) {
+  if (!str) {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  const s = String(str).trim();
+
+  // 1. YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+  }
+
+  // 2. DD-MON-YYYY or DD-MON-YY (e.g. 04-APR-18, 04-APR-2018)
+  const monMatch = s.match(/^(\d{1,2})[-/ ]([A-Za-z]{3,4})[-/ ](\d{2,4})/);
+  if (monMatch) {
+    const day = monMatch[1].padStart(2, '0');
+    const monStr = monMatch[2].toUpperCase();
+    const yearRaw = monMatch[3];
+    const months: Record<string, string> = {
+      'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+      'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+    };
+    let month = '01';
+    for (const [k, v] of Object.entries(months)) {
+      if (monStr.startsWith(k)) {
+        month = v;
+        break;
+      }
+    }
+    let year = Number(yearRaw);
+    if (yearRaw.length === 2) {
+      year = year > 50 ? 1900 + year : 2000 + year;
+    }
+    return `${year}-${month}-${day}`;
+  }
+
+  // 3. DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
   }
 
   const parsed = Date.parse(s);
   if (!isNaN(parsed)) {
     const d = new Date(parsed);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-
-  const match = s.match(/^(\d{1,2})[-/]([A-Z]{2,3})(?:[-/](\d{2,4}))?$/);
-  if (match) {
-    const day = match[1].padStart(2, '0');
-    const monStr = match[2];
-    const yearStr = match[3];
-
-    const months: Record<string, string> = {
-      'JA': '01', 'JAN': '01',
-      'FE': '02', 'FEB': '02',
-      'MA': '03', 'MAR': '03',
-      'AP': '04', 'APR': '04',
-      'MY': '05', 'MAY': '05',
-      'JN': '06', 'JUN': '06',
-      'JL': '07', 'JUL': '07',
-      'AU': '08', 'AUG': '08',
-      'SE': '09', 'SEP': '09',
-      'OC': '10', 'OCT': '10',
-      'NO': '11', 'NOV': '11',
-      'DE': '12', 'DEC': '12'
-    };
-
-    let month = '01';
-    for (const key of Object.keys(months)) {
-      if (monStr.startsWith(key)) {
-        month = months[key];
-        break;
-      }
-    }
-
-    let year = new Date().getFullYear();
-    if (yearStr) {
-      if (yearStr.length === 2) {
-        const yr = Number(yearStr);
-        year = yr > 50 ? 1900 + yr : 2000 + yr;
-      } else {
-        year = Number(yearStr);
-      }
-    }
-
-    return `${year}-${month}-${day}`;
   }
 
   const d = new Date();
@@ -123,36 +118,13 @@ function formatLocalISOString(dateVal: any): string {
     const hh = String(dateVal.getHours()).padStart(2, '0');
     const min = String(dateVal.getMinutes()).padStart(2, '0');
     const sec = String(dateVal.getSeconds()).padStart(2, '0');
-    const ms = String(dateVal.getMilliseconds()).padStart(3, '0');
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
   }
   
   const str = String(dateVal).trim();
-  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T ](\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?)?/);
-  if (isoMatch) {
-    const yyyy = isoMatch[1];
-    const mm = isoMatch[2].padStart(2, '0');
-    const dd = isoMatch[3].padStart(2, '0');
-    const hh = (isoMatch[4] || "00").padStart(2, '0');
-    const min = (isoMatch[5] || "00").padStart(2, '0');
-    const sec = (isoMatch[6] || "00").padStart(2, '0');
-    const ms = (isoMatch[7] || "000").padEnd(3, '0').slice(0, 3);
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
-  }
-
-  const parsed = Date.parse(str);
-  if (isNaN(parsed)) {
-    return str;
-  }
-  const d = new Date(parsed);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  const sec = String(d.getSeconds()).padStart(2, '0');
-  const ms = String(d.getMilliseconds()).padStart(3, '0');
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
+  const dateStr = cleanOracleDate(str);
+  const timeStr = formatTimeOnly(null, str);
+  return `${dateStr}T${timeStr}`;
 }
 
 function formatLocalDateOnly(dateVal: any): string | null {
@@ -164,16 +136,8 @@ function formatLocalDateOnly(dateVal: any): string | null {
     return `${yyyy}-${mm}-${dd}`;
   }
   const str = String(dateVal).trim();
-  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (isoMatch) {
-    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
-  }
-  const parsed = Date.parse(str);
-  if (isNaN(parsed)) {
-    return cleanOracleDate(str);
-  }
-  const d = new Date(parsed);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (!str) return null;
+  return cleanOracleDate(str);
 }
 
 function getObjProperty(obj: any, propName: string): any {
@@ -232,6 +196,57 @@ function getThresholdsSignature(thresholds: any[]): string {
 }
 
 
+/**
+ * Converts legacy Oracle numeric COUNTER_NO (e.g. 12345, 10235, 123456, 45) to "HH:MM:SS" timecode.
+ * In Oracle, numeric counter values represent concatenated digits of hours, minutes, and seconds (HHMMSS)
+ * where leading zeros were dropped by Oracle's numeric column.
+ * e.g. 12345 -> "012345" -> "01:23:45" (1h 23m 45s - not 12345 total seconds)
+ *      45    -> "000045" -> "00:00:45"
+ *      10235 -> "010235" -> "01:02:35"
+ */
+function parseOracleCounterToTimecode(val: any): string {
+  if (val === undefined || val === null) return '00:00:00';
+  const strVal = String(val).trim();
+  if (!strVal || strVal === '0' || strVal === '00:00:00') return '00:00:00';
+
+  // If already in HH:MM:SS format
+  if (strVal.includes(':')) {
+    const parts = strVal.split(':').map(p => p.trim());
+    if (parts.length === 3) {
+      return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
+    } else if (parts.length === 2) {
+      return `00:${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+    } else if (parts.length === 1) {
+      return `00:00:${parts[0].padStart(2, '0')}`;
+    }
+  }
+
+  // Remove non-digit characters
+  const digits = strVal.replace(/\D/g, '');
+  if (!digits) return '00:00:00';
+
+  // Pad with leading zeros to at least 6 digits (e.g. "12345" -> "012345", "45" -> "000045")
+  const padded = digits.padStart(6, '0');
+
+  // Split into hours, minutes, and seconds from the padded string
+  const ss = padded.slice(-2);
+  const mm = padded.slice(-4, -2);
+  const hh = padded.slice(0, -4).padStart(2, '0');
+
+  return `${hh}:${mm}:${ss}`;
+}
+
+function timecodeToSeconds(timecode: string): number {
+  if (!timecode) return 0;
+  const parts = timecode.split(':').map(p => parseInt(p, 10) || 0);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return parts[0] || 0;
+}
+
 function parseDivingChapter(inspCond: string): string | null {
   if (!inspCond) return null;
   const match = inspCond.match(/chapter\s*(?:number|no)?\s*:?\s*(\d+)/i);
@@ -244,37 +259,12 @@ function parseDivingChapter(inspCond: string): string | null {
 }
 
 function combineDateTime(dateVal: any, timeVal: any): string {
-  if (!dateVal) {
-    const d = new Date();
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return `${dateStr}T${formatTimeOnly(timeVal)}`;
-  }
-
-  let dateStr = "";
-  if (dateVal instanceof Date) {
-    dateStr = `${dateVal.getFullYear()}-${String(dateVal.getMonth() + 1).padStart(2, '0')}-${String(dateVal.getDate()).padStart(2, '0')}`;
-  } else {
-    const str = String(dateVal).trim();
-    const datePartOnly = str.split('T')[0].split(' ')[0].trim();
-    const parsed = Date.parse(datePartOnly);
-    if (!isNaN(parsed)) {
-      const d = new Date(parsed);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      dateStr = `${yyyy}-${mm}-${dd}`;
-    } else {
-      dateStr = cleanOracleDate(datePartOnly);
-    }
-  }
-
-  const timeStr = formatTimeOnly(timeVal);
+  const dateStr = formatLocalDateOnly(dateVal) || formatLocalDateOnly(new Date())!;
+  const timeStr = formatTimeOnly(timeVal, dateVal);
   return `${dateStr}T${timeStr}`;
 }
 
-function formatTimeOnly(timeVal: any): string {
-  if (timeVal === null || timeVal === undefined) return "00:00:00";
-  
+function formatTimeOnly(timeVal: any, fallbackDateVal?: any): string {
   if (timeVal instanceof Date) {
     const hh = String(timeVal.getHours()).padStart(2, '0');
     const mm = String(timeVal.getMinutes()).padStart(2, '0');
@@ -282,36 +272,69 @@ function formatTimeOnly(timeVal: any): string {
     return `${hh}:${mm}:${ss}`;
   }
 
-  let str = String(timeVal).trim();
-  if (!str) return "00:00:00";
+  let str = timeVal !== null && timeVal !== undefined ? String(timeVal).trim() : "";
+  
+  if (str) {
+    // If it has 'T' or space separator with date
+    if (str.includes('T') || str.includes(' ')) {
+      const parts = str.split(/[T ]/);
+      if (parts.length > 1 && parts[1]) {
+        str = parts[1].split('.')[0].split('Z')[0].trim();
+      }
+    }
 
-  // If it's a full ISO string or has a 'T'
-  if (str.includes('T')) {
-    const timePart = str.split('T')[1].split('.')[0].split('Z')[0];
-    return timePart;
-  }
+    // Try to match HH:MM:SS or HH:MM or HH.MM.SS (with optional AM/PM)
+    const match = str.match(/(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*(AM|PM)?/i);
+    if (match) {
+      let hh = parseInt(match[1], 10);
+      const mm = match[2];
+      const ss = match[3] || "00";
+      const ampm = (match[4] || "").toUpperCase();
+      if (ampm === "PM" && hh < 12) hh += 12;
+      if (ampm === "AM" && hh === 12) hh = 0;
+      return `${String(hh).padStart(2, '0')}:${mm}:${ss}`;
+    }
 
-  // Try to match HH:MM:SS or HH:MM
-  const match = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (match) {
-    const hh = match[1].padStart(2, '0');
-    const mm = match[2];
-    const ss = match[3] || "00";
-    return `${hh}:${mm}:${ss}`;
-  }
-
-  // Handle HHMMSS or HHMM raw digits format
-  const digits = str.replace(/\D/g, '');
-  if (digits.length > 0) {
-    if (digits.length <= 4) {
-      const padded = digits.padStart(4, '0');
-      return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:00`;
-    } else {
-      const padded = digits.padStart(6, '0');
-      return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:${padded.substring(4, 6)}`;
+    // Handle HHMMSS or HHMM raw digits format
+    const digits = str.replace(/\D/g, '');
+    if (digits.length >= 3) {
+      if (digits.length <= 4) {
+        const padded = digits.padStart(4, '0');
+        const hh = parseInt(padded.substring(0, 2), 10);
+        const mm = parseInt(padded.substring(2, 4), 10);
+        if (hh < 24 && mm < 60) {
+          return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:00`;
+        }
+      } else {
+        const padded = digits.padStart(6, '0');
+        const hh = parseInt(padded.substring(0, 2), 10);
+        const mm = parseInt(padded.substring(2, 4), 10);
+        const ss = parseInt(padded.substring(4, 6), 10);
+        if (hh < 24 && mm < 60 && ss < 60) {
+          return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:${padded.substring(4, 6)}`;
+        }
+      }
     }
   }
-  
+
+  // Fallback: check if fallbackDateVal contains a non-zero time
+  if (fallbackDateVal) {
+    if (fallbackDateVal instanceof Date) {
+      const h = fallbackDateVal.getHours();
+      const m = fallbackDateVal.getMinutes();
+      const s = fallbackDateVal.getSeconds();
+      if (h > 0 || m > 0 || s > 0) {
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+    } else if (typeof fallbackDateVal === 'string') {
+      const fStr = fallbackDateVal.trim();
+      const tMatch = fStr.match(/[T ](\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?/);
+      if (tMatch) {
+        return `${tMatch[1].padStart(2, '0')}:${tMatch[2]}:${tMatch[3] || '00'}`;
+      }
+    }
+  }
+
   return "00:00:00";
 }
 
@@ -657,8 +680,13 @@ interface MigrationPayload {
   structureType?: "PLATFORM" | "PIPELINE";
   mappings: Record<string, { oracleCol: string; pgCol: string }[]>;
   selectedInspNo?: string;
+  selectedInspNos?: string[];
   legacyAttachmentPath?: string;
   componentsOnly?: boolean;
+  updateStructureSpecs?: boolean;
+  updateComponentSpecs?: boolean;
+  insertNewComponents?: boolean;
+  migrateAttachments?: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -682,8 +710,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload format" }, { status: 400 });
   }
 
-  const { config, structureId, structureType: rawStructureType, mappings, selectedInspNo: rawSelectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
-  const selectedInspNo = rawSelectedInspNo || (payload as any).inspNo;
+  const { 
+    config, 
+    structureId, 
+    structureType: rawStructureType, 
+    mappings, 
+    selectedInspNo: rawSelectedInspNo, 
+    selectedInspNos: rawSelectedInspNos,
+    legacyAttachmentPath, 
+    componentsOnly,
+    updateStructureSpecs = false,
+    updateComponentSpecs = false,
+    insertNewComponents = true,
+    migrateAttachments = true
+  } = payload;
+
+  const selectedInspNos: string[] = (Array.isArray(rawSelectedInspNos) && rawSelectedInspNos.length > 0) 
+    ? rawSelectedInspNos.map(String) 
+    : (rawSelectedInspNo ? [String(rawSelectedInspNo)] : []);
+  const selectedInspNo = selectedInspNos[0] || (payload as any).inspNo;
   if (!config || !structureId || !mappings) {
     return NextResponse.json({ error: "Missing required payload parameters" }, { status: 400 });
   }
@@ -1612,8 +1657,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (structureSuccess && componentCodes.length > 0) {
-      // Fetch all existing components for this structure to update in place and avoid duplicating/deleting them!
-      const existingCompMap = new Map<number, number>(); // comp_id -> pg_id
+      // Fetch all existing components for this structure to match by Q_ID, ID_NO, and COMP_ID across databases
+      const existingCompByQIdMap = new Map<string, number>(); // q_id.toLowerCase().trim() -> pg_id
+      const existingCompByIdNoMap = new Map<string, number>(); // id_no.toLowerCase().trim() -> pg_id
+      const existingCompByCompIdMap = new Map<number, number>(); // comp_id -> pg_id
       try {
         let page = 0;
         const pageSize = 1000;
@@ -1621,7 +1668,7 @@ export async function POST(request: NextRequest) {
         while (hasMore) {
           const { data: existingComps, error } = await supabase
             .from("structure_components")
-            .select("id, comp_id")
+            .select("id, comp_id, q_id, id_no, code")
             .eq("structure_id", resolvedStructureId)
             .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -1631,8 +1678,15 @@ export async function POST(request: NextRequest) {
             hasMore = false;
           } else {
             existingComps.forEach((c: any) => {
-              if (c.comp_id) {
-                existingCompMap.set(Number(c.comp_id), Number(c.id));
+              const pgId = Number(c.id);
+              if (c.comp_id !== null && c.comp_id !== undefined) {
+                existingCompByCompIdMap.set(Number(c.comp_id), pgId);
+              }
+              if (c.q_id && String(c.q_id).trim()) {
+                existingCompByQIdMap.set(String(c.q_id).trim().toLowerCase(), pgId);
+              }
+              if (c.id_no && String(c.id_no).trim()) {
+                existingCompByIdNoMap.set(String(c.id_no).trim().toLowerCase(), pgId);
               }
             });
             if (existingComps.length < pageSize) {
@@ -1721,7 +1775,7 @@ export async function POST(request: NextRequest) {
 
             if (rows && rows.length > 0) {
               report[code] = { status: "pending", oracleRows: rows.length, migratedRows: 0, errors: [] };
-              logs.push(`Migrating ${rows.length} ${code} components...`);
+              logs.push(`Processing ${rows.length} ${code} components...`);
               const pgRecords = rows.map(oracleData => {
                 const isDeletedVal = oracleData['DEL'];
                 const pgRecord: Record<string, any> = {
@@ -1773,64 +1827,81 @@ export async function POST(request: NextRequest) {
                 return pgRecord;
               });
 
-              // Insert or update in place
-              const compsToInsert: any[] = [];
               let migratedCount = 0;
 
               for (const record of pgRecords) {
-                const pgId = record.comp_id ? existingCompMap.get(Number(record.comp_id)) : null;
-                if (pgId) {
-                  // Update existing component in place
-                  const { error: updateErr } = await supabase
-                    .from("structure_components")
-                    .update(record as any)
-                    .eq("id", pgId);
+                const rawQId = record.q_id ? String(record.q_id).trim().toLowerCase() : "";
+                const rawIdNo = record.id_no ? String(record.id_no).trim().toLowerCase() : "";
+                const rawCompId = record.comp_id !== undefined && record.comp_id !== null ? Number(record.comp_id) : null;
 
-                  if (updateErr) {
-                    logs.push(`ERROR updating component ${record.q_id || record.comp_id}: ${updateErr.message}`);
-                    report[code].errors.push(updateErr.message);
-                  } else {
-                    migratedCount++;
-                    compIdMap.set(Number(record.comp_id), pgId);
-                    compTypeCache.set(Number(record.comp_id), code);
-                    if (record.q_id) {
-                      qIdMap.set(String(record.q_id).trim(), pgId);
-                    }
-                  }
-                } else {
-                  // Queue for insertion
-                  compsToInsert.push(record);
+                // Match candidate by Q_ID first (canonical physical identifier), then ID_NO, then COMP_ID
+                let pgId = rawQId ? existingCompByQIdMap.get(rawQId) : null;
+                if (!pgId && rawIdNo) {
+                  pgId = existingCompByIdNoMap.get(rawIdNo) || null;
                 }
-              }
+                if (!pgId && rawCompId !== null) {
+                  pgId = existingCompByCompIdMap.get(rawCompId) || null;
+                }
 
-              if (compsToInsert.length > 0) {
-                const { data: insertedComps, error: insertErr } = await supabase
-                  .from("structure_components")
-                  .insert(compsToInsert)
-                  .select("id, comp_id, q_id");
+                if (pgId) {
+                  // Existing component found
+                  if (rawCompId !== null) {
+                    compIdMap.set(rawCompId, pgId);
+                    compTypeCache.set(rawCompId, code);
+                  }
+                  if (record.q_id) {
+                    qIdMap.set(String(record.q_id).trim(), pgId);
+                  }
 
-                if (insertErr) {
-                  logs.push(`ERROR inserting new ${code} components: ${insertErr.message}`);
-                  report[code].errors.push(insertErr.message);
-                } else {
-                  migratedCount += compsToInsert.length;
-                  if (insertedComps) {
-                    insertedComps.forEach(comp => {
-                      const newPgId = Number(comp.id);
-                      if (comp.comp_id) {
-                        compIdMap.set(Number(comp.comp_id), newPgId);
-                        compTypeCache.set(Number(comp.comp_id), code);
-                      }
-                      if (comp.q_id) {
-                        qIdMap.set(String(comp.q_id).trim(), newPgId);
-                      }
-                    });
+                  if (updateComponentSpecs) {
+                    // Update existing component specs in place
+                    const { error: updateErr } = await supabase
+                      .from("structure_components")
+                      .update(record as any)
+                      .eq("id", pgId);
+
+                    if (updateErr) {
+                      logs.push(`ERROR updating component ${record.q_id || record.comp_id}: ${updateErr.message}`);
+                      report[code].errors.push(updateErr.message);
+                    } else {
+                      migratedCount++;
+                    }
+                  } else {
+                    // Clean specs preserved without overwriting
+                    migratedCount++;
+                  }
+                } else if (insertNewComponents) {
+                  // New component found -> Insert
+                  const { data: insertedComp, error: insertErr } = await supabase
+                    .from("structure_components")
+                    .insert(record as any)
+                    .select("id, comp_id, q_id, id_no")
+                    .single();
+
+                  if (insertErr) {
+                    logs.push(`ERROR inserting new component ${record.q_id || record.comp_id}: ${insertErr.message}`);
+                    report[code].errors.push(insertErr.message);
+                  } else if (insertedComp) {
+                    const newPgId = Number(insertedComp.id);
+                    migratedCount++;
+                    if (rawCompId !== null) {
+                      compIdMap.set(rawCompId, newPgId);
+                      compTypeCache.set(rawCompId, code);
+                      existingCompByCompIdMap.set(rawCompId, newPgId);
+                    }
+                    if (record.q_id) {
+                      const qKey = String(record.q_id).trim();
+                      qIdMap.set(qKey, newPgId);
+                      existingCompByQIdMap.set(qKey.toLowerCase(), newPgId);
+                    }
+                    if (record.id_no) {
+                      existingCompByIdNoMap.set(String(record.id_no).trim().toLowerCase(), newPgId);
+                    }
                   }
                 }
               }
 
               logs.push(`Successfully migrated ${migratedCount} components for code ${code}!`);
-              if (!report[code]) report[code] = { status: "success", oracleRows: 0, migratedRows: 0, errors: [] };
               report[code].status = "success";
               report[code].migratedRows = migratedCount;
             } else {
@@ -2241,74 +2312,91 @@ export async function POST(request: NextRequest) {
         logs.push(`Starting Relational Inspection Migration Pipeline (Phases 1 - 6)`);
         logs.push(`================================================================`);
 
-        // Purge existing relational data in PostgreSQL for this structure to ensure 100% idempotent clean re-runs
+        // Purge existing relational data in PostgreSQL for the target jobpack(s)
         logs.push(`Cleaning up existing inspection data in Postgres for Structure ID ${resolvedStructureId}...`);
 
-        const { data: existingInsps } = await supabase
-          .from("insp_records")
-          .select("insp_id")
-          .eq("structure_id", resolvedStructureId);
+        let targetInspIds: number[] = [];
+        let targetRovJobIds: number[] = [];
+        let targetDiveJobIds: number[] = [];
 
-        const inspIds = existingInsps?.map(i => i.insp_id) || [];
-        if (inspIds.length > 0) {
-          // Delete inspection attachments
-          await supabase.from("attachment").delete().in("source_type", ["inspection", "INSPECTION"]).in("source_id", inspIds);
-          // Delete anomalies
-          await supabase.from("insp_anomalies").delete().in("inspection_id", inspIds);
-          // Delete inspection records
-          await supabase.from("insp_records").delete().eq("structure_id", resolvedStructureId);
+        if (selectedInspNos && selectedInspNos.length > 0) {
+          // Scoped cleanup: only delete records belonging to the selected jobpack(s)
+          const { data: targetJps } = await (supabase.from as any)("jobpack")
+            .select("jobpack_id")
+            .eq("structure_id", resolvedStructureId)
+            .in("oracle_insp_no", selectedInspNos);
+
+          const targetJpIds = targetJps?.map((j: any) => j.jobpack_id) || [];
+          if (targetJpIds.length > 0) {
+            const { data: insps } = await supabase
+              .from("insp_records")
+              .select("insp_id")
+              .in("jobpack_id", targetJpIds);
+            targetInspIds = insps?.map(i => i.insp_id) || [];
+
+            const { data: rJobs } = await (supabase.from as any)("insp_rov_jobs")
+              .select("rov_job_id")
+              .in("jobpack_id", targetJpIds);
+            targetRovJobIds = rJobs?.map((j: any) => j.rov_job_id) || [];
+
+            const { data: dJobs } = await (supabase.from as any)("insp_dive_jobs")
+              .select("dive_job_id")
+              .in("jobpack_id", targetJpIds);
+            targetDiveJobIds = dJobs?.map((j: any) => j.dive_job_id) || [];
+
+            await (supabase.from as any)("u_sow").delete().in("jobpack_id", targetJpIds);
+            await (supabase.from as any)("jobpack").delete().in("jobpack_id", targetJpIds);
+          }
+        } else {
+          // Full structure inspection cleanup
+          const { data: existingInsps } = await supabase
+            .from("insp_records")
+            .select("insp_id")
+            .eq("structure_id", resolvedStructureId);
+          targetInspIds = existingInsps?.map(i => i.insp_id) || [];
+
+          const { data: rovJobs } = await (supabase.from as any)("insp_rov_jobs").select("rov_job_id").eq("structure_id", resolvedStructureId);
+          targetRovJobIds = rovJobs?.map((j: any) => j.rov_job_id) || [];
+
+          const { data: diveJobs } = await (supabase.from as any)("insp_dive_jobs").select("dive_job_id").eq("structure_id", resolvedStructureId);
+          targetDiveJobIds = diveJobs?.map((j: any) => j.dive_job_id) || [];
+
+          await (supabase.from as any)("u_sow").delete().eq("structure_id", resolvedStructureId);
+          await (supabase.from as any)("jobpack").delete().eq("structure_id", resolvedStructureId);
         }
 
-        const { data: rovJobs } = await (supabase.from as any)("insp_rov_jobs").select("rov_job_id").eq("structure_id", resolvedStructureId);
-        const rovJobIds = rovJobs?.map((j: any) => j.rov_job_id) || [];
-
-        const { data: diveJobs } = await (supabase.from as any)("insp_dive_jobs").select("dive_job_id").eq("structure_id", resolvedStructureId);
-        const diveJobIds = diveJobs?.map((j: any) => j.dive_job_id) || [];
+        if (targetInspIds.length > 0) {
+          await supabase.from("attachment").delete().in("source_type", ["inspection", "INSPECTION"]).in("source_id", targetInspIds);
+          await supabase.from("insp_anomalies").delete().in("inspection_id", targetInspIds);
+          await supabase.from("insp_records").delete().in("insp_id", targetInspIds);
+        }
 
         const tapeIds: number[] = [];
-        if (rovJobIds.length > 0) {
-          const { data: rovTapes, error: rtErr } = await (supabase.from as any)("insp_video_tapes")
-            .select("tape_id")
-            .in("rov_job_id", rovJobIds);
-          if (rtErr) {
-            logs.push(`WARNING: failed to select existing ROV tapes: ${rtErr.message}`);
-          } else if (rovTapes) {
-            rovTapes.forEach((t: any) => tapeIds.push(Number(t.tape_id)));
-          }
+        if (targetRovJobIds.length > 0) {
+          const { data: rovTapes } = await (supabase.from as any)("insp_video_tapes").select("tape_id").in("rov_job_id", targetRovJobIds);
+          rovTapes?.forEach((t: any) => tapeIds.push(Number(t.tape_id)));
         }
-        if (diveJobIds.length > 0) {
-          const { data: diveTapes, error: dtErr } = await (supabase.from as any)("insp_video_tapes")
-            .select("tape_id")
-            .in("dive_job_id", diveJobIds);
-          if (dtErr) {
-            logs.push(`WARNING: failed to select existing Diving tapes: ${dtErr.message}`);
-          } else if (diveTapes) {
-            diveTapes.forEach((t: any) => tapeIds.push(Number(t.tape_id)));
-          }
+        if (targetDiveJobIds.length > 0) {
+          const { data: diveTapes } = await (supabase.from as any)("insp_video_tapes").select("tape_id").in("dive_job_id", targetDiveJobIds);
+          diveTapes?.forEach((t: any) => tapeIds.push(Number(t.tape_id)));
         }
 
         if (tapeIds.length > 0) {
-          const { error: vlErr } = await (supabase.from as any)("insp_video_logs").delete().in("tape_id", tapeIds);
-          if (vlErr) logs.push(`WARNING: failed to delete existing video logs: ${vlErr.message}`);
-          const { error: vtErr } = await (supabase.from as any)("insp_video_tapes").delete().in("tape_id", tapeIds);
-          if (vtErr) logs.push(`WARNING: failed to delete existing video tapes: ${vtErr.message}`);
+          await (supabase.from as any)("insp_video_logs").delete().in("tape_id", tapeIds);
+          await (supabase.from as any)("insp_video_tapes").delete().in("tape_id", tapeIds);
         }
 
-        if (rovJobIds.length > 0) {
-          const { error: rvmErr } = await (supabase.from as any)("insp_rov_movements").delete().in("rov_job_id", rovJobIds);
-          if (rvmErr) logs.push(`WARNING: failed to delete existing ROV movements: ${rvmErr.message}`);
-          const { error: rvjErr } = await (supabase.from as any)("insp_rov_jobs").delete().in("rov_job_id", rovJobIds);
-          if (rvjErr) logs.push(`WARNING: failed to delete existing ROV jobs: ${rvjErr.message}`);
+        if (targetRovJobIds.length > 0) {
+          await (supabase.from as any)("insp_rov_movements").delete().in("rov_job_id", targetRovJobIds);
+          await (supabase.from as any)("insp_rov_jobs").delete().in("rov_job_id", targetRovJobIds);
         }
 
-        if (diveJobIds.length > 0) {
-          const { error: dvmErr } = await (supabase.from as any)("insp_dive_movements").delete().in("dive_job_id", diveJobIds);
-          if (dvmErr) logs.push(`WARNING: failed to delete existing Dive movements: ${dvmErr.message}`);
-          const { error: dvjErr } = await (supabase.from as any)("insp_dive_jobs").delete().in("dive_job_id", diveJobIds);
-          if (dvjErr) logs.push(`WARNING: failed to delete existing Dive jobs: ${dvjErr.message}`);
+        if (targetDiveJobIds.length > 0) {
+          await (supabase.from as any)("insp_dive_movements").delete().in("dive_job_id", targetDiveJobIds);
+          await (supabase.from as any)("insp_dive_jobs").delete().in("dive_job_id", targetDiveJobIds);
         }
 
-        logs.push(`Successfully purged existing relational data for a clean migration run.`);
+        logs.push(`Successfully prepared relational target tables for migration.`);
 
         // ---------------------------------------------------------------------
         // Phase 1: Fetch & Create Jobpack (jobpack) and SOW (u_sow)
@@ -2400,16 +2488,17 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Filter by selectedInspNo if provided
-        if (selectedInspNo) {
-          const matched = inspNos.filter(n => n === selectedInspNo);
+        // Filter by selectedInspNos if provided
+        if (selectedInspNos && selectedInspNos.length > 0) {
+          const targetSet = new Set(selectedInspNos.map(String));
+          const matched = inspNos.filter(n => targetSet.has(String(n)));
           inspNos.length = 0;
           if (matched.length > 0) {
-            inspNos.push(selectedInspNo);
+            inspNos.push(...matched);
           } else {
-            inspNos.push(selectedInspNo);
+            inspNos.push(...selectedInspNos.map(String));
           }
-          logs.push(`Filtering migration to single selected Job Pack (INSPNO: ${selectedInspNo}).`);
+          logs.push(`Filtering migration to ${inspNos.length} selected Job Pack(s): ${inspNos.join(', ')}.`);
         }
 
         // Build IN-clause bind variables for subsequent queries
@@ -3035,9 +3124,9 @@ export async function POST(request: NextRequest) {
               // Distribute to ROV/Diving modes
               for (const item of pipelineInspections) {
                 const codeUpper = item.code.toUpperCase();
-                if (codeUpper === 'NAVIG') {
+                if (codeUpper === 'NAVIG' || codeUpper === 'ROVCLB') {
                   rovInspections.push(item);
-                } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO'].includes(codeUpper)) {
+                } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB'].includes(codeUpper)) {
                   divingInspections.push(item);
                 }
               }
@@ -3592,13 +3681,14 @@ export async function POST(request: NextRequest) {
 
             const logsResult = await oracleConn.execute(logsQuery, { strId: structureId });
             let rows = logsResult.rows as any[];
-            if (selectedInspNo && rows && rows.length > 0) {
+            if (inspNos.length > 0 && rows && rows.length > 0) {
+              const targetSet = new Set(inspNos.map(String));
               const inspNoIdx = selectCols.indexOf('INSPNO');
               rows = rows.filter((row: any) => {
                 const rObj = Array.isArray(row) ? { INSPNO: row[inspNoIdx > -1 ? inspNoIdx : 1] } : row;
-                return String(rObj.INSPNO || "").trim() === selectedInspNo;
+                return targetSet.has(String(rObj.INSPNO || "").trim());
               });
-              logs.push(`Filtered LOGS rows to ${rows.length} record(s) matching selected INSPNO ${selectedInspNo}.`);
+              logs.push(`Filtered LOGS rows to ${rows.length} record(s) matching selected Job Pack(s) (${inspNos.join(', ')}).`);
             }
 
             if (rows && rows.length > 0) {
@@ -3929,7 +4019,7 @@ export async function POST(request: NextRequest) {
                   ...r,
                   TAPE_NO: r.TAPE_NO || (r.EVENT === 'VIDEO LOG' ? (r.TYPE || 'TAPE-1') : 'TAPE-1'),
                   COMMENTS: comments,
-                  COUNTER_NO: r.COUNTER_NO || r.TIMECODE || '00:00:00',
+                  COUNTER_NO: parseOracleCounterToTimecode(r.COUNTER_NO ?? r.COINTER_NO ?? r.TIMECODE),
                   I_DATE: r.I_DATE || r.CR_DATE,
                   I_TIME: r.I_TIME || '00:00:00'
                 };
@@ -3991,14 +4081,15 @@ export async function POST(request: NextRequest) {
               const dtB = combineDateTime(dateB, timeB);
               if (dtA !== dtB) return dtA < dtB ? -1 : 1;
 
-              const cntA = Number(getObjProperty(a, 'COUNTER_NO') || 0);
-              const cntB = Number(getObjProperty(b, 'COUNTER_NO') || 0);
+              const cntA = timecodeToSeconds(parseOracleCounterToTimecode(getObjProperty(a, 'COUNTER_NO') ?? getObjProperty(a, 'COINTER_NO') ?? getObjProperty(a, 'TIMECODE')));
+              const cntB = timecodeToSeconds(parseOracleCounterToTimecode(getObjProperty(b, 'COUNTER_NO') ?? getObjProperty(b, 'COINTER_NO') ?? getObjProperty(b, 'TIMECODE')));
               return cntA - cntB;
             });
 
-            // If selectedInspNo is provided, only migrate this tape if any event in it matches selectedInspNo
-            if (selectedInspNo) {
-              const hasSelectedInsp = sortedRows.some(row => String(getObjProperty(row, 'INSPNO') || "").trim() === selectedInspNo);
+            // If inspNos is active, only migrate this tape if any event in it matches active inspNos
+            if (inspNos.length > 0) {
+              const targetSet = new Set(inspNos.map(String));
+              const hasSelectedInsp = sortedRows.some(row => targetSet.has(String(getObjProperty(row, 'INSPNO') || "").trim()));
               if (!hasSelectedInsp) continue;
             }
 
@@ -4256,9 +4347,10 @@ export async function POST(request: NextRequest) {
                   const itemLogTime = getObjProperty(row, 'I_TIME') || '00:00:00';
                   const combinedEventTime = combineDateTime(itemLogDate, itemLogTime);
 
-                  // Parse counter_no cleanly
-                  const counterValRaw = getObjProperty(row, 'COUNTER_NO');
-                  const counterVal = counterValRaw !== undefined && counterValRaw !== null ? Number(counterValRaw) : null;
+                  // Parse counter_no cleanly into formatted HH:MM:SS timecode and total seconds
+                  const counterValRaw = getObjProperty(row, 'COUNTER_NO') ?? getObjProperty(row, 'COINTER_NO') ?? getObjProperty(row, 'TIMECODE');
+                  const timecodeStart = parseOracleCounterToTimecode(counterValRaw);
+                  const totalSeconds = timecodeToSeconds(timecodeStart);
 
                   // Parse cr_date cleanly
                   let parsedCrDate = formatLocalISOString(new Date());
@@ -4271,13 +4363,13 @@ export async function POST(request: NextRequest) {
                     tape_id: tapeId,
                     event_type: eventType,
                     event_time: combinedEventTime,
-                    timecode_start: '00:00:00',
+                    timecode_start: timecodeStart,
                     timecode_end: null,
                     remarks: remarksVal,
                     cr_user: 'migration',
                     cr_date: parsedCrDate,
                     workunit: '000',
-                    tape_counter_start: counterVal,
+                    tape_counter_start: totalSeconds,
                     counter_format: 'HH:MM:SS'
                   };
                 })
@@ -4370,8 +4462,9 @@ export async function POST(request: NextRequest) {
             const diveNo = String(getObjProperty(firstRow, 'DIVE_NO') || "").trim();
             const inspNo = String(getObjProperty(firstRow, 'INSPNO') || "").trim();
 
-            if (selectedInspNo) {
-              const hasSelectedInsp = sortedRows.some(row => String(getObjProperty(row, 'INSPNO') || "").trim() === selectedInspNo);
+            if (inspNos.length > 0) {
+              const targetSet = new Set(inspNos.map(String));
+              const hasSelectedInsp = sortedRows.some(row => targetSet.has(String(getObjProperty(row, 'INSPNO') || "").trim()));
               if (!hasSelectedInsp) continue;
             }
 
@@ -4549,15 +4642,10 @@ export async function POST(request: NextRequest) {
                 const itemLogTime = getObjProperty(row, 'INSP_TIME') || '00:00:00';
                 const combinedEventTime = combineDateTime(itemLogDate, itemLogTime);
 
-                // Parse tape footage cleanly as counter number
-                let counterVal = null;
+                // Parse tape footage cleanly as counter number / timecode
                 const footageVal = getObjProperty(row, 'TAPE_FOOTAGE');
-                if (footageVal !== undefined && footageVal !== null) {
-                  const cleanStr = String(footageVal).replace(/\D/g, '');
-                  if (cleanStr) {
-                    counterVal = Number(cleanStr);
-                  }
-                }
+                const timecodeStart = parseOracleCounterToTimecode(footageVal);
+                const totalSeconds = timecodeToSeconds(timecodeStart);
 
                 // Parse cr_date cleanly
                 let parsedCrDate = formatLocalISOString(new Date());
@@ -4570,13 +4658,13 @@ export async function POST(request: NextRequest) {
                   tape_id: tapeId,
                   event_type: eventType,
                   event_time: combinedEventTime,
-                  timecode_start: '00:00:00',
+                  timecode_start: timecodeStart,
                   timecode_end: null,
                   remarks: remarksVal,
                   cr_user: 'migration',
                   cr_date: parsedCrDate,
                   workunit: '000',
-                  tape_counter_start: counterVal,
+                  tape_counter_start: totalSeconds,
                   counter_format: 'HH:MM:SS'
                 };
               })
@@ -4799,16 +4887,17 @@ export async function POST(request: NextRequest) {
             `;
             const binds: any = { strId: structureId };
             
-            if (selectedInspNo) {
+            if (inspNos.length > 0) {
+              const { placeholders, binds: inspBinds } = buildInClause(inspNos);
               query = `
                 SELECT INSP_ID, CMNTS FROM COMP_NOT_INSP
                 WHERE INSP_ID IN (
-                  SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+                  SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO IN (${placeholders}) AND INSP_ID IS NOT NULL
                   UNION
-                  SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+                  SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO IN (${placeholders}) AND INSP_ID IS NOT NULL
                 )
               `;
-              binds.inspNo = selectedInspNo;
+              Object.assign(binds, inspBinds);
             }
             
             const notInspRes = await oracleConn.execute(query, binds);
@@ -4960,6 +5049,7 @@ export async function POST(request: NextRequest) {
                 resolvedStructureId,
                 isImperial,
                 selectedInspNo,
+                selectedInspNos: inspNos,
                 mappings,
                 logs,
                 report,
@@ -5041,11 +5131,12 @@ export async function POST(request: NextRequest) {
                 
                 if (elimResult.rows && elimResult.rows.length > 0) {
                   let filteredElimRows = elimResult.rows;
-                  // If selectedInspNo is provided, filter by that
-                  if (selectedInspNo) {
+                  // If inspNos is provided, filter by that
+                  if (inspNos.length > 0) {
+                    const targetSet = new Set(inspNos.map(String));
                     filteredElimRows = elimResult.rows.filter((row: any) => {
                       const val = String(row.INSPNO || row.inspno || row[1] || '').trim();
-                      return val === selectedInspNo;
+                      return targetSet.has(val);
                     });
                   }
                   
@@ -5141,7 +5232,7 @@ export async function POST(request: NextRequest) {
                 SELECT ${qCols.join(', ')} 
                 FROM ALLINSPID 
                 WHERE STR_ID = :strId AND INSP_ID IS NOT NULL AND INSP_ID > 0 AND INSP_TYPE IS NOT NULL
-                  AND TRIM(UPPER(INSP_TYPE)) NOT IN ('PLATGI', 'LOGS', 'EXSUM', 'VIDEO')
+                  AND TRIM(UPPER(INSP_TYPE)) NOT IN ('PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB')
               `, { strId: structureId });
               primaryInspections = result.rows || [];
             } catch (err: any) {
@@ -5151,14 +5242,15 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Filter by selectedInspNo if provided
-          if (selectedInspNo && primaryInspections.length > 0) {
+          // Filter by inspNos if provided
+          if (inspNos.length > 0 && primaryInspections.length > 0) {
+            const targetSet = new Set(inspNos.map(String));
             const inspNoIdx = qCols.findIndex(c => c.toUpperCase() === 'INSPNO');
             primaryInspections = primaryInspections.filter(row => {
               const val = String(row.INSPNO || (Array.isArray(row) ? row[inspNoIdx] : '') || '').trim();
-              return val === selectedInspNo;
+              return targetSet.has(val);
             });
-            logs.push(`Filtered primary inspections to ${primaryInspections.length} rows for INSPNO ${selectedInspNo}.`);
+            logs.push(`Filtered primary inspections to ${primaryInspections.length} rows for selected Job Pack(s) (${inspNos.join(', ')}).`);
           }
 
           if (primaryInspections.length === 0) {
@@ -5952,7 +6044,7 @@ export async function POST(request: NextRequest) {
                 // For Diving, if no dive number is resolved, fallback to a default dive log group
                 legacyDiveNo = `DEFAULT-${legacyInspNo || 'JOB'}-DIV`;
               } else {
-                continue;
+                legacyDiveNo = `DEFAULT-${legacyInspNo || 'JOB'}-ROV`;
               }
             }
 
@@ -6153,14 +6245,30 @@ export async function POST(request: NextRequest) {
             const tapeKey = `${isRov ? 'ROV' : 'DIV'}_${legacyTapeNo}_${legacyDiveNo}_${legacyInspNo}`;
             const pgTapeId = tapesCache.get(tapeKey) || tapesCache.get(`${isRov ? 'ROV' : 'DIV'}_${legacyTapeNo}_${legacyDiveNo}`) || null;
 
+            const rawCounter = rowObj.COUNTER_NO !== undefined && rowObj.COUNTER_NO !== null
+              ? rowObj.COUNTER_NO
+              : (rowObj.COINTER_NO !== undefined && rowObj.COINTER_NO !== null
+                ? rowObj.COINTER_NO
+                : (rowObj.TIMECODE !== undefined && rowObj.TIMECODE !== null ? rowObj.TIMECODE : (rowObj.TAPE_COUNT_NO || mappedTypeData.counter_no || mappedTypeData.COUNTER_NO)));
 
+            let formattedTimecode: string | null = null;
+            let counterTotalSeconds: number | null = null;
+            if (rawCounter !== undefined && rawCounter !== null && String(rawCounter).trim() !== '') {
+              formattedTimecode = parseOracleCounterToTimecode(rawCounter);
+              counterTotalSeconds = timecodeToSeconds(formattedTimecode);
+            }
+
+            const getCounterNoVal = () => {
+              return counterTotalSeconds !== null ? String(counterTotalSeconds) : null;
+            };
 
             const sowReportNo = getSowReportNo(legacyInspNo, legacyCompId, typCode.toUpperCase());
 
             const rowDateVal = rowObj.INSP_DATE || rowObj.I_DATE || rowObj.i_date || rowObj.I_Date || rowObj.LOG_DATE || mappedTypeData.inspection_date || mappedTypeData.INSP_DATE || mappedTypeData.I_DATE || mappedTypeData.i_date || mappedTypeData.I_Date;
             const rowTimeVal = rowObj.INSP_TIME || rowObj.I_TIME || rowObj.i_time || rowObj.I_Time || rowObj.TIME || rowObj.time || rowObj.LOG_TIME || mappedTypeData.inspection_time || mappedTypeData.INSP_TIME || mappedTypeData.I_TIME || mappedTypeData.i_time || mappedTypeData.TIME || mappedTypeData.time;
-            const dateStr = combineDateTime(rowDateVal, rowTimeVal);
-            const timeStr = formatTimeOnly(rowTimeVal);
+            const inspDateOnly = formatLocalDateOnly(rowDateVal) || formatLocalDateOnly(new Date())!;
+            const inspTimeOnly = formatTimeOnly(rowTimeVal, rowDateVal);
+            const combinedDateTimeStr = `${inspDateOnly}T${inspTimeOnly}`;
 
             const compCode = compTypeCache.get(legacyCompId) || '';
 
@@ -6189,38 +6297,8 @@ export async function POST(request: NextRequest) {
               mappedTypeData.depletion = anodeDetails.depletion;
               mappedTypeData.anode_depletion = anodeDetails.depletion;
             }
-            if (anodeDetails.anodeType) mappedTypeData.anode_type = anodeDetails.anodeType;
-
             const incompleteReason = compNotInspMap.get(legacyInspId) || null;
             const hasAnomaly = defectKeysSet.has(`${legacyInspId}_${legacyCompId}`);
-
-            const getCounterNoVal = () => {
-              if (!isRov) return null;
-              const val = rowObj.COUNTER_NO !== undefined && rowObj.COUNTER_NO !== null ? rowObj.COUNTER_NO : rowObj.COINTER_NO;
-              if (val === undefined || val === null) return null;
-              
-              const strVal = String(val).trim();
-              if (!strVal) return null;
-
-              if (strVal.includes(':')) {
-                const parts = strVal.split(':');
-                if (parts.length === 3) {
-                  return String(Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2]));
-                } else if (parts.length === 2) {
-                  return String(Number(parts[0]) * 60 + Number(parts[1]));
-                }
-              }
-
-              const numVal = parseInt(strVal);
-              if (isNaN(numVal)) return null;
-
-              const sec = numVal % 100;
-              const min = Math.floor((numVal % 10000) / 100);
-              const hrs = Math.floor(numVal / 10000);
-
-              const totalSeconds = hrs * 3600 + min * 60 + sec;
-              return String(totalSeconds);
-            };
 
             const elevationRaw = rowObj.ELEVATION || rowObj.ELV || (elvIdx > -1 ? rowObj[qCols[elvIdx]] : null) || mappedTypeData.elevation || mappedTypeData.ELEVATION;
             const elevationVal = elevationRaw !== undefined && elevationRaw !== null ? Number(elevationRaw) : null;
@@ -6309,6 +6387,14 @@ export async function POST(request: NextRequest) {
             if (anodeDetails.depletion) {
               inspectionDataObj.anode_depletion = anodeDetails.depletion;
               inspectionDataObj.depletion = anodeDetails.depletion;
+            }
+
+            // Explicitly set parsed timecode / counter_no
+            if (formattedTimecode) {
+              inspectionDataObj.counter_no = formattedTimecode;
+              inspectionDataObj.counter = formattedTimecode;
+              inspectionDataObj._meta_timecode = formattedTimecode;
+              inspectionDataObj.timecode = formattedTimecode;
             }
 
             // 2e. Perform CP Calibration (CPCLB) Mapping
@@ -7270,8 +7356,9 @@ export async function POST(request: NextRequest) {
               inspection_type_id: inspTypeMap.get(typCode.toUpperCase()) || null,
               component_type: compCode || null,
               tape_count_no: getCounterNoVal(),
-              inspection_date: dateStr,
-              inspection_time: timeStr,
+              inspection_date: inspDateOnly,
+              inspection_time: inspTimeOnly,
+              cr_date: combinedDateTimeStr,
               tape_id: pgTapeId,
               elevation: elevationVal,
               fp_kp: kpVal,
@@ -7540,15 +7627,16 @@ export async function POST(request: NextRequest) {
           `, { strId: structureId });
 
           let attachRows = attachResult.rows as any[];
-          if (selectedInspNo && attachRows && attachRows.length > 0) {
+          if (inspNos.length > 0 && attachRows && attachRows.length > 0) {
+            const targetSet = new Set(inspNos.map(String));
             attachRows = attachRows.filter(row => {
               const rObj = Array.isArray(row) ? qCols.reduce((acc, col, idx) => {
                 acc[col] = row[idx];
                 return acc;
               }, {} as Record<string, any>) : row;
-              return String(rObj.INSPNO || "").trim() === selectedInspNo;
+              return targetSet.has(String(rObj.INSPNO || "").trim());
             });
-            logs.push(`Filtered legacy attachments to ${attachRows.length} record(s) matching selected INSPNO ${selectedInspNo}.`);
+            logs.push(`Filtered legacy attachments to ${attachRows.length} record(s) matching selected Job Pack(s) (${inspNos.join(', ')}).`);
           }
           if (attachRows && attachRows.length > 0) {
             report["INSP_ATTACHMENT"].oracleRows = attachRows.length;

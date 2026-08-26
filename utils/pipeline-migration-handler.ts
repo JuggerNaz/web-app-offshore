@@ -9,6 +9,11 @@ export interface PipelineMigrationContext {
   resolvedStructureId: number;
   isImperial: boolean;
   selectedInspNo?: string;
+  selectedInspNos?: string[];
+  updateStructureSpecs?: boolean;
+  updateComponentSpecs?: boolean;
+  insertNewComponents?: boolean;
+  migrateAttachments?: boolean;
   mappings: Record<string, any[]>;
   logs: string[];
   report: Record<string, { status: string; oracleRows: number; migratedRows: number; errors: string[] }>;
@@ -21,6 +26,214 @@ export interface PipelineMigrationContext {
   inspIdCache: Map<number, number>;
   jobpackDefaultPrefixMap: Map<string, string>;
   sowReportMap: Map<string, string>;
+}
+
+// ─── Timezone-Free Date & Time Helpers ─────────────────────────────────────
+export function cleanOracleDate(str: string): string {
+  if (!str) {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  const s = String(str).trim();
+
+  // 1. YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+  }
+
+  // 2. DD-MON-YYYY or DD-MON-YY (e.g. 04-APR-18, 04-APR-2018)
+  const monMatch = s.match(/^(\d{1,2})[-/ ]([A-Za-z]{3,4})[-/ ](\d{2,4})/);
+  if (monMatch) {
+    const day = monMatch[1].padStart(2, '0');
+    const monStr = monMatch[2].toUpperCase();
+    const yearRaw = monMatch[3];
+    const months: Record<string, string> = {
+      'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+      'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+    };
+    let month = '01';
+    for (const [k, v] of Object.entries(months)) {
+      if (monStr.startsWith(k)) {
+        month = v;
+        break;
+      }
+    }
+    let year = Number(yearRaw);
+    if (yearRaw.length === 2) {
+      year = year > 50 ? 1900 + year : 2000 + year;
+    }
+    return `${year}-${month}-${day}`;
+  }
+
+  // 3. DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+  }
+
+  const parsed = Date.parse(s);
+  if (!isNaN(parsed)) {
+    const d = new Date(parsed);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function formatLocalDateOnly(dateVal: any): string | null {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date) {
+    const yyyy = dateVal.getFullYear();
+    const mm = String(dateVal.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateVal.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const str = String(dateVal).trim();
+  if (!str) return null;
+  return cleanOracleDate(str);
+}
+
+export function formatTimeOnly(timeVal: any, fallbackDateVal?: any): string {
+  if (timeVal instanceof Date) {
+    const hh = String(timeVal.getHours()).padStart(2, '0');
+    const mm = String(timeVal.getMinutes()).padStart(2, '0');
+    const ss = String(timeVal.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  let str = timeVal !== null && timeVal !== undefined ? String(timeVal).trim() : "";
+  
+  if (str) {
+    if (str.includes('T') || str.includes(' ')) {
+      const parts = str.split(/[T ]/);
+      if (parts.length > 1 && parts[1]) {
+        str = parts[1].split('.')[0].split('Z')[0].trim();
+      }
+    }
+
+    const match = str.match(/(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*(AM|PM)?/i);
+    if (match) {
+      let hh = parseInt(match[1], 10);
+      const mm = match[2];
+      const ss = match[3] || "00";
+      const ampm = (match[4] || "").toUpperCase();
+      if (ampm === "PM" && hh < 12) hh += 12;
+      if (ampm === "AM" && hh === 12) hh = 0;
+      return `${String(hh).padStart(2, '0')}:${mm}:${ss}`;
+    }
+
+    const digits = str.replace(/\D/g, '');
+    if (digits.length >= 3) {
+      if (digits.length <= 4) {
+        const padded = digits.padStart(4, '0');
+        const hh = parseInt(padded.substring(0, 2), 10);
+        const mm = parseInt(padded.substring(2, 4), 10);
+        if (hh < 24 && mm < 60) {
+          return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:00`;
+        }
+      } else {
+        const padded = digits.padStart(6, '0');
+        const hh = parseInt(padded.substring(0, 2), 10);
+        const mm = parseInt(padded.substring(2, 4), 10);
+        const ss = parseInt(padded.substring(4, 6), 10);
+        if (hh < 24 && mm < 60 && ss < 60) {
+          return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:${padded.substring(4, 6)}`;
+        }
+      }
+    }
+  }
+
+  if (fallbackDateVal) {
+    if (fallbackDateVal instanceof Date) {
+      const h = fallbackDateVal.getHours();
+      const m = fallbackDateVal.getMinutes();
+      const s = fallbackDateVal.getSeconds();
+      if (h > 0 || m > 0 || s > 0) {
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+    } else if (typeof fallbackDateVal === 'string') {
+      const fStr = fallbackDateVal.trim();
+      const tMatch = fStr.match(/[T ](\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?/);
+      if (tMatch) {
+        return `${tMatch[1].padStart(2, '0')}:${tMatch[2]}:${tMatch[3] || '00'}`;
+      }
+    }
+  }
+
+  return "00:00:00";
+}
+
+export function formatLocalISOString(dateVal: any): string {
+  if (!dateVal) return "";
+  if (dateVal instanceof Date) {
+    const yyyy = dateVal.getFullYear();
+    const mm = String(dateVal.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateVal.getDate()).padStart(2, '0');
+    const hh = String(dateVal.getHours()).padStart(2, '0');
+    const min = String(dateVal.getMinutes()).padStart(2, '0');
+    const sec = String(dateVal.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
+  }
+  
+  const str = String(dateVal).trim();
+  const dateStr = cleanOracleDate(str);
+  const timeStr = formatTimeOnly(null, str);
+  return `${dateStr}T${timeStr}`;
+}
+
+export function combineDateTime(dateVal: any, timeVal: any): string {
+  const dateStr = formatLocalDateOnly(dateVal) || formatLocalDateOnly(new Date())!;
+  const timeStr = formatTimeOnly(timeVal, dateVal);
+  return `${dateStr}T${timeStr}`;
+}
+
+/**
+ * Converts legacy Oracle numeric COUNTER_NO (e.g. 12345, 10235, 123456, 45) to "HH:MM:SS" timecode.
+ * In Oracle, numeric counter values represent concatenated digits of hours, minutes, and seconds (HHMMSS)
+ * where leading zeros were dropped by Oracle's numeric column.
+ * e.g. 12345 -> "012345" -> "01:23:45" (1h 23m 45s - not 12345 total seconds)
+ *      45    -> "000045" -> "00:00:45"
+ *      10235 -> "010235" -> "01:02:35"
+ */
+export function parseOracleCounterToTimecode(val: any): string {
+  if (val === undefined || val === null) return '00:00:00';
+  const strVal = String(val).trim();
+  if (!strVal || strVal === '0' || strVal === '00:00:00') return '00:00:00';
+
+  if (strVal.includes(':')) {
+    const parts = strVal.split(':').map(p => p.trim());
+    if (parts.length === 3) {
+      return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
+    } else if (parts.length === 2) {
+      return `00:${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+    } else if (parts.length === 1) {
+      return `00:00:${parts[0].padStart(2, '0')}`;
+    }
+  }
+
+  const digits = strVal.replace(/\D/g, '');
+  if (!digits) return '00:00:00';
+
+  const padded = digits.padStart(6, '0');
+  const ss = padded.slice(-2);
+  const mm = padded.slice(-4, -2);
+  const hh = padded.slice(0, -4).padStart(2, '0');
+
+  return `${hh}:${mm}:${ss}`;
+}
+
+export function timecodeToSeconds(timecode: string): number {
+  if (!timecode) return 0;
+  const parts = timecode.split(':').map(p => parseInt(p, 10) || 0);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return parts[0] || 0;
 }
 
 // ─── Pipeline Event Menu Matching ───────────────────────────────────────────
@@ -218,19 +431,8 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
     const pipeDesc = String(getCol(pipeRow, ['PDESC', 'DESCRIP', 'DESCRIPTION']) || "").trim();
 
     // Clean Date (preserve exact local calendar date YYYY-MM-DD without UTC timezone rollback)
-    let instDateStr: string | null = null;
     const rawInstDate = getCol(pipeRow, ['INST_DATE', 'I_DATE']);
-    if (rawInstDate) {
-      try {
-        const d = new Date(rawInstDate);
-        if (!isNaN(d.getTime())) {
-          const yr = d.getFullYear();
-          const mo = String(d.getMonth() + 1).padStart(2, '0');
-          const da = String(d.getDate()).padStart(2, '0');
-          instDateStr = `${yr}-${mo}-${da}`;
-        }
-      } catch (_) {}
-    }
+    const instDateStr = formatLocalDateOnly(rawInstDate);
 
     const plengthVal = getCol(pipeRow, ['PLENGTH', 'LENGTH']) !== null ? Number(getCol(pipeRow, ['PLENGTH', 'LENGTH'])) : null;
     const endFpVal = getCol(pipeRow, ['END_FP', 'END_KP', 'TO_KP', 'TO_FP']) !== null ? Number(getCol(pipeRow, ['END_FP', 'END_KP', 'TO_KP', 'TO_FP'])) : (plengthVal !== null ? plengthVal : null);
@@ -288,7 +490,7 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
       inst_ctr: getCol(pipeRow, ['INST_CTR', 'CONTRACTOR']) ? String(getCol(pipeRow, ['INST_CTR', 'CONTRACTOR'])).trim() : null,
       plegs: getCol(pipeRow, ['PLEGS']) ? String(getCol(pipeRow, ['PLEGS'])).trim() : null,
       cr_user: getCol(pipeRow, ['CR_USER']) ? String(getCol(pipeRow, ['CR_USER'])).trim() : null,
-      cr_date: getCol(pipeRow, ['CR_DATE']) ? new Date(getCol(pipeRow, ['CR_DATE'])).toISOString() : null,
+      cr_date: getCol(pipeRow, ['CR_DATE']) ? formatLocalISOString(getCol(pipeRow, ['CR_DATE'])) : null,
     };
 
     // 1. Ensure parent record in structure table
@@ -301,12 +503,22 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
     }
 
     // 2. Upsert into u_pipeline
-    const { error: pipeErr } = await supabase
+    const { data: existingPipe } = await supabase
       .from("u_pipeline")
-      .upsert(pgPipeRecord, { onConflict: "pipe_id" });
+      .select("pipe_id")
+      .eq("pipe_id", resolvedStructureId)
+      .maybeSingle();
 
-    if (pipeErr) {
-      throw pipeErr;
+    if (existingPipe && !ctx.updateStructureSpecs) {
+      logs.push(`[Pipeline Engine] Pipeline master specs already exist for ID ${resolvedStructureId}. Preserving existing specs (updateStructureSpecs is disabled).`);
+    } else {
+      const { error: pipeErr } = await supabase
+        .from("u_pipeline")
+        .upsert(pgPipeRecord, { onConflict: "pipe_id" });
+
+      if (pipeErr) {
+        throw pipeErr;
+      }
     }
 
     // 3. Ensure Default Component exists with KP matching pipeline length
@@ -581,14 +793,22 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
 
   try {
     // 1. Query NAVIG table with SELECT * to guarantee all legacy columns are extracted
+    const targetInspNos = (ctx.selectedInspNos && ctx.selectedInspNos.length > 0)
+      ? ctx.selectedInspNos.map(String)
+      : (selectedInspNo ? [String(selectedInspNo)] : []);
+
     let navigQuery = `SELECT * FROM NAVIG WHERE STR_ID = :strId AND INSP_ID IS NOT NULL AND INSP_ID > 0`;
-    if (selectedInspNo) {
+    const binds: any = { strId: structureId };
+
+    if (targetInspNos.length === 1) {
       navigQuery += ` AND INSPNO = :inspNo`;
+      binds.inspNo = targetInspNos[0];
+    } else if (targetInspNos.length > 1) {
+      const placeholders = targetInspNos.map((_, i) => `:i${i}`).join(', ');
+      targetInspNos.forEach((val, i) => { binds[`i${i}`] = val; });
+      navigQuery += ` AND INSPNO IN (${placeholders})`;
     }
     navigQuery += ` ORDER BY INSP_ID ASC`;
-
-    const binds: any = { strId: structureId };
-    if (selectedInspNo) binds.inspNo = selectedInspNo;
 
     let rows: any[] = [];
     try {
@@ -608,6 +828,17 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
 
     report[reportKey].oracleRows = rows.length;
     logs.push(`[Pipeline Engine] Found ${rows.length} NAVIG survey records in Oracle. Unit mode: ${isImperial ? "IMPERIAL" : "METRIC"}. Processing...`);
+
+    // Resolve PostgreSQL inspection_type_id for NAVIG
+    let navigTypeId: number | null = null;
+    try {
+      const { data: tData } = await (supabase.from as any)("inspection_type")
+        .select("id")
+        .eq("code", "NAVIG")
+        .limit(1)
+        .maybeSingle();
+      if (tData?.id) navigTypeId = Number(tData.id);
+    } catch (_) {}
 
     // Fetch default pipeline component ID for fallback, or auto-create one if none exists
     let defaultCompId = compIdMap.get(0) || compIdMap.get(999999) || null;
@@ -685,25 +916,24 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       const diveNo = String(getVal(['DIVE_NO']) || "").trim();
       const tapeNo = String(getVal(['TAPE_NO']) || "").trim();
 
-      // Clean Date & Time
-      let inspDate: string = new Date().toISOString().split("T")[0];
-      const rawDate = getVal(['INSP_DATE', 'I_DATE', 'CR_DATE']);
-      if (rawDate) {
-        try {
-          const d = new Date(rawDate);
-          if (!isNaN(d.getTime())) inspDate = d.toISOString().split("T")[0];
-        } catch (_) {}
-      }
+      // Clean Date & Time directly from Oracle (no timezone offsets, pure local dates)
+      const rawDate = getVal(['INSP_DATE', 'I_DATE', 'LOG_DATE', 'CR_DATE', 'DATE']);
+      const rawTime = getVal(['INSP_TIME', 'I_TIME', 'LOG_TIME', 'TIME', 'CR_TIME', 'TIMECODE']);
 
-      let inspTime = "12:00:00";
-      const rawTime = getVal(['INSP_TIME', 'I_TIME']);
-      if (rawTime) {
-        const tStr = String(rawTime).trim();
-        if (tStr.includes(":")) inspTime = tStr.length === 5 ? `${tStr}:00` : tStr;
+      const inspDate = formatLocalDateOnly(rawDate) || formatLocalDateOnly(new Date())!;
+      const inspTime = formatTimeOnly(rawTime, rawDate);
+
+      // Parse COUNTER_NO / TIMECODE
+      const rawCounter = getVal(['COUNTER_NO', 'COINTER_NO', 'COUNTER', 'TIMECODE', 'TAPE_COUNT_NO', 'COUNT_NO']);
+      let formattedTimecode: string | null = null;
+      let counterTotalSeconds: number | null = null;
+      if (rawCounter !== undefined && rawCounter !== null && String(rawCounter).trim() !== '') {
+        formattedTimecode = parseOracleCounterToTimecode(rawCounter);
+        counterTotalSeconds = timecodeToSeconds(formattedTimecode);
       }
 
       // Numeric extraction
-      const rawKp = getVal(['FP_KP', 'KP']);
+      const rawKp = getVal(['FP', 'KP', 'FP_KP', 'C_FP', 'CROSSING_KP', 'FIX_POINT']);
       const kpNum = rawKp !== null && !isNaN(Number(rawKp)) ? Number(rawKp) : 0;
 
       const rawEast = getVal(['EASTING', 'E_COORD', 'EAST']);
@@ -927,9 +1157,10 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         cp_u: "mV",
 
         // Video & Survey Reference
-        timecode: getVal(['TIMECODE', 'COUNTER']) || "-",
-        counter: getVal(['COUNTER', 'TIMECODE']) || "-",
-        _meta_timecode: getVal(['TIMECODE', 'COUNTER']) || "-",
+        timecode: formattedTimecode || "00:00:00",
+        counter: formattedTimecode || "00:00:00",
+        counter_no: formattedTimecode || "00:00:00",
+        _meta_timecode: formattedTimecode || "00:00:00",
         dive_no: diveNo,
         tape_no: tapeNo,
         sow_report_no: sowReportNo,
@@ -952,15 +1183,17 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         inspectionData.priority = getVal(['PRIORITY', 'SEVERITY']) || "P1";
       }
 
-      const finalIsoDate = `${inspDate}T${inspTime}.000Z`;
+      const finalIsoDate = `${inspDate}T${inspTime}`;
 
       recordsToInsert.push({
         structure_id: resolvedStructureId,
         component_id: pgCompId,
         jobpack_id: pgJobpackId,
+        inspection_type_id: navigTypeId,
         rov_job_id: pgRovJobId,
         dive_job_id: null,
         tape_id: pgTapeId,
+        tape_count_no: counterTotalSeconds !== null ? String(counterTotalSeconds) : null,
         sow_report_no: sowReportNo,
         inspection_type_code: "NAVIG",
         inspection_date: inspDate,
@@ -977,9 +1210,9 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       });
     }
 
-    // Batch insert into insp_records with sub-chunk fallback on statement timeout
+    // Batch insert into insp_records with multi-tiered sub-chunk & single-row fallback on statement timeout
     let migratedCount = 0;
-    const batchSize = 50;
+    const batchSize = 25;
 
     for (let b = 0; b < recordsToInsert.length; b += batchSize) {
       const batch = recordsToInsert.slice(b, b + batchSize);
@@ -990,9 +1223,9 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         .select("insp_id");
 
       if (insErr) {
-        logs.push(`[Pipeline Engine] Notice: Batch insert at offset ${b} (${insErr.message}). Retrying in small sub-chunks...`);
-        // Retry in small sub-chunks of 15 to bypass statement timeouts
-        const subChunkSize = 15;
+        logs.push(`[Pipeline Engine] Notice: Batch insert at offset ${b} (${insErr.message}). Retrying in small sub-chunks of 5...`);
+        // Retry in small sub-chunks of 5 to bypass statement timeouts
+        const subChunkSize = 5;
         for (let sc = 0; sc < batch.length; sc += subChunkSize) {
           const subBatch = batch.slice(sc, sc + subChunkSize);
           const subPayload = subBatch.map(({ _oracle_insp_id, ...rec }) => rec);
@@ -1001,8 +1234,25 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
             .select("insp_id");
 
           if (subErr) {
-            logs.push(`[Pipeline Engine] ERROR inserting sub-chunk at ${b + sc}: ${subErr.message}`);
-            report[reportKey].errors.push(subErr.message);
+            logs.push(`[Pipeline Engine] Notice: Sub-chunk at ${b + sc} (${subErr.message}). Retrying row-by-row...`);
+            // Single-row fallback to ensure 100% record migration
+            for (let rIdx = 0; rIdx < subBatch.length; rIdx++) {
+              const singleRow = subBatch[rIdx];
+              const { _oracle_insp_id, ...singlePayload } = singleRow;
+              const { data: singleInserted, error: singleErr } = await (supabase.from as any)("insp_records")
+                .insert(singlePayload)
+                .select("insp_id");
+
+              if (singleErr) {
+                logs.push(`[Pipeline Engine] ERROR inserting row ${b + sc + rIdx}: ${singleErr.message}`);
+                report[reportKey].errors.push(singleErr.message);
+              } else if (singleInserted?.[0]?.insp_id) {
+                migratedCount += 1;
+                if (_oracle_insp_id) {
+                  inspIdCache.set(_oracle_insp_id, Number(singleInserted[0].insp_id));
+                }
+              }
+            }
           } else if (subInserted) {
             migratedCount += subInserted.length;
             subInserted.forEach((newRec: any, idxInSub: number) => {
@@ -1024,11 +1274,11 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       }
     }
 
-    logs.push(`[Pipeline Engine] Successfully migrated ${migratedCount} ROV NAVIG inspection records!`);
-    report[reportKey].status = "success";
+    logs.push(`[Pipeline Engine] Successfully migrated ${migratedCount} of ${rows.length} ROV NAVIG inspection records!`);
+    report[reportKey].status = migratedCount === rows.length ? "success" : "warning";
     report[reportKey].migratedRows = migratedCount;
     report["INSP_ROV"] = {
-      status: "success",
+      status: migratedCount === rows.length ? "success" : "warning",
       oracleRows: rows.length,
       migratedRows: migratedCount,
       errors: report[reportKey].errors

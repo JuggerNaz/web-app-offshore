@@ -51,7 +51,12 @@ export default function MigrationDashboard() {
   const [jobpacks, setJobpacks] = useState<any[]>([]);
   const [isLoadingJobpacks, setIsLoadingJobpacks] = useState(false);
   const [selectedJobpack, setSelectedJobpack] = useState<any | null>(null);
+  const [selectedJobpacks, setSelectedJobpacks] = useState<any[]>([]);
   const [componentsOnly, setComponentsOnly] = useState(false);
+  const [updateStructureSpecs, setUpdateStructureSpecs] = useState(false);
+  const [updateComponentSpecs, setUpdateComponentSpecs] = useState(false);
+  const [insertNewComponents, setInsertNewComponents] = useState(true);
+  const [migrateAttachments, setMigrateAttachments] = useState(true);
   const [inspectionSummary, setInspectionSummary] = useState<any | null>(null);
   const [isLoadingInspectionSummary, setIsLoadingInspectionSummary] = useState(false);
   const [oracleCompany, setOracleCompany] = useState<any | null>(null);
@@ -776,8 +781,15 @@ export default function MigrationDashboard() {
 
   const handleExecuteMigration = async () => {
     if (!selectedStructureId) return;
-    if (!componentsOnly && !selectedJobpack) {
-      toast.error("Please select an Active Job Pack from the sidebar or select the 'Migrate Components Only' option.");
+    
+    const selectedInspNos = componentsOnly 
+      ? [] 
+      : (selectedJobpacks.length > 0 
+          ? selectedJobpacks.map(jp => jp.INSPNO || jp.inspno).filter(Boolean)
+          : (selectedJobpack ? [selectedJobpack.INSPNO || selectedJobpack.inspno].filter(Boolean) : []));
+
+    if (!componentsOnly && selectedInspNos.length === 0) {
+      toast.error("Please select at least one Active Job Pack from the sidebar or choose 'Migrate Components Only'.");
       return;
     }
     
@@ -807,9 +819,14 @@ export default function MigrationDashboard() {
           structureId: selectedStructureId,
           structureType: mappingStructureType,
           mappings: payloadMappings,
-          selectedInspNo: componentsOnly ? undefined : (selectedJobpack?.INSPNO || selectedJobpack?.inspno),
+          selectedInspNo: selectedInspNos[0],
+          selectedInspNos: selectedInspNos,
           legacyAttachmentPath: config.legacyAttachmentPath,
-          componentsOnly
+          componentsOnly,
+          updateStructureSpecs,
+          updateComponentSpecs,
+          insertNewComponents,
+          migrateAttachments,
         })
       });
 
@@ -1098,6 +1115,39 @@ export default function MigrationDashboard() {
     } finally {
       setIsLoadingInspectionSummary(false);
     }
+  };
+
+  const handleToggleJobpack = (jp: any) => {
+    const inspNo = jp.INSPNO || jp.inspno;
+    setSelectedJobpacks(prev => {
+      const exists = prev.some(p => (p.INSPNO || p.inspno) === inspNo);
+      let updated: any[];
+      if (exists) {
+        updated = prev.filter(p => (p.INSPNO || p.inspno) !== inspNo);
+      } else {
+        updated = [...prev, jp];
+      }
+      if (updated.length > 0) {
+        handleJobpackSelect(updated[updated.length - 1]);
+      } else {
+        setSelectedJobpack(null);
+        setInspectionSummary(null);
+      }
+      return updated;
+    });
+  };
+
+  const handleSelectAllJobpacks = () => {
+    setSelectedJobpacks(jobpacks);
+    if (jobpacks.length > 0) {
+      handleJobpackSelect(jobpacks[0]);
+    }
+  };
+
+  const handleClearJobpacks = () => {
+    setSelectedJobpacks([]);
+    setSelectedJobpack(null);
+    setInspectionSummary(null);
   };
 
   return (
@@ -1420,11 +1470,27 @@ export default function MigrationDashboard() {
                             <div className="flex items-center justify-between">
                               <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                                 <Database className="w-3.5 h-3.5 text-indigo-500" />
-                                Active Job Packs
+                                Active Job Packs ({selectedJobpacks.length}/{jobpacks.length})
                               </Label>
-                              <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/30 px-1.5 py-0.5 rounded-md uppercase">
-                                With Inspection Data
-                              </span>
+                              {jobpacks.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={handleSelectAllJobpacks}
+                                    className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline px-1 py-0.5"
+                                  >
+                                    All
+                                  </button>
+                                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                                  <button
+                                    type="button"
+                                    onClick={handleClearJobpacks}
+                                    className="text-[9px] font-bold text-slate-500 hover:underline px-1 py-0.5"
+                                  >
+                                    None
+                                  </button>
+                                </div>
+                              )}
                             </div>
 
                             {isLoadingJobpacks ? (
@@ -1433,7 +1499,7 @@ export default function MigrationDashboard() {
                                 Loading associated job packs...
                               </div>
                             ) : jobpacks.length > 0 ? (
-                              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                                 {jobpacks.map((jp: any, index: number) => {
                                   const jobName = jp.JOBNAME || jp.jobname || jp.JOB_NAME || jp.job_name || "Unnamed Job Pack";
                                   const startDateVal = jp.START_DATE || jp.start_date || jp.ISTART || jp.istart;
@@ -1444,25 +1510,41 @@ export default function MigrationDashboard() {
                                   const hasRov = jp.HAS_ROV || jp.has_rov || jp.hasRov || false;
                                   const hasDiving = jp.HAS_DIVING || jp.has_diving || jp.hasDiving || false;
                                   
-                                  const isSelected = selectedJobpack && (selectedJobpack.INSPNO === jp.INSPNO || selectedJobpack.inspno === jp.INSPNO || selectedJobpack.INSPNO === jp.inspno);
+                                  const inspNo = jp.INSPNO || jp.inspno;
+                                  const isChecked = selectedJobpacks.some(p => (p.INSPNO || p.inspno) === inspNo);
+                                  const isCurrentActive = selectedJobpack && (selectedJobpack.INSPNO === inspNo || selectedJobpack.inspno === inspNo);
                                   
                                   return (
                                     <div 
                                       key={`${jobName}-${index}`} 
-                                      onClick={() => handleJobpackSelect(jp)}
+                                      onClick={() => handleToggleJobpack(jp)}
                                       className={`flex items-center justify-between gap-2 p-2 rounded-lg transition-all duration-200 shadow-sm group cursor-pointer border ${
-                                        isSelected 
-                                          ? "border-indigo-500 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20" 
+                                        isChecked 
+                                          ? "border-indigo-500 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 ring-1 ring-indigo-500/30" 
                                           : "bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-slate-100 dark:border-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700/60"
                                       }`}
                                     >
                                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                                        <div className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100/50 dark:border-indigo-900/35 flex items-center justify-center text-indigo-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleJobpack(jp);
+                                          }}
+                                          className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 shrink-0"
+                                        />
+                                        <div className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100/50 dark:border-indigo-900/35 flex items-center justify-center text-indigo-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors shrink-0">
                                           <FileText className="w-3 h-3" />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                          <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                            {jobName}
+                                          <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
+                                            <span>{jobName}</span>
+                                            {isCurrentActive && (
+                                              <span className="text-[8px] font-black uppercase text-indigo-600 bg-indigo-100 dark:bg-indigo-900/50 px-1 py-0.2 rounded">
+                                                Active Preview
+                                              </span>
+                                            )}
                                           </div>
                                           <div className="text-[9px] font-medium text-slate-400 uppercase flex flex-wrap items-center gap-1.5 mt-0.5">
                                             <span>Start: {formattedDate}</span>
@@ -1499,6 +1581,89 @@ export default function MigrationDashboard() {
                                 No job packs with inspection data found for this structure.
                               </div>
                             )}
+                          </div>
+
+                          {/* Phase 2: Incremental Migration & Preservation Settings */}
+                          <div className="p-4 bg-slate-50/70 dark:bg-slate-900/40 border border-slate-200/70 dark:border-slate-800/80 rounded-xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                                <Settings2 className="w-3.5 h-3.5 text-indigo-500" />
+                                Incremental Migration Rules
+                              </Label>
+                              <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 border border-indigo-200/40 dark:border-indigo-900/30">
+                                Preservation Safe
+                              </span>
+                            </div>
+
+                            <div className="space-y-2 pt-1">
+                              <label className="flex items-start gap-2.5 p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={updateStructureSpecs}
+                                  onChange={(e) => setUpdateStructureSpecs(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <div className="text-[10px] leading-tight">
+                                  <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                                    Update Structure Master Specs
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    {updateStructureSpecs ? "Will overwrite structure specs from Oracle" : "Preserves existing clean structure specifications"}
+                                  </span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-2.5 p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={updateComponentSpecs}
+                                  onChange={(e) => setUpdateComponentSpecs(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <div className="text-[10px] leading-tight">
+                                  <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                                    Update Existing Component Specs
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    {updateComponentSpecs ? "Will update existing component fields" : "Preserves existing clean component specifications"}
+                                  </span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-2.5 p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={insertNewComponents}
+                                  onChange={(e) => setInsertNewComponents(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <div className="text-[10px] leading-tight">
+                                  <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                                    Insert New Discovered Components
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    {insertNewComponents ? "Inserts any new components found in this jobpack" : "Skips inserting new component records"}
+                                  </span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-2.5 p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={migrateAttachments}
+                                  onChange={(e) => setMigrateAttachments(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <div className="text-[10px] leading-tight">
+                                  <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                                    Migrate New Attachments & Media
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    {migrateAttachments ? "Copies & registers new media files without deleting old ones" : "Skips attachment migration"}
+                                  </span>
+                                </div>
+                              </label>
+                            </div>
                           </div>
                         </div>
                       );

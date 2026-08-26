@@ -178,9 +178,9 @@ export const POST = withAuth(
             const count = Number(row.REC_COUNT || row.rec_count || 0);
             const upperCode = code.toUpperCase().trim();
             
-            if (upperCode === 'NAVIG') {
+            if (upperCode === 'NAVIG' || upperCode === 'ROVCLB') {
               rovInspections.push({ code, name, count });
-            } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM'].includes(upperCode)) {
+            } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB'].includes(upperCode)) {
               divingInspections.push({ code, name, count });
             }
           }
@@ -203,9 +203,9 @@ export const POST = withAuth(
               const count = Number(row.REC_COUNT || row.rec_count || 0);
               const upperCode = code.toUpperCase().trim();
               
-              if (upperCode === 'NAVIG') {
+              if (upperCode === 'NAVIG' || upperCode === 'ROVCLB') {
                 rovInspections.push({ code, name, count });
-              } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM'].includes(upperCode)) {
+              } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB'].includes(upperCode)) {
                 divingInspections.push({ code, name, count });
               }
             }
@@ -227,9 +227,9 @@ export const POST = withAuth(
                 const count = Number(row.REC_COUNT || row.rec_count || 0);
                 const upperCode = code.toUpperCase().trim();
                 
-                if (upperCode === 'NAVIG') {
+                if (upperCode === 'NAVIG' || upperCode === 'ROVCLB') {
                   rovInspections.push({ code, name, count });
-                } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM'].includes(upperCode)) {
+                } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB'].includes(upperCode)) {
                   divingInspections.push({ code, name, count });
                 }
               }

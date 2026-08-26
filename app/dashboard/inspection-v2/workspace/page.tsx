@@ -83,6 +83,17 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useUserProfile } from "@/components/user-profile-provider";
 
 function formatCounter(seconds: number | string): string {
+  if (seconds === undefined || seconds === null || seconds === "") return "00:00:00";
+  const str = String(seconds).trim();
+  if (str.includes(":")) {
+    const parts = str.split(":").map((p) => p.trim());
+    if (parts.length === 3) {
+      return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}:${parts[2].padStart(2, "0")}`;
+    }
+    if (parts.length === 2) {
+      return `00:${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+    }
+  }
   const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
   if (isNaN(totalSeconds)) return "00:00:00";
   const h = Math.floor(totalSeconds / 3600);
@@ -4272,30 +4283,30 @@ function V10PreviewLayout() {
   }, [syncDeploymentState]);
 
   const fetchHistory = useCallback(async () => {
-    if (!selectedComp || !structureId || isNaN(Number(structureId))) return;
+    if (!selectedComp || !selectedComp.id || isNaN(Number(selectedComp.id)) || !structureId || isNaN(Number(structureId))) {
+      setCurrentCompRecords([]);
+      setHistoricalRecords([]);
+      return;
+    }
 
     try {
       setHistoryLoading(true);
-      let query = supabase
+      const query = supabase
         .from("insp_records")
-        .select("*")
-        .eq("component_id", selectedComp.id)
+        .select(
+          "insp_id, dive_job_id, rov_job_id, tape_id, inspection_type_id, inspection_type_code, jobpack_id, sow_report_no, inspection_date, inspection_time, has_anomaly, status, description, inspection_data, cr_date"
+        )
+        .eq("component_id", Number(selectedComp.id))
         .eq("structure_id", Number(structureId));
 
-      if (
-        headerData.sowReportNo &&
-        headerData.sowReportNo !== "N/A" &&
-        headerData.sowReportNo !== "Unknown Report"
-      ) {
-        query = query.or(
-          `sow_report_no.eq.${headerData.sowReportNo},sow_report_no.is.null`
-        );
-      }
-
-      const { data, error } = await query.order("cr_date", { ascending: false });
+      const { data, error } = await query
+        .order("inspection_date", { ascending: false })
+        .limit(200);
 
       if (error || !data) {
-        console.error("Error fetching component history:", error);
+        console.error("Error fetching component history:", error?.message || error);
+        setCurrentCompRecords([]);
+        setHistoricalRecords([]);
         return;
       }
 

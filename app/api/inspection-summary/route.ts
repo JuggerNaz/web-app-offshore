@@ -340,6 +340,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 rov_job_id,
                 sow_report_no,
                 jobpack_id,
+                fp_kp,
                 structure_components:component_id!left(
                     id, q_id, code, metadata
                 ),
@@ -349,6 +350,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             .eq("company_id", companyId);
 
         if (!isNaN(strNum)) recQuery = recQuery.eq("structure_id", strNum);
+        if (!isNaN(jpNum)) recQuery = recQuery.eq("jobpack_id", jpNum);
 
         const { data: allRecordsData, error: recErr } = await recQuery;
         if (recErr) {
@@ -363,10 +365,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         );
 
         const dbRecords = allRecordsData || [];
-        const rawRecords = dbRecords.filter((r: any) => {
-            const matchesJobpack = !isNaN(jpNum) ? r.jobpack_id === jpNum : true;
-            return matchesJobpack;
-        });
+        const rawRecords = dbRecords;
         
         // Determine if we should filter the overview by the current report
         // isReportSpecific already declared and evaluated above
@@ -397,9 +396,20 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
+        const isRovRecord = (r: any) => {
+            if (r.rov_job_id) return true;
+            const code = String(r.inspection_type_code || r.inspection_type?.code || r.inspection_data?.insp_type || r.inspection_data?.INSP_TYPE || "").toUpperCase();
+            if (code === "NAVIG" || code === "ROVCLB" || (code.startsWith("R") && code !== "RISER" && code !== "RB")) return true;
+            const diveNo = String(r.inspection_data?.dive_no || r.inspection_data?.DIVE_NO || "").toUpperCase();
+            if (diveNo.startsWith("R")) return true;
+            if (isPipelineStructure) return true;
+            return false;
+        };
+        const isDiveRecord = (r: any) => !isRovRecord(r) && (!!r.dive_job_id || !isPipelineStructure);
+
         // Analysis sections use rawRecords to show the full history of the structure
-        const rovRecords = rawRecords.filter((r: any) => !!r.rov_job_id);
-        const diveRecords = rawRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id);
+        const rovRecords = rawRecords.filter(isRovRecord);
+        const diveRecords = rawRecords.filter(isDiveRecord);
         const hasBothModes = rovRecords.length > 0 && diveRecords.length > 0;
 
         // ─── 4. FMD ANALYSIS ──────────────────────────────────────────────────
@@ -411,8 +421,8 @@ export const GET = withTenant(async (request, { companyId }) => {
         });
 
         const fmdTotal = fmdRecords.length;
-        const fmdRov = fmdRecords.filter((r: any) => !!r.rov_job_id).length;
-        const fmdDive = fmdRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
+        const fmdRov = fmdRecords.filter(isRovRecord).length;
+        const fmdDive = fmdRecords.filter(isDiveRecord).length;
 
         // Use the correct field: member_status
         const fmdConditions: Record<string, number> = {
@@ -458,8 +468,8 @@ export const GET = withTenant(async (request, { companyId }) => {
         });
 
         const anodeGviTotal = anodeGviRecords.length;
-        const anodeGviRov = anodeGviRecords.filter((r: any) => !!r.rov_job_id).length;
-        const anodeGviDive = anodeGviRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
+        const anodeGviRov = anodeGviRecords.filter(isRovRecord).length;
+        const anodeGviDive = anodeGviRecords.filter(isDiveRecord).length;
 
         // Anode depletion breakdown
         // We bucket by percentage ranges: 0-25, 25-50, 50-75, 75-100, and string-based entries
@@ -528,8 +538,8 @@ export const GET = withTenant(async (request, { companyId }) => {
             return code === "SANI" || code === "RSANI";
         });
         const saniTotal = saniRecords.length;
-        const saniRov = saniRecords.filter((r: any) => !!r.rov_job_id).length;
-        const saniDive = saniRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
+        const saniRov = saniRecords.filter(isRovRecord).length;
+        const saniDive = saniRecords.filter(isDiveRecord).length;
 
         // Anode Maintenance (ANMAIN) Analysis
         const anmainRecords = rawRecords.filter((r: any) => {
@@ -586,8 +596,8 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         rawRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
-            const isRov  = !!r.rov_job_id;
-            const isDive = !!r.dive_job_id && !r.rov_job_id;
+            const isRov  = isRovRecord(r);
+            const isDive = isDiveRecord(r);
             const mode = isRov ? "ROV" : "DIVE";
             const comp = r.structure_components || {};
             const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
@@ -1069,8 +1079,8 @@ export const GET = withTenant(async (request, { companyId }) => {
         const anomalyTotal = anomalyRecords.length;
         const findingTotal = findingRecords.length;
 
-        const uniqueRovJobs = new Set(records.filter((r: any) => r.rov_job_id).map((r: any) => r.rov_job_id)).size;
-        const uniqueDiveJobs = new Set(records.filter((r: any) => r.dive_job_id).map((r: any) => r.dive_job_id)).size;
+        const uniqueRovJobs = new Set(records.filter(isRovRecord).map((r: any) => r.rov_job_id || r.inspection_data?.dive_no || "ROV-JOB")).size;
+        const uniqueDiveJobs = new Set(records.filter(isDiveRecord).map((r: any) => r.dive_job_id || r.inspection_data?.dive_no || "DIVE-JOB")).size;
 
         const inspTypeBreakdown: Record<string, { name: string; count: number; rov: number; dive: number; anomaly: number; finding: number }> = {};
         records.forEach((r: any) => {
@@ -1083,8 +1093,8 @@ export const GET = withTenant(async (request, { companyId }) => {
                 inspTypeBreakdown[code] = { name, count: 0, rov: 0, dive: 0, anomaly: 0, finding: 0 };
             }
             inspTypeBreakdown[code].count++;
-            if (r.rov_job_id) inspTypeBreakdown[code].rov++;
-            if (r.dive_job_id && !r.rov_job_id) inspTypeBreakdown[code].dive++;
+            if (isRovRecord(r)) inspTypeBreakdown[code].rov++;
+            if (isDiveRecord(r)) inspTypeBreakdown[code].dive++;
             if (r.has_anomaly) {
                 const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                 const isFinding = metaStatus === "finding";
@@ -1464,15 +1474,15 @@ export const GET = withTenant(async (request, { companyId }) => {
             });
 
         // Mode breakdown for record statuses
-        const completedRov = rawRecords.filter((r: any) => r.status === 'COMPLETED' && !!r.rov_job_id).length;
-        const completedDive = rawRecords.filter((r: any) => r.status === 'COMPLETED' && !!r.dive_job_id && !r.rov_job_id).length;
-        const incompleteRov = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && !!r.rov_job_id).length;
-        const incompleteDive = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && !!r.dive_job_id && !r.rov_job_id).length;
+        const completedRov = rawRecords.filter((r: any) => r.status === 'COMPLETED' && isRovRecord(r)).length;
+        const completedDive = rawRecords.filter((r: any) => r.status === 'COMPLETED' && isDiveRecord(r)).length;
+        const incompleteRov = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && isRovRecord(r)).length;
+        const incompleteDive = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && isDiveRecord(r)).length;
 
-        const anomalyRov = anomalyRecords.filter((r: any) => !!r.rov_job_id).length;
-        const anomalyDive = anomalyRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
-        const findingRov = findingRecords.filter((r: any) => !!r.rov_job_id).length;
-        const findingDive = findingRecords.filter((r: any) => !!r.dive_job_id && !r.rov_job_id).length;
+        const anomalyRov = anomalyRecords.filter(isRovRecord).length;
+        const anomalyDive = anomalyRecords.filter(isDiveRecord).length;
+        const findingRov = findingRecords.filter(isRovRecord).length;
+        const findingDive = findingRecords.filter(isDiveRecord).length;
 
         return NextResponse.json({
             data: {
@@ -1784,9 +1794,6 @@ export const GET = withTenant(async (request, { companyId }) => {
                     let lineSkippedCount = 0;
                     let totalSkippedKm = 0;
 
-                    let minKp = 999999;
-                    let maxKp = 0;
-
                     let span0_5 = 0;
                     let span5_10 = 0;
                     let span10_20 = 0;
@@ -1796,18 +1803,22 @@ export const GET = withTenant(async (request, { companyId }) => {
 
                     let totalSpanKm = 0;
                     let totalBurialKm = 0;
+                    const validKps: number[] = [];
 
                     // Parse inspection records for pipeline event features
                     records.forEach((r: any) => {
                         const d = r.inspection_data || {};
-                        const evtName = (d.event_name || d.eventName || r.inspection_type_code || "").toUpperCase();
-                        const evtType = (d.event_type || d.eventType || r.description || "").toUpperCase();
-                        const desc = (d.event_description || d.description || r.description || "").toUpperCase();
-                        const kp = typeof r.fp_kp === "number" ? r.fp_kp : parseFloat(d.kp || r.fp_kp || "0");
-
-                        if (!isNaN(kp) && kp > 0) {
-                            if (kp < minKp) minKp = kp;
-                            if (kp > maxKp) maxKp = kp;
+                        const evtName = String(d.event_name || d.eventName || d.EVENT || d.raw_event || d.actionName || r.inspection_type_code || "").toUpperCase();
+                        const evtType = String(d.event_type || d.eventType || d.TYPE || d.raw_type || d.eventCategory || "").toUpperCase();
+                        const desc = String(d.event_description || d.eventDescription || d.description || d.DESCR || d.FINDINGS || d.COMMENTS || r.description || "").toUpperCase();
+                        
+                        const rawKpVal = d.kp ?? d.KP ?? d.fp_kp ?? d.FP_KP ?? d.fp ?? d.FP ?? d.raw_fp ?? r.fp_kp;
+                        let kp = NaN;
+                        if (rawKpVal !== undefined && rawKpVal !== null && String(rawKpVal).trim() !== "") {
+                            kp = parseFloat(String(rawKpVal));
+                            if (!isNaN(kp)) {
+                                validKps.push(kp);
+                            }
                         }
 
                         // Anodes
@@ -1816,22 +1827,24 @@ export const GET = withTenant(async (request, { companyId }) => {
                         }
 
                         // Field Joints
-                        if (evtName.includes("FIELD JOINT") || evtType.includes("FIELD JOINT") || evtType.includes("FJ")) {
+                        if (evtName.includes("FIELD JOINT") || evtType.includes("FIELD JOINT") || evtType.includes("FJ") || evtName === "FJ" || evtName.includes("WELD") || evtType.includes("WELD")) {
                             totalFieldJoints++;
                         }
 
                         // Spans
-                        if (evtName.includes("SPAN") || evtType.includes("SPAN")) {
+                        if (evtName.includes("SPAN") || evtType.includes("SPAN") || desc.includes("FREE SPAN") || desc.includes("FREESPAN")) {
                             totalSpanCount++;
-                            // Extract LENGTH:xx.xxm from description if present
-                            const lenMatch = desc.match(/LENGTH:([\d.]+)/);
+                            const lenMatch = desc.match(/LENGTH:\s*([\d.]+)/i) || desc.match(/LEN:\s*([\d.]+)/i);
                             if (lenMatch) {
                                 const lenM = parseFloat(lenMatch[1]);
                                 if (!isNaN(lenM)) {
-                                    const lenKm = lenM / 1000;
-                                    totalSpanKm += lenKm;
+                                    totalSpanKm += lenM / 1000;
                                 }
+                            } else if (d.length !== undefined && d.length !== null) {
+                                const lenM = parseFloat(String(d.length_m || d.length || "0"));
+                                if (!isNaN(lenM)) totalSpanKm += lenM / 1000;
                             }
+
                             if (!isNaN(kp) && kp >= 0) {
                                 if (kp < 5) span0_5++;
                                 else if (kp < 10) span5_10++;
@@ -1843,19 +1856,22 @@ export const GET = withTenant(async (request, { companyId }) => {
                         }
 
                         // Burials
-                        if (evtName.includes("BURIAL") || evtType.includes("BURIAL") || evtName.includes("BURIED")) {
+                        if (evtName.includes("BURIAL") || evtType.includes("BURIAL") || evtName.includes("BURIED") || evtType.includes("BURIED") || desc.includes("BURIAL")) {
                             totalBurialCount++;
-                            const lenMatch = desc.match(/LENGTH:([\d.]+)/);
+                            const lenMatch = desc.match(/LENGTH:\s*([\d.]+)/i) || desc.match(/LEN:\s*([\d.]+)/i);
                             if (lenMatch) {
                                 const lenM = parseFloat(lenMatch[1]);
                                 if (!isNaN(lenM)) {
                                     totalBurialKm += lenM / 1000;
                                 }
+                            } else if (d.length !== undefined && d.length !== null) {
+                                const lenM = parseFloat(String(d.length_m || d.length || "0"));
+                                if (!isNaN(lenM)) totalBurialKm += lenM / 1000;
                             }
                         }
 
                         // CP Stabs
-                        const hasCp = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || evtName.includes("CP");
+                        const hasCp = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined || d.cp_reading !== undefined || evtName.includes("CP") || evtType.includes("CP");
                         if (hasCp) {
                             totalCpStab++;
                             if (evtName.includes("ANODE") || evtType.includes("ANODE")) totalAnodeCpStab++;
@@ -1866,25 +1882,28 @@ export const GET = withTenant(async (request, { companyId }) => {
                         }
 
                         // Crossings
-                        if (evtName.includes("CROSSING") || evtType.includes("CROSSING")) {
+                        if (evtName.includes("CROSSING") || evtType.includes("CROSSING") || d.crossing_line || d.c_lin) {
                             totalLineCrossing++;
                         }
 
                         // Debris
-                        if (evtName.includes("DEBRIS") || evtType.includes("DEBRIS")) {
+                        if (evtName.includes("DEBRIS") || evtType.includes("DEBRIS") || desc.includes("DEBRIS")) {
                             totalDebris++;
                         }
 
                         // Line Skipped
-                        if (evtName.includes("SKIP") || evtType.includes("SKIP")) {
+                        if (evtName.includes("SKIP") || evtType.includes("SKIP") || desc.includes("SKIP")) {
                             lineSkippedCount++;
-                            const lenMatch = desc.match(/LENGTH:([\d.]+)/);
+                            const lenMatch = desc.match(/LENGTH:\s*([\d.]+)/i) || desc.match(/LEN:\s*([\d.]+)/i);
                             if (lenMatch) {
                                 const lenM = parseFloat(lenMatch[1]);
                                 if (!isNaN(lenM)) totalSkippedKm += lenM / 1000;
                             }
                         }
                     });
+
+                    const minKp = validKps.length > 0 ? Math.min(...validKps) : 0;
+                    const maxKp = validKps.length > 0 ? Math.max(...validKps) : 0;
 
                     const meta = structureInfo?.metadata || {};
                     const pipeTotalLengthKm = parseFloat(
@@ -1920,25 +1939,36 @@ export const GET = withTenant(async (request, { companyId }) => {
                         meta.to ||
                         "N/A";
 
-                    // Determine inspection direction from latest record
+                    // Determine inspection direction from records
                     const latestRecord = records[records.length - 1];
-                    const isDecreaseFlow = String(latestRecord?.flow_direction || latestRecord?.inspection_data?.flow_direction || "")
-                        .toUpperCase()
-                        .includes("DECREASE");
+                    const firstRecord = records[0];
+                    const flowModeStr = String(
+                        latestRecord?.flow_direction ||
+                        latestRecord?.inspection_data?.flow_direction ||
+                        latestRecord?.inspection_data?.flow_mode ||
+                        latestRecord?.inspection_data?.FLOW_MODE ||
+                        firstRecord?.inspection_data?.flow_mode ||
+                        firstRecord?.inspection_data?.FLOW_MODE ||
+                        ""
+                    ).toUpperCase();
+
+                    const isDecreaseFlow = flowModeStr.includes("DECREASE") || flowModeStr.includes("REVERSE") || (validKps.length > 1 && validKps[0] > validKps[validKps.length - 1]);
 
                     // Raw surveyed coverage based on flow direction
-                    const lastInspectedKp = maxKp;
                     let surveyedLengthKm = 0;
                     if (pipeTotalLengthKm > 0) {
                         if (isDecreaseFlow) {
-                            // Reverse inspection: inspected distance = Total Length - Current KP
-                            surveyedLengthKm = Math.max(0, pipeTotalLengthKm - lastInspectedKp);
+                            surveyedLengthKm = Math.max(0, pipeTotalLengthKm - minKp);
                         } else {
-                            // Forward inspection: inspected distance = Current KP
-                            surveyedLengthKm = Math.min(pipeTotalLengthKm, lastInspectedKp);
+                            surveyedLengthKm = Math.min(pipeTotalLengthKm, maxKp);
                         }
                     } else {
                         surveyedLengthKm = maxKp;
+                    }
+
+                    // If all records were surveyed or reached end of line
+                    if (records.length > 0 && validKps.length > 0 && maxKp >= pipeTotalLengthKm * 0.95 && minKp <= 0.05) {
+                        surveyedLengthKm = pipeTotalLengthKm;
                     }
 
                     // Net Completed Length = Surveyed Length - Skipped Length
@@ -1947,7 +1977,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     // Overall Progress Percentage
                     const completionPct = pipeTotalLengthKm > 0
                         ? Math.min(100, Math.max(0, (netCompletedLengthKm / pipeTotalLengthKm) * 100))
-                        : 0;
+                        : (records.length > 0 ? 100 : 0);
 
                     const totalPctSpan = pipeTotalLengthKm > 0 ? (totalSpanKm / pipeTotalLengthKm) * 100 : 0;
                     const totalPctBurial = pipeTotalLengthKm > 0 ? (totalBurialKm / pipeTotalLengthKm) * 100 : 0;
@@ -2008,7 +2038,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 fmd_items: fmdRecords.map((r: any) => ({
                     component: r.structure_components?.code || r.component_type || "N/A",
                     status: r.inspection_data?.member_status || "N/A",
-                    mode: r.rov_job_id ? "ROV" : "DIVE"
+                    mode: isRovRecord(r) ? "ROV" : "DIVE"
                 })),
 
                 mgi_items: mgiRecords.map((r: any) => ({

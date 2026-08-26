@@ -1057,18 +1057,20 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300 dark:text-slate-700">-</span>}</span>
                               </td>
                             );
-                          case 'tape_no':
+                          case 'tape_no': {
+                            const counterDisplay = r.inspection_data?._meta_timecode || r.inspection_data?.counter_no || r.inspection_data?.counter || r.inspection_data?.timecode || r.tape_count_no;
                             return (
                               <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
                                 <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300 dark:text-slate-700">-</span>}</span>
-                                {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
+                                {counterDisplay && (
                                   <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1">
                                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                    {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
+                                    {formatCounter(counterDisplay)}
                                   </div>
                                 )}
                               </td>
                             );
+                          }
                           default: return null;
                         }
                       })}
@@ -1374,18 +1376,20 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                     <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300">-</span>}</span>
                                   </td>
                                 );
-                              case 'tape_no':
+                              case 'tape_no': {
+                                const counterDisplay = r.inspection_data?._meta_timecode || r.inspection_data?.counter_no || r.inspection_data?.counter || r.inspection_data?.timecode || r.tape_count_no;
                                 return (
                                   <td key={col.id} className="px-3 py-3 align-top text-slate-700">
                                     <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300">-</span>}</span>
-                                    {(r.inspection_data?._meta_timecode || r.tape_count_no) && (
+                                    {counterDisplay && (
                                       <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
                                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                        {formatCounter(r.inspection_data?._meta_timecode || r.tape_count_no)}
+                                        {formatCounter(counterDisplay)}
                                       </div>
                                     )}
                                   </td>
                                 );
+                              }
                               default: return null;
                             }
                           })}
