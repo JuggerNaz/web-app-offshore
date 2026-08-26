@@ -51,6 +51,8 @@ interface Structural3DViewerProps {
     useWincairsMode?: boolean;
     wincairsParams?: any[];
     onFallbackComponentsChange?: (fallbackComps: Component3D[]) => void;
+    isInspectionMode?: boolean;
+    selectedInspectionFilters?: string[];
 }
 
 function parseRiserClampInfo(qId: string) {
@@ -99,13 +101,13 @@ function PileLegMeshComponent({
     const pileLegGroup = useMemo(() => {
         let legColor = "#facc15";
         if (isInspectionHighlighted) {
-            if (inspectionStatus === "HAS_ANOMALY") legColor = "#ef4444";
-            else if (inspectionStatus === "NO_ANOMALY") legColor = "#10b981";
-            else legColor = "#94a3b8";
+            if (inspectionStatus === "Incomplete") legColor = "#d97706"; // Dark Yellow
+            else if (inspectionStatus === "Completed") legColor = "#22c55e"; // Green
+            else legColor = "#334155"; // Dark Grey
         }
         return new PileLeg({
             length: safeMeshLength,
-            radius: Math.max(baseThickness / 2, 0.75), // Force a large minimum radius (1.5m diameter) for Pile Legs
+            radius: Math.max(baseThickness / 2, 0.45), // Slimmer, realistic radius for Pile Legs
             color: legColor,
             isSelected,
             isHovered: hovered,
@@ -138,7 +140,7 @@ function PileLegMeshComponent({
 
             {/* Click target wrapper */}
             <mesh castShadow={false} receiveShadow={false}>
-                <cylinderGeometry args={[Math.max(baseThickness / 2, 0.75) + 0.4, Math.max(baseThickness / 2, 0.75) + 0.4, safeMeshLength, 16]} />
+                <cylinderGeometry args={[Math.max(baseThickness / 2, 0.45) + 0.3, Math.max(baseThickness / 2, 0.45) + 0.3, safeMeshLength, 16]} />
                 <meshBasicMaterial transparent opacity={0} />
             </mesh>
 
@@ -177,7 +179,7 @@ const ComponentMesh = ({
     thickness?: number;
     showWeldNumbering?: boolean;
     isInspectionMode?: boolean;
-    inspectionStatus?: "NOT_INSPECTED" | "NO_ANOMALY" | "HAS_ANOMALY";
+    inspectionStatus?: "Pending" | "Completed" | "Incomplete";
     isStatusChecked?: boolean;
     inspectionColor?: string;
     allLayouts?: any[];
@@ -208,7 +210,7 @@ const ComponentMesh = ({
         : isWeld
             ? "#cbd5e1"
             : isClamp
-                ? "#f97316"
+                ? "#facc15"
                 : isRiser
                     ? "#334155"
                     : isConductor
@@ -222,17 +224,17 @@ const ComponentMesh = ({
         : hovered
             ? "#60a5fa"
             : isInspectionHighlighted
-                ? (inspectionStatus === "HAS_ANOMALY"
-                    ? "#ef4444"
-                    : inspectionStatus === "NO_ANOMALY"
-                        ? "#10b981"
-                        : "#94a3b8")
+                ? (inspectionStatus === "Incomplete"
+                    ? "#d97706"
+                    : inspectionStatus === "Completed"
+                        ? "#22c55e"
+                        : "#334155")
                 : defaultMeshColor;
 
     const emissiveColor = isSelected
         ? "#1d4ed8"
-        : (isInspectionHighlighted && inspectionStatus === "HAS_ANOMALY")
-            ? "#ef4444"
+        : (isInspectionHighlighted && inspectionStatus === "Incomplete")
+            ? "#d97706"
             : isWeld
                 ? "#000000"
                 : isClamp
@@ -241,7 +243,7 @@ const ComponentMesh = ({
 
     const emissiveInt = isSelected
         ? 0.7
-        : (isInspectionHighlighted && inspectionStatus === "HAS_ANOMALY")
+        : (isInspectionHighlighted && inspectionStatus === "Incomplete")
             ? 0.5
             : isWeld
                 ? 0
@@ -284,10 +286,15 @@ const ComponentMesh = ({
     const safeMeshLength = Math.max(meshLength, 0.01);
 
     const quaternion = new THREE.Quaternion();
-    if (length > 0.001) {
+    const euler = new THREE.Euler();
+    if (isCaissonSupportComponent) {
+        // Caisson supports wrap around vertical caisson pipes, so force straight vertical alignment
+        direction = new THREE.Vector3(0, 1, 0);
+        euler.set(0, 0, 0);
+    } else if (length > 0.001) {
         quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+        euler.setFromQuaternion(quaternion);
     }
-    const euler = new THREE.Euler().setFromQuaternion(quaternion);
 
     const showLabel = hovered || isSelected || (isWeld && showWeldNumbering);
 
@@ -734,16 +741,13 @@ const ComponentMesh = ({
         const caissonSupportGroup = useMemo(() => {
             let supportColor = "#facc15";
             if (isInspectionHighlighted) {
-                if (inspectionStatus === "HAS_ANOMALY") supportColor = "#ef4444";
-                else if (inspectionStatus === "NO_ANOMALY") supportColor = "#10b981";
-                else supportColor = "#94a3b8";
+                if (inspectionStatus === "Incomplete") supportColor = "#d97706";
+                else if (inspectionStatus === "Completed") supportColor = "#22c55e";
+                else supportColor = "#334155";
             }
             return new CaissonSupport({
-                outerRadius: (baseThickness || 0.3) / 2 + 0.04,
-                height: 0.35,
-                lugProtrusion: 0.16,
-                lugWidth: 0.14,
-                lugHeight: 0.28,
+                outerRadius: (baseThickness || 0.3) / 2 + 0.05,
+                height: 0.45,
                 color: supportColor,
                 isSelected,
                 isHovered: hovered,
@@ -775,7 +779,7 @@ const ComponentMesh = ({
 
                 {/* Click target wrapper */}
                 <mesh castShadow={false} receiveShadow={false}>
-                    <boxGeometry args={[(baseThickness || 0.3) + 0.8, 0.7, (baseThickness || 0.3) + 0.8]} />
+                    <cylinderGeometry args={[(baseThickness || 0.3) / 2 + 0.2, (baseThickness || 0.3) / 2 + 0.2, 0.6, 16]} />
                     <meshBasicMaterial transparent opacity={0} />
                 </mesh>
 
@@ -804,9 +808,9 @@ const ComponentMesh = ({
         const riserClampGroup = useMemo(() => {
             let supportColor = "#facc15";
             if (isInspectionHighlighted) {
-                if (inspectionStatus === "HAS_ANOMALY") supportColor = "#ef4444";
-                else if (inspectionStatus === "NO_ANOMALY") supportColor = "#10b981";
-                else supportColor = "#94a3b8";
+                if (inspectionStatus === "Incomplete") supportColor = "#d97706";
+                else if (inspectionStatus === "Completed") supportColor = "#22c55e";
+                else supportColor = "#334155";
             }
             return new RiserClamp({
                 outerRadius: (riserThickness || 0.3) / 2 + 0.04,
@@ -1333,6 +1337,15 @@ function InstancedComponentViewer({
 
     const [hoveredComp, setHoveredComp] = useState<any | null>(null);
 
+    const getInspectionColor = (item: any, defaultColor: string) => {
+        if (!isInspectionMode) return defaultColor;
+        const status = item.inspectionStatus || "Pending";
+        if (!selectedInspectionFilters.includes(status)) return defaultColor;
+        if (status === "Completed") return "#22c55e";
+        if (status === "Incomplete") return "#d97706";
+        return "#334155"; // Pending
+    };
+
     const toVec3 = (v: any): THREE.Vector3 => {
         if (!v) return new THREE.Vector3(0, 0, 0);
         if (v instanceof THREE.Vector3) return v.clone();
@@ -1483,13 +1496,13 @@ function InstancedComponentViewer({
                             ? "#475569"
                             : "#cbd5e1";
 
-            color.set(defaultColor);
+            color.set(getInspectionColor(item, defaultColor));
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [cylinders, selectedCompId, mainMemberIds]);
+    }, [cylinders, selectedCompId, mainMemberIds, isInspectionMode, selectedInspectionFilters]);
 
     // Apply matrices and colors for Welds (Vertical Purple Cylinder Collars - Pic 2)
     useLayoutEffect(() => {
@@ -1550,13 +1563,14 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#f97316" : "#cbd5e1");
+            const defaultColor = isSelected ? "#f97316" : "#cbd5e1";
+            color.set(getInspectionColor(item, defaultColor));
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [welds, selectedCompId, mainNodeIds]);
+    }, [welds, selectedCompId, mainNodeIds, isInspectionMode, selectedInspectionFilters]);
 
     // Apply matrices and colors for Spheres (Structural Nodes ND)
     useLayoutEffect(() => {
@@ -1578,13 +1592,14 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#f97316" : "#94a3b8");
+            const defaultColor = isSelected ? "#f97316" : "#cbd5e1";
+            color.set(getInspectionColor(item, defaultColor));
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [spheres, selectedCompId, mainNodeIds]);
+    }, [spheres, selectedCompId, mainNodeIds, isInspectionMode, selectedInspectionFilters]);
 
     // Apply matrices and colors for Boxes (Clamps)
     useLayoutEffect(() => {
@@ -1602,13 +1617,14 @@ function InstancedComponentViewer({
 
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            color.set(isSelected ? "#f97316" : "#d97706");
+            const defaultColor = isSelected ? "#f97316" : "#d97706";
+            color.set(getInspectionColor(item, defaultColor));
             mesh.setColorAt(i, color);
         });
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [boxes, selectedCompId]);
+    }, [boxes, selectedCompId, isInspectionMode, selectedInspectionFilters]);
 
     // Apply matrices and colors for Anodes (Standoff style)
     useLayoutEffect(() => {
@@ -1741,7 +1757,7 @@ function InstancedComponentViewer({
             const bodyColor = isSelected ? "#f97316" : "#e2e8f0"; // light grey/zinc for anode body
             const stubColor = isSelected ? "#f97316" : "#94a3b8"; // steel grey for steel core stubs
             
-            color.set(bodyColor);
+            color.set(getInspectionColor(item, bodyColor));
             boxMesh.setColorAt(i, color);
             
             // End points of the anode body
@@ -1763,7 +1779,7 @@ function InstancedComponentViewer({
             const radialStub1Pos = corner1.clone().sub(normal.clone().multiplyScalar(radialLen / 2));
             const radialStub2Pos = corner2.clone().sub(normal.clone().multiplyScalar(radialLen / 2));
             
-            color.set(stubColor);
+            color.set(getInspectionColor(item, stubColor));
 
             // Axial Stub 1 & 2 (parallel to cylinder direction)
             const stubQuatAxial = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cylDir);
@@ -1807,7 +1823,7 @@ function InstancedComponentViewer({
         elbowMesh.instanceMatrix.needsUpdate = true;
         if (elbowMesh.instanceColor) elbowMesh.instanceColor.needsUpdate = true;
         elbowMesh.count = elbowIndex;
-    }, [anodes, cylinders, selectedCompId, mainMemberIds]);
+    }, [anodes, cylinders, selectedCompId, mainMemberIds, isInspectionMode, selectedInspectionFilters]);
 
     // Find layout of selected component for overlay label and highlight mesh
     const selectedLayout = useMemo(() => {
@@ -2121,8 +2137,8 @@ function InstancedComponentViewer({
                     thickness={layout.thickness}
                     showWeldNumbering={showWeldNumbering}
                     isInspectionMode={isInspectionMode}
-                    inspectionStatus={layout.inspectionStatus || "NOT_INSPECTED"}
-                    isStatusChecked={selectedInspectionFilters.includes(layout.inspectionStatus || "NOT_INSPECTED")}
+                    inspectionStatus={layout.inspectionStatus || "Pending"}
+                    isStatusChecked={selectedInspectionFilters.includes(layout.inspectionStatus || "Pending")}
                     inspectionColor={layout.color}
                     allLayouts={layouts}
                 />
@@ -2144,6 +2160,8 @@ export function Structural3DViewer({
     wincairsParams = [],
     onFallbackComponentsChange,
     webapp3dData,
+    isInspectionMode = false,
+    selectedInspectionFilters = ["Pending", "Completed", "Incomplete"],
 }: Structural3DViewerProps) {
     const wincairsParamsMap = useMemo(() => {
         const map = new Map<number, any>();
@@ -2194,7 +2212,6 @@ export function Structural3DViewer({
 
     const isDirectClickRef = useRef(false);
     const [showGrid, setShowGrid] = useState(true);
-    const [isInspectionMode, setIsInspectionMode] = useState(false);
     const [resetTrigger, setResetTrigger] = useState(0);
     const [showWater, setShowWater] = useState(true);
     const [showWeldNumbering, setShowWeldNumbering] = useState(true);
@@ -2207,12 +2224,6 @@ export function Structural3DViewer({
     const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | "inspection" | null>(null);
     const [isActivated, setIsActivated] = useState(false);
     const [isActivating, setIsActivating] = useState(false);
-
-    const [selectedInspectionFilters, setSelectedInspectionFilters] = useState<Array<"NOT_INSPECTED" | "NO_ANOMALY" | "HAS_ANOMALY">>([
-        "NOT_INSPECTED",
-        "NO_ANOMALY",
-        "HAS_ANOMALY"
-    ]);
 
     const handleActivate = () => {
         setIsActivating(true);
@@ -2283,8 +2294,20 @@ export function Structural3DViewer({
             const isLegComponent = code.includes("LG") || qIdUpper.includes("LEG") || dbQIdUpper.includes("LEG") || (sLegStr && sLegStr !== "N/A") || (fLegStr && fLegStr !== "N/A");
             const isMainLegWeld = isWeld && isLegComponent;
 
+            const isInspected = Boolean(dbItem.is_inspected);
+            const hasAnomaly = Boolean(dbItem.has_anomaly);
+            const inspectionStatus = hasAnomaly
+                ? "Incomplete"
+                : isInspected
+                    ? "Completed"
+                    : "Pending";
+
+            let inspectionColor = "#334155"; // Pending
+            if (inspectionStatus === "Completed") inspectionColor = "#22c55e"; // Green
+            if (inspectionStatus === "Incomplete") inspectionColor = "#d97706"; // Dark Yellow
+
             const weldColor = isWeld ? "#cbd5e1" : null;
-            const finalColor = isInspectionMode ? dbItem.inspection_color : (weldColor || dbItem.color_hex || "#64748b");
+            const finalColor = isInspectionMode ? inspectionColor : (weldColor || dbItem.color_hex || "#cbd5e1");
 
             let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
                 ? [Number(dbItem.start_x), Number(dbItem.start_y), Number(dbItem.start_z)]
@@ -2306,14 +2329,6 @@ export function Structural3DViewer({
             }
 
             const enrichedComp = { ...comp, code, q_id };
-
-            const isInspected = Boolean(dbItem.is_inspected);
-            const hasAnomaly = Boolean(dbItem.has_anomaly);
-            const inspectionStatus = hasAnomaly
-                ? "HAS_ANOMALY"
-                : isInspected
-                    ? "NO_ANOMALY"
-                    : "NOT_INSPECTED";
 
             const sNodeMap = String(comp?.s_node || comp?.metadata?.s_node || "").trim().toUpperCase();
             const fNodeMap = String(comp?.f_node || comp?.metadata?.f_node || "").trim().toUpperCase();
@@ -2972,125 +2987,7 @@ export function Structural3DViewer({
             )}
 
             <div className="absolute top-6 right-6 flex items-center gap-3 z-50">
-                {/* Inspection Filter */}
-                <div className="relative">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setOpenDropdown(openDropdown === "inspection" ? null : "inspection")}
-                        className={cn(
-                            "bg-white/90 backdrop-blur-md h-9 px-4 rounded-xl border transition-all font-black text-[10px] uppercase tracking-widest",
-                            isInspectionMode
-                                ? "border-purple-400 text-purple-600 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                                : "border-slate-200 text-slate-500"
-                        )}
-                    >
-                        Inspection {isInspectionMode ? `(${selectedInspectionFilters.length}/3)` : "OFF"} ▼
-                    </Button>
 
-                    {openDropdown === "inspection" && (
-                        <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-72 flex flex-col gap-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                                    Inspection Mode
-                                </span>
-                                <div className="flex items-center gap-2">
-                                    {selectedInspectionFilters.length < 3 && (
-                                        <button
-                                            onClick={() => {
-                                                setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
-                                                setIsInspectionMode(true);
-                                            }}
-                                            className="text-[9px] font-black uppercase text-purple-600 hover:text-purple-800 transition-colors"
-                                        >
-                                            Select All
-                                        </button>
-                                    )}
-                                    <label className="flex items-center cursor-pointer">
-                                        <div className="relative">
-                                            <input
-                                                type="checkbox"
-                                                className="sr-only"
-                                                checked={isInspectionMode}
-                                                onChange={(e) => {
-                                                    const nextState = e.target.checked;
-                                                    setIsInspectionMode(nextState);
-                                                    if (nextState && selectedInspectionFilters.length === 0) {
-                                                        setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
-                                                    }
-                                                }}
-                                            />
-                                            <div className={`block w-8 h-5 rounded-full ${isInspectionMode ? 'bg-purple-500' : 'bg-slate-200'}`}></div>
-                                            <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition ${isInspectionMode ? 'transform translate-x-3' : ''}`}></div>
-                                        </div>
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col gap-1.5 py-1">
-                                {/* Not Inspected Checkbox */}
-                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedInspectionFilters.includes("NOT_INSPECTED")}
-                                        onChange={(e) => {
-                                            const checked = e.target.checked;
-                                            if (!isInspectionMode) setIsInspectionMode(true);
-                                            if (checked) {
-                                                setSelectedInspectionFilters((prev) => [...prev, "NOT_INSPECTED"]);
-                                            } else {
-                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NOT_INSPECTED"));
-                                            }
-                                        }}
-                                        className="h-4 w-4 rounded border-slate-300 text-slate-600 focus:ring-purple-500 accent-slate-600"
-                                    />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-slate-400 border border-slate-500 shrink-0" />
-                                    <span className="text-xs font-bold text-slate-700">Not Inspected</span>
-                                </label>
-
-                                {/* Inspected (No Anomaly) Checkbox */}
-                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-emerald-50/60 cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedInspectionFilters.includes("NO_ANOMALY")}
-                                        onChange={(e) => {
-                                            const checked = e.target.checked;
-                                            if (!isInspectionMode) setIsInspectionMode(true);
-                                            if (checked) {
-                                                setSelectedInspectionFilters((prev) => [...prev, "NO_ANOMALY"]);
-                                            } else {
-                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NO_ANOMALY"));
-                                            }
-                                        }}
-                                        className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 accent-emerald-600"
-                                    />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] border border-emerald-600 shrink-0" />
-                                    <span className="text-xs font-bold text-emerald-700">Inspected (No Anomaly)</span>
-                                </label>
-
-                                {/* Inspected (Has Anomaly) Checkbox */}
-                                <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50/80 cursor-pointer transition-colors border border-transparent hover:border-red-100">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedInspectionFilters.includes("HAS_ANOMALY")}
-                                        onChange={(e) => {
-                                            const checked = e.target.checked;
-                                            if (!isInspectionMode) setIsInspectionMode(true);
-                                            if (checked) {
-                                                setSelectedInspectionFilters((prev) => [...prev, "HAS_ANOMALY"]);
-                                            } else {
-                                                setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "HAS_ANOMALY"));
-                                            }
-                                        }}
-                                        className="h-4 w-4 rounded border-red-400 text-red-600 focus:ring-red-500 accent-red-600"
-                                    />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] border border-red-600 shrink-0 animate-pulse" />
-                                    <span className="text-xs font-bold text-red-700">Inspected (Has Anomaly)</span>
-                                </label>
-                            </div>
-                        </div>
-                    )}
-                </div>
 
                 {/* Elevation Filter */}
                 <div className="relative">
@@ -3262,6 +3159,24 @@ export function Structural3DViewer({
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                                     Display
                                 </span>
+                                <input
+                                    type="checkbox"
+                                    title="Toggle All Display Options"
+                                    checked={showWater && showGrid && showWeldNumbering && showElevations}
+                                    ref={(el) => {
+                                        if (el) {
+                                            el.indeterminate = (showWater || showGrid || showWeldNumbering || showElevations) && !(showWater && showGrid && showWeldNumbering && showElevations);
+                                        }
+                                    }}
+                                    onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        setShowWater(checked);
+                                        setShowGrid(checked);
+                                        setShowWeldNumbering(checked);
+                                        setShowElevations(checked);
+                                    }}
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                />
                             </div>
                             <div className="flex flex-col gap-2 py-1">
                                 <label className="flex items-center gap-3 hover:bg-slate-50 p-1.5 rounded-lg cursor-pointer transition-colors">

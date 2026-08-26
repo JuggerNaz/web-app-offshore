@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Building2, ArrowRight, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown, Layers2, Activity, Plus } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import { getStoragePublicUrl } from "@/utils/storage";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,23 @@ interface FilterState {
 }
 
 export default function PlatformPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 flex flex-col items-center justify-center p-20 space-y-4">
+          <div className="w-16 h-16 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
+          <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+            Synchronizing Fleet Data...
+          </p>
+        </div>
+      }
+    >
+      <PlatformPageContent />
+    </Suspense>
+  );
+}
+
+function PlatformPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const fieldId = searchParams.get("field");

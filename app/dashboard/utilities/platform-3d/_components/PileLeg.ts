@@ -15,7 +15,7 @@ export class PileLeg extends THREE.Group {
         this.name = 'PileLeg';
 
         const length = options.length ?? 4.0;
-        const radius = options.radius ?? 0.4;
+        const radius = options.radius ?? 0.3;
 
         let baseColorHex = options.color ?? '#facc15'; // Safety Yellow
         if (options.isSelected) {
@@ -45,16 +45,17 @@ export class PileLeg extends THREE.Group {
         this.add(mainCylinderMesh);
 
         // Calculate Y offsets (centered at y = 0)
-        let yTop = length / 2;
-        let yBot = -length / 2;
-        let topSign = 1;
-        let botSign = -1;
+        // Default inverted so Main Crown Box is positioned at the top in world space
+        let yTop = -length / 2;
+        let yBot = length / 2;
+        let topSign = -1;
+        let botSign = 1;
         
         if (options.flipCrowns) {
-            yTop = -length / 2;
-            yBot = length / 2;
-            topSign = -1;
-            botSign = 1;
+            yTop = length / 2;
+            yBot = -length / 2;
+            topSign = 1;
+            botSign = -1;
         }
 
         // ----------------------------------------------------
@@ -62,8 +63,8 @@ export class PileLeg extends THREE.Group {
         // ----------------------------------------------------
         const crownGroup = new THREE.Group();
         const crownHeight = Math.min(1.2, length * 0.3);
-        const horizontalMemberRadius = 1.0; // Offset by 1m so it's not buried inside the horizontal cross member
-        const crownCenterY = yTop - topSign * (crownHeight / 2 + horizontalMemberRadius);
+        const topOffsetBuffer = 0.15; // Shifted closer to the top end
+        const crownCenterY = yTop - topSign * (crownHeight / 2 + topOffsetBuffer);
         crownGroup.position.set(0, crownCenterY, 0);
 
         // A. Square Outer Collar / Box Wrapper
@@ -134,7 +135,8 @@ export class PileLeg extends THREE.Group {
         // ----------------------------------------------------
         const botCrownGroup = new THREE.Group();
         const botCrownHeight = Math.min(0.6, length * 0.15);
-        const botCrownCenterY = yBot - botSign * (botCrownHeight / 2 + horizontalMemberRadius);
+        const botOffsetBuffer = 0.15; // Shifted closer to the bottom end
+        const botCrownCenterY = yBot - botSign * (botCrownHeight / 2 + botOffsetBuffer);
         botCrownGroup.position.set(0, botCrownCenterY, 0);
 
         // A. Lower Flange Collar Plate

@@ -35,6 +35,23 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function DetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 flex flex-col items-center justify-center p-20 space-y-4">
+          <div className="w-16 h-16 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
+          <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+            Synchronizing Data...
+          </p>
+        </div>
+      }
+    >
+      <DetailPageContent />
+    </Suspense>
+  );
+}
+
+function DetailPageContent() {
   const { id } = useParams();
   const type = "platform" as string;
   const router = useRouter();

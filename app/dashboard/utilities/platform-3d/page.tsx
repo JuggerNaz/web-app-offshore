@@ -43,6 +43,7 @@ import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog"
 import { WincairsFallbackDialog } from "@/components/dialogs/wincairs-fallback-dialog";
 import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
 import { PlatformSpecsDialog } from "@/components/dialogs/platform-specs-dialog";
+import { InspectionStatusDialog } from "@/components/dialogs/inspection-status-dialog";
 import { ExternalLink } from "lucide-react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
@@ -98,6 +99,11 @@ export default function Platform3DPage() {
     const [componentSearchQuery, setComponentSearchQuery] = useState("");
     const [showComponentSearchDropdown, setShowComponentSearchDropdown] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
+
+    // Inspection Status state
+    const [isInspectionDialogOpen, setIsInspectionDialogOpen] = useState(false);
+    const [inspectionJobpackId, setInspectionJobpackId] = useState<number | null>(null);
+    const [inspectionFilters, setInspectionFilters] = useState<string[]>(["Completed", "Incomplete", "Pending"]);
 
     // WINCAIRS Mode state & Fallback Dialog state
     const [useWincairsMode, setUseWincairsMode] = useState(false);
@@ -448,6 +454,28 @@ export default function Platform3DPage() {
                             <Printer className="h-3.5 w-3.5" />
                             <span>Print Face</span>
                         </Button>
+
+                        {/* 4. Inspection Status Button */}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsInspectionDialogOpen(true)}
+                            className={cn(
+                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all relative overflow-hidden",
+                                inspectionJobpackId
+                                    ? "bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:border-purple-800/50 dark:text-purple-300"
+                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300"
+                            )}
+                            title="View and filter platform structural anomalies by Inspection Jobpack"
+                        >
+                            <Activity className={cn("h-3.5 w-3.5", inspectionJobpackId ? "text-purple-500" : "")} />
+                            <span>Inspection Status</span>
+                            
+                            {/* Active Filter Badge */}
+                            {inspectionJobpackId !== null && (
+                                <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-purple-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
+                            )}
+                        </Button>
                     </div>
                 </div>
 
@@ -473,6 +501,8 @@ export default function Platform3DPage() {
                             wincairsParams={wincairsParams}
                             onFallbackComponentsChange={setFallbackComponents}
                             webapp3dData={useWebapp3dConnection ? webapp3dData : null}
+                            isInspectionMode={inspectionJobpackId !== null && inspectionFilters.length > 0}
+                            selectedInspectionFilters={inspectionFilters}
                         />
                     </div>
 
@@ -523,6 +553,18 @@ export default function Platform3DPage() {
                     componentLayouts={webapp3dData?.components && webapp3dData.components.length > 0 ? webapp3dData.components : (components || [])}
                     foundationMembers={webapp3dData?.foundationMembers || []}
                     elevations={elevations}
+                />
+
+                {/* Inspection Status Dialog */}
+                <InspectionStatusDialog
+                    isOpen={isInspectionDialogOpen}
+                    onClose={() => setIsInspectionDialogOpen(false)}
+                    platformId={selectedPlatform.plat_id}
+                    platformTitle={selectedPlatform.title}
+                    selectedFilters={inspectionFilters}
+                    onFiltersChange={setInspectionFilters}
+                    selectedJobpackId={inspectionJobpackId}
+                    onJobpackChange={setInspectionJobpackId}
                 />
 
                 {/* Platform Specifications View-Only Popup Modal */}
