@@ -179,7 +179,7 @@ const ComponentMesh = ({
     thickness?: number;
     showWeldNumbering?: boolean;
     isInspectionMode?: boolean;
-    inspectionStatus?: "Pending" | "Completed" | "Incomplete";
+    inspectionStatus?: "Pending" | "Completed" | "Incomplete" | "NOT_INSPECTED";
     isStatusChecked?: boolean;
     inspectionColor?: string;
     allLayouts?: any[];
@@ -214,7 +214,7 @@ const ComponentMesh = ({
                 : isRiser
                     ? "#334155"
                     : isConductor
-                        ? "#475569"
+                        ? "#94a3b8" // Lighter slate tone for conductors (distinct, lighter than #475569, darker than member #cbd5e1)
                         : "#cbd5e1";
 
     const isInspectionHighlighted = isInspectionMode && isStatusChecked;
@@ -1493,7 +1493,7 @@ function InstancedComponentViewer({
                     : isRiser
                         ? "#334155"
                         : isConductor
-                            ? "#475569"
+                            ? "#94a3b8"
                             : "#cbd5e1";
 
             color.set(getInspectionColor(item, defaultColor));

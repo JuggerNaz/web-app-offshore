@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Search, Activity, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { Search, Activity, CheckCircle2, AlertTriangle, Clock, RotateCcw, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
@@ -57,6 +57,12 @@ export function InspectionStatusDialog({
         } else {
             onFiltersChange([...selectedFilters, filter]);
         }
+    };
+
+    const handleReset = () => {
+        onFiltersChange([]);
+        onJobpackChange(null);
+        setSearchQuery("");
     };
 
     return (
@@ -204,15 +210,29 @@ export function InspectionStatusDialog({
                                 );
                             })
                         ) : (
-                            <div className="text-center py-8">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No jobpacks found</p>
+                            <div className="flex flex-col items-center justify-center py-8 px-4 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-white/50 dark:bg-slate-900/50">
+                                <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-2 text-slate-400">
+                                    <AlertCircle className="w-5 h-5" />
+                                </div>
+                                <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">No jobpack found</p>
+                                <p className="text-[11px] text-slate-400 mt-0.5">There are no matching inspection jobpacks for this platform.</p>
                             </div>
                         )}
                     </div>
                 </div>
 
-                <div className="p-4 bg-slate-100 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 flex justify-end">
-                    <Button onClick={onClose} className="rounded-xl px-8 font-bold bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 shadow-lg">
+                <div className="p-4 bg-slate-100 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleReset}
+                        className="rounded-xl px-4 h-10 text-xs font-bold border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-200/70 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all gap-2"
+                        title="Clear all inspection status filters and restore standard 3D view"
+                    >
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Reset Filter</span>
+                    </Button>
+                    <Button onClick={onClose} className="rounded-xl px-8 h-10 font-bold bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 shadow-lg">
                         Done
                     </Button>
                 </div>

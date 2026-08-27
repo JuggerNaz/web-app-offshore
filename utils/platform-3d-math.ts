@@ -2093,7 +2093,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         component: c,
                         start: [startMid.midpoint.x, startMid.elv, startMid.midpoint.z],
                         end: [endMid.midpoint.x, endMid.elv, endMid.midpoint.z],
-                        thickness: 0.10,
+                        thickness: 0.35,
                     });
                 }
                 // Append bottom extension segment if target botElv is lower than the last guide frame
@@ -2104,7 +2104,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         component: c,
                         start: [lastFrame.midpoint.x, lastFrame.elv, lastFrame.midpoint.z],
                         end: [lastFrame.midpoint.x, botElv, lastFrame.midpoint.z],
-                        thickness: 0.10,
+                        thickness: 0.35,
                     });
                 }
                 // Prepend top extension segment if target topElv is higher than the first guide frame
@@ -2115,7 +2115,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         component: c,
                         start: [firstFrame.midpoint.x, topElv, firstFrame.midpoint.z],
                         end: [firstFrame.midpoint.x, firstFrame.elv, firstFrame.midpoint.z],
-                        thickness: 0.10,
+                        thickness: 0.35,
                     });
                 }
             } else {
@@ -2127,7 +2127,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         component: c,
                         start: [startNode.x, topElv, startNode.z],
                         end: [startNode.x, botElv, startNode.z],
-                        thickness: 0.10,
+                        thickness: 0.35,
                     });
                 }
             }
