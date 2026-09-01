@@ -2395,18 +2395,28 @@ export async function POST(request: NextRequest) {
 
         if (selectedInspNos && selectedInspNos.length > 0) {
           // Scoped cleanup: only delete records belonging to the selected jobpack(s)
-          const { data: targetJps } = await (supabase.from as any)("jobpack")
-            .select("jobpack_id")
-            .eq("structure_id", resolvedStructureId)
-            .in("oracle_insp_no", selectedInspNos);
+          const { data: allStructJps } = await (supabase.from as any)("jobpack")
+            .select("id, name, oracle_insp_no, metadata, structure_id")
+            .or(`structure_id.eq.${resolvedStructureId},structure_id.eq.platform-${resolvedStructureId},structure_id.eq.pipeline-${resolvedStructureId}`);
 
-          const targetJpIds = targetJps?.map((j: any) => j.jobpack_id) || [];
+          const inspSet = new Set(selectedInspNos.map((s: any) => String(s).trim().toUpperCase()));
+
+          const targetJps = (allStructJps || []).filter((j: any) => {
+            const oNo = String(j.oracle_insp_no || "").trim().toUpperCase();
+            const n = String(j.name || "").trim().toUpperCase();
+            const mNo = String(j.metadata?.oracle_insp_no || j.metadata?.inspno || "").trim().toUpperCase();
+            return inspSet.has(oNo) || inspSet.has(n) || inspSet.has(mNo);
+          });
+
+          const targetJpIds = targetJps.map((j: any) => j.id).filter(Boolean);
           if (targetJpIds.length > 0) {
+            logs.push(`Found ${targetJpIds.length} existing Job Pack(s) in Postgres to overwrite (IDs: ${targetJpIds.join(', ')})...`);
+
             const { data: insps } = await supabase
               .from("insp_records")
               .select("insp_id")
               .in("jobpack_id", targetJpIds);
-            targetInspIds = insps?.map(i => i.insp_id) || [];
+            targetInspIds = insps?.map((i: any) => i.insp_id) || [];
 
             const { data: rJobs } = await (supabase.from as any)("insp_rov_jobs")
               .select("rov_job_id")
@@ -2418,8 +2428,13 @@ export async function POST(request: NextRequest) {
               .in("jobpack_id", targetJpIds);
             targetDiveJobIds = dJobs?.map((j: any) => j.dive_job_id) || [];
 
+            const { data: sows } = await (supabase.from as any)("u_sow").select("id").in("jobpack_id", targetJpIds);
+            const sowIds = sows?.map((s: any) => s.id) || [];
+            if (sowIds.length > 0) {
+              await (supabase.from as any)("u_sow_items").delete().in("sow_id", sowIds);
+            }
             await (supabase.from as any)("u_sow").delete().in("jobpack_id", targetJpIds);
-            await (supabase.from as any)("jobpack").delete().in("jobpack_id", targetJpIds);
+            await (supabase.from as any)("jobpack").delete().in("id", targetJpIds);
           }
         } else {
           // Full structure inspection cleanup
@@ -2435,6 +2450,11 @@ export async function POST(request: NextRequest) {
           const { data: diveJobs } = await (supabase.from as any)("insp_dive_jobs").select("dive_job_id").eq("structure_id", resolvedStructureId);
           targetDiveJobIds = diveJobs?.map((j: any) => j.dive_job_id) || [];
 
+          const { data: allSows } = await (supabase.from as any)("u_sow").select("id").eq("structure_id", resolvedStructureId);
+          const allSowIds = allSows?.map((s: any) => s.id) || [];
+          if (allSowIds.length > 0) {
+            await (supabase.from as any)("u_sow_items").delete().in("sow_id", allSowIds);
+          }
           await (supabase.from as any)("u_sow").delete().eq("structure_id", resolvedStructureId);
           await (supabase.from as any)("jobpack").delete().eq("structure_id", resolvedStructureId);
         }
@@ -7950,12 +7970,27 @@ export async function POST(request: NextRequest) {
               let sourceId: number = resolvedStructureId;
               let sourceType: string = 'STRUCTURE';
 
+              // Pipeline default component fallback (e.g. PIPE-1162 or PP trunkline component)
+              const firstCompId = compIdMap.size > 0 ? Array.from(compIdMap.values())[0] : null;
+
               if (oInspId && inspIdCache.has(oInspId)) {
                 sourceId = inspIdCache.get(oInspId)!;
                 sourceType = 'INSPECTION';
               } else if (oCompId && compIdMap.has(oCompId)) {
                 sourceId = compIdMap.get(oCompId)!;
                 sourceType = 'COMPONENT';
+              } else if (structureType === 'pipeline' && firstCompId) {
+                // If it's a pipeline and title/file indicates an anomaly or inspection, link to the pipeline component
+                const attTitle = String(rObj.TITLE || rObj.A_FILENAME || "").toUpperCase();
+                if (attTitle.includes("ANOMALY") || attTitle.includes("A-") || attTitle.includes("INSP") || attTitle.includes("PHOTO")) {
+                  sourceId = firstCompId;
+                  sourceType = 'COMPONENT';
+                  logs.push(`Attachment ${rObj.ATTACH_ID} (${rObj.TITLE || rObj.A_FILENAME}) linked to Pipeline Component ${firstCompId}.`);
+                } else {
+                  sourceId = resolvedStructureId;
+                  sourceType = 'STRUCTURE';
+                  logs.push(`Attachment ${rObj.ATTACH_ID} linked to Pipeline Structure ${resolvedStructureId}.`);
+                }
               } else {
                 sourceId = resolvedStructureId;
                 sourceType = 'STRUCTURE';

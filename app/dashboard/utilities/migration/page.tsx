@@ -16,7 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import useSWR from "swr";
+import { fetcher } from "@/utils/utils";
 import MigrationReportPreview, { getTableMappingNames } from "@/components/migration/migration-report-preview";
 import { createClient } from "@/utils/supabase/client";
 import specUiConfig from "@/utils/spec-ui-config.json";
@@ -68,6 +71,17 @@ export default function MigrationDashboard() {
   const [mappingStructureType, setMappingStructureType] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
   
   const [oracleColumnsCache, setOracleColumnsCache] = useState<Record<string, string[]>>({});
+
+  const [reMigrationConfirmOpen, setReMigrationConfirmOpen] = useState(false);
+  const [overlappingJobpacks, setOverlappingJobpacks] = useState<any[]>([]);
+  const [pendingInspNos, setPendingInspNos] = useState<string[]>([]);
+
+  // Fetch already migrated jobpacks in destination database for the selected structure
+  const { data: existingDestJobpacksData, mutate: mutateExistingDestJobpacks } = useSWR(
+    selectedStructureId ? `/api/jobpack?structure_id=${selectedStructureId}` : null,
+    fetcher
+  );
+  const existingDestJobpacks: any[] = existingDestJobpacksData?.data || [];
 
   const [missingModalData, setMissingModalData] = useState<{
     tableName: string;
@@ -792,7 +806,29 @@ export default function MigrationDashboard() {
       toast.error("Please select at least one Active Job Pack from the sidebar or choose 'Migrate Components Only'.");
       return;
     }
-    
+
+    // Check if any of the selected job packs have already been migrated in Supabase
+    if (!componentsOnly && selectedInspNos.length > 0) {
+      const selectedInspSet = new Set(selectedInspNos.map((s: any) => String(s).trim().toUpperCase()));
+      const overlapping = existingDestJobpacks.filter((ejp: any) => {
+        const oNo = String(ejp.oracle_insp_no || "").trim().toUpperCase();
+        const n = String(ejp.name || "").trim().toUpperCase();
+        const mNo = String(ejp.metadata?.oracle_insp_no || ejp.metadata?.inspno || "").trim().toUpperCase();
+        return (oNo && selectedInspSet.has(oNo)) || (n && selectedInspSet.has(n)) || (mNo && selectedInspSet.has(mNo));
+      });
+
+      if (overlapping.length > 0) {
+        setOverlappingJobpacks(overlapping);
+        setPendingInspNos(selectedInspNos);
+        setReMigrationConfirmOpen(true);
+        return;
+      }
+    }
+
+    await executeMigrationStream(selectedInspNos);
+  };
+
+  const executeMigrationStream = async (selectedInspNos: string[]) => {
     setMigrationReport(null);
     setMigrationLogs(["Starting migration process..."]);
     setMigrationProgress({
@@ -885,6 +921,7 @@ export default function MigrationDashboard() {
                 });
                 toast.success(event.message || "Migration completed!");
                 setMigrationReport(event.report);
+                mutateExistingDestJobpacks();
               } else if (event.type === "error") {
                 toast.error(event.message || "Migration failed");
               }
@@ -900,6 +937,7 @@ export default function MigrationDashboard() {
       setMigrationLogs(prev => [...prev, `ERROR: ${err.message}`]);
     } finally {
       setIsMigrating(false);
+      mutateExistingDestJobpacks();
     }
   };
 
@@ -1526,6 +1564,15 @@ export default function MigrationDashboard() {
                                   const isChecked = selectedJobpacks.some(p => (p.INSPNO || p.inspno) === inspNo);
                                   const isCurrentActive = selectedJobpack && (selectedJobpack.INSPNO === inspNo || selectedJobpack.inspno === inspNo);
                                   
+                                  const isAlreadyMigrated = existingDestJobpacks.some((ejp: any) => {
+                                    const oNo = String(ejp.oracle_insp_no || "").trim().toUpperCase();
+                                    const n = String(ejp.name || "").trim().toUpperCase();
+                                    const mNo = String(ejp.metadata?.oracle_insp_no || ejp.metadata?.inspno || "").trim().toUpperCase();
+                                    const targetNo = String(inspNo || "").trim().toUpperCase();
+                                    const targetName = String(jobName || "").trim().toUpperCase();
+                                    return (oNo && oNo === targetNo) || (n && (n === targetNo || n === targetName)) || (mNo && mNo === targetNo);
+                                  });
+
                                   return (
                                     <div 
                                       key={`${jobName}-${index}`} 
@@ -1555,6 +1602,11 @@ export default function MigrationDashboard() {
                                             {isCurrentActive && (
                                               <span className="text-[8px] font-black uppercase text-indigo-600 bg-indigo-100 dark:bg-indigo-900/50 px-1 py-0.2 rounded">
                                                 Active Preview
+                                              </span>
+                                            )}
+                                            {isAlreadyMigrated && (
+                                              <span className="text-[8px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-300/50 dark:border-amber-800/40 px-1.5 py-0.2 rounded shrink-0">
+                                                Already Migrated
                                               </span>
                                             )}
                                           </div>
@@ -3358,6 +3410,67 @@ export default function MigrationDashboard() {
             </DialogContent>
           </Dialog>
         )}
+
+        {/* Re-Migration & Overwrite Confirmation Dialog */}
+        <Dialog open={reMigrationConfirmOpen} onOpenChange={setReMigrationConfirmOpen}>
+          <DialogContent className="max-w-lg bg-slate-950 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl p-6">
+            <DialogHeader className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg font-black uppercase text-white tracking-tight">
+                    Re-Migration & Overwrite Warning
+                  </DialogTitle>
+                  <p className="text-xs text-slate-400 font-medium">
+                    Job Pack(s) already exist in Supabase for this structure
+                  </p>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="py-4 space-y-3 text-xs text-slate-300">
+              <p>
+                The following Job Pack(s) were previously migrated to this structure in the destination database:
+              </p>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-1.5 font-mono text-[11px] max-h-36 overflow-y-auto">
+                {overlappingJobpacks.map((jp, i) => (
+                  <div key={i} className="flex items-center justify-between text-amber-400">
+                    <span className="font-bold">• {jp.name || jp.oracle_insp_no || "Job Pack"}</span>
+                    {jp.oracle_insp_no && (
+                      <span className="text-[10px] text-slate-400">({jp.oracle_insp_no})</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-800/40 text-rose-300 text-[11px] leading-relaxed">
+                <strong className="text-rose-200">⚠️ Critical Action:</strong> Continuing will completely <span className="underline font-bold">DELETE</span> all existing inspection records, anomalies, video logs, dive/ROV jobs, SOW items, and attachments associated with these Job Pack(s) before importing fresh data from Oracle.
+              </div>
+            </div>
+
+            <DialogFooter className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReMigrationConfirmOpen(false)}
+                className="rounded-xl border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setReMigrationConfirmOpen(false);
+                  executeMigrationStream(pendingInspNos);
+                }}
+                className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-lg shadow-amber-600/20"
+              >
+                Proceed & Overwrite Inspection Data
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <MigrationReportPreview
           isOpen={isReportOpen}

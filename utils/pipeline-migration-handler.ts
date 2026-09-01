@@ -1812,12 +1812,20 @@ export async function migratePipelineAttachments(ctx: PipelineMigrationContext) 
       let sourceType: "inspection" | "component" | "structure" = "structure";
       let sourceId = ctx.resolvedStructureId;
 
+      const firstCompId = compIdMap.size > 0 ? Array.from(compIdMap.values())[0] : null;
+
       if (oracleInspId && inspIdCache.has(oracleInspId)) {
         sourceType = "inspection";
         sourceId = inspIdCache.get(oracleInspId)!;
       } else if (oracleCompId && compIdMap.has(oracleCompId)) {
         sourceType = "component";
         sourceId = compIdMap.get(oracleCompId)!;
+      } else if (firstCompId) {
+        const attTitle = String(r.TITLE || r.A_FILENAME || r.FILENAME || "").toUpperCase();
+        if (attTitle.includes("ANOMALY") || attTitle.includes("A-") || attTitle.includes("INSP") || attTitle.includes("PHOTO")) {
+          sourceType = "component";
+          sourceId = firstCompId;
+        }
       }
 
       const fileName = String(r.A_FILENAME || r.FILENAME || r.NAME || `file_${r.ATTACH_ID || migratedCount + 1}`).trim();

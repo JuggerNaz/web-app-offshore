@@ -161,32 +161,42 @@ export const GET = withAuth(
       inspAtts = iAtts || [];
     }
 
-    const compsWithAtts = new Set();
-
-    if (directAtts) {
-      directAtts.forEach((att: any) => compsWithAtts.add(att.source_id));
+    // Query direct anomaly attachments
+    const anomIds = (componentAnomalies || []).map((a: any) => a.anomaly_id).filter(Boolean);
+    let anomAtts: any[] = [];
+    if (anomIds.length > 0) {
+      const { data: aAtts } = await supabase
+        .from("attachment")
+        .select("source_id")
+        .in("source_id", anomIds)
+        .in("source_type", ["anomaly", "ANOMALY", "defect", "DEFECT"]);
+      anomAtts = aAtts || [];
     }
 
-    if (inspRecords && inspAtts) {
-      const inspAttsSet = new Set(inspAtts.map((a: any) => a.source_id));
-      inspRecords.forEach((r: any) => {
-        if (inspAttsSet.has(r.insp_id)) {
-          if (r.component_id) {
-            compsWithAtts.add(r.component_id);
-          }
-        }
-      });
-    }
+    // Query structure-level anomaly attachments
+    const { data: strAtts } = await supabase
+      .from("attachment")
+      .select("id, name, meta")
+      .in("source_type", ["structure", "STRUCTURE", "pipeline", "PIPELINE", "platform", "PLATFORM"])
+      .eq("source_id", structureIdNumber);
+
+    const hasStrAnomalyFiles = (strAtts || []).some((att: any) => {
+      const n = String(att.name || "").toUpperCase();
+      const t = String(att.meta?.title || "").toUpperCase();
+      return n.startsWith("ANOMALY ") || t.startsWith("ANOMALY ") || n.includes("ANOMALY") || n.includes("A-");
+    });
+
+    const directAttsSet = new Set((directAtts || []).map((a: any) => a.source_id));
+    const inspAttsSet = new Set((inspAtts || []).map((a: any) => a.source_id));
+    const anomAttsSet = new Set(anomAtts.map((a: any) => a.source_id));
 
     // Apply has_attachment flag and enrich with inspections/anomalies
     // (matching by component_id OR component QID so legacy records link correctly)
     data.forEach((item: any) => {
-      item.has_attachment = compsWithAtts.has(item.id);
-
       const qidUpper = item.q_id ? item.q_id.toUpperCase() : "";
 
       item.inspections = (inspRecords || []).filter((r: any) => {
-        if (r.component_id && r.component_id === item.id) return true;
+        if (r.component_id && (r.component_id === item.id || (item.comp_id && r.component_id === item.comp_id))) return true;
         if (qidUpper) {
           if (r.component_qid && String(r.component_qid).toUpperCase() === qidUpper) return true;
           if (r.inspection_data?.component && String(r.inspection_data.component).toUpperCase() === qidUpper) return true;
@@ -201,8 +211,8 @@ export const GET = withAuth(
         let isMatch = false;
         if (a.component_id && a.component_id === item.id) isMatch = true;
         else if (qidUpper) {
-          if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) isMatch = true;
-          if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) isMatch = true;
+          if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) return true;
+          if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) return true;
         }
 
         if (isMatch) {
@@ -213,6 +223,12 @@ export const GET = withAuth(
         }
         return false;
       }) || [];
+
+      // Component has attachment if it has direct attachment, inspection attachment, or anomaly attachment
+      const hasDirect = directAttsSet.has(item.id) || (item.comp_id && directAttsSet.has(item.comp_id));
+      const hasInspAtt = item.inspections.some((r: any) => inspAttsSet.has(r.insp_id));
+      const hasAnomAtt = item.anomalies.some((a: any) => anomAttsSet.has(a.anomaly_id)) || (item.anomalies.length > 0 && hasStrAnomalyFiles);
+      item.has_attachment = Boolean(hasDirect || hasInspAtt || hasAnomAtt);
 
       const hasAnom =
         item.anomalies.length > 0 ||
