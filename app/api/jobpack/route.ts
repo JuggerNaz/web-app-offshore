@@ -19,23 +19,24 @@ export const GET = withTenant(async (request, { companyId }) => {
   const hasInspection = url.searchParams.get("has_inspection") === "true";
 
   if (hasInspection) {
-    const { data: diveJobPackIds } = await (supabase as any)
-      .from("insp_dive_jobs")
-      .select("jobpack_id")
-      .eq("company_id", companyId)
-      .not("jobpack_id", "is", null);
-
-    const { data: rovJobPackIds } = await (supabase as any)
-      .from("insp_rov_jobs")
-      .select("jobpack_id")
-      .eq("company_id", companyId)
-      .not("jobpack_id", "is", null);
-
-    const { data: directJobPackIds } = await (supabase as any)
-      .from("insp_records")
-      .select("jobpack_id")
-      .eq("company_id", companyId)
-      .not("jobpack_id", "is", null);
+    // The three ID lookups are independent — run them in parallel.
+    const [{ data: diveJobPackIds }, { data: rovJobPackIds }, { data: directJobPackIds }] = await Promise.all([
+      (supabase as any)
+        .from("insp_dive_jobs")
+        .select("jobpack_id")
+        .eq("company_id", companyId)
+        .not("jobpack_id", "is", null),
+      (supabase as any)
+        .from("insp_rov_jobs")
+        .select("jobpack_id")
+        .eq("company_id", companyId)
+        .not("jobpack_id", "is", null),
+      (supabase as any)
+        .from("insp_records")
+        .select("jobpack_id")
+        .eq("company_id", companyId)
+        .not("jobpack_id", "is", null),
+    ]);
 
     const allIds = new Set<number>();
     (diveJobPackIds || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));

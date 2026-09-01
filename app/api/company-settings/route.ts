@@ -8,11 +8,22 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         let settings: any = null;
 
-        const { data: byCompany, error: byCompanyError } = await (supabase as any)
-            .from("company_settings")
-            .select("*")
-            .eq("company_id", companyId)
-            .maybeSingle();
+        // Settings lookup and structure existence check are independent — run
+        // them in parallel; the exists-style check avoids an exact count scan.
+        const [settingsRes, structureRes] = await Promise.all([
+            (supabase as any)
+                .from("company_settings")
+                .select("*")
+                .eq("company_id", companyId)
+                .maybeSingle(),
+            (supabase as any)
+                .from("structure")
+                .select("id")
+                .eq("company_id", companyId)
+                .limit(1),
+        ]);
+        const { data: byCompany, error: byCompanyError } = settingsRes;
+        const hasStructures = !structureRes.error && (structureRes.data || []).length > 0;
 
         if (byCompanyError) {
             console.error("Error fetching company settings by company_id:", byCompanyError);
@@ -40,13 +51,6 @@ export const GET = withTenant(async (request, { companyId }) => {
         if (!settings) {
             return NextResponse.json({ data: null });
         }
-
-        const { count, error: countError } = await (supabase as any)
-            .from("structure")
-            .select("*", { count: "exact", head: true })
-            .eq("company_id", companyId);
-
-        const hasStructures = !countError && (count || 0) > 0;
 
         let logoUrl = null;
         if (settings.logo_path) {

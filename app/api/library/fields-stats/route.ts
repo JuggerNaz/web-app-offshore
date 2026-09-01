@@ -16,28 +16,28 @@ export async function GET() {
         return NextResponse.json({ error: `Failed to fetch fields` }, { status: 500 });
     }
 
-    // Get counts for each field and filter out fields with no structures
-    const fieldsWithStats = await Promise.all(
-        (fields || []).map(async (field) => {
-            // Count platforms
-            const { count: platformCount } = await supabase
-                .from("platform")
-                .select("*", { count: "exact", head: true })
-                .eq("pfield", field.lib_id);
+    // Replace the per-field count N+1 (2 queries per field) with two light
+    // queries selecting only the `pfield` column, counted in JS.
+    const [platformRes, pipelineRes] = await Promise.all([
+        supabase.from("platform").select("pfield"),
+        supabase.from("u_pipeline").select("pfield"),
+    ]);
 
-            // Count pipelines
-            const { count: pipelineCount } = await supabase
-                .from("u_pipeline")
-                .select("*", { count: "exact", head: true })
-                .eq("pfield", field.lib_id);
+    const platformCounts = new Map<any, number>();
+    for (const row of platformRes.data || []) {
+        platformCounts.set(row.pfield, (platformCounts.get(row.pfield) || 0) + 1);
+    }
 
-            return {
-                ...field,
-                platform_count: platformCount || 0,
-                pipeline_count: pipelineCount || 0,
-            };
-        })
-    );
+    const pipelineCounts = new Map<any, number>();
+    for (const row of pipelineRes.data || []) {
+        pipelineCounts.set(row.pfield, (pipelineCounts.get(row.pfield) || 0) + 1);
+    }
+
+    const fieldsWithStats = (fields || []).map((field) => ({
+        ...field,
+        platform_count: platformCounts.get(field.lib_id) || 0,
+        pipeline_count: pipelineCounts.get(field.lib_id) || 0,
+    }));
 
     return NextResponse.json({ data: fieldsWithStats });
 }
