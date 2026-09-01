@@ -331,6 +331,18 @@ export const POST = withAuth(
           }
         });
 
+      if (isPipe && summaryWithPg.length === 0) {
+        summaryWithPg.push({
+          STR_ID: str_id,
+          CODE: "PIPE",
+          NAME: "Pipeline Trunkline / Main Segment (PP)",
+          ROW_COUNT: 1,
+          PG_ROW_COUNT: pgComponentCounts["PIPE"] || 0,
+          PIPE: 1,
+          PLAT: 0
+        });
+      }
+
       const frameworkList: any[] = [
         { code: isPipe ? "STRUCTURE_PIPELINE" : "STRUCTURE", name: isPipe ? "Pipeline Master (U_PIPELINE)" : "Structure Master (PLATFORM)", row_count: Number(strCount), pg_row_count: pgStrCount }
       ];

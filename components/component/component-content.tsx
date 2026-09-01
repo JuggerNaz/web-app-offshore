@@ -187,8 +187,9 @@ export default function ComponentContent() {
   };
 
   const incompleteComponentsCount = useMemo(() => {
-    return components.filter((comp: Component) => getMissingIntegrityFields(comp).length > 0).length;
-  }, [components]);
+    const isPipe = pageType === "pipeline";
+    return components.filter((comp: Component) => getMissingIntegrityFields(comp, isPipe).length > 0).length;
+  }, [components, pageType]);
 
   // Filter components by search query and type relevancy
   const filteredComponents = components.filter((comp: Component) => {
@@ -820,6 +821,8 @@ export default function ComponentContent() {
         open={integrityModalOpen}
         onOpenChange={setIntegrityModalOpen}
         components={components}
+        isPipeline={pageType === "pipeline"}
+        structureType={pageType}
         onEditComponent={(comp) => {
           handleEditComponent(comp as Component);
         }}
@@ -846,6 +849,8 @@ export default function ComponentContent() {
         onOpenChange={setInspectionModalOpen}
         inspections={selectedInspections}
         structureId={structureId}
+        isPipeline={pageType === "pipeline"}
+        structureType={pageType}
       />
       
       <AnomalySummaryModal

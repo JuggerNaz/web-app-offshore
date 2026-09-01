@@ -233,11 +233,19 @@ export default function InspectionLanding() {
     // Load SOW reports when structure and job pack are selected
     useEffect(() => {
         if (selectedStructure && selectedJobPack) {
+            setSOWReports([]);
+            setSelectedSOW("");
+            setRawSowItems([]);
+            setSowInspRecords([]);
+            setAnomalyCount(0);
             loadSOWReports(selectedJobPack, selectedStructure);
         } else {
             setSOWReports([]);
             setSelectedSOW("");
             setSelectedMode("");
+            setRawSowItems([]);
+            setSowInspRecords([]);
+            setAnomalyCount(0);
         }
     }, [selectedStructure, selectedJobPack]);
 
@@ -258,16 +266,64 @@ export default function InspectionLanding() {
         async function fetchSowInspRecords(structId: string, jpId: string, sowReportNo: string) {
             try {
                 const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
-                const { data, error } = await supabase
-                    .from("insp_records")
-                    .select("insp_id, fp_kp, status, has_anomaly, elevation, inspection_type_code, inspection_data, dive_job_id, rov_job_id")
-                    .eq("structure_id", parseInt(rawId))
-                    .eq("jobpack_id", parseInt(jpId))
-                    .eq("sow_report_no", sowReportNo);
+                const cacheKey = `sow_records_${rawId}_${jpId}_${sowReportNo || 'all'}`;
 
-                if (!error && data) {
-                    setSowInspRecords(data);
+                // Instant 0ms cache check (Stale-While-Revalidate)
+                try {
+                    const cached = sessionStorage.getItem(cacheKey);
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            setSowInspRecords(parsed);
+                        }
+                    }
+                } catch (_) {}
+
+                // Count total records first for parallel batching
+                let countQuery = supabase
+                    .from("insp_records")
+                    .select("insp_id", { count: "exact", head: true })
+                    .eq("structure_id", parseInt(rawId))
+                    .eq("jobpack_id", parseInt(jpId));
+
+                if (sowReportNo && sowReportNo !== "Unassigned Items" && sowReportNo !== "N/A") {
+                    countQuery = countQuery.or(`sow_report_no.eq."${sowReportNo}",sow_report_no.is.null`);
                 }
+
+                const { count: totalCount } = await countQuery;
+                const total = totalCount || 0;
+                const batchSize = 1000;
+                const numBatches = Math.max(1, Math.ceil(total / batchSize));
+
+                // Fetch all pages in parallel to minimize satellite round-trip latency
+                const promises = [];
+                for (let i = 0; i < numBatches; i++) {
+                    const offset = i * batchSize;
+                    let query = supabase
+                        .from("insp_records")
+                        .select("insp_id, fp_kp, status, has_anomaly, elevation, inspection_type_code, inspection_data, dive_job_id, rov_job_id")
+                        .eq("structure_id", parseInt(rawId))
+                        .eq("jobpack_id", parseInt(jpId))
+                        .range(offset, offset + batchSize - 1);
+
+                    if (sowReportNo && sowReportNo !== "Unassigned Items" && sowReportNo !== "N/A") {
+                        query = query.or(`sow_report_no.eq."${sowReportNo}",sow_report_no.is.null`);
+                    }
+                    promises.push(query);
+                }
+
+                const results = await Promise.all(promises);
+                const allRecords: any[] = [];
+                for (const res of results) {
+                    if (res.data && res.data.length > 0) {
+                        allRecords.push(...res.data);
+                    }
+                }
+
+                setSowInspRecords(allRecords);
+                try {
+                    sessionStorage.setItem(cacheKey, JSON.stringify(allRecords));
+                } catch (_) {}
             } catch (err) {
                 console.error("Error fetching sow inspection records:", err);
             }
@@ -277,12 +333,16 @@ export default function InspectionLanding() {
             try {
                 // Parse prefix e.g., platform-1 or pipeline-1
                 const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
-                const { data, error } = await supabase
+                let query = supabase
                     .from("insp_anomalies")
                     .select("anomaly_id, insp_records!inner(structure_id, jobpack_id, sow_report_no, rov_job_id, dive_job_id, inspection_type_code)")
                     .eq("insp_records.structure_id", parseInt(rawId))
-                    .eq("insp_records.jobpack_id", parseInt(jpId))
-                    .eq("insp_records.sow_report_no", sowReportNo);
+                    .eq("insp_records.jobpack_id", parseInt(jpId));
+
+                if (sowReportNo && sowReportNo !== "Unassigned Items" && sowReportNo !== "N/A") {
+                    query = query.or(`insp_records.sow_report_no.eq."${sowReportNo}",insp_records.sow_report_no.is.null`);
+                }
+                const { data, error } = await query;
 
                 if (!error && data) {
                     let rov = 0;
@@ -393,8 +453,8 @@ export default function InspectionLanding() {
             sowInspRecords.forEach((rec) => {
                 const code = String(rec.inspection_type_code || "").toUpperCase();
                 const data = rec.inspection_data || {};
-                const eventName = String(data.event_name || data.event_type || "").toUpperCase();
-                const desc = String(data.event_description || data.findings || "").toUpperCase();
+                const eventName = String(data.event_name || data.event_type || data.eventName || data.eventType || data.raw_event || data.raw_type || "").toUpperCase();
+                const desc = String(data.event_description || data.findings || data.eventDescription || data.raw_descr || data.raw_comments || "").toUpperCase();
                 const isDive = !!rec.dive_job_id;
 
                 if (currentReportItems.length === 0) {
@@ -411,12 +471,12 @@ export default function InspectionLanding() {
                     }
                 }
 
-                if (code.includes("FJ") || eventName.includes("FIELD JOINT") || desc.includes("FIELD JOINT")) fieldJoints++;
-                if (code.includes("AN") || eventName.includes("ANODE") || desc.includes("ANODE")) anodes++;
+                if (code.includes("FJ") || eventName.includes("FIELD JOINT") || eventName.includes("FJ") || desc.includes("FIELD JOINT") || desc.includes("JOINT")) fieldJoints++;
+                if (code.includes("AN") || eventName.includes("ANODE") || eventName.includes("AN") || desc.includes("ANODE")) anodes++;
                 if (code.includes("SPAN") || eventName.includes("SPAN") || desc.includes("SPAN")) spans++;
-                if (code.includes("BUR") || eventName.includes("BURIAL") || desc.includes("BURIAL") || desc.includes("BURIED")) burials++;
-                if (code.includes("CROSS") || eventName.includes("CROSSING") || desc.includes("CROSSING")) crossings++;
-                if (code.includes("CP") || data.cp_fg_rdg || data.cp_rdg || data.cp_reading_mv || data.cp_fg) cpReadings++;
+                if (code.includes("BUR") || eventName.includes("BURIAL") || eventName.includes("BURIED") || desc.includes("BURIAL") || desc.includes("BURIED")) burials++;
+                if (code.includes("CROSS") || eventName.includes("CROSSING") || desc.includes("CROSSING") || data.crossing_line || data.c_lin) crossings++;
+                if (code.includes("CP") || data.cp_fg_rdg || data.cp_rdg || data.cp_reading_mv || data.cp_fg || (data.cp_reading && data.cp_reading !== "") || (data.cp !== undefined && data.cp !== null && data.cp !== "")) cpReadings++;
             });
         }
 
@@ -647,98 +707,122 @@ export default function InspectionLanding() {
 
             console.log("Raw u_sow data from API:", sow);
 
-            if (!sow) {
-                setSOWReports([]);
-                setRawSowItems([]);
-                return;
-            }
-
-            const sowData = [sow];
-            const itemsData = sow.items || [];
+            const sowData = sow ? [sow] : [];
+            const itemsData = sow?.items || [];
             setRawSowItems(itemsData);
 
             // Group by distinct report numbers (not individual inspection codes)
             const formatted: SOWReport[] = [];
             const reportNumbersSet = new Set<string>();
 
-            sowData.forEach((sow: any) => {
-                const reportArray = sow.report_numbers || [];
+            sowData.forEach((sowItem: any) => {
+                const reportArray = sowItem.report_numbers || [];
                 
                 if (reportArray.length > 0) {
                     reportArray.forEach((r: any) => {
-                        const reportNum = r.number;
+                        const reportNum = String(r.number || "").trim();
                         if (!reportNum) return;
                         
-                        const uniqueKey = `${sow.id}-${reportNum}`;
+                        const uniqueKey = `${sowItem.id}-${reportNum}`;
                         if (!reportNumbersSet.has(uniqueKey)) {
                             reportNumbersSet.add(uniqueKey);
                             formatted.push({
-                                sow_id: sow.id,
+                                sow_id: sowItem.id,
                                 item_no: reportNum, 
                                 report_number: reportNum,
                                 job_type: r.job_type || "",
-                                scope_description: sow.structure_title || "Inspection Report",
+                                scope_description: sowItem.structure_title || "Inspection Report",
                                 inspection_method: "",
-                                structure_id: sow.structure_id,
+                                structure_id: sowItem.structure_id,
                             });
                         }
                     });
                 } else {
                     // Fallback for older SOWs without defined report_numbers array
-                    const sowItems = itemsData?.filter((item: any) => item.sow_id === sow.id) || [];
-                    let foundAny = false;
+                    const sowItems = itemsData?.filter((item: any) => item.sow_id === sowItem.id) || [];
                     sowItems.forEach((item: any) => {
-                        const reportNum = item.report_number;
+                        const reportNum = String(item.report_number || "").trim();
                         if (reportNum) {
-                            const uniqueKey = `${sow.id}-${reportNum}`;
+                            const uniqueKey = `${sowItem.id}-${reportNum}`;
                             if (!reportNumbersSet.has(uniqueKey)) {
                                 reportNumbersSet.add(uniqueKey);
                                 formatted.push({
-                                    sow_id: sow.id,
+                                    sow_id: sowItem.id,
                                     item_no: reportNum,
                                     report_number: reportNum,
                                     job_type: "",
-                                    scope_description: sow.structure_title || "Inspection Report",
+                                    scope_description: sowItem.structure_title || "Inspection Report",
                                     inspection_method: "",
-                                    structure_id: sow.structure_id,
+                                    structure_id: sowItem.structure_id,
                                 });
-                                foundAny = true;
                             }
                         }
                     });
-                    
-                    if (!foundAny) {
-                        formatted.push({
-                            sow_id: sow.id,
-                            item_no: "Unassigned",
-                            report_number: "Unassigned Items",
-                            job_type: "",
-                            scope_description: sow.structure_title || "Inspection Report",
-                            inspection_method: "",
-                            structure_id: sow.structure_id,
-                        });
-                    }
                 }
             });
+
+            // Also check insp_records for any recorded SOW report numbers for this jobpack
+            try {
+                const { data: distinctSows } = await supabase
+                    .from("insp_records")
+                    .select("sow_report_no")
+                    .eq("jobpack_id", parseInt(jobPackId))
+                    .eq("structure_id", parseInt(rawId))
+                    .not("sow_report_no", "is", null);
+
+                if (distinctSows && distinctSows.length > 0) {
+                    distinctSows.forEach((r: any) => {
+                        const reportNum = String(r.sow_report_no || "").trim();
+                        if (!reportNum || reportNum === "N/A") return;
+                        const uniqueKey = `${sow?.id || 0}-${reportNum}`;
+                        if (!reportNumbersSet.has(uniqueKey)) {
+                            reportNumbersSet.add(uniqueKey);
+                            formatted.push({
+                                sow_id: sow?.id || 0,
+                                item_no: reportNum,
+                                report_number: reportNum,
+                                job_type: "ROV",
+                                scope_description: sow?.structure_title || "Inspection Report",
+                                inspection_method: "",
+                                structure_id: parseInt(rawId),
+                            });
+                        }
+                    });
+                }
+            } catch (inspSowErr) {
+                console.error("Error querying insp_records distinct sow numbers:", inspSowErr);
+            }
+
+            if (formatted.length === 0) {
+                formatted.push({
+                    sow_id: sow?.id || 0,
+                    item_no: "Unassigned",
+                    report_number: "Unassigned Items",
+                    job_type: "",
+                    scope_description: sow?.structure_title || "Inspection Report",
+                    inspection_method: "",
+                    structure_id: parseInt(rawId),
+                });
+            }
 
             console.log("Formatted distinct SOW reports:", formatted);
             setSOWReports(formatted);
 
             // Helper to prioritize ROV mode by default unless no ROV items are found in the SOW
             const determineDefaultMode = (sowObj: any, reportNum: string, itemsList: any[]) => {
-                const reportArray = sowObj.report_numbers || [];
-                const reportConfig = reportArray.find((r: any) => r.number === reportNum);
+                const reportArray = sowObj?.report_numbers || [];
+                const reportConfig = reportArray.find((r: any) => r?.number === reportNum);
                 if (reportConfig && (reportConfig.job_type || "").toUpperCase() === 'ROV') {
                     return "ROV";
                 }
                 
-                const currentReportItems = itemsList.filter(
-                    (item) => item.report_number === reportNum
+                const currentReportItems = (itemsList || []).filter(
+                    (item) => item?.report_number === reportNum
                 );
                 
-                const rovCodes = ['RGVI', 'CP', 'RSWNI', 'SWNI', 'RICMI', 'ANODE', 'FMD', 'RFMD', 'RUTWT', 'RSEAB', 'SEABED', 'RWDI', 'RMGI', 'RSZCI', 'RSCOR', 'SCOUR', 'RRISI', 'JTISI', 'ITISI', 'RCASN', 'RCOND', 'BL', 'RG', 'SG', 'CU'];
+                const rovCodes = ['NAVIG', 'RGVI', 'CP', 'RSWNI', 'SWNI', 'RICMI', 'ANODE', 'FMD', 'RFMD', 'RUTWT', 'RSEAB', 'SEABED', 'RWDI', 'RMGI', 'RSZCI', 'RSCOR', 'SCOUR', 'RRISI', 'JTISI', 'ITISI', 'RCASN', 'RCOND', 'BL', 'RG', 'SG', 'CU'];
                 const hasRovItems = currentReportItems.some((item: any) => {
-                    const code = (item.inspection_code || item.inspection_type_code || item.inspection_type?.code || "").toUpperCase();
+                    const code = (item?.inspection_code || item?.inspection_type_code || item?.inspection_type?.code || "").toUpperCase();
                     return code.startsWith('R') || rovCodes.includes(code);
                 });
                 
@@ -749,7 +833,7 @@ export default function InspectionLanding() {
                 const hasDiverConfig = reportConfig && (reportConfig.job_type || "").toUpperCase() === 'DIVING';
                 const diverCodes = ['DGVI', 'GVINS', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'UTWTK', 'SZONE', 'CPCLB', 'UTCLB', 'DMGI', 'ANMAIN', 'ACFMC', 'PLCO'];
                 const hasDiverItems = currentReportItems.some((item: any) => {
-                    const code = (item.inspection_code || item.inspection_type_code || item.inspection_type?.code || "").toUpperCase();
+                    const code = (item?.inspection_code || item?.inspection_type_code || item?.inspection_type?.code || "").toUpperCase();
                     return code.startsWith('D') || diverCodes.includes(code);
                 });
                 

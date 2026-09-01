@@ -363,7 +363,9 @@ export const GET = withAuth(
           } catch (syncErr) {
             console.error("[webapp-3d] Auto-population background sync failed:", syncErr);
           }
-        })();
+        })().catch(err => {
+          console.error("[webapp-3d] Auto-population background error caught:", err);
+        });
       }
     }
 

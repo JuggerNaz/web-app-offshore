@@ -3837,25 +3837,23 @@ function V10PreviewLayout() {
 
       // Construct inspsQuery first so we can fetch it in parallel
       const inspCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+      const selectFields = `
+        *,
+        inspection_type:inspection_type_id!left(id, code, name),
+        structure_components:component_id!left (
+            id,
+            q_id, 
+            code,
+            metadata
+        ),
+        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+        insp_video_tapes:tape_id!left(tape_no)
+      `;
+
       let inspsQuery = supabase
         .from("insp_records")
-        .select(
-          `
-                *,
-                inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (
-                    id,
-                    q_id, 
-                    code,
-                    metadata
-                ),
-                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
-                insp_video_tapes:tape_id!left(tape_no),
-                insp_anomalies(*)
-            `,
-          { count: "exact" }
-        )
+        .select(selectFields, { count: "exact" })
         .eq("jobpack_id", parseInt(jobPackId || "0"))
         .not(inspCol, "is", null)
         .order("inspection_date", { ascending: false })
@@ -3863,22 +3861,7 @@ function V10PreviewLayout() {
 
       let allInspsQuery = supabase
         .from("insp_records")
-        .select(
-          `
-                *,
-                inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (
-                    id,
-                    q_id, 
-                    code,
-                    metadata
-                ),
-                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
-                insp_video_tapes:tape_id!left(tape_no),
-                insp_anomalies(*)
-            `
-        )
+        .select(selectFields)
         .eq("jobpack_id", parseInt(jobPackId || "0"))
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
@@ -3906,18 +3889,52 @@ function V10PreviewLayout() {
         allInspsQuery = allInspsQuery.or(sowOrFilter);
       }
 
-      // Fetch Movements, Tapes, and Inspection Records in PARALLEL
+      // Fetch matching job IDs scoped strictly to current structure, jobpack, and SOW report
+      const jobTable = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
+      const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+
+      let scopedJobsQuery = supabase
+        .from(jobTable)
+        .select(jobCol);
+
+      if (structureId && !isNaN(Number(structureId))) {
+        scopedJobsQuery = scopedJobsQuery.eq("structure_id", Number(structureId));
+      }
+      if (jobPackId && !isNaN(Number(jobPackId))) {
+        scopedJobsQuery = scopedJobsQuery.eq("jobpack_id", Number(jobPackId));
+      }
+      if (
+        headerData.sowReportNo &&
+        headerData.sowReportNo !== "N/A" &&
+        headerData.sowReportNo !== "Unknown Report"
+      ) {
+        scopedJobsQuery = scopedJobsQuery.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`);
+      }
+
+      const { data: scopedJobs } = await scopedJobsQuery;
+      const validJobIds: number[] = (scopedJobs || []).map((j: any) => Number(j[jobCol])).filter(Boolean);
+      if (depId && !validJobIds.includes(Number(depId))) {
+        validJobIds.push(Number(depId));
+      }
+
+      // Fetch Movements, Scoped Tapes, and Inspection Records in PARALLEL
       const movementsPromise = supabase
         .from(movTable)
         .select("*")
         .eq(movCol, depId)
         .order("movement_time", { ascending: true });
 
-      const tapesPromise = supabase
-        .from("insp_video_tapes")
-        .select("*")
-        .eq(movCol, depId)
-        .order("tape_id", { ascending: false });
+      const tapesPromise = validJobIds.length > 0
+        ? supabase
+            .from("insp_video_tapes")
+            .select("*")
+            .in(jobCol, validJobIds)
+            .order("tape_id", { ascending: false })
+        : supabase
+            .from("insp_video_tapes")
+            .select("*")
+            .eq(jobCol, depId)
+            .order("tape_id", { ascending: false });
 
       let [movsRes, tapesRes, inspsRes] = await Promise.all([
         movementsPromise,
@@ -3926,7 +3943,17 @@ function V10PreviewLayout() {
       ]);
 
       const movs = movsRes.data;
-      let tapes = tapesRes.data;
+      let rawTapes = tapesRes.data || [];
+
+      // Sort tapes so that tapes matching current deployment come first, followed by other tapes in natural numerical order
+      let tapes = [...rawTapes].sort((a, b) => {
+        const aMatches = (inspMethod === "DIVING" ? a.dive_job_id === depId : a.rov_job_id === depId) ? 1 : 0;
+        const bMatches = (inspMethod === "DIVING" ? b.dive_job_id === depId : b.rov_job_id === depId) ? 1 : 0;
+        if (aMatches !== bMatches) return bMatches - aMatches;
+        const nameA = a.tape_no || "";
+        const nameB = b.tape_no || "";
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+      });
 
       if (movsRes.error) {
         console.error("[Sync] Movement fetch error:", movsRes.error.message, movsRes.error.details, movsRes.error.hint);
@@ -4154,14 +4181,32 @@ function V10PreviewLayout() {
               chapterNo,
               diveNo,
               structure,
+              remarks: l.remarks || "",
             };
           })
         );
       }
 
       if (inspsRes.error) {
-        console.error("[Sync] Inspection fetch error:", inspsRes.error);
-      } else if (insps) {
+        console.error("[Sync] Inspection fetch error:", inspsRes.error.message || inspsRes.error, inspsRes.error.details, inspsRes.error.hint);
+        try {
+          const fallbackRes = await supabase
+            .from("insp_records")
+            .select("*", { count: "exact" })
+            .eq("jobpack_id", parseInt(jobPackId || "0"))
+            .not(inspCol, "is", null)
+            .order("inspection_date", { ascending: false })
+            .order("inspection_time", { ascending: false });
+          if (fallbackRes.data) {
+            inspsRes = fallbackRes;
+          }
+        } catch (e) {
+          console.error("[Sync] Fallback inspection query failed:", e);
+        }
+      }
+
+      const finalInsps = inspsRes.data || insps;
+      if (finalInsps) {
         // Fetch attachment counts manually for 'attachment' table
         const { data: allAtts } = await supabase
           .from("attachment")
@@ -4169,7 +4214,7 @@ function V10PreviewLayout() {
           .in("source_type", ["inspection", "INSPECTION"])
           .in(
             "source_id",
-            insps.map((r) => r.insp_id)
+            finalInsps.map((r: any) => r.insp_id)
           );
 
         const countMap = (allAtts || []).reduce((acc: Record<number, number>, curr) => {
@@ -4177,7 +4222,7 @@ function V10PreviewLayout() {
           return acc;
         }, {});
 
-        const inspsWithCounts = insps.map((r) => ({
+        const inspsWithCounts = finalInsps.map((r: any) => ({
           ...r,
           inspection_type: r.inspection_type
             ? {

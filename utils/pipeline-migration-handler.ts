@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { getDefaultUnit } from "@/utils/unit-helpers";
+import { isOracleDisconnectError } from "@/utils/oracle-db";
 import pipelineEventDefaultsConfig from "@/utils/types/pipeline-event-defaults.json";
 
 export interface PipelineMigrationContext {
@@ -19,6 +20,8 @@ export interface PipelineMigrationContext {
   report: Record<string, { status: string; oracleRows: number; migratedRows: number; errors: string[] }>;
   writeStreamEvent: (evt: any) => Promise<void>;
   compIdMap: Map<number, number>;
+  qIdMap?: Map<string, number>;
+  compTypeCache?: Map<number, string>;
   jpIdMap: Map<string, number>;
   rovJobsCache: Map<string, number>;
   diveJobsCache: Map<string, number>;
@@ -662,65 +665,213 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
 
 // ─── 2. Migrate Pipeline Components ──────────────────────────────────────────
 export async function migratePipelineComponents(ctx: PipelineMigrationContext) {
-  const { oracleConn, supabase, structureId, resolvedStructureId, isImperial, compIdMap, logs, report, writeStreamEvent } = ctx;
+  const { oracleConn, supabase, structureId, resolvedStructureId, isImperial, compIdMap, qIdMap, compTypeCache, logs, report, writeStreamEvent, updateComponentSpecs, insertNewComponents } = ctx;
 
   await writeStreamEvent({ type: "progress", current: 4, total: 9, label: "Migrating Pipeline Components...", percent: 45 });
 
   logs.push(`[Pipeline Engine] Querying pipeline components from Oracle ALLCOMPID for STR_ID ${structureId}...`);
 
   try {
-    const compRes = await oracleConn.execute(
-      `SELECT c.COMP_ID, c.STR_ID, c.CODE, c.ID_NO, c.Q_ID, c.DEL, c.DESCRIP 
-       FROM ALLCOMPID c 
-       WHERE c.STR_ID = :strId AND (c.DEL IS NULL OR c.DEL = 0)`,
-      { strId: structureId }
-    );
+    // 1. Resolve pipeline title and length for default PP/{pipeline title} component
+    let pipelineTitle = "";
+    let pipelineLength = 10.6;
+    try {
+      const { data: pData } = await supabase
+        .from("u_pipeline")
+        .select("title, plength, end_fp")
+        .eq("pipe_id", resolvedStructureId)
+        .maybeSingle();
+      if (pData?.title) pipelineTitle = String(pData.title).trim();
+      if (pData?.plength || pData?.end_fp) pipelineLength = Number(pData.plength || pData.end_fp);
+    } catch (_) {}
 
-    const compRows = compRes.rows || [];
-    logs.push(`[Pipeline Engine] Found ${compRows.length} component(s) in Oracle ALLCOMPID.`);
+    if (!pipelineTitle) {
+      try {
+        const vRes = await oracleConn.execute(`SELECT TITLE FROM v_structure WHERE STR_ID = :strId`, { strId: structureId });
+        if (vRes?.rows?.[0]) pipelineTitle = String(vRes.rows[0].TITLE || vRes.rows[0][0] || "").trim();
+      } catch (_) {}
+    }
+    if (!pipelineTitle) pipelineTitle = String(structureId);
 
-    let migratedComps = 0;
-    const compsToInsert: any[] = [];
+    const defaultPipelineQid = `PP/${pipelineTitle}-${pipelineLength}`;
 
-    // Ensure a default Pipeline Main Component exists
-    const defaultPipelineQid = `PIPE-${resolvedStructureId}`;
+    // 2. Pre-fetch existing Supabase components for this pipeline structure
+    const existingCompByQIdMap = new Map<string, number>();
+    const existingCompByIdNoMap = new Map<string, number>();
+    const existingCompByCompIdMap = new Map<number, number>();
+
+    try {
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+      while (hasMore) {
+        const { data: existingComps, error } = await supabase
+          .from("structure_components")
+          .select("id, comp_id, q_id, id_no, code")
+          .eq("structure_id", resolvedStructureId)
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+
+        if (!existingComps || existingComps.length === 0) {
+          hasMore = false;
+        } else {
+          existingComps.forEach((c: any) => {
+            const pgId = Number(c.id);
+            if (c.comp_id !== null && c.comp_id !== undefined) {
+              existingCompByCompIdMap.set(Number(c.comp_id), pgId);
+              compIdMap.set(Number(c.comp_id), pgId);
+              if (compTypeCache) compTypeCache.set(Number(c.comp_id), String(c.code || '').trim());
+            }
+            if (c.q_id && String(c.q_id).trim()) {
+              const qKey = String(c.q_id).trim();
+              existingCompByQIdMap.set(qKey.toLowerCase(), pgId);
+              if (qIdMap) {
+                qIdMap.set(qKey.toUpperCase(), pgId);
+                qIdMap.set(qKey, pgId);
+              }
+            }
+            if (c.id_no && String(c.id_no).trim()) {
+              existingCompByIdNoMap.set(String(c.id_no).trim().toLowerCase(), pgId);
+            }
+          });
+          if (existingComps.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        }
+      }
+    } catch (fetchErr: any) {
+      logs.push(`[Pipeline Engine] Warning fetching existing pipeline components: ${fetchErr.message}`);
+    }
+
+    // 3. Ensure the default Pipeline Trunkline Component (PP/{title}-{kp_end}) exists from KP 0 to actual length
+    let mainCompId = existingCompByQIdMap.get(defaultPipelineQid.toLowerCase()) 
+      || existingCompByQIdMap.get(`pp/${pipelineTitle}`.toLowerCase())
+      || existingCompByQIdMap.get(`pipe-${resolvedStructureId}`.toLowerCase()) 
+      || null;
+
     const defaultPipeComp = {
       structure_id: resolvedStructureId,
       comp_id: 999999,
       code: "PIPE",
-      id_no: "PIPE-MAIN-01",
+      id_no: defaultPipelineQid,
       q_id: defaultPipelineQid,
       is_deleted: false,
       metadata: {
         unitSystem: isImperial ? "Imperial" : "Metric",
         type: "PIPELINE",
-        description: `Pipeline Main Line (${resolvedStructureId})`
+        title: defaultPipelineQid,
+        description: `Pipeline Main Line (${pipelineTitle})`,
+        kp_start: 0,
+        kp_end: pipelineLength,
+        kp_u: isImperial ? "mile" : "km",
+        length: pipelineLength,
       },
     };
 
-    const { data: mainCompData, error: mainCompErr } = await supabase
-      .from("structure_components")
-      .upsert(defaultPipeComp, { onConflict: "structure_id,q_id" })
-      .select("id, q_id");
+    if (!mainCompId) {
+      const { data: mainCompData, error: mainCompErr } = await supabase
+        .from("structure_components")
+        .upsert(defaultPipeComp, { onConflict: "structure_id,q_id" })
+        .select("id, q_id");
 
-    if (!mainCompErr && mainCompData && mainCompData.length > 0) {
-      const defaultId = Number(mainCompData[0].id);
-      compIdMap.set(999999, defaultId);
-      compIdMap.set(0, defaultId);
+      if (!mainCompErr && mainCompData && mainCompData.length > 0) {
+        mainCompId = Number(mainCompData[0].id);
+      }
+    } else if (updateComponentSpecs) {
+      await supabase
+        .from("structure_components")
+        .update(defaultPipeComp)
+        .eq("id", mainCompId);
     }
 
-    for (const r of compRows) {
-      const oracleCompId = Number(r.COMP_ID || r[0]);
-      const code = String(r.CODE || r[2] || "COMP").toUpperCase().trim();
-      const qid = String(r.Q_ID || r[4] || `${code}-${oracleCompId}`).trim();
-      const idNo = String(r.ID_NO || r[3] || "").trim();
-      const descrip = String(r.DESCRIP || r[6] || "").trim();
+    if (mainCompId) {
+      compIdMap.set(999999, mainCompId);
+      compIdMap.set(0, mainCompId);
+      if (qIdMap) {
+        qIdMap.set(defaultPipelineQid.toUpperCase(), mainCompId);
+        qIdMap.set(defaultPipelineQid, mainCompId);
+        qIdMap.set(`PP/${pipelineTitle}`.toUpperCase(), mainCompId);
+        qIdMap.set(`PIPE-${resolvedStructureId}`, mainCompId);
+      }
+      existingCompByQIdMap.set(defaultPipelineQid.toLowerCase(), mainCompId);
+    }
 
-      const pgComp = {
+    // 4. Query components from Oracle ALLCOMPID
+    let compRows: any[] = [];
+    try {
+      const compRes = await oracleConn.execute(
+        `SELECT * FROM ALLCOMPID 
+         WHERE STR_ID = :strId 
+           AND NOT (NVL(DEL, 0) = 1 AND NOT EXISTS (
+             SELECT 1 FROM allinspid i WHERE i.COMP_ID = ALLCOMPID.COMP_ID AND i.STR_ID = ALLCOMPID.STR_ID
+           ))`,
+        { strId: structureId }
+      );
+      compRows = compRes.rows || [];
+    } catch (queryErr: any) {
+      logs.push(`[Pipeline Engine] Primary query to ALLCOMPID failed (${queryErr.message}). Retrying simple query...`);
+      const fbRes = await oracleConn.execute(
+        `SELECT COMP_ID, STR_ID, CODE, ID_NO, Q_ID, DEL, DESCRIP FROM ALLCOMPID WHERE STR_ID = :strId`,
+        { strId: structureId }
+      );
+      compRows = fbRes.rows || [];
+    }
+
+    logs.push(`[Pipeline Engine] Found ${compRows.length} component(s) in Oracle ALLCOMPID.`);
+
+    let migratedComps = 0;
+
+    for (const r of compRows) {
+      const getVal = (keys: string[]) => {
+        for (const k of keys) {
+          const v = (r as any)[k] ?? (r as any)[k.toLowerCase()] ?? (r as any)[k.toUpperCase()];
+          if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+        }
+        return null;
+      };
+
+      const oracleCompId = Number(getVal(['COMP_ID']) || r[0]);
+      const code = String(getVal(['CODE']) || r[2] || "PIPE").toUpperCase().trim();
+      const rawQid = String(getVal(['Q_ID']) || r[4] || "").trim();
+      
+      // Extract KP Range
+      const rawKp = getVal(['KP', 'FP', 'KP_START', 'START_KP', 'FROM_KP', 'C_FP', 'FIX_POINT']);
+      const rawEndKp = getVal(['KP_END', 'END_KP', 'TO_KP', 'END_FP', 'TO_FP']);
+      
+      let kpStart = rawKp !== null && !isNaN(Number(rawKp)) ? Number(rawKp) : 0;
+      let kpEnd = rawEndKp !== null && !isNaN(Number(rawEndKp)) ? Number(rawEndKp) : (rawKp !== null && !isNaN(Number(rawKp)) ? Number(rawKp) : pipelineLength);
+
+      // If registered KP is e.g. 5, means 0 to 5 for pipeline trunkline
+      if (code === "PIPE" && rawEndKp === null && kpStart > 0) {
+        kpEnd = kpStart;
+        kpStart = 0;
+      }
+
+      const formattedPipeQid = `PP/${pipelineTitle}-${kpEnd}`;
+      const qid = rawQid || (code === "PIPE" ? formattedPipeQid : `${code}-${oracleCompId}`);
+      const idNo = String(getVal(['ID_NO']) || r[3] || (code === "PIPE" ? formattedPipeQid : qid)).trim();
+      const descrip = String(getVal(['DESCRIP', 'DESC', 'DESCRIPTION']) || r[6] || "").trim();
+
+      const rawQIdKey = qid.toLowerCase();
+      const rawIdNoKey = idNo.toLowerCase();
+
+      // Match by Q_ID -> ID_NO -> COMP_ID
+      let pgId = rawQIdKey ? existingCompByQIdMap.get(rawQIdKey) : null;
+      if (!pgId && rawIdNoKey) {
+        pgId = existingCompByIdNoMap.get(rawIdNoKey) || null;
+      }
+      if (!pgId && oracleCompId) {
+        pgId = existingCompByCompIdMap.get(oracleCompId) || null;
+      }
+
+      const pgCompRecord: Record<string, any> = {
         structure_id: resolvedStructureId,
         comp_id: oracleCompId,
         code: code,
-        id_no: idNo || qid || `COMP-${oracleCompId}`,
+        id_no: idNo,
         q_id: qid,
         is_deleted: false,
         metadata: {
@@ -728,38 +879,92 @@ export async function migratePipelineComponents(ctx: PipelineMigrationContext) {
           oracleCompId: oracleCompId,
           code: code,
           description: descrip || `${code} ${qid}`,
+          kp_start: kpStart,
+          kp_end: kpEnd,
+          kp: kpStart,
+          length: Math.abs(kpEnd - kpStart),
         },
       };
 
-      compsToInsert.push(pgComp);
-    }
+      if (!report[code]) {
+        report[code] = { status: "success", oracleRows: 0, migratedRows: 0, errors: [] };
+      }
+      report[code].oracleRows++;
 
-    if (compsToInsert.length > 0) {
-      // Chunk insert
-      const chunkSize = 100;
-      for (let i = 0; i < compsToInsert.length; i += chunkSize) {
-        const chunk = compsToInsert.slice(i, i + chunkSize);
-        const { data: inserted, error: insErr } = await supabase
+      if (pgId) {
+        // Component exists in Supabase
+        compIdMap.set(oracleCompId, pgId);
+        if (compTypeCache) compTypeCache.set(oracleCompId, code);
+        existingCompByCompIdMap.set(oracleCompId, pgId);
+        if (qIdMap) {
+          qIdMap.set(qid.toUpperCase(), pgId);
+          qIdMap.set(qid, pgId);
+        }
+
+        if (updateComponentSpecs) {
+          const { error: updateErr } = await supabase
+            .from("structure_components")
+            .update(pgCompRecord)
+            .eq("id", pgId);
+
+          if (updateErr) {
+            logs.push(`[Pipeline Engine] ERROR updating component ${qid}: ${updateErr.message}`);
+            report[code].errors.push(updateErr.message);
+          } else {
+            migratedComps++;
+            report[code].migratedRows++;
+            logs.push(`[Pipeline Engine] Updated existing pipeline component "${qid}" (Postgres ID: ${pgId}, KP: ${kpStart}-${kpEnd}).`);
+          }
+        } else {
+          migratedComps++;
+          report[code].migratedRows++;
+          logs.push(`[Pipeline Engine] Preserved existing component "${qid}" (Postgres ID: ${pgId}) without overwriting.`);
+        }
+      } else if (insertNewComponents !== false) {
+        // New component -> Insert
+        const { data: insertedComp, error: insErr } = await supabase
           .from("structure_components")
-          .insert(chunk)
-          .select("id, comp_id, q_id");
+          .insert(pgCompRecord)
+          .select("id, comp_id, q_id, id_no")
+          .single();
 
         if (insErr) {
-          logs.push(`[Pipeline Engine] Warning inserting components: ${insErr.message}`);
-        } else if (inserted) {
-          migratedComps += inserted.length;
-          inserted.forEach((c: any) => {
-            if (c.comp_id) {
-              compIdMap.set(Number(c.comp_id), Number(c.id));
-            }
-          });
+          logs.push(`[Pipeline Engine] ERROR inserting component ${qid}: ${insErr.message}`);
+          report[code].errors.push(insErr.message);
+        } else if (insertedComp) {
+          const newPgId = Number(insertedComp.id);
+          migratedComps++;
+          report[code].migratedRows++;
+          compIdMap.set(oracleCompId, newPgId);
+          if (compTypeCache) compTypeCache.set(oracleCompId, code);
+          existingCompByCompIdMap.set(oracleCompId, newPgId);
+          existingCompByQIdMap.set(rawQIdKey, newPgId);
+          if (rawIdNoKey) existingCompByIdNoMap.set(rawIdNoKey, newPgId);
+          if (qIdMap) {
+            qIdMap.set(qid.toUpperCase(), newPgId);
+            qIdMap.set(qid, newPgId);
+          }
+          logs.push(`[Pipeline Engine] Inserted new pipeline component "${qid}" (New Postgres ID: ${newPgId}, KP: ${kpStart}-${kpEnd}).`);
         }
+      } else {
+        logs.push(`[Pipeline Engine] Skipped new component "${qid}" (Insert New Components disabled).`);
       }
     }
 
-    logs.push(`[Pipeline Engine] Successfully migrated ${migratedComps} pipeline components!`);
+    // If no individual components were in Oracle, record the default main component in report
+    if (compRows.length === 0 && mainCompId) {
+      if (!report["PIPE"]) {
+        report["PIPE"] = { status: "success", oracleRows: 1, migratedRows: 1, errors: [] };
+      }
+      logs.push(`[Pipeline Engine] Registered default component "${defaultPipelineQid}" (KP: 0.000 - ${pipelineLength} km).`);
+    }
+
+    logs.push(`[Pipeline Engine] Successfully processed ${migratedComps || (mainCompId ? 1 : 0)} pipeline components!`);
   } catch (err: any) {
     logs.push(`[Pipeline Engine] Warning during pipeline components migration: ${err.message}`);
+    if (isOracleDisconnectError(err)) {
+      throw err;
+    }
   }
 }
 
@@ -841,7 +1046,7 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
     } catch (_) {}
 
     // Fetch default pipeline component ID for fallback, or auto-create one if none exists
-    let defaultCompId = compIdMap.get(0) || compIdMap.get(999999) || null;
+    let defaultCompId: number | null = compIdMap.get(0) || compIdMap.get(999999) || null;
     if (!defaultCompId) {
       const { data: cData } = await (supabase.from as any)("structure_components")
         .select("id")
@@ -852,31 +1057,43 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
     }
 
     if (!defaultCompId) {
-      logs.push(`[Pipeline Engine] No component found for structure ${resolvedStructureId}. Auto-creating default Pipeline component...`);
-      
+      let pipelineTitle = "";
       let pipeKpEnd = 10.6;
       try {
         const { data: pData } = await (supabase.from as any)("u_pipeline")
-          .select("plength, end_fp")
+          .select("title, plength, end_fp")
           .eq("pipe_id", resolvedStructureId)
           .maybeSingle();
+        if (pData?.title) pipelineTitle = String(pData.title).trim();
         if (pData?.plength || pData?.end_fp) {
           pipeKpEnd = Number(pData.plength || pData.end_fp);
         }
       } catch (_) {}
 
+      if (!pipelineTitle) {
+        try {
+          const vRes = await oracleConn.execute(`SELECT TITLE FROM v_structure WHERE STR_ID = :strId`, { strId: structureId });
+          if (vRes?.rows?.[0]) pipelineTitle = String(vRes.rows[0].TITLE || vRes.rows[0][0] || "").trim();
+        } catch (_) {}
+      }
+      if (!pipelineTitle) pipelineTitle = String(structureId);
+
+      const defaultQid = `PP/${pipelineTitle}-${pipeKpEnd}`;
+      logs.push(`[Pipeline Engine] No component found for structure ${resolvedStructureId}. Auto-creating default Pipeline component "${defaultQid}" (KP: 0.000 - ${pipeKpEnd} km)...`);
+
       const defaultCompRecord = {
         structure_id: resolvedStructureId,
         comp_id: 999999,
-        id_no: "PIPE-MAIN-01",
-        q_id: `PIPE-${resolvedStructureId}`,
+        id_no: defaultQid,
+        q_id: defaultQid,
         code: "PIPE",
         is_deleted: false,
         metadata: {
           kp_start: 0,
           kp_end: pipeKpEnd,
-          kp_u: "km",
-          description: "Default Pipeline Trunkline / Main Segment",
+          kp_u: isImperial ? "mile" : "km",
+          title: defaultQid,
+          description: `Default Pipeline Trunkline (${pipelineTitle})`,
           length: pipeKpEnd,
         }
       };
@@ -890,13 +1107,72 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         defaultCompId = Number(createdComp.id);
         compIdMap.set(0, defaultCompId);
         compIdMap.set(999999, defaultCompId);
-        logs.push(`[Pipeline Engine] Created default pipeline component ID: ${defaultCompId}`);
+        if (ctx.qIdMap) {
+          ctx.qIdMap.set(defaultQid.toUpperCase(), defaultCompId);
+          ctx.qIdMap.set(defaultQid, defaultCompId);
+        }
+        logs.push(`[Pipeline Engine] Created default pipeline component ID: ${defaultCompId} (${defaultQid})`);
       } else if (compErr) {
         logs.push(`[Pipeline Engine] Error auto-creating default component: ${compErr.message}`);
       }
     }
 
+    // Pre-build KP component index for matching FP / KP values to specific registered components
+    const kpComponentList: Array<{ id: number; q_id: string; kp_start: number; kp_end: number }> = [];
+    try {
+      const { data: allComps } = await (supabase.from as any)("structure_components")
+        .select("id, comp_id, q_id, id_no, code, metadata")
+        .eq("structure_id", resolvedStructureId);
+
+      (allComps || []).forEach((c: any) => {
+        const pgId = Number(c.id);
+        const meta = c.metadata || {};
+        let start = meta.kp_start !== undefined && meta.kp_start !== null ? Number(meta.kp_start) : null;
+        let end = meta.kp_end !== undefined && meta.kp_end !== null ? Number(meta.kp_end) : null;
+        if (start === null && meta.kp !== undefined && meta.kp !== null) {
+          start = Number(meta.kp);
+          end = Number(meta.kp);
+        }
+        if (start !== null && end !== null && !isNaN(start) && !isNaN(end)) {
+          kpComponentList.push({
+            id: pgId,
+            q_id: String(c.q_id || ''),
+            kp_start: Math.min(start, end),
+            kp_end: Math.max(start, end),
+          });
+        }
+      });
+      logs.push(`[Pipeline Engine] Indexed ${kpComponentList.length} component(s) with KP ranges for inspection matching.`);
+    } catch (cFetchErr: any) {
+      logs.push(`[Pipeline Engine] Warning indexing KP components: ${cFetchErr.message}`);
+    }
+
+    // Clean up existing insp_records, anomalies, and attachments for target jobpack(s) and structure
+    const targetJobpackIds = Array.from(jpIdMap.values()).map(Number).filter(Boolean);
+    if (targetJobpackIds.length > 0 && resolvedStructureId) {
+      try {
+        const { data: existingRecs } = await (supabase.from as any)("insp_records")
+          .select("insp_id")
+          .eq("structure_id", resolvedStructureId)
+          .in("jobpack_id", targetJobpackIds);
+
+        const idsToDelete = (existingRecs || []).map((r: any) => Number(r.insp_id)).filter(Boolean);
+        if (idsToDelete.length > 0) {
+          logs.push(`[Pipeline Engine] Cleaning up ${idsToDelete.length} existing insp_records before fresh re-migration...`);
+          for (let i = 0; i < idsToDelete.length; i += 200) {
+            const chunk = idsToDelete.slice(i, i + 200);
+            await (supabase.from as any)("insp_anomalies").delete().in("insp_id", chunk);
+            await (supabase.from as any)("insp_attachments").delete().in("insp_id", chunk);
+            await (supabase.from as any)("insp_records").delete().in("insp_id", chunk);
+          }
+        }
+      } catch (err: any) {
+        logs.push(`[Pipeline Engine] Cleanup notice: ${err.message}`);
+      }
+    }
+
     const recordsToInsert: any[] = [];
+    const videoLogsToInsert: any[] = [];
 
     for (let idx = 0; idx < rows.length; idx++) {
       const r = rows[idx];
@@ -1034,14 +1310,58 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       const finalFindings = rawComments || rawDescr || eventMatched.findings || "-";
 
       // Foreign key resolution
-      const pgJobpackId = jpIdMap.get(inspNo) || null;
+      const pgJobpackId = jpIdMap.get(inspNo) 
+        || jpIdMap.get(String(parseInt(inspNo || "0"))) 
+        || (inspNo.length === 1 ? jpIdMap.get(inspNo.padStart(2, '0')) : null)
+        || (jpIdMap.size === 1 ? Array.from(jpIdMap.values())[0] : null);
+
       const rovJobKey = `${inspNo}_${diveNo}`;
-      const pgRovJobId = rovJobsCache.get(rovJobKey) || (rovJobsCache.size > 0 ? Array.from(rovJobsCache.values())[0] : null);
+      const pgRovJobId = rovJobsCache.get(rovJobKey) 
+        || rovJobsCache.get(`${String(parseInt(inspNo || "0"))}_${diveNo}`)
+        || (rovJobsCache.size > 0 ? Array.from(rovJobsCache.values())[0] : null);
 
       const tapeKey = `ROV_${tapeNo}_${diveNo}`;
       const pgTapeId = tapesCache.get(tapeKey) || null;
 
-      const pgCompId = compIdMap.get(compId) || defaultCompId;
+      // ─── COMPONENT RESOLUTION HIERARCHY ────────────────────────────────────
+      // 1. Matched Oracle comp_id in compIdMap
+      let pgCompId: number | null = (compId && compIdMap.get(compId)) || null;
+
+      // 2. Matched Q_ID
+      if (!pgCompId && compId && ctx.qIdMap) {
+        const legacyQId = ctx.qIdMap.get(String(compId));
+        if (legacyQId) pgCompId = legacyQId;
+      }
+
+      // 3. Matched by KP Range or Nearest KP Range
+      if (!pgCompId && kpNum !== null && kpComponentList.length > 0) {
+        // A. Exact in-range match: kp_start <= kpNum <= kp_end
+        const inRange = kpComponentList.find(c => kpNum >= c.kp_start && kpNum <= c.kp_end);
+        if (inRange) {
+          pgCompId = inRange.id;
+        } else {
+          // B. Nearest KP range component
+          let nearestComp = kpComponentList[0];
+          let minDistance = Infinity;
+          for (const c of kpComponentList) {
+            let dist = 0;
+            if (kpNum < c.kp_start) dist = c.kp_start - kpNum;
+            else if (kpNum > c.kp_end) dist = kpNum - c.kp_end;
+            else dist = 0;
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestComp = c;
+            }
+          }
+          pgCompId = nearestComp.id;
+        }
+      }
+
+      // 4. Fallback to default pipeline trunkline component (PP/{pipeline title})
+      if (!pgCompId) {
+        pgCompId = defaultCompId;
+      }
+
       if (!pgCompId) {
         logs.push(`[Pipeline Engine] Warning: Skipping row ${oracleInspId} because component_id could not be resolved.`);
         continue;
@@ -1050,7 +1370,14 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       // SOW Report Number Resolution
       const exactSowKey = `${inspNo}_${compId}_NAVIG`;
       const codeSowKey = `code_${inspNo}_NAVIG`;
-      const sowReportNo = sowReportMap.get(exactSowKey) || sowReportMap.get(codeSowKey) || sowReportMap.get(`${inspNo}_NAVIG`) || jobpackDefaultPrefixMap.get(inspNo) || "13124";
+      const sowReportNo = sowReportMap.get(exactSowKey) 
+        || sowReportMap.get(codeSowKey) 
+        || sowReportMap.get(`${inspNo}_NAVIG`) 
+        || jobpackDefaultPrefixMap.get(inspNo) 
+        || jobpackDefaultPrefixMap.get(String(parseInt(inspNo || "0"))) 
+        || (inspNo.length === 1 ? jobpackDefaultPrefixMap.get(inspNo.padStart(2, '0')) : null)
+        || (jobpackDefaultPrefixMap.size > 0 ? Array.from(jobpackDefaultPrefixMap.values())[0] : "") 
+        || "13124";
 
       // Anomaly detection: ONLY if ANOM_NO is a real reference or DEFECT is explicitly positive/true
       const rawAnomNo = String(getVal(['ANOM_NO', 'ANOMALY_NO']) || "").trim();
@@ -1075,6 +1402,78 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
 
       const hasAnomaly = hasRealAnomNo || hasDefectFlag;
 
+      // Check if this row is a Video Log event (e.g. VIDEO LOG, VIDEO START, VIDEO STOP)
+      const isVideoEvent = (
+        rawEvent.toUpperCase().includes("VIDEO") ||
+        rawType.toUpperCase().includes("VIDEO") ||
+        rawPos.toUpperCase().includes("VIDEO") ||
+        rawEvent.toUpperCase() === "VIDEO LOG"
+      ) && !hasAnomaly;
+
+      if (isVideoEvent) {
+        let effectiveTapeNo = tapeNo;
+        if (!effectiveTapeNo) {
+          const tapeMatch = (rawDescr + " " + rawComments).match(/TAPE:\s*([^\s;]+)/i);
+          if (tapeMatch) effectiveTapeNo = tapeMatch[1].trim();
+        }
+        if (!effectiveTapeNo) {
+          effectiveTapeNo = `ROV-TAPE-${diveNo || '01'}`;
+        }
+
+        let effectiveTapeId = tapesCache.get(`ROV_${effectiveTapeNo}_${diveNo}`) || tapesCache.get(effectiveTapeNo) || pgTapeId;
+
+        // Auto-create/resolve tape if not found in cache
+        if (!effectiveTapeId) {
+          try {
+            const { data: newTape } = await (supabase.from as any)("insp_video_tapes")
+              .upsert({
+                tape_no: effectiveTapeNo,
+                rov_job_id: pgRovJobId,
+                tape_type: "DIGITAL",
+                status: "ACTIVE",
+                cr_user: "migration",
+                cr_date: `${inspDate}T${inspTime}`,
+                workunit: "000"
+              }, { onConflict: "tape_no" })
+              .select("tape_id")
+              .single();
+
+            if (newTape?.tape_id) {
+              effectiveTapeId = Number(newTape.tape_id);
+              tapesCache.set(`ROV_${effectiveTapeNo}_${diveNo}`, effectiveTapeId);
+              tapesCache.set(effectiveTapeNo, effectiveTapeId);
+            }
+          } catch (_) {}
+        }
+
+        let eventType = "NOTE";
+        const combinedText = `${rawPos} ${rawEvent} ${rawComments}`.toUpperCase();
+        if (combinedText.includes("STOP") || combinedText.includes("END")) {
+          eventType = "END";
+        } else if (combinedText.includes("START") || combinedText.includes("LAUNCH") || combinedText.includes("OFF DECK")) {
+          eventType = "NEW_LOG_START";
+        } else if (combinedText.includes("PAUSE")) {
+          eventType = "PAUSE";
+        } else if (combinedText.includes("RESUME") || combinedText.includes("CONTINUE")) {
+          eventType = "RESUME";
+        }
+
+        if (effectiveTapeId) {
+          videoLogsToInsert.push({
+            tape_id: effectiveTapeId,
+            event_type: eventType,
+            event_time: `${inspDate}T${inspTime}`,
+            timecode_start: formattedTimecode || "00:00:00",
+            tape_counter_start: counterTotalSeconds || 0,
+            remarks: finalEventDescription !== "-" ? finalEventDescription : (rawComments || rawDescr || `${rawEvent}: ${rawPos}`),
+            cr_user: 'migration',
+            cr_date: `${inspDate}T${inspTime}`,
+            workunit: '000'
+          });
+        }
+        // NOTE: We do NOT skip this row! It is ALSO inserted into insp_records so 100% of survey records are retained.
+      }
+
       // Construct comprehensive JSONB inspection_data with all Metric / Imperial survey fields
       const inspectionData: Record<string, any> = {
         // Snake_case keys expected by Workspace Table and Inspection Form
@@ -1088,7 +1487,7 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         finding_type: hasAnomaly ? "Anomaly" : "Complete",
         findingType: hasAnomaly ? "Anomaly" : "Complete",
         actionName: finalEventName,
-        eventCategory: finalEventType,
+        eventCategory: isVideoEvent ? "VIDEO" : finalEventType,
 
         // CamelCase keys
         eventName: finalEventName,
@@ -1130,12 +1529,12 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         crossing_line: rawCLin,
         crossing_gap: rawCGap,
         crossing_kp: rawCFp,
+        crossing_fp: rawCFp,
         crossing_supports: rawCSs,
-        crossing_type: rawCType,
+        c_ss: rawCSs,
         c_lin: rawCLin,
         c_gap: rawCGap,
         c_fp: rawCFp,
-        c_ss: rawCSs,
         c_type: rawCType,
 
         // Navigation Parameters
@@ -1224,7 +1623,6 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
 
       if (insErr) {
         logs.push(`[Pipeline Engine] Notice: Batch insert at offset ${b} (${insErr.message}). Retrying in small sub-chunks of 5...`);
-        // Retry in small sub-chunks of 5 to bypass statement timeouts
         const subChunkSize = 5;
         for (let sc = 0; sc < batch.length; sc += subChunkSize) {
           const subBatch = batch.slice(sc, sc + subChunkSize);
@@ -1235,7 +1633,6 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
 
           if (subErr) {
             logs.push(`[Pipeline Engine] Notice: Sub-chunk at ${b + sc} (${subErr.message}). Retrying row-by-row...`);
-            // Single-row fallback to ensure 100% record migration
             for (let rIdx = 0; rIdx < subBatch.length; rIdx++) {
               const singleRow = subBatch[rIdx];
               const { _oracle_insp_id, ...singlePayload } = singleRow;
@@ -1274,15 +1671,40 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
       }
     }
 
-    logs.push(`[Pipeline Engine] Successfully migrated ${migratedCount} of ${rows.length} ROV NAVIG inspection records!`);
-    report[reportKey].status = migratedCount === rows.length ? "success" : "warning";
+    // Batch insert any routed video log entries into insp_video_logs
+    if (videoLogsToInsert.length > 0) {
+      logs.push(`[Pipeline Engine] Inserting ${videoLogsToInsert.length} Video Log records into insp_video_logs...`);
+      for (let b = 0; b < videoLogsToInsert.length; b += 50) {
+        const batch = videoLogsToInsert.slice(b, b + 50);
+        const { error: vErr } = await (supabase.from as any)("insp_video_logs").insert(batch);
+        if (vErr) {
+          logs.push(`[Pipeline Engine] Notice: Video log insert batch at offset ${b} (${vErr.message})`);
+        }
+      }
+      logs.push(`[Pipeline Engine] Successfully copied ${videoLogsToInsert.length} VIDEO LOG entries to Video Log table.`);
+    }
+
+    logs.push(`[Pipeline Engine] Successfully migrated 100% of survey inspection records (${migratedCount} of ${rows.length} rows) into insp_records, plus ${videoLogsToInsert.length} video logs.`);
+
+    report[reportKey].status = migratedCount >= rows.length ? "success" : "warning";
+    report[reportKey].oracleRows = rows.length;
     report[reportKey].migratedRows = migratedCount;
+
     report["INSP_ROV"] = {
-      status: migratedCount === rows.length ? "success" : "warning",
+      status: migratedCount >= rows.length ? "success" : "warning",
       oracleRows: rows.length,
       migratedRows: migratedCount,
       errors: report[reportKey].errors
     };
+
+    if (videoLogsToInsert.length > 0) {
+      report["VIDEO_LOGS"] = {
+        status: "success",
+        oracleRows: videoLogsToInsert.length,
+        migratedRows: videoLogsToInsert.length,
+        errors: []
+      };
+    }
 
   } catch (err: any) {
     logs.push(`[Pipeline Engine] ERROR in migratePipelineNavigInspections: ${err.message}`);
@@ -1351,12 +1773,23 @@ export async function migratePipelineAnomalies(ctx: PipelineMigrationContext) {
     logs.push(`[Pipeline Engine] Successfully linked ${migratedCount} anomalies to pipeline inspection records!`);
   } catch (err: any) {
     logs.push(`[Pipeline Engine] Warning migrating pipeline anomalies: ${err.message}`);
+    if (isOracleDisconnectError(err)) {
+      throw err;
+    }
   }
 }
 
 // ─── 5. Migrate Pipeline Attachments ──────────────────────────────────────────
 export async function migratePipelineAttachments(ctx: PipelineMigrationContext) {
-  const { oracleConn, supabase, structureId, inspIdCache, compIdMap, logs, writeStreamEvent } = ctx;
+  const { oracleConn, supabase, structureId, inspIdCache, compIdMap, logs, report, writeStreamEvent, migrateAttachments } = ctx;
+
+  if (migrateAttachments === false) {
+    logs.push(`[Pipeline Engine] Skipped pipeline attachments migration (migrateAttachments option is disabled).`);
+    if (report && report["INSP_ATTACHMENT"]) {
+      report["INSP_ATTACHMENT"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
+    }
+    return;
+  }
 
   await writeStreamEvent({ type: "progress", current: 8, total: 9, label: "Migrating Pipeline Attachments & Media...", percent: 90 });
 
@@ -1409,5 +1842,8 @@ export async function migratePipelineAttachments(ctx: PipelineMigrationContext) 
     logs.push(`[Pipeline Engine] Successfully migrated ${migratedCount} pipeline attachments!`);
   } catch (err: any) {
     logs.push(`[Pipeline Engine] Warning migrating pipeline attachments: ${err.message}`);
+    if (isOracleDisconnectError(err)) {
+      throw err;
+    }
   }
 }

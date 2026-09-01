@@ -1074,6 +1074,9 @@ export default function MigrationDashboard() {
   const handleJobpackSelect = async (jp: any) => {
     setSelectedJobpack(jp);
     setInspectionSummary(null);
+    setMigrationReport(null);
+    setMigrationLogs([]);
+    setMigrationProgress(null);
     
     const inspNoVal = jp.INSPNO || jp.inspno;
     if (!selectedStructureId || !inspNoVal) return;
@@ -1118,6 +1121,9 @@ export default function MigrationDashboard() {
   };
 
   const handleToggleJobpack = (jp: any) => {
+    setMigrationReport(null);
+    setMigrationLogs([]);
+    setMigrationProgress(null);
     const inspNo = jp.INSPNO || jp.inspno;
     setSelectedJobpacks(prev => {
       const exists = prev.some(p => (p.INSPNO || p.inspno) === inspNo);
@@ -1138,6 +1144,9 @@ export default function MigrationDashboard() {
   };
 
   const handleSelectAllJobpacks = () => {
+    setMigrationReport(null);
+    setMigrationLogs([]);
+    setMigrationProgress(null);
     setSelectedJobpacks(jobpacks);
     if (jobpacks.length > 0) {
       handleJobpackSelect(jobpacks[0]);
@@ -1145,6 +1154,9 @@ export default function MigrationDashboard() {
   };
 
   const handleClearJobpacks = () => {
+    setMigrationReport(null);
+    setMigrationLogs([]);
+    setMigrationProgress(null);
     setSelectedJobpacks([]);
     setSelectedJobpack(null);
     setInspectionSummary(null);
@@ -1613,53 +1625,86 @@ export default function MigrationDashboard() {
                                 </div>
                               </label>
 
-                              <label className="flex items-start gap-2.5 p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 cursor-pointer">
+                              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-indigo-200 dark:hover:border-indigo-900/50 cursor-pointer transition-colors">
                                 <input
                                   type="checkbox"
                                   checked={updateComponentSpecs}
                                   onChange={(e) => setUpdateComponentSpecs(e.target.checked)}
                                   className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
                                 />
-                                <div className="text-[10px] leading-tight">
-                                  <span className="font-bold text-slate-700 dark:text-slate-300 block">
-                                    Update Existing Component Specs
-                                  </span>
-                                  <span className="text-[9px] text-slate-400">
-                                    {updateComponentSpecs ? "Will update existing component fields" : "Preserves existing clean component specifications"}
+                                <div className="text-[10px] leading-tight flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                                      Overwrite / Update Component Data
+                                    </span>
+                                    <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${
+                                      updateComponentSpecs
+                                        ? "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/30"
+                                        : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30"
+                                    }`}>
+                                      {updateComponentSpecs ? "Overwrite Enabled" : "Preserve Good Data (Safe)"}
+                                    </span>
+                                  </div>
+                                  <span className="text-[9px] text-slate-400 block mt-0.5">
+                                    {updateComponentSpecs 
+                                      ? "⚠️ Will update and overwrite existing component specifications in Supabase with incoming Oracle data." 
+                                      : "🛡️ Preserves existing clean component specifications in Supabase. Mapped by Q_ID across databases without overwriting."}
                                   </span>
                                 </div>
                               </label>
 
-                              <label className="flex items-start gap-2.5 p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 cursor-pointer">
+                              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-indigo-200 dark:hover:border-indigo-900/50 cursor-pointer transition-colors">
                                 <input
                                   type="checkbox"
                                   checked={insertNewComponents}
                                   onChange={(e) => setInsertNewComponents(e.target.checked)}
                                   className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
                                 />
-                                <div className="text-[10px] leading-tight">
-                                  <span className="font-bold text-slate-700 dark:text-slate-300 block">
-                                    Insert New Discovered Components
-                                  </span>
-                                  <span className="text-[9px] text-slate-400">
-                                    {insertNewComponents ? "Inserts any new components found in this jobpack" : "Skips inserting new component records"}
+                                <div className="text-[10px] leading-tight flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                                      Insert New Discovered Components
+                                    </span>
+                                    <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${
+                                      insertNewComponents
+                                        ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/30"
+                                        : "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700"
+                                    }`}>
+                                      {insertNewComponents ? "Auto-Insert Enabled" : "Skip New Components"}
+                                    </span>
+                                  </div>
+                                  <span className="text-[9px] text-slate-400 block mt-0.5">
+                                    {insertNewComponents 
+                                      ? "Automatically discovers and inserts any new components found in this jobpack/database." 
+                                      : "Skips inserting new component master records."}
                                   </span>
                                 </div>
                               </label>
 
-                              <label className="flex items-start gap-2.5 p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 cursor-pointer">
+                              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-indigo-200 dark:hover:border-indigo-900/50 cursor-pointer transition-colors">
                                 <input
                                   type="checkbox"
                                   checked={migrateAttachments}
                                   onChange={(e) => setMigrateAttachments(e.target.checked)}
                                   className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
                                 />
-                                <div className="text-[10px] leading-tight">
-                                  <span className="font-bold text-slate-700 dark:text-slate-300 block">
-                                    Migrate New Attachments & Media
-                                  </span>
-                                  <span className="text-[9px] text-slate-400">
-                                    {migrateAttachments ? "Copies & registers new media files without deleting old ones" : "Skips attachment migration"}
+                                <div className="text-[10px] leading-tight flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                                      Migrate Attachments & Media
+                                    </span>
+                                    <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${
+                                      migrateAttachments
+                                        ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/30"
+                                        : "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30"
+                                    }`}>
+                                      {migrateAttachments ? "Enabled" : "Fast Mode (Skipped)"}
+                                    </span>
+                                  </div>
+                                  <span className="text-[9px] text-slate-400 block mt-0.5">
+                                    {migrateAttachments 
+                                      ? "Copies & uploads media files (photos, drawings, PDFs) to storage." 
+                                      : "⚡ Skips file uploads for super-fast data migration. You can re-run with this enabled later to sync media."}
                                   </span>
                                 </div>
                               </label>
@@ -2156,19 +2201,52 @@ export default function MigrationDashboard() {
                         <CardDescription className="text-[10px] uppercase font-bold text-slate-500 mt-0.5">FROM ORACLE allcompid VIEW</CardDescription>
                       </div>
                       {(summary.length > 0 || framework.length > 0 || !!selectedStructureId) && (
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center space-x-2">
+                        <div className="flex items-center flex-wrap gap-3">
+                          <div className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
                             <input
                               type="checkbox"
                               id="componentsOnly"
                               checked={componentsOnly}
                               onChange={e => setComponentsOnly(e.target.checked)}
-                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
                             />
-                            <Label htmlFor="componentsOnly" className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                              Migrate Components Only
+                            <Label htmlFor="componentsOnly" className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                              Components Only
                             </Label>
                           </div>
+
+                          <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700" title="When checked, updates existing component records in Supabase. When unchecked, preserves clean data and matches by Q_ID.">
+                            <input
+                              type="checkbox"
+                              id="hdrUpdateComp"
+                              checked={updateComponentSpecs}
+                              onChange={e => setUpdateComponentSpecs(e.target.checked)}
+                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                            />
+                            <Label htmlFor="hdrUpdateComp" className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer select-none flex items-center gap-1">
+                              Overwrite Existing
+                              <span className={`text-[7px] font-extrabold px-1 rounded ${updateComponentSpecs ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'}`}>
+                                {updateComponentSpecs ? 'ON' : 'OFF'}
+                              </span>
+                            </Label>
+                          </div>
+
+                          <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700" title="When checked, inserts any new components found in this jobpack into Supabase.">
+                            <input
+                              type="checkbox"
+                              id="hdrInsertComp"
+                              checked={insertNewComponents}
+                              onChange={e => setInsertNewComponents(e.target.checked)}
+                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                            />
+                            <Label htmlFor="hdrInsertComp" className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer select-none flex items-center gap-1">
+                              Insert New
+                              <span className={`text-[7px] font-extrabold px-1 rounded ${insertNewComponents ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400' : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                                {insertNewComponents ? 'ON' : 'OFF'}
+                              </span>
+                            </Label>
+                          </div>
+
                           <Button 
                             onClick={handleExecuteMigration}
                             disabled={isMigrating}

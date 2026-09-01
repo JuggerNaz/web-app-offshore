@@ -92,25 +92,63 @@ export const GET = withAuth(
       .in("source_id", componentIds)
       .in("source_type", ["component", "COMPONENT", "structure_component"]);
 
-    // Fetch ALL inspection records for this structure (by structure_id so records
-    // without component_id — e.g. legacy migrated data — can still be matched by QID)
-    const { data: inspRecords } = await supabase
-      .from("insp_records")
-      .select(
+    // Fetch ALL inspection records for this structure (paginated loop to guarantee >1000 records are fetched)
+    let inspRecords: any[] = [];
+    let inspPage = 0;
+    const inspPageSize = 1000;
+    let hasMoreInsp = true;
+
+    while (hasMoreInsp) {
+      const { data: pRecs, error: pErr } = await supabase
+        .from("insp_records")
+        .select(
+          `
+          insp_id, component_id, has_anomaly, status, inspection_date, inspection_time, inspection_type_code, description, sow_report_no, fp_kp, elevation, inspection_data,
+          jobpack:jobpack_id(id, name)
         `
-        insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description, sow_report_no, inspection_data,
-        jobpack:jobpack_id(id, name)
-      `
-      )
-      .eq("structure_id", structureIdNumber);
+        )
+        .eq("structure_id", structureIdNumber)
+        .order("insp_id", { ascending: true })
+        .range(inspPage * inspPageSize, (inspPage + 1) * inspPageSize - 1);
+
+      if (pErr || !pRecs || pRecs.length === 0) {
+        hasMoreInsp = false;
+      } else {
+        inspRecords = inspRecords.concat(pRecs);
+        if (pRecs.length < inspPageSize) {
+          hasMoreInsp = false;
+        } else {
+          inspPage++;
+        }
+      }
+    }
 
     // Fetch ALL anomalies for this structure via the view
-    const { data: componentAnomalies } = await (supabase as any)
-      .from("v_anomaly_details")
-      .select(
-        "anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name"
-      )
-      .eq("structure_id", structureIdNumber);
+    let componentAnomalies: any[] = [];
+    let anomPage = 0;
+    const anomPageSize = 1000;
+    let hasMoreAnom = true;
+
+    while (hasMoreAnom) {
+      const { data: aRecs, error: aErr } = await (supabase as any)
+        .from("v_anomaly_details")
+        .select(
+          "anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name"
+        )
+        .eq("structure_id", structureIdNumber)
+        .range(anomPage * anomPageSize, (anomPage + 1) * anomPageSize - 1);
+
+      if (aErr || !aRecs || aRecs.length === 0) {
+        hasMoreAnom = false;
+      } else {
+        componentAnomalies = componentAnomalies.concat(aRecs);
+        if (aRecs.length < anomPageSize) {
+          hasMoreAnom = false;
+        } else {
+          anomPage++;
+        }
+      }
+    }
 
     let inspAtts: any[] = [];
     if (inspRecords && inspRecords.length > 0) {
@@ -158,11 +196,20 @@ export const GET = withAuth(
         return false;
       }) || [];
 
+      const seenAnomKeys = new Set<string>();
       item.anomalies = (componentAnomalies || []).filter((a: any) => {
-        if (a.component_id && a.component_id === item.id) return true;
-        if (qidUpper) {
-          if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) return true;
-          if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) return true;
+        let isMatch = false;
+        if (a.component_id && a.component_id === item.id) isMatch = true;
+        else if (qidUpper) {
+          if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) isMatch = true;
+          if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) isMatch = true;
+        }
+
+        if (isMatch) {
+          const anomKey = a.anomaly_id ? String(a.anomaly_id) : `${a.display_ref_no || ''}_${a.description || ''}`;
+          if (seenAnomKeys.has(anomKey)) return false;
+          seenAnomKeys.add(anomKey);
+          return true;
         }
         return false;
       }) || [];

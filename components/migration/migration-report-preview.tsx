@@ -187,6 +187,7 @@ const COMPONENT_FULL_NAMES: Record<string, string> = {
   "PL": "PILE",
   "PM": "PIPELINE END MANIFOLD",
   "PN": "PROPELLER NOZZLE",
+  "PIPE": "PIPELINE TRUNKLINE",
   "PP": "PIPELINE",
   "PR": "PROPELLER",
   "PT": "DECK PLATE",
