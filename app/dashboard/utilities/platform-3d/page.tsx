@@ -88,7 +88,7 @@ interface Component {
 }
 
 type ViewMode = "card" | "list";
-type SortField = "plat_id" | "title" | "field_name" | "plegs" | "process" | "ptype";
+type SortField = "title" | "field_name" | "plegs" | "process" | "ptype";
 type SortOrder = "asc" | "desc";
 
 export default function Platform3DPage() {
@@ -194,9 +194,11 @@ export default function Platform3DPage() {
                 // Exclude intermediate member seam welds (keep only primary junction node welds)
                 if (code === "WN") {
                     const md = c.metadata || c;
-                    const sNode = (md.s_node || "").toString().trim().toUpperCase();
-                    const fNode = (md.f_node || "").toString().trim().toUpperCase();
-                    if (sNode && fNode && sNode !== fNode) return false;
+                    const el1 = Number(md?.elev_1 ?? md?.elevation1 ?? md?.elevation_1 ?? md?.elev1 ?? 0);
+                    const el2 = Number(md?.elev_2 ?? md?.elevation2 ?? md?.elevation_2 ?? md?.elev2 ?? 0);
+                    if (Math.abs(el1 - el2) > 0.05) {
+                        return false;
+                    }
                 }
 
                 // Exclude fender/boatlanding support components like FEND 1-SUPP-A2 / BL 1-SUPP-A2
@@ -225,18 +227,22 @@ export default function Platform3DPage() {
     );
     const platformDetails = platformDetailData?.data;
 
-    // Fetch WebApp 3D Coordinates (Only revalidate when user explicitly clicks Re-sync 3D Cache)
-    const { data: webapp3dResponse, isLoading: isWebapp3dLoading, mutate: mutateWebapp3d } = useSWR(
+    // Fetch WebApp 3D metadata for Selected Platform
+    const { 
+        data: webapp3dData, 
+        isLoading: isWebapp3dLoading,
+        mutate: mutateWebapp3d 
+    } = useSWR(
         selectedPlatform ? `/api/platform/webapp-3d/${selectedPlatform.plat_id}` : null,
-        fetcher,
-        {
-            revalidateOnFocus: false,
-            revalidateOnReconnect: false,
-            revalidateIfStale: true,
-            refreshInterval: 0,
-        }
+        fetcher
     );
-    const webapp3dData = webapp3dResponse?.data;
+
+    // Fetch WINCAIRS Parameters for Selected Platform
+    const { data: wincairsData } = useSWR(
+        selectedPlatform ? `/api/platform/wincairs-parameters/${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const wincairsParams = useMemo(() => wincairsData?.data || [], [wincairsData]);
 
     // 4. Fetch Elevations
     const { data: elevationsData } = useSWR(
@@ -251,13 +257,6 @@ export default function Platform3DPage() {
         fetcher
     );
     const faces = facesData?.data || [];
-
-    // 6. Fetch WINCAIRS 3D Parameters (u_obj3d_param)
-    const { data: wincairsData, isLoading: isWincairsLoading } = useSWR(
-        selectedPlatform ? `/api/platform/obj3d-param/${selectedPlatform.plat_id}` : null,
-        fetcher
-    );
-    const wincairsParams = useMemo(() => wincairsData?.data || [], [wincairsData]);
 
     useEffect(() => {
         if (typeof window !== "undefined") {
@@ -286,22 +285,59 @@ export default function Platform3DPage() {
     };
 
     const filteredAndSortedPlatforms = useMemo(() => {
-        const query = (searchQuery || "").trim().toLowerCase();
+        const rawQuery = (searchQuery || "").trim().toLowerCase();
+        const tokens = rawQuery.split(/\s+/).filter(Boolean);
+
         let list = platforms.filter((p) => {
-            if (!query) return true;
-            const titleMatch = (p.title || "").toLowerCase().includes(query);
-            const idMatch = String(p.plat_id || "").includes(query) || `plat-${p.plat_id}`.toLowerCase().includes(query);
-            const typeMatch = (p.ptype || "").toLowerCase().includes(query);
-            const fieldMatch = (p.field_name || p.pfield || "").toLowerCase().includes(query);
-            const procMatch = (p.process || "").toLowerCase().includes(query);
-            return titleMatch || idMatch || typeMatch || fieldMatch || procMatch;
+            if (tokens.length === 0) return true;
+
+            const pIdStr = String(p.plat_id || "");
+            const pTitle = String(p.title || "").toLowerCase();
+            const pField = String(p.field_name || p.pfield || "").toLowerCase();
+            const pProcess = String(p.process || "").toLowerCase();
+            const pType = String(p.ptype || "").toLowerCase();
+            const pLegs = p.plegs !== null && p.plegs !== undefined ? p.plegs : null;
+
+            return tokens.every((token) => {
+                // Match "legs" or "leg" keyword
+                if (token === "legs" || token === "leg") {
+                    return pLegs !== null;
+                }
+
+                // If token is numeric (e.g. "4", "6", "8", "1202")
+                if (/^\d+$/.test(token)) {
+                    const numToken = Number(token);
+                    // 1. Match exact number of legs (e.g. 4 -> 4 legs)
+                    if (pLegs === numToken) return true;
+                    // 2. Match exact platform ID
+                    if (p.plat_id === numToken) return true;
+                    // 3. Match if number appears in Title (e.g. "B14", "SMP-4") or Field name
+                    if (pTitle.includes(token) || pField.includes(token)) return true;
+                    return false;
+                }
+
+                // If user specifically searches "plat-..." or "id:..."
+                if (token.startsWith("plat-") || token.startsWith("id:")) {
+                    const cleanId = token.replace(/^(plat-|id:)/, "");
+                    return pIdStr.includes(cleanId);
+                }
+
+                // Text search across all descriptive columns
+                return (
+                    pTitle.includes(token) ||
+                    pField.includes(token) ||
+                    pProcess.includes(token) ||
+                    pType.includes(token) ||
+                    pIdStr === token
+                );
+            });
         });
 
         list.sort((a, b) => {
             let aVal: any = a[sortField];
             let bVal: any = b[sortField];
 
-            if (sortField === "plat_id" || sortField === "plegs") {
+            if (sortField === "plegs") {
                 const numA = Number(aVal || 0);
                 const numB = Number(bVal || 0);
                 return sortOrder === "asc" ? numA - numB : numB - numA;
@@ -584,11 +620,19 @@ export default function Platform3DPage() {
                         <div className="relative flex-1">
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                             <Input
-                                placeholder="Find platform by name, ID, type..."
-                                className="pl-10 h-11 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl font-medium shadow-sm ring-0 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all text-xs"
+                                placeholder="Search by name, oil field, legs, process, type..."
+                                className="pl-10 pr-10 h-11 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl font-medium shadow-sm ring-0 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all text-xs"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery("")}
+                                    className="absolute right-3.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 flex items-center justify-center text-slate-500 transition-colors"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            )}
                         </div>
 
                         {/* View Mode Toggle: Cards vs List */}
@@ -690,15 +734,6 @@ export default function Platform3DPage() {
                                     </TableHead>
                                     <TableHead className="px-6">
                                         <button
-                                            onClick={() => handleSort("plat_id")}
-                                            className="group flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                        >
-                                            Platform ID
-                                            <SortIcon field="plat_id" />
-                                        </button>
-                                    </TableHead>
-                                    <TableHead className="px-6">
-                                        <button
                                             onClick={() => handleSort("title")}
                                             className="group flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                                         >
@@ -758,11 +793,6 @@ export default function Platform3DPage() {
                                             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
                                                 <Layers className="w-5 h-5 stroke-[1.75]" />
                                             </div>
-                                        </TableCell>
-                                        <TableCell className="px-6 py-3.5">
-                                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-black text-slate-700 dark:text-slate-300 font-mono">
-                                                PLAT-{p.plat_id}
-                                            </span>
                                         </TableCell>
                                         <TableCell className="px-6 py-3.5">
                                             <div className="flex flex-col">
