@@ -7,9 +7,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center p-6 bg-slate-950 text-slate-100 relative overflow-hidden">
       {/* Animated Mesh Gradients */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 blur-[120px] rounded-full animate-pulse duration-[8s] infinite" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/20 blur-[120px] rounded-full animate-pulse duration-[10s] infinite" />
-      <div className="absolute top-[40%] left-[60%] w-[30%] h-[30%] bg-indigo-500/10 blur-[100px] rounded-full animate-pulse duration-[12s] infinite" />
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 blur-[120px] rounded-full animate-pulse [animation-duration:8s] infinite" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/20 blur-[120px] rounded-full animate-pulse [animation-duration:10s] infinite" />
+      <div className="absolute top-[40%] left-[60%] w-[30%] h-[30%] bg-indigo-500/10 blur-[100px] rounded-full animate-pulse [animation-duration:12s] infinite" />
 
       {/* Decorative Grid Pattern */}
       <div 
