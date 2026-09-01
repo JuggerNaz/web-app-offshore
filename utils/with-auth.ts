@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { apiUnauthorized } from "@/utils/api-response";
-import { User } from "@supabase/supabase-js";
+import { AuthUser, getAuthUser } from "@/utils/auth/server-user";
 
 export interface AuthenticatedContext {
   params: Promise<any>;
-  user: User;
+  user: AuthUser;
 }
 
 /**
@@ -34,12 +34,9 @@ export function withAuth(handler: AuthenticatedHandler) {
   return async (request: NextRequest, context: { params: Promise<any> }) => {
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser();
+      const user = await getAuthUser(supabase);
 
-      if (error || !user) {
+      if (!user) {
         return apiUnauthorized("Authentication required");
       }
 
@@ -57,7 +54,7 @@ export function withAuth(handler: AuthenticatedHandler) {
  */
 type OptionalAuthHandler = (
   request: NextRequest,
-  context: { params: Promise<any>; user: User | null }
+  context: { params: Promise<any>; user: AuthUser | null }
 ) => Promise<NextResponse> | NextResponse;
 
 /**
@@ -79,9 +76,7 @@ export function withOptionalAuth(handler: OptionalAuthHandler) {
   return async (request: NextRequest, context: { params: Promise<any> }) => {
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getAuthUser(supabase);
 
       return await handler(request, { params: context.params, user });
     } catch (error) {
@@ -97,13 +92,10 @@ export function withOptionalAuth(handler: OptionalAuthHandler) {
  *
  * @returns User object or null
  */
-export async function getCurrentUser(): Promise<User | null> {
+export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
     const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    return user;
+    return await getAuthUser(supabase);
   } catch (error) {
     console.error("[getCurrentUser] Error:", error);
     return null;
