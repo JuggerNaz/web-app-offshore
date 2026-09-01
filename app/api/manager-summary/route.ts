@@ -20,18 +20,20 @@ export const GET = withTenant(async (request, { companyId }) => {
         const jobpackIds = jobpackIdsRaw ? jobpackIdsRaw.split(",").map(Number).filter(Boolean) : [];
         const sowReportNo = searchParams.get("sow_report_no");
 
-        // ─── Fetch oil fields ────────────────────────────────────────────────
-        const { data: allFields } = await (supabase as any)
-            .from("u_lib_list")
-            .select("lib_id, lib_desc")
-            .eq("lib_code", "OILFIELD");
+        // ─── Fetch oil fields and platforms in parallel ──────────────────────
+        const [allFieldsRes, allPlatformsRes] = await Promise.all([
+            (supabase as any)
+                .from("u_lib_list")
+                .select("lib_id, lib_desc")
+                .eq("lib_code", "OILFIELD"),
+            (supabase as any)
+                .from("platform")
+                .select("plat_id, plat_name, pfield")
+                .eq("company_id", companyId),
+        ]);
+        const allFields = allFieldsRes.data;
+        const allPlatforms = allPlatformsRes.data;
         const fieldMap = new Map((allFields || []).map((f: any) => [String(f.lib_id || ""), f.lib_desc]));
-
-        // ─── Fetch all platforms to resolve names ────────────────────────────
-        const { data: allPlatforms } = await (supabase as any)
-            .from("platform")
-            .select("plat_id, plat_name, pfield")
-            .eq("company_id", companyId);
         const platformMap = new Map<string, any>((allPlatforms || []).map((p: any) => [String(p.plat_id || ""), p]));
 
         // ─── Determine which jobpacks to query ───────────────────────────────
@@ -84,14 +86,11 @@ export const GET = withTenant(async (request, { companyId }) => {
                 jobpackFilter = filtered.map((jp: any) => jp.id);
             }
         } else if (scope === "field" && fieldId) {
-            // Platforms in field -> Jobpacks
-            const { data: platforms } = await (supabase as any)
-                .from("platform")
-                .select("plat_id")
-                .eq("company_id", companyId)
-                .eq("pfield", fieldId);
-            const platIds = (platforms || []).map((p: any) => p.plat_id);
-            
+            // Platforms in field -> Jobpacks (derived from the platform map already fetched)
+            const platIds = (allPlatforms || [])
+                .filter((p: any) => String(p.pfield) === String(fieldId))
+                .map((p: any) => p.plat_id);
+
             if (platIds.length > 0) {
                 const [sowRes, recRes] = await Promise.all([
                     (supabase as any).from("u_sow").select("jobpack_id").eq("company_id", companyId).in("structure_id", platIds).limit(200),
@@ -140,12 +139,10 @@ export const GET = withTenant(async (request, { companyId }) => {
         let jobpacks: any[] = [];
         let fieldPlatIds: number[] = [];
         if (scope === "field" && fieldId) {
-            const { data: platforms } = await (supabase as any)
-                .from("platform")
-                .select("plat_id")
-                .eq("company_id", companyId)
-                .eq("pfield", fieldId);
-            fieldPlatIds = (platforms || []).map((p: any) => p.plat_id);
+            // Derived from the platform map already fetched above (no extra query)
+            fieldPlatIds = (allPlatforms || [])
+                .filter((p: any) => String(p.pfield) === String(fieldId))
+                .map((p: any) => p.plat_id);
         }
 
         if (jobpackFilter.length > 0) {
@@ -158,12 +155,11 @@ export const GET = withTenant(async (request, { companyId }) => {
             jobpacks = jpData || [];
         }
 
-        // ─── Fetch inspection summary for each jobpack ───────────────────────
-        const summaries: any[] = [];
-
+        // ─── Build per-jobpack work plans ────────────────────────────────────
         // Increase processing limit for global/field aggregations
         const processLimit = (scope === "global" || scope === "field") ? 30 : 20;
 
+        const plans: { jp: any; structs: any[]; structIds: any[] }[] = [];
         for (const jp of jobpacks.slice(0, processLimit)) {
             const meta = jp.metadata || {};
             const structs: any[] = [];
@@ -190,36 +186,86 @@ export const GET = withTenant(async (request, { companyId }) => {
 
             // Batch fetch all SOWs and records for all relevant structures in this jobpack
             const structIds = relevantStructs.map(s => s.id || s.plat_id || s.str_id).filter(Boolean);
-            
-            const { data: allSowData, error: sowErr } = await (supabase as any)
-                .from("u_sow")
-                .select("id, report_numbers, structure_id")
-                .eq("company_id", companyId)
-                .eq("jobpack_id", jp.id)
-                .in("structure_id", structIds);
-            if (sowErr) console.error(`[ManagerSummary] JP ${jp.id} SOW error:`, sowErr);
+            plans.push({ jp, structs: relevantStructs, structIds });
+        }
 
-            const { data: allRecordsData, error: recErr } = await (supabase as any)
-                .from("insp_records")
-                .select(`
-                    insp_id, status, has_anomaly, inspection_type_code, inspection_data,
-                    component_type, component_id, dive_job_id, rov_job_id, structure_id, sow_report_no,
-                    structure_components:component_id!left(q_id, code, metadata),
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    insp_anomalies(anomaly_id, status, defect_type_code, defect_category_code, priority_code, record_category)
-                `)
-                .eq("company_id", companyId)
-                .eq("jobpack_id", jp.id)
-                .in("structure_id", structIds);
-            if (recErr) console.error(`[ManagerSummary] JP ${jp.id} records error:`, recErr);
+        // ─── Phase 1: fetch SOWs + inspection records (bounded concurrency) ───
+        // Previously the per-jobpack queries ran sequentially (~2 round trips
+        // per jobpack); bounded parallel batches cut total latency sharply.
+        // Only the JSONB keys the aggregation reads are extracted instead of
+        // the full `inspection_data` payload.
+        const fetched = await withConcurrency(plans, 6, async (plan) => {
+            const [sowRes, recRes] = await Promise.all([
+                (supabase as any)
+                    .from("u_sow")
+                    .select("id, report_numbers, structure_id")
+                    .eq("company_id", companyId)
+                    .eq("jobpack_id", plan.jp.id)
+                    .in("structure_id", plan.structIds),
+                (supabase as any)
+                    .from("insp_records")
+                    .select(`
+                        insp_id, status, has_anomaly, inspection_type_code,
+                        component_type, component_id, dive_job_id, rov_job_id, structure_id, sow_report_no,
+                        meta_status:inspection_data->>_meta_status,
+                        cp_rdg:inspection_data->>cp_rdg,
+                        cp_reading_mv:inspection_data->>cp_reading_mv,
+                        cp_rdg_additional:inspection_data->cp_rdg_additional,
+                        priority:inspection_data->>priority,
+                        defectCode:inspection_data->>defectCode,
+                        anode_depletion:inspection_data->anode_depletion,
+                        anode_depletion_percent:inspection_data->anode_depletion_percent,
+                        member_status:inspection_data->>member_status,
+                        structure_components:component_id!left(code),
+                        inspection_type:inspection_type_id!left(code, name),
+                        insp_anomalies(anomaly_id, status, defect_type_code, defect_category_code, priority_code, record_category)
+                    `)
+                    .eq("company_id", companyId)
+                    .eq("jobpack_id", plan.jp.id)
+                    .in("structure_id", plan.structIds),
+            ]);
+            if (sowRes.error) console.error(`[ManagerSummary] JP ${plan.jp.id} SOW error:`, sowRes.error);
+            if (recRes.error) console.error(`[ManagerSummary] JP ${plan.jp.id} records error:`, recRes.error);
+            return { plan, sowRows: sowRes.data || [], recordRows: recRes.data || [] };
+        });
 
-            for (const targetStruct of relevantStructs) {
+        // ─── Phase 2: ONE batched u_sow_items query for the whole request ─────
+        // Previously one query per structure inside the aggregation loop.
+        const allSowIds = Array.from(new Set(fetched.flatMap((f) => f.sowRows.map((s: any) => s.id).filter(Boolean))));
+        const sowItemsBySow = new Map<any, any[]>();
+        if (allSowIds.length > 0) {
+            let sowItemsQuery = (supabase as any)
+                .from("u_sow_items")
+                .select("sow_id, status")
+                .eq("company_id", companyId)
+                .in("sow_id", allSowIds);
+
+            if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null") {
+                sowItemsQuery = sowItemsQuery.eq("report_number", sowReportNo);
+            }
+
+            const { data: sowItems } = await sowItemsQuery;
+            for (const item of sowItems || []) {
+                const bucket = sowItemsBySow.get(item.sow_id);
+                if (bucket) bucket.push(item);
+                else sowItemsBySow.set(item.sow_id, [item]);
+            }
+        }
+
+        // ─── Phase 3: aggregate per structure (pure JS, no further queries) ───
+        const summaries: any[] = [];
+
+        for (const { plan, sowRows, recordRows } of fetched) {
+            const jp = plan.jp;
+            const meta = jp.metadata || {};
+
+            for (const targetStruct of plan.structs) {
                 const structId = targetStruct?.id || targetStruct?.plat_id || targetStruct?.str_id;
                 const sowReportNos: string[] = [];
                 let sowIds: number[] = [];
 
                 // Filter SOW data for this structure
-                const structSow = (allSowData || []).filter((s: any) => String(s.structure_id) === String(structId));
+                const structSow = (sowRows || []).filter((s: any) => String(s.structure_id) === String(structId));
                 structSow.forEach((s: any) => {
                     sowIds.push(s.id);
                     const rns = s.report_numbers;
@@ -232,7 +278,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 });
 
                 // Filter inspection records for this structure
-                let recs = (allRecordsData || []).filter((r: any) => String(r.structure_id) === String(structId));
+                let recs = (recordRows || []).filter((r: any) => String(r.structure_id) === String(structId));
 
                 if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null") {
                     recs = recs.filter((r: any) => r.sow_report_no === sowReportNo);
@@ -252,12 +298,12 @@ export const GET = withTenant(async (request, { companyId }) => {
 
             const anomalyRecs = recs.filter((r: any) => {
                 if (!r.has_anomaly) return false;
-                const ms = (r.inspection_data?._meta_status || "").toLowerCase();
+                const ms = (r.meta_status || "").toLowerCase();
                 return ms !== "finding";
             });
             const findingRecs = recs.filter((r: any) => {
                 if (!r.has_anomaly) return false;
-                const ms = (r.inspection_data?._meta_status || "").toLowerCase();
+                const ms = (r.meta_status || "").toLowerCase();
                 return ms === "finding";
             });
 
@@ -268,14 +314,14 @@ export const GET = withTenant(async (request, { companyId }) => {
 
             anomalyRecs.forEach((r: any) => {
                 const a = r.insp_anomalies?.[0];
-                const rawP = a ? (a.priority_code || "") : (r.inspection_data?.priority || "");
+                const rawP = a ? (a.priority_code || "") : (r.priority || "");
                 if (!VALID_PRIORITY(rawP)) return;
                 anomalyValidTotal++;
                 if (a?.status === "CLOSED") rectifiedCount++;
                 const p = rawP.trim().toUpperCase();
                 byPriority[p] = (byPriority[p] || 0) + 1;
 
-                const dt = (a?.defect_type_code || a?.defect_category_code || r.inspection_data?.defectCode || "").trim();
+                const dt = (a?.defect_type_code || a?.defect_category_code || r.defectCode || "").trim();
                 if (dt && dt !== "UNKNOWN" && dt !== "N/A") {
                     byDefectType[dt] = (byDefectType[dt] || 0) + 1;
                 }
@@ -285,7 +331,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             const findingByPriority: Record<string, number> = {};
             findingRecs.forEach((r: any) => {
                 const a = r.insp_anomalies?.[0];
-                const rawP = a ? (a.priority_code || "") : (r.inspection_data?.priority || "");
+                const rawP = a ? (a.priority_code || "") : (r.priority || "");
                 if (!VALID_PRIORITY(rawP)) return;
                 findingValidTotal++;
                 const p = rawP.trim().toUpperCase();
@@ -295,15 +341,14 @@ export const GET = withTenant(async (request, { companyId }) => {
             // CP readings
             let cpCount = 0, cpMin: number | null = null, cpMax: number | null = null, cpSum = 0;
             recs.forEach((r: any) => {
-                const d = r.inspection_data || {};
-                const v = parseFloat(d.cp_rdg ?? d.cp_reading_mv ?? "");
+                const v = parseFloat(r.cp_rdg ?? r.cp_reading_mv ?? "");
                 if (!isNaN(v) && isFinite(v)) {
                     cpCount++;
                     cpSum += v;
                     if (cpMin === null || v < cpMin) cpMin = v;
                     if (cpMax === null || v > cpMax) cpMax = v;
                 }
-                const adds: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : [];
+                const adds: any[] = Array.isArray(r.cp_rdg_additional) ? r.cp_rdg_additional : [];
                 adds.forEach((a: any) => {
                     const av = parseFloat(a.reading ?? a.cp_rdg ?? "");
                     if (!isNaN(av) && isFinite(av)) {
@@ -323,8 +368,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             });
             const depletionBuckets: Record<string, number> = { "0–25%": 0, "25–50%": 0, "50–75%": 0, "75–100%": 0 };
             anodeRecs.forEach((r: any) => {
-                const d = r.inspection_data || {};
-                const raw = d.anode_depletion || d.anode_depletion_percent;
+                const raw = r.anode_depletion || r.anode_depletion_percent;
                 if (raw === undefined || raw === null || raw === "") return;
                 if (typeof raw === "number") {
                     if (raw <= 25) depletionBuckets["0–25%"]++;
@@ -347,7 +391,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             });
             const fmdConditions: Record<string, number> = { dry: 0, flooded: 0, grouted: 0, inconclusive: 0 };
             fmdRecs.forEach((r: any) => {
-                const ms = (r.inspection_data?.member_status || "").toLowerCase().trim();
+                const ms = (r.member_status || "").toLowerCase().trim();
                 if (ms === "dry") fmdConditions.dry++;
                 else if (ms === "flooded") fmdConditions.flooded++;
                 else if (ms === "grouted") fmdConditions.grouted++;
@@ -363,26 +407,15 @@ export const GET = withTenant(async (request, { companyId }) => {
                 inspTypeBreakdown[code].count++;
             });
 
-            // SOW data
+            // SOW data (from the batched u_sow_items query)
             let sowTotal = 0, sowCompleted = 0, sowIncomplete = 0, sowPending = 0;
-            if (sowIds.length > 0) {
-                let sowItemsQuery = (supabase as any)
-                    .from("u_sow_items")
-                    .select("status")
-                    .eq("company_id", companyId)
-                    .in("sow_id", sowIds);
-                
-                if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null") {
-                    sowItemsQuery = sowItemsQuery.eq("report_number", sowReportNo);
-                }
-
-                const { data: sowItems } = await sowItemsQuery;
-                const items = sowItems || [];
-                sowTotal = items.length;
-                sowCompleted = items.filter((i: any) => i.status === "completed").length;
-                sowIncomplete = items.filter((i: any) => i.status === "incomplete").length;
-                sowPending = items.filter((i: any) => i.status === "pending").length;
-            }
+            const structItems = sowIds.flatMap((id) => sowItemsBySow.get(id) || []);
+            sowTotal = structItems.length;
+            structItems.forEach((i: any) => {
+                if (i.status === "completed") sowCompleted++;
+                else if (i.status === "incomplete") sowIncomplete++;
+                else if (i.status === "pending") sowPending++;
+            });
             const sowCompletionPct = sowTotal > 0 ? Math.round(((sowCompleted + sowIncomplete) / sowTotal) * 100) : 0;
 
             // Structure info
@@ -474,6 +507,21 @@ export const GET = withTenant(async (request, { companyId }) => {
         }, { status: 500 });
     }
 });
+
+// ─── Bounded-concurrency helper ──────────────────────────────────────────────
+async function withConcurrency<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+    const results: R[] = new Array(items.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (true) {
+            const index = next++;
+            if (index >= items.length) break;
+            results[index] = await fn(items[index], index);
+        }
+    });
+    await Promise.all(workers);
+    return results;
+}
 
 // ─── Prediction Engine ───────────────────────────────────────────────────────
 function computePredictions(summaries: any[]) {

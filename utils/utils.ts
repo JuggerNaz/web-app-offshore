@@ -13,8 +13,32 @@ export function encodedRedirect(type: "error" | "success", path: string, message
 
 type FetcherArgs = Parameters<typeof fetch>;
 
+const parseResponse = async (response: Response): Promise<any> => {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return text;
+  }
+};
+
 export const fetcher = async (...args: FetcherArgs): Promise<any> => {
-  const response = await fetch(...args);
+  let response = await fetch(...args);
+
+  // The proxy no longer refreshes sessions on /api/* requests. If the access
+  // token expired mid-session, refresh it client-side and retry once.
+  if (response.status === 401) {
+    try {
+      const { createClient } = await import("@/utils/supabase/client");
+      const supabase = createClient();
+      await supabase.auth.getUser();
+      response = await fetch(...args);
+    } catch (e) {
+      // Fall through to normal error handling with the original 401 response.
+    }
+  }
 
   if (!response.ok) {
     let errorMessage = `Error: ${response.status} ${response.statusText}`;
@@ -30,12 +54,5 @@ export const fetcher = async (...args: FetcherArgs): Promise<any> => {
     throw new Error(errorMessage);
   }
 
-  const text = await response.text();
-  if (!text) return null;
-
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    return text;
-  }
+  return parseResponse(response);
 };
