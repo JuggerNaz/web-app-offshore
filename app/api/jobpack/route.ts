@@ -70,7 +70,7 @@ export const GET = withTenant(async (request, { companyId }) => {
       const sowIds = new Set<number>();
       (sowData || []).forEach((r: any) => r.jobpack_id && sowIds.add(Number(r.jobpack_id)));
       
-      allIds = new Set([...allIds].filter(x => sowIds.has(x)));
+      allIds = new Set(Array.from(allIds).filter(x => sowIds.has(x)));
     }
 
     if (allIds.size === 0) {

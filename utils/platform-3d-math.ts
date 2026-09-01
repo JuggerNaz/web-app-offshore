@@ -162,6 +162,14 @@ export function isDegenerateFootprint(legCoords: Array<{ x: number; z: number }>
 }
 
 export function generatePlatform3DCoordinates(platformDetails: any, elevations: any[], faces: any[], components: any[]) {
+    // [HOTFIX] In-memory data patch for HOM N758-N764 to bypass Row 1 naming collision
+    components.forEach(c => {
+        if (c.q_id === "HOM N758-N764" && c.metadata) {
+            c.metadata.s_node = "758_B2";
+            c.metadata.f_node = "764_A2";
+        }
+    });
+
     const sanitizeElevation = (elvVal: any): number => {
         if (elvVal === undefined || elvVal === null) return 0;
         let val = typeof elvVal === "number" ? elvVal : parseFloat(elvVal);

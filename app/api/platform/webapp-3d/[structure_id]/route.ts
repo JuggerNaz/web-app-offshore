@@ -109,7 +109,8 @@ export const GET = withAuth(
           const md = c.metadata || c;
           const sNode = (md.s_node || "").toString().trim().toUpperCase();
           const fNode = (md.f_node || "").toString().trim().toUpperCase();
-          if (sNode && fNode && sNode !== fNode) return false;
+          const hasAssociation = !!(md.associated_comp_id || md.associated_member || md.associated_comp || md.parent_id);
+          if (sNode && fNode && sNode !== fNode && !hasAssociation) return false;
         }
 
         if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) return false;

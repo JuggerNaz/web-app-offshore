@@ -214,7 +214,8 @@ export default function Platform3DPage() {
                     const md = c.metadata || c;
                     const sNode = (md.s_node || "").toString().trim().toUpperCase();
                     const fNode = (md.f_node || "").toString().trim().toUpperCase();
-                    if (sNode && fNode && sNode !== fNode) return false;
+                    const hasAssociation = !!(md.associated_comp_id || md.associated_member || md.associated_comp || md.parent_id);
+                    if (sNode && fNode && sNode !== fNode && !hasAssociation) return false;
                 }
 
                 // Exclude fender/boatlanding support components like FEND 1-SUPP-A2 / BL 1-SUPP-A2
