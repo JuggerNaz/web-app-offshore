@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { apiUnauthorized, apiForbidden } from "@/utils/api-response";
-import { User } from "@supabase/supabase-js";
+import { AuthUser, getAuthUser } from "@/utils/auth/server-user";
 
 import {
   UserRole,
@@ -17,7 +17,7 @@ export { ROLE_HIERARCHY, hasMinimumRole };
 
 export interface AuthenticatedRoleContext {
   params: Promise<any>;
-  user: User;
+  user: AuthUser;
   profile: Profile;
   membership: CompanyMembership;
   company: Company;
@@ -34,12 +34,20 @@ type AuthenticatedRoleHandler = (
  * If companyId is not provided, defaults to the first active membership.
  */
 export async function getUserMembership(supabase: any, userId: string, companyId?: string | null) {
-  // 1. Get profile
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .single();
+  // Profile, memberships and role are all keyed by user_id and independent —
+  // fetch them in parallel instead of sequentially (saves 2 round trips).
+  const [profileRes, membershipsRes, roleRes] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", userId).single(),
+    supabase
+      .from("company_memberships")
+      .select("*, company:companies(*)")
+      .eq("user_id", userId)
+      .eq("is_active", true),
+    supabase.from("user_roles").select("role, modules").eq("user_id", userId).maybeSingle(),
+  ]);
+
+  const profile = profileRes.data;
+  const profileError = profileRes.error;
 
   if (profileError || !profile) {
     return { error: "Profile not found", status: 404 };
@@ -90,14 +98,10 @@ export async function getUserMembership(supabase: any, userId: string, companyId
     }
   }
 
-  // 2. Get memberships
-  const { data: memberships, error: membershipsError } = await supabase
-    .from("company_memberships")
-    .select("*, company:companies(*)")
-    .eq("user_id", userId)
-    .eq("is_active", true);
+  // 2. Resolve memberships (fetched in parallel above)
+  const memberships = membershipsRes.data;
 
-  if (membershipsError || !memberships || memberships.length === 0) {
+  if (membershipsRes.error || !memberships || memberships.length === 0) {
     return { error: "No active company memberships found", status: 403, profile };
   }
 
@@ -115,12 +119,8 @@ export async function getUserMembership(supabase: any, userId: string, companyId
   // Flatten and format memberships list for returning
   const formattedMemberships = memberships.map(({ company: _, ...m }: any) => m);
 
-  // Fetch the user's role and modules from user_roles
-  const { data: userRole } = await supabase
-    .from("user_roles")
-    .select("role, modules")
-    .eq("user_id", userId)
-    .maybeSingle();
+  // Role and modules (fetched in parallel above)
+  const userRole = roleRes.data;
 
   return {
     profile,
@@ -148,13 +148,10 @@ export function withRole(allowedRoles: UserRole[], handler: AuthenticatedRoleHan
     try {
       const supabase = createClient();
       
-      // 1. Check user authentication
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
+      // 1. Check user authentication (local JWT verification)
+      const user = await getAuthUser(supabase);
 
-      if (authError || !user) {
+      if (!user) {
         return apiUnauthorized("Authentication required");
       }
 
