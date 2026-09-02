@@ -117,7 +117,7 @@ npx supabase gen types typescript --db-url <your-db-url> > ./supabase/schema.ts
 ├── sql/                        # Database migration & fix SQL files
 ├── info/                       # Reference docs, code patches, data dumps
 ├── scratch/                    # Scratch/temp files
-├── middleware.ts                # Supabase session refresh (SSR auth)
+├── proxy.ts                     # Supabase session refresh (SSR auth)
 ├── netlify.toml                # Netlify deployment config
 ├── next.config.js              # Next.js configuration
 ├── tailwind.config.ts          # Tailwind CSS configuration

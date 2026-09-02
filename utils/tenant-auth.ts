@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { apiUnauthorized, apiForbidden } from "@/utils/api-response";
-import { User } from "@supabase/supabase-js";
+import { AuthUser, getAuthUser } from "@/utils/auth/server-user";
 import {
   UserRole,
   ROLE_HIERARCHY,
@@ -14,7 +14,7 @@ import { getUserMembership } from "./role-auth";
 
 export interface TenantContext {
   params: Promise<any>;
-  user: User;
+  user: AuthUser;
   profile: Profile;
   membership: CompanyMembership;
   company: Company;
@@ -29,7 +29,7 @@ type TenantHandler = (
 
 export interface TenantContextPartial {
   params: Promise<any>;
-  user: User;
+  user: AuthUser;
   companyId: string;
 }
 
@@ -48,12 +48,8 @@ export function withTenant(handler: TenantHandler) {
     try {
       const supabase = createClient();
 
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
+      const user = await getAuthUser(supabase);
+      if (!user) {
         return apiUnauthorized("Authentication required");
       }
 
@@ -91,12 +87,8 @@ export function withTenantLight(handler: TenantPartialHandler) {
     try {
       const supabase = createClient();
 
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
+      const user = await getAuthUser(supabase);
+      if (!user) {
         return apiUnauthorized("Authentication required");
       }
 
