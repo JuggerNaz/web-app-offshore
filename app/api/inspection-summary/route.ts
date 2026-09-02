@@ -324,38 +324,104 @@ export const GET = withTenant(async (request, { companyId }) => {
             return valB - valA;
         });
 
-        let recQuery = (supabase as any)
-            .from("insp_records")
-            .select(`
-                insp_id,
-                status,
-                has_anomaly,
-                inspection_type_id,
-                inspection_type_code,
-                inspection_data,
-                description,
-                component_type,
-                component_id,
-                dive_job_id,
-                rov_job_id,
-                sow_report_no,
-                jobpack_id,
-                fp_kp,
-                structure_components:component_id!left(
-                    id, q_id, code, metadata
-                ),
-                inspection_type:inspection_type_id!left(id, code, name),
-                insp_anomalies(anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description)
-            `)
-            .eq("company_id", companyId);
+        const selectCols = `
+            insp_id,
+            status,
+            has_anomaly,
+            inspection_type_id,
+            inspection_type_code,
+            description,
+            component_type,
+            component_id,
+            dive_job_id,
+            rov_job_id,
+            sow_report_no,
+            jobpack_id,
+            fp_kp,
+            elevation,
+            inspection_date,
+            inspection_time
+        `;
 
-        if (!isNaN(strNum)) recQuery = recQuery.eq("structure_id", strNum);
-        if (!isNaN(jpNum)) recQuery = recQuery.eq("jobpack_id", jpNum);
+        let allRecordsData: any[] = [];
+        let inspPage = 0;
+        const inspPageSize = 1000;
+        let hasMoreInsp = true;
 
-        const { data: allRecordsData, error: recErr } = await recQuery;
-        if (recErr) {
-            console.error("[Summary] Records fetch error:", recErr);
-            return NextResponse.json({ error: recErr.message }, { status: 500 });
+        while (hasMoreInsp) {
+            let pageQuery = (supabase as any)
+                .from("insp_records")
+                .select(selectCols)
+                .range(inspPage * inspPageSize, (inspPage + 1) * inspPageSize - 1);
+
+            if (!isNaN(strNum)) pageQuery = pageQuery.eq("structure_id", strNum);
+            if (!isNaN(jpNum)) pageQuery = pageQuery.eq("jobpack_id", jpNum);
+
+            const { data: pageData, error: pageErr } = await pageQuery;
+            if (pageErr) {
+                console.error("[Summary] Records fetch error on page", inspPage, pageErr);
+                if (inspPage === 0) {
+                    return NextResponse.json({ error: pageErr.message }, { status: 500 });
+                }
+                hasMoreInsp = false;
+            } else if (!pageData || pageData.length === 0) {
+                hasMoreInsp = false;
+            } else {
+                allRecordsData.push(...pageData);
+                if (pageData.length < inspPageSize) {
+                    hasMoreInsp = false;
+                } else {
+                    inspPage++;
+                }
+            }
+        }
+
+        // Fetch anomalies in a fast direct query
+        let anomQuery = (supabase as any)
+            .from("insp_anomalies")
+            .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description, follow_up_notes, is_rectified, inspection_id");
+
+        if (companyId) {
+            anomQuery = anomQuery.eq("company_id", companyId);
+        }
+
+        const { data: allAnomalies } = await anomQuery;
+        const anomMap = new Map<number, any[]>();
+        (allAnomalies || []).forEach((a: any) => {
+            if (a.inspection_id) {
+                if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
+                anomMap.get(a.inspection_id)!.push(a);
+            }
+        });
+
+        // Fast in-memory link for structure_components, inspection_types, and insp_anomalies
+        allRecordsData.forEach((r: any) => {
+            r.insp_anomalies = anomMap.get(r.insp_id) || [];
+            if (r.insp_anomalies.length > 0) r.has_anomaly = true;
+            if (r.component_id && compMap.has(String(r.component_id))) {
+                const c = compMap.get(String(r.component_id));
+                r.structure_components = { id: c.id, q_id: c.q_id, code: c.code, metadata: c.metadata };
+            }
+        });
+
+        // For anomaly records and findings, fetch rich inspection_data in one targeted fast query (<50ms)
+        const anomInspIds = allRecordsData.filter(r => r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0)).map(r => r.insp_id);
+        if (anomInspIds.length > 0) {
+            const { data: anomInspData } = await (supabase as any)
+                .from("insp_records")
+                .select("insp_id, inspection_data")
+                .in("insp_id", anomInspIds);
+
+            const inspDataMap = new Map<number, any>();
+            (anomInspData || []).forEach((row: any) => {
+                if (row.insp_id) inspDataMap.set(row.insp_id, row.inspection_data);
+            });
+
+            allRecordsData.forEach((r: any) => {
+                if (inspDataMap.has(r.insp_id)) {
+                    r.inspection_data = inspDataMap.get(r.insp_id);
+                }
+            });
         }
 
         const sowReportNumbers = new Set(
@@ -862,16 +928,18 @@ export const GET = withTenant(async (request, { companyId }) => {
         });
 
         // ─── 10. ANOMALIES ─────────────────────────────────────────────────────
-        // Anomaly = has_anomaly=true AND _meta_status != "Finding"
-        // Finding = has_anomaly=true AND _meta_status == "Finding"
+        // Anomaly = (has_anomaly=true OR has insp_anomalies) AND _meta_status != "Finding"
+        // Finding = (has_anomaly=true OR has insp_anomalies) AND _meta_status == "Finding"
         const anomalyRecords = records.filter((r: any) => {
-            if (!r.has_anomaly) return false;
+            const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
+            if (!isAnomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus !== "finding";
         });
 
         const findingRecords = records.filter((r: any) => {
-            if (!r.has_anomaly) return false;
+            const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
+            if (!isAnomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus === "finding";
         });
@@ -896,7 +964,9 @@ export const GET = withTenant(async (request, { companyId }) => {
                 : (r.inspection_data?.priority || "");
 
             anomalyValidTotal++;
-            if (anomaly?.status === "CLOSED") rectifiedCount++;
+            if (anomaly?.status === "CLOSED" || anomaly?.is_rectified || r.inspection_data?.rectify || r.inspection_data?.is_rectified) {
+                rectifiedCount++;
+            }
 
             const priority = VALID_PRIORITY(rawPriority) ? rawPriority.trim().toUpperCase() : "N/A";
             anomalyByPriority[priority] = (anomalyByPriority[priority] || 0) + 1;

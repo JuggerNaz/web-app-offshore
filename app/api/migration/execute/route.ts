@@ -4315,7 +4315,12 @@ export async function POST(request: NextRequest) {
               const logResult = await oracleConn.execute(`
                 SELECT ${logQCols.join(', ')} 
                 FROM PLATGI 
-                WHERE STR_ID = :strId AND UPPER(${descCol}) LIKE '%TAPE LOG%'
+                WHERE STR_ID = :strId AND (
+                  UPPER(${descCol}) LIKE '%TAPE%' OR 
+                  UPPER(${descCol}) LIKE '%RECORDING%' OR 
+                  UPPER(${descCol}) LIKE '%VIDEO LOG%' OR
+                  TAPE_NO IS NOT NULL
+                )
               `, { strId: structureId });
               if (logResult.rows) {
                 tapeLogRows.push(...logResult.rows);
@@ -4567,7 +4572,9 @@ export async function POST(request: NextRequest) {
               // Map all logs for this specific tape chapter
               const vLogs = chapterRows
                 .map(row => {
-                  const comments = String(getObjProperty(row, 'COMMENTS') || "").trim();
+                  const rawDesc = String(getObjProperty(row, 'DESCRIPTION') || getObjProperty(row, 'DESCR') || "").trim();
+                  const rawComments = String(getObjProperty(row, 'COMMENTS') || "").trim();
+                  const comments = rawComments || rawDesc || "TAPE LOG";
                   const parsed = parseComments(comments);
 
                   let eventType = 'CUSTOM';
@@ -5386,9 +5393,10 @@ export async function POST(request: NextRequest) {
               }
             });
 
-            const whereCond = platgiCols.has('DESCRIPTION')
-              ? "(DESCRIPTION IS NULL OR (DESCRIPTION != 'TAPE LOG' AND NOT (DESCRIPTION IN ('CP LOG', 'IMAGE LOG') AND (COMP_ID IS NULL OR COMP_ID = 0))))"
-              : (platgiCols.has('DESCR') ? "(DESCR IS NULL OR (DESCR != 'TAPE LOG' AND NOT (DESCR IN ('CP LOG', 'IMAGE LOG') AND (COMP_ID IS NULL OR COMP_ID = 0))))" : "1=1");
+            const targetDescCol = platgiCols.has('DESCRIPTION') ? 'DESCRIPTION' : (platgiCols.has('DESCR') ? 'DESCR' : null);
+            const whereCond = targetDescCol
+              ? `(${targetDescCol} IS NULL OR (NOT (UPPER(${targetDescCol}) LIKE '%TAPE%' OR UPPER(${targetDescCol}) LIKE '%RECORDING%' OR UPPER(${targetDescCol}) LIKE '%VIDEO LOG%') AND NOT (${targetDescCol} IN ('CP LOG', 'IMAGE LOG') AND (COMP_ID IS NULL OR COMP_ID = 0))))`
+              : "1=1";
 
             try {
               const result = await oracleConn.execute(`

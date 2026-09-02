@@ -894,6 +894,17 @@ function V10PreviewLayout() {
     const rawQuery = recordSearchQuery.trim();
     if (!rawQuery) return sortedRecords;
 
+    // Filter out calibration/test records from the full database records set
+    const excludedCodes = ["RCPCLB", "RUTCLB", "CPCLB", "UTCLB"];
+    const baseSource = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+      ? allWorkspaceRecords
+      : currentRecords;
+
+    const sourceRecords = baseSource.filter((r: any) => {
+      const code = r.inspection_type_code || r.inspection_type?.code;
+      return !excludedCodes.includes(code);
+    });
+
     // Helper to extract all searchable data from a record
     const getSearchableText = (r: any) => {
       const texts: string[] = [];
@@ -901,19 +912,25 @@ function V10PreviewLayout() {
       // 1. Basic Info
       texts.push(r.inspection_type?.name || "");
       texts.push(r.inspection_type_code || r.inspection_type?.code || "");
-      texts.push(r.structure_components?.q_id || r.component_name || "");
+      texts.push(r.structure_components?.q_id || r.structure_components?.code || r.component_name || "");
+      texts.push(r.component_type || "");
+      texts.push(r.sow_report_no || "");
       texts.push((r.elevation ?? "").toString());
       texts.push((r.kp ?? "").toString());
-      texts.push(r.has_anomaly ? "anomaly" : r.status === "COMPLETED" ? "complete" : "incomplete");
+      texts.push((r.fp_kp ?? "").toString());
+      texts.push(r.status || "");
+      texts.push(r.has_anomaly ? "anomaly defect" : r.status === "COMPLETED" ? "complete" : "incomplete");
       texts.push(r.description || "");
       texts.push(r.observation || "");
       
       // 2. Anomaly Info
       if (r.insp_anomalies && r.insp_anomalies.length > 0) {
+        texts.push("anomaly");
         r.insp_anomalies.forEach((anom: any) => {
           texts.push(anom.anomaly_ref_no || "");
           texts.push(anom.defect_description || "");
-          texts.push(anom.defect_code || "");
+          texts.push(anom.defect_type_code || anom.defect_code || "");
+          texts.push(anom.defect_category_code || "");
           texts.push(anom.priority || "");
           texts.push(anom.priority_code || "");
           texts.push(anom.priority_name || "");
@@ -966,25 +983,104 @@ function V10PreviewLayout() {
       ? rawQuery.split(",").map((s) => s.trim()).filter(Boolean)
       : rawQuery.split(/\s+/).map((s) => s.trim()).filter(Boolean);
 
-    if (conditions.length === 0) return sortedRecords;
-
-    if (searchMode === "EXACT") {
-      return sortedRecords.filter((r) => matchesTerm(getSearchableText(r), rawQuery));
-    }
-
-    if (searchMode === "ANY") {
-      return sortedRecords.filter((r) => {
+    let filtered: any[] = [];
+    if (conditions.length === 0) {
+      filtered = sourceRecords;
+    } else if (searchMode === "EXACT") {
+      filtered = sourceRecords.filter((r) => matchesTerm(getSearchableText(r), rawQuery));
+    } else if (searchMode === "ANY") {
+      filtered = sourceRecords.filter((r) => {
         const fullText = getSearchableText(r);
         return conditions.some((cond) => matchesTerm(fullText, cond));
       });
+    } else {
+      // Default "ALL" - Multi-condition AND search
+      filtered = sourceRecords.filter((r) => {
+        const fullText = getSearchableText(r);
+        return conditions.every((cond) => matchesTerm(fullText, cond));
+      });
     }
 
-    // Default "ALL" - Multi-condition AND search
-    return sortedRecords.filter((r) => {
-      const fullText = getSearchableText(r);
-      return conditions.every((cond) => matchesTerm(fullText, cond));
+    // Sort matching records according to active sortConfig
+    const sortableRecords = [...filtered];
+    sortableRecords.sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+
+      switch (sortConfig.key) {
+        case "inspection_date": {
+          const aDateTime = new Date(`${a.inspection_date || "1970-01-01"}T${a.inspection_time || "00:00:00"}`).getTime();
+          const bDateTime = new Date(`${b.inspection_date || "1970-01-01"}T${b.inspection_time || "00:00:00"}`).getTime();
+          aVal = aDateTime;
+          bVal = bDateTime;
+          break;
+        }
+        case "type":
+          aVal = (a.inspection_type?.name || "").toLowerCase();
+          bVal = (b.inspection_type?.name || "").toLowerCase();
+          break;
+        case "component":
+          aVal = (a.structure_components?.q_id || "").toLowerCase();
+          bVal = (b.structure_components?.q_id || "").toLowerCase();
+          break;
+        case "elev":
+          const aE = parseFloat(a.elevation);
+          const bE = parseFloat(b.elevation);
+          aVal = isNaN(aE) ? a.fp_kp || "" : aE;
+          bVal = isNaN(bE) ? b.fp_kp || "" : bE;
+          break;
+        case "status": {
+          const getStatusWeight = (r: any) => {
+            if (r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0)) return 3;
+            if (r.status === "INCOMPLETE") return 2;
+            if (r.status === "COMPLETED") return 1;
+            return 0;
+          };
+          aVal = getStatusWeight(a);
+          bVal = getStatusWeight(b);
+          break;
+        }
+        case "anomaly_ref":
+          aVal = (a.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
+          bVal = (b.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
+          break;
+        case "cp_reading": {
+          const aCp = parseFloat(
+            a.inspection_data?.cp_rdg ??
+              a.inspection_data?.cp_reading_mv ??
+              a.inspection_data?.cp ??
+              ""
+          );
+          const bCp = parseFloat(
+            b.inspection_data?.cp_rdg ??
+              b.inspection_data?.cp_reading_mv ??
+              b.inspection_data?.cp ??
+              ""
+          );
+          aVal = isNaN(aCp) ? -Infinity : aCp;
+          bVal = isNaN(bCp) ? -Infinity : bCp;
+          break;
+        }
+        case "dive_no":
+          aVal = (a.insp_dive_jobs?.job_no || a.insp_rov_jobs?.job_no || "").toLowerCase();
+          bVal = (b.insp_dive_jobs?.job_no || b.insp_rov_jobs?.job_no || "").toLowerCase();
+          break;
+        case "tape_no":
+          aVal = (a.insp_video_tapes?.tape_no || "").toLowerCase();
+          bVal = (b.insp_video_tapes?.tape_no || "").toLowerCase();
+          break;
+        default:
+          aVal = a[sortConfig.key];
+          bVal = b[sortConfig.key];
+      }
+
+      if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
     });
-  }, [sortedRecords, recordSearchQuery, searchMode]);
+
+    return sortableRecords;
+  }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig]);
   const [isFetchingDeps, setIsFetchingDeps] = useState(true);
   const [isDeploymentValid, setIsDeploymentValid] = useState(true);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -3840,12 +3936,6 @@ function V10PreviewLayout() {
       const selectFields = `
         *,
         inspection_type:inspection_type_id!left(id, code, name),
-        structure_components:component_id!left (
-            id,
-            q_id, 
-            code,
-            metadata
-        ),
         insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
         insp_video_tapes:tape_id!left(tape_no)
@@ -3866,14 +3956,8 @@ function V10PreviewLayout() {
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
-      if (recordSearchQuery) {
-        // When searching, we bypass pagination to allow the client-side Smart Filter 
-        // to scan a much larger set of records (up to 3000) globally.
-        inspsQuery = inspsQuery.limit(3000);
-      } else {
-        // Standard browsing uses pagination for performance
-        inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
-      }
+      // Standard browsing uses pagination for performance
+      inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
 
       if (structureId && !isNaN(Number(structureId))) {
         inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
@@ -3917,7 +4001,7 @@ function V10PreviewLayout() {
         validJobIds.push(Number(depId));
       }
 
-      // Fetch Movements, Scoped Tapes, and Inspection Records in PARALLEL
+      // Fetch Movements, Scoped Tapes, Anomalies, and Inspection Records in PARALLEL
       const movementsPromise = supabase
         .from(movTable)
         .select("*")
@@ -3936,10 +4020,15 @@ function V10PreviewLayout() {
             .eq(jobCol, depId)
             .order("tape_id", { ascending: false });
 
-      let [movsRes, tapesRes, inspsRes] = await Promise.all([
+      const anomPromise = supabase
+        .from("insp_anomalies")
+        .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id");
+
+      let [movsRes, tapesRes, inspsRes, anomsRes] = await Promise.all([
         movementsPromise,
         tapesPromise,
         inspsQuery,
+        anomPromise,
       ]);
 
       const movs = movsRes.data;
@@ -4222,37 +4311,97 @@ function V10PreviewLayout() {
           return acc;
         }, {});
 
-        const inspsWithCounts = finalInsps.map((r: any) => ({
-          ...r,
-          inspection_type: r.inspection_type
-            ? {
-                ...r.inspection_type,
-                name: formatInspectionTypeName(r.inspection_type.name),
-              }
-            : null,
-          attachment_count: countMap[r.insp_id] || 0,
-        }));
+        const anomMap = new Map<number, any[]>();
+        (anomsRes.data || []).forEach((a: any) => {
+          if (a.inspection_id) {
+            if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
+            anomMap.get(a.inspection_id)!.push(a);
+          }
+        });
+
+        const inspsWithCounts = finalInsps.map((r: any) => {
+          const matchedAnoms = anomMap.get(r.insp_id) || [];
+          return {
+            ...r,
+            insp_anomalies: matchedAnoms,
+            has_anomaly: matchedAnoms.length > 0 ? true : r.has_anomaly,
+            inspection_type: r.inspection_type
+              ? {
+                  ...r.inspection_type,
+                  name: formatInspectionTypeName(r.inspection_type.name),
+                }
+              : null,
+            attachment_count: countMap[r.insp_id] || 0,
+          };
+        });
 
         setCurrentRecords(inspsWithCounts);
 
         // Fetch all workspace records asynchronously in the background so it doesn't block the main UI loading
         const fetchAllWorkspaceRecords = async () => {
           try {
-            const { data: allInspsData } = await allInspsQuery;
-            if (allInspsData) {
-              const mappedAll = allInspsData.map((r: any) => ({
+            let allData: any[] = [];
+            let page = 0;
+            const pageSize = 500;
+            let hasMore = true;
+
+            while (hasMore) {
+              let pageQuery = supabase
+                .from("insp_records")
+                .select(selectFields)
+                .eq("jobpack_id", parseInt(jobPackId || "0"))
+                .order("insp_id", { ascending: true })
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+
+              if (structureId && !isNaN(Number(structureId))) {
+                pageQuery = pageQuery.eq("structure_id", Number(structureId));
+              }
+              if (
+                headerData.sowReportNo &&
+                headerData.sowReportNo !== "N/A" &&
+                headerData.sowReportNo !== "Unknown Report"
+              ) {
+                pageQuery = pageQuery.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`);
+              }
+
+              const { data: pData, error: pErr } = await pageQuery;
+              if (pErr || !pData || pData.length === 0) {
+                hasMore = false;
+              } else {
+                allData.push(...pData);
+                if (pData.length < pageSize) hasMore = false;
+                else page++;
+              }
+            }
+
+            // Also fetch all anomalies for this structure/jobpack to ensure 100% anomaly coverage
+            const { data: anomData } = await supabase
+              .from("insp_anomalies")
+              .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id");
+
+            const anomMap = new Map<number, any[]>();
+            (anomData || []).forEach((a: any) => {
+              if (a.inspection_id) {
+                if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
+                anomMap.get(a.inspection_id)!.push(a);
+              }
+            });
+
+            const mappedAll = allData.map((r: any) => {
+              const matchedAnoms = anomMap.get(r.insp_id) || r.insp_anomalies || [];
+              return {
                 ...r,
+                insp_anomalies: matchedAnoms,
+                has_anomaly: matchedAnoms.length > 0 ? true : r.has_anomaly,
                 inspection_type: r.inspection_type
                   ? {
                       ...r.inspection_type,
                       name: formatInspectionTypeName(r.inspection_type.name),
                     }
                   : null,
-              }));
-              setAllWorkspaceRecords(mappedAll);
-            } else {
-              setAllWorkspaceRecords([]);
-            }
+              };
+            });
+            setAllWorkspaceRecords(mappedAll);
           } catch (err) {
             console.error("[Sync] Background allInsps fetch error:", err);
           }
@@ -4316,7 +4465,6 @@ function V10PreviewLayout() {
     parseDbDate,
     structureId,
     headerData.sowReportNo,
-    recordSearchQuery,
     recordsOffset,
     recordsLimit,
     jobPackId,

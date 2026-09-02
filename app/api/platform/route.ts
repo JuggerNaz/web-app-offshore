@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { apiSuccess, apiCreated, apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
-import { withAuth } from "@/utils/with-auth";
+import { withAuth, withOptionalAuth } from "@/utils/with-auth";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 
 /**
@@ -10,7 +10,7 @@ import { getPaginationParams, createPaginationMeta, applyPagination } from "@/ut
  * Fetch all platforms with pagination and optional field filtering
  * Query params: ?page=1&pageSize=50&field=fieldId
  */
-export const GET = withAuth(async (request: NextRequest, { user }) => {
+export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
   const { searchParams } = new URL(request.url);
@@ -42,22 +42,28 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
 
   const fieldMap = new Map((allFields || []).map(f => [f.lib_id.toString(), f.lib_desc]));
 
-  // Fetch structure images for each platform
-  const platformsWithDetails = await Promise.all(
-    (data || []).map(async (platform) => {
-      const { data: images } = await supabase
+  // Batch fetch structure images for all returned platforms in a single query
+  const platIds = (data || []).map((p: any) => p.plat_id);
+  const { data: allImages } = platIds.length > 0
+    ? await supabase
         .from("attachment")
-        .select("id, path, meta")
+        .select("id, path, meta, source_id")
         .eq("source_type", "platform_structure_image")
-        .eq("source_id", platform.plat_id);
+        .in("source_id", platIds)
+    : { data: [] };
 
-      return {
-        ...platform,
-        images: images || [],
-        field_name: fieldMap.get(platform.pfield?.toString() ?? "") || platform.pfield,
-      };
-    })
-  );
+  const imageMap = new Map<number, any[]>();
+  (allImages || []).forEach((img: any) => {
+    const list = imageMap.get(img.source_id) || [];
+    list.push(img);
+    imageMap.set(img.source_id, list);
+  });
+
+  const platformsWithDetails = (data || []).map((platform) => ({
+    ...platform,
+    images: imageMap.get(platform.plat_id) || [],
+    field_name: fieldMap.get(platform.pfield?.toString() ?? "") || platform.pfield,
+  }));
 
   // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);

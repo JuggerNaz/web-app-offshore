@@ -39,20 +39,41 @@ export const GET = withTenant(async (request, { companyId }) => {
         }
 
         if (jobpackId && structureId) {
+            const rawId = String(structureId).replace(/^(platform|pipeline)-/, "");
+            const numRawId = Number(rawId);
+
             let query = (supabase as any)
                 .from("u_sow")
                 .select("*")
-                .eq("jobpack_id", jobpackId)
-                .eq("structure_id", structureId);
+                .eq("jobpack_id", Number(jobpackId));
+
+            if (!isNaN(numRawId)) {
+                query = query.eq("structure_id", numRawId);
+            }
 
             if (companyId) {
                 query = query.or(`company_id.eq.${companyId},company_id.is.null`);
             }
 
-            const { data: sows, error: sowError } = await query;
+            let { data: sows, error: sowError } = await query;
 
             if (sowError) {
                 return NextResponse.json({ error: sowError.message }, { status: 400 });
+            }
+
+            // Fallback: if no row matches both jobpack_id and structure_id, try fetching by jobpack_id alone
+            if (!sows || sows.length === 0) {
+                let fbQuery = (supabase as any)
+                    .from("u_sow")
+                    .select("*")
+                    .eq("jobpack_id", Number(jobpackId));
+                if (companyId) {
+                    fbQuery = fbQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+                }
+                const { data: fbData } = await fbQuery;
+                if (fbData && fbData.length > 0) {
+                    sows = fbData;
+                }
             }
 
             if (!sows || sows.length === 0) {
@@ -78,7 +99,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             let query = (supabase as any)
                 .from("u_sow")
                 .select("*")
-                .eq("jobpack_id", jobpackId);
+                .eq("jobpack_id", Number(jobpackId));
 
             if (companyId) {
                 query = query.or(`company_id.eq.${companyId},company_id.is.null`);
@@ -94,10 +115,15 @@ export const GET = withTenant(async (request, { companyId }) => {
         }
 
         if (structureId) {
+            const rawId = String(structureId).replace(/^(platform|pipeline)-/, "");
+            const numRawId = Number(rawId);
+            if (isNaN(numRawId)) {
+                return NextResponse.json({ data: [] });
+            }
             let query = (supabase as any)
                 .from("u_sow")
                 .select("*")
-                .eq("structure_id", structureId);
+                .eq("structure_id", numRawId);
 
             if (companyId) {
                 query = query.or(`company_id.eq.${companyId},company_id.is.null`);
