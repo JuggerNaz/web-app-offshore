@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { withCacheHeaders } from "@/utils/api-cache";
 
 export async function GET(request: NextRequest) {
     try {
@@ -11,7 +12,8 @@ export async function GET(request: NextRequest) {
 
         if (error) throw error;
 
-        return NextResponse.json({ data });
+        // Reference data — safe to cache briefly per browser.
+        return withCacheHeaders(NextResponse.json({ data }), 300);
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
