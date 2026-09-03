@@ -4,6 +4,7 @@ import { apiSuccess, apiCreated, apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
+import { withCacheHeaders } from "@/utils/api-cache";
 
 /**
  * GET /api/platform
@@ -42,27 +43,36 @@ export const GET = withAuth(async (request: NextRequest, { user }) => {
 
   const fieldMap = new Map((allFields || []).map(f => [f.lib_id.toString(), f.lib_desc]));
 
-  // Fetch structure images for each platform
-  const platformsWithDetails = await Promise.all(
-    (data || []).map(async (platform) => {
-      const { data: images } = await supabase
+  // Fetch structure images for all platforms in ONE query (was one query
+  // per platform — up to pageSize extra round trips per list fetch).
+  const platIds = (data || []).map((platform) => platform.plat_id);
+  const { data: allImages } = platIds.length
+    ? await supabase
         .from("attachment")
-        .select("id, path, meta")
+        .select("id, path, meta, source_id")
         .eq("source_type", "platform_structure_image")
-        .eq("source_id", platform.plat_id);
+        .in("source_id", platIds)
+    : { data: [] as any[] | null };
 
-      return {
-        ...platform,
-        images: images || [],
-        field_name: fieldMap.get(platform.pfield?.toString() ?? "") || platform.pfield,
-      };
-    })
-  );
+  const imagesByPlatform = new Map<number, { id: any; path: string; meta: any }[]>();
+  for (const img of allImages || []) {
+    const bucket = imagesByPlatform.get(img.source_id);
+    const row = { id: img.id, path: img.path, meta: img.meta };
+    if (bucket) bucket.push(row);
+    else imagesByPlatform.set(img.source_id, [row]);
+  }
+
+  const platformsWithDetails = (data || []).map((platform) => ({
+    ...platform,
+    images: imagesByPlatform.get(platform.plat_id) || [],
+    field_name: fieldMap.get(platform.pfield?.toString() ?? "") || platform.pfield,
+  }));
 
   // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
-  return apiPaginated(platformsWithDetails, pagination);
+  // Platform list changes rarely (admin edits) — brief browser cache.
+  return withCacheHeaders(apiPaginated(platformsWithDetails, pagination), 60);
 });
 
 /**
