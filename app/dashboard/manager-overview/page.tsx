@@ -61,7 +61,9 @@ export default function ManagerOverviewPage() {
     }, [scope, selectedFieldId, selectedStructureId, selectedJobpackIds, selectedSowReportNo]);
 
     const { data: summaryData, isLoading, mutate } = useSWR(summaryUrl, fetcher, {
-        refreshInterval: 60000, revalidateOnFocus: false,
+        // Heaviest endpoint in the app — poll every 5 min instead of 60s;
+        // the header refresh button (mutate) gives on-demand freshness.
+        refreshInterval: 300000, revalidateOnFocus: false,
     });
 
     const summaries = summaryData?.data?.summaries || [];

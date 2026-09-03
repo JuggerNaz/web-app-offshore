@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withCacheHeaders } from "@/utils/api-cache";
 
 export async function GET() {
     const supabase = createClient();
@@ -39,5 +40,6 @@ export async function GET() {
         pipeline_count: pipelineCounts.get(field.lib_id) || 0,
     }));
 
-    return NextResponse.json({ data: fieldsWithStats });
+    // Reference data (field list + counts) — safe to cache briefly per browser.
+    return withCacheHeaders(NextResponse.json({ data: fieldsWithStats }), 300);
 }
