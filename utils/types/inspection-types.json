@@ -51,6 +51,20 @@
             "lib_code": "CCO",
             "required": false
         },
+        "surface_condition": {
+            "name": "surface_condition",
+            "label": "Surface Condition",
+            "type": "combo",
+            "lib_code": "SURF_CND",
+            "required": false
+        },
+        "cleaning_method": {
+            "name": "cleaning_method",
+            "label": "Cleaning Method",
+            "type": "combo",
+            "lib_code": "CLEANMET",
+            "required": false
+        },
         "northing": {
             "name": "northing",
             "label": "Northing",

@@ -376,16 +376,23 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         }
 
-        // Fetch anomalies in a fast direct query
-        let anomQuery = (supabase as any)
-            .from("insp_anomalies")
-            .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description, follow_up_notes, is_rectified, inspection_id");
-
-        if (companyId) {
-            anomQuery = anomQuery.eq("company_id", companyId);
+        // Fetch anomalies in a fast targeted query scoped strictly to matching inspection records
+        const allRecordInspIds = allRecordsData.map((r: any) => r.insp_id).filter(Boolean);
+        let allAnomalies: any[] = [];
+        if (allRecordInspIds.length > 0) {
+            // Fetch in chunks of 500 if large
+            const chunkSize = 500;
+            for (let i = 0; i < allRecordInspIds.length; i += chunkSize) {
+                const chunk = allRecordInspIds.slice(i, i + chunkSize);
+                const { data: chunkAnoms } = await (supabase as any)
+                    .from("insp_anomalies")
+                    .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description, follow_up_notes, is_rectified, inspection_id")
+                    .in("inspection_id", chunk);
+                if (chunkAnoms && chunkAnoms.length > 0) {
+                    allAnomalies.push(...chunkAnoms);
+                }
+            }
         }
-
-        const { data: allAnomalies } = await anomQuery;
         const anomMap = new Map<number, any[]>();
         (allAnomalies || []).forEach((a: any) => {
             if (a.inspection_id) {

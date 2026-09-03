@@ -363,28 +363,54 @@ export const VoiceInspectionAssistant: React.FC<VoiceInspectionAssistantProps> =
               )}
             </div>
 
+            {/* Quick Spoken Command Shortcuts Tip */}
+            <div className="mb-2 px-2 py-1 bg-slate-100 dark:bg-slate-950/60 rounded border border-slate-200/60 dark:border-slate-800 text-[8.5px] font-semibold text-slate-500 flex flex-wrap gap-x-2 gap-y-1 items-center">
+              <span className="font-bold text-indigo-600 dark:text-indigo-400">💡 Voice Commands:</span>
+              <span>"SKOPL381 Bracelet Anode depleted 10-20%"</span>
+              <span>•</span>
+              <span>"Save record"</span>
+              <span>•</span>
+              <span>"Next component"</span>
+              <span>•</span>
+              <span>"Capture photo"</span>
+              <span>•</span>
+              <span>"Switch to DIVING / ROV"</span>
+            </div>
+
             {/* Parsed Preview Card */}
             {lastParsedResult && (
               <div className="p-2.5 rounded-lg border border-indigo-200/80 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2 animate-in fade-in slide-in-from-top-1">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-1">
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                     <span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-300">
                       AI Structured Extraction
                     </span>
                   </div>
-                  <Badge
-                    variant={
-                      lastParsedResult.finding_type === "Anomaly"
-                        ? "destructive"
-                        : lastParsedResult.finding_type === "Finding"
-                        ? "default"
-                        : "secondary"
-                    }
-                    className="text-[9px] font-black px-1.5 py-0 uppercase"
-                  >
-                    {lastParsedResult.finding_type}
-                  </Badge>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {lastParsedResult.action_intent?.action && (
+                      <Badge variant="outline" className="text-[8px] font-black px-1.5 py-0 uppercase bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700">
+                        ⚡ {lastParsedResult.action_intent.action.replace(/_/g, " ")}
+                      </Badge>
+                    )}
+                    {lastParsedResult.action_intent?.target_component_id && (
+                      <Badge variant="outline" className="text-[8px] font-black px-1.5 py-0 uppercase bg-cyan-50 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">
+                        🎯 {lastParsedResult.action_intent.target_component_id}
+                      </Badge>
+                    )}
+                    <Badge
+                      variant={
+                        lastParsedResult.finding_type === "Anomaly"
+                          ? "destructive"
+                          : lastParsedResult.finding_type === "Finding"
+                          ? "default"
+                          : "secondary"
+                      }
+                      className="text-[9px] font-black px-1.5 py-0 uppercase"
+                    >
+                      {lastParsedResult.finding_type}
+                    </Badge>
+                  </div>
                 </div>
 
                 {/* Extracted Form Values */}

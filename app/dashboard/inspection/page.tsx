@@ -51,7 +51,7 @@ export default function InspectionLanding() {
     const [selectedJobPack, setSelectedJobPack] = useState<string>("");
     const [selectedStructure, setSelectedStructure] = useState<string>("");
     const [selectedSOW, setSelectedSOW] = useState<string>("");
-    const [selectedMode, setSelectedMode] = useState<string>("");
+    const [selectedMode, setSelectedMode] = useState<string>("ROV");
     const [loading, setLoading] = useState(true);
 
     // Filter states

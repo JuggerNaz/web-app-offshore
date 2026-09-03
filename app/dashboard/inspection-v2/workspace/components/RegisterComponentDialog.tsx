@@ -97,7 +97,7 @@ export function RegisterComponentDialog({
     }, [formData.code, formData.q_id]);
 
     // --- Component Types Library ---
-    const { data: componentsLib } = useSWR(`/api/components`, fetcher);
+    const { data: componentsLib } = useSWR(open ? `/api/components` : null, fetcher);
     
     const filteredCompTypes = componentsLib?.data
         ? componentsLib.data.filter((c: any) => {
@@ -108,17 +108,17 @@ export function RegisterComponentDialog({
         : [];
 
     // --- Library Fetching (Mirroring ComponentSpecDialog) ---
-    const { data: positionLib } = useSWR(`/api/library/POSITION`, fetcher);
+    const { data: positionLib } = useSWR(open ? `/api/library/POSITION` : null, fetcher);
     const { data: platformData } = useSWR(
-        structureType === "platform" && structureId ? `/api/platform/${structureId}` : null,
+        open && structureType === "platform" && structureId ? `/api/platform/${structureId}` : null,
         fetcher
     );
     const { data: levelData } = useSWR(
-        structureType === "platform" && structureId ? `/api/platform/level/${structureId}` : null,
+        open && structureType === "platform" && structureId ? `/api/platform/level/${structureId}` : null,
         fetcher
     );
     const { data: faceData } = useSWR(
-        structureType === "platform" && structureId ? `/api/platform/faces/${structureId}` : null,
+        open && structureType === "platform" && structureId ? `/api/platform/faces/${structureId}` : null,
         fetcher
     );
 
@@ -166,7 +166,7 @@ export function RegisterComponentDialog({
         : [];
 
     // Structural group options (COMPGRP library)
-    const { data: compGroupLib } = useSWR(`/api/library/COMPGRP`, fetcher);
+    const { data: compGroupLib } = useSWR(open ? `/api/library/COMPGRP` : null, fetcher);
     const groupOptions = compGroupLib?.data
         ? Array.from(new Map(compGroupLib.data.map((item: any) => {
             const val = (item.lib_id || "").toString().trim().replace(/\s+/g, " ");

@@ -22,6 +22,12 @@ export interface ParsedVoiceInspection {
     location?: string;
     notes?: string;
   }>;
+  action_intent?: {
+    action?: "REGISTER_EVENT" | "SAVE_RECORD" | "SWITCH_COMPONENT" | "NEXT_COMPONENT" | "PREV_COMPONENT" | "SWITCH_DIVING" | "SWITCH_ROV" | "CAPTURE_PHOTO" | "OPEN_SUMMARY" | "MARK_COMPLETE" | "MARK_ANOMALY";
+    target_component_id?: string;
+    target_inspection_type?: string;
+    event_type?: string;
+  };
   confidence_score: number;
 }
 
@@ -413,6 +419,84 @@ function ensureTelemetriesAndFieldAliases(result: ParsedVoiceInspection, transcr
       if (!result.defect_type) result.defect_type = `${result.extracted_fields.debris} (${result.extracted_fields.debris_material || "Debris"})`;
       if (!result.priority) result.priority = "Medium";
     }
+  }
+
+  // --- 8. Anode Type & Anode Depletion Percentage Extraction ---
+  if (lower.includes("anode") || lower.includes("bracelet") || lower.includes("deplet")) {
+    if (!result.extracted_fields.anode_type) {
+      if (lower.includes("bracelet")) result.extracted_fields.anode_type = "Bracelet Anode";
+      else if (lower.includes("standoff") || lower.includes("stand-off")) result.extracted_fields.anode_type = "Standoff Anode";
+      else if (lower.includes("flush")) result.extracted_fields.anode_type = "Flush Anode";
+      else if (lower.includes("sled")) result.extracted_fields.anode_type = "Anode Sled";
+      else result.extracted_fields.anode_type = "Sacrificial Anode";
+    }
+
+    const depletMatch = transcript.match(/(?:deplet(?:ed|ion)?)\s*(?:is|at|of)?\s*(\d{1,3}(?:\s*-\s*\d{1,3})?%?|\bAll\b|\bNone\b)/i) ||
+                        transcript.match(/(\d{1,3}(?:\s*-\s*\d{1,3})?%)\s*(?:deplet(?:ed|ion)?)/i);
+    if (depletMatch) {
+      const depletVal = depletMatch[1].endsWith("%") ? depletMatch[1] : `${depletMatch[1]}%`;
+      result.extracted_fields.anode_depletion = depletVal;
+      result.extracted_fields.depletion_rate = depletVal;
+      result.extracted_fields.anode_condition = `Depleted ${depletVal}`;
+      if (!result.extracted_fields.component_condition) {
+        result.extracted_fields.component_condition = `Anode Depleted ${depletVal}`;
+      }
+    }
+  }
+
+  // --- 9. Voice Action Commands & Intent Extraction ---
+  if (!result.action_intent) result.action_intent = {};
+
+  if (lower.includes("register event") || lower.includes("register new event") || lower.includes("add event") || lower.includes("create event") || lower.includes("new event")) {
+    result.action_intent.action = "REGISTER_EVENT";
+  } else if (lower.includes("save record") || lower.includes("commit record") || lower.includes("save event") || lower.includes("commit event")) {
+    result.action_intent.action = "SAVE_RECORD";
+  } else if (lower.includes("next component") || lower.includes("next record") || lower.includes("next item")) {
+    result.action_intent.action = "NEXT_COMPONENT";
+  } else if (lower.includes("previous component") || lower.includes("prev component") || lower.includes("previous record") || lower.includes("prev record")) {
+    result.action_intent.action = "PREV_COMPONENT";
+  } else if (lower.includes("switch to diving") || lower.includes("diving mode") || lower.includes("diver mode")) {
+    result.action_intent.action = "SWITCH_DIVING";
+  } else if (lower.includes("switch to rov") || lower.includes("rov mode")) {
+    result.action_intent.action = "SWITCH_ROV";
+  } else if (lower.includes("capture photo") || lower.includes("take photo") || lower.includes("snap photo") || lower.includes("take picture") || lower.includes("take snapshot")) {
+    result.action_intent.action = "CAPTURE_PHOTO";
+  } else if (lower.includes("open summary") || lower.includes("show summary")) {
+    result.action_intent.action = "OPEN_SUMMARY";
+  } else if (lower.includes("mark complete") || lower.includes("set complete")) {
+    result.action_intent.action = "MARK_COMPLETE";
+  } else if (lower.includes("mark anomaly") || lower.includes("flag anomaly") || lower.includes("set anomaly")) {
+    result.action_intent.action = "MARK_ANOMALY";
+  }
+
+  // Detect Spoken Component ID e.g. "SKOPL381", "BKP-A", "FJ-105", "Leg A1"
+  const compMatch = transcript.match(/(?:component|record|target|member|pipe|pipeline|platform|leg|brace|riser|field joint|anode|node)\s*(?:id|name|number|no|code|is|:)?\s*([a-zA-Z0-9\-_]{3,16})\b/i) ||
+                    transcript.match(/\b([A-Z]{3,8}\d{2,6}[A-Z0-9\-_]*)\b/i);
+  if (compMatch) {
+    const matchedCompId = compMatch[1].trim();
+    if (!["ROV", "DIVING", "COMPLETE", "FINDING", "ANOMALY", "GOOD", "DEBRIS", "MARINE", "COATING", "DEPTH"].includes(matchedCompId.toUpperCase())) {
+      result.action_intent.target_component_id = matchedCompId;
+      if (!result.action_intent.action && lower.includes("for ")) {
+        result.action_intent.action = "SWITCH_COMPONENT";
+      }
+    }
+  }
+
+  // Detect Spoken Event / Inspection Type details
+  if (lower.includes("bracelet anode") || lower.includes("anode survey") || lower.includes("anode inspection")) {
+    result.action_intent.target_inspection_type = "Bracelet Anode";
+  } else if (lower.includes("pipeline navigation") || lower.includes("navigation survey") || lower.includes("pipeline survey")) {
+    result.action_intent.target_inspection_type = "Pipeline Navigation Inspection";
+  } else if (lower.includes("free span") || lower.includes("freespan")) {
+    result.action_intent.target_inspection_type = "Free Span Inspection";
+  } else if (lower.includes("field joint")) {
+    result.action_intent.target_inspection_type = "Field Joint Inspection";
+  } else if (lower.includes("cathodic protection") || lower.includes("cp measurement")) {
+    result.action_intent.target_inspection_type = "Cathodic Protection";
+  } else if (lower.includes("marine growth")) {
+    result.action_intent.target_inspection_type = "Marine Growth Inspection";
+  } else if (lower.includes("seabed survey") || lower.includes("debris survey")) {
+    result.action_intent.target_inspection_type = "Debris Survey";
   }
 }
 

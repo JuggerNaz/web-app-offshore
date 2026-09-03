@@ -121,7 +121,11 @@ import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
-import { Inspection3DViewer } from "./_components/Inspection3DViewer";
+import dynamic from "next/dynamic";
+const Inspection3DViewer = dynamic(
+  () => import("./_components/Inspection3DViewer").then((mod) => mod.Inspection3DViewer),
+  { ssr: false }
+);
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
@@ -253,6 +257,8 @@ function V10PreviewLayout() {
   const initialMode = searchParams.get("mode") as "DIVING" | "ROV" | null;
   const hasAutoDisconnectedRef = useRef(false);
   const hasAutoEditedRef = useRef(false);
+  const lastResolvedParamsRef = useRef<string>("");
+  const lastHeaderFetchedKeyRef = useRef<string>("");
 
   const jpParam = searchParams.get("jpName");
   const strParam = searchParams.get("structName");
@@ -573,7 +579,7 @@ function V10PreviewLayout() {
                 type: "tabset",
                 weight: 30,
                 children: [
-                  { type: "tab", name: isPipe ? "Pipeline Event Menu" : "Component List", component: "components" },
+                  { type: "tab", name: isPipe ? "Event Menu" : "Component List", component: "components" },
                 ],
               },
               ...(isPipe ? [
@@ -627,7 +633,7 @@ function V10PreviewLayout() {
       { id: "videoPreview", name: "Photo / Video Grab" },
       { id: "form", name: "Inspection Form" },
       { id: "events", name: "Captured Events" },
-      { id: "components", name: isPipe ? "Pipeline Event Menu" : "Component List" },
+      { id: "components", name: isPipe ? "Event Menu" : "Component List" },
       { id: "history", name: "History Data" },
     ];
     if (isPipe) {
@@ -905,54 +911,159 @@ function V10PreviewLayout() {
       return !excludedCodes.includes(code);
     });
 
-    // Helper to extract all searchable data from a record
+    // Helper to extract all searchable data from a record across every table column
     const getSearchableText = (r: any) => {
       const texts: string[] = [];
+      const d = r.inspection_data || {};
       
-      // 1. Basic Info
-      texts.push(r.inspection_type?.name || "");
-      texts.push(r.inspection_type_code || r.inspection_type?.code || "");
-      texts.push(r.structure_components?.q_id || r.structure_components?.code || r.component_name || "");
-      texts.push(r.component_type || "");
-      texts.push(r.sow_report_no || "");
-      texts.push((r.elevation ?? "").toString());
-      texts.push((r.kp ?? "").toString());
-      texts.push((r.fp_kp ?? "").toString());
+      // 1. Column: Status & Anomalies
       texts.push(r.status || "");
-      texts.push(r.has_anomaly ? "anomaly defect" : r.status === "COMPLETED" ? "complete" : "incomplete");
-      texts.push(r.description || "");
-      texts.push(r.observation || "");
-      
-      // 2. Anomaly Info
+      const isAnom = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toLowerCase().includes("anom") || String(r.status || "").toLowerCase().includes("defect");
+      if (isAnom) {
+        texts.push("anomaly defect anom");
+      } else if (r.status === "COMPLETED") {
+        texts.push("complete completed");
+      } else {
+        texts.push("incomplete draft pending");
+      }
+
+      // Anomaly details (Ref, Defect Code, Category, Priority, Description)
       if (r.insp_anomalies && r.insp_anomalies.length > 0) {
-        texts.push("anomaly");
+        texts.push("anomaly defect anom");
         r.insp_anomalies.forEach((anom: any) => {
           texts.push(anom.anomaly_ref_no || "");
           texts.push(anom.defect_description || "");
           texts.push(anom.defect_type_code || anom.defect_code || "");
           texts.push(anom.defect_category_code || "");
+          texts.push(anom.record_category || "");
           texts.push(anom.priority || "");
           texts.push(anom.priority_code || "");
           texts.push(anom.priority_name || "");
-          if (anom.priority_code) texts.push(`priority ${anom.priority_code}`);
+          if (anom.priority_code) {
+            texts.push(`priority ${anom.priority_code}`);
+            texts.push(`p${anom.priority_code}`);
+          }
+          if (anom.follow_up_notes) texts.push(anom.follow_up_notes);
         });
       }
 
-      // 3. Dive & Tape Info
-      texts.push(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "");
-      texts.push(r.insp_video_tapes?.tape_no || "");
-      texts.push((r.tape_count_no ?? "").toString());
-
-      // 4. Date Info
+      // 2. Column: Date & Time (in multiple formats: DD MMM YYYY, YYYY-MM-DD, month names, times)
       if (r.inspection_date) {
         texts.push(r.inspection_date);
-        const d = new Date(r.inspection_date);
-        texts.push(d.toLocaleDateString());
+        const dStr = String(r.inspection_date).trim().split('T')[0];
+        const match = dStr.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        if (match) {
+          const year = match[1];
+          const monthIdx = parseInt(match[2], 10) - 1;
+          const day = match[3].padStart(2, '0');
+          const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+          const shortMonthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const fullMonth = monthNames[monthIdx] || "";
+          const shortMonth = shortMonthNames[monthIdx] || "";
+          texts.push(`${day} ${shortMonth} ${year}`);
+          texts.push(`${day} ${fullMonth} ${year}`);
+          texts.push(`${shortMonth} ${year}`);
+          texts.push(`${fullMonth} ${year}`);
+          texts.push(year);
+        }
+        const dateObj = new Date(r.inspection_date);
+        if (!isNaN(dateObj.getTime())) {
+          texts.push(dateObj.toLocaleDateString());
+        }
       }
-      if (r.inspection_time) texts.push(r.inspection_time);
+      if (r.inspection_time) {
+        texts.push(r.inspection_time);
+        texts.push(r.inspection_time.slice(0, 5));
+      }
 
-      // 5. Deep Inspection Data Scan (Values only)
-      if (r.inspection_data && typeof r.inspection_data === 'object') {
+      // 3. Column: Event Name (Pipeline & General)
+      const eventName = d.event_name || d.actionName || d.event || d.name || d.raw_event || "";
+      if (eventName) texts.push(eventName);
+
+      // 4. Column: Event Type
+      const eventType = d.event_type || d.raw_type || d.type || "";
+      if (eventType) texts.push(eventType);
+
+      // 5. Column: Event Position
+      const eventPos = d.event_position || d.eventCategory || d.position || d.clock_position || d.side || d.raw_pos || "";
+      if (eventPos) texts.push(eventPos);
+
+      // 6. Column: Event Description / Findings / Comments / Description
+      const eventDesc = d.event_description || r.description || d.findings || r.observation || d.comments || d.raw_descr || "";
+      if (eventDesc) texts.push(eventDesc);
+      if (r.description) texts.push(r.description);
+      if (r.observation) texts.push(r.observation);
+
+      // 7. Column: Type (Inspection Type Name & Code)
+      texts.push(r.inspection_type?.name || "");
+      texts.push(r.inspection_type_code || r.inspection_type?.code || "");
+
+      // 8. Column: Component (QID, Code, Name, Type, Leg, Face, Level, Drawing No)
+      texts.push(r.structure_components?.q_id || "");
+      texts.push(r.structure_components?.code || "");
+      texts.push(r.structure_components?.name || "");
+      texts.push(r.component_name || "");
+      texts.push(r.component_type || r.structure_components?.type || "");
+
+      // Component metadata (e.g. Leg, Face, Level, Drawing, Notes)
+      const cMeta = r.structure_components?.metadata || {};
+      if (typeof cMeta === 'object') {
+        if (cMeta.face) texts.push(`face ${cMeta.face} ${cMeta.face}`);
+        if (cMeta.level || cMeta.level_name) texts.push(`level ${cMeta.level || cMeta.level_name}`);
+        if (cMeta.leg || cMeta.leg_name) texts.push(`leg ${cMeta.leg || cMeta.leg_name}`);
+        if (cMeta.elv_1) texts.push(cMeta.elv_1.toString(), `${cMeta.elv_1}m`);
+        if (cMeta.elv_2) texts.push(cMeta.elv_2.toString(), `${cMeta.elv_2}m`);
+        if (cMeta.drawing_no) texts.push(cMeta.drawing_no);
+        if (cMeta.group || cMeta.comp_group) texts.push(cMeta.group || cMeta.comp_group);
+      }
+
+      // 9. Column: Elevation & KP (Platform elevations e.g. (+)15m, (-)30m, EL 12.5)
+      if (r.elevation !== undefined && r.elevation !== null && r.elevation !== "") {
+        const elvStr = r.elevation.toString();
+        texts.push(elvStr);
+        texts.push(`${elvStr}m`);
+        texts.push(`el ${elvStr}`);
+        texts.push(`elv ${elvStr}`);
+        const numElv = parseFloat(elvStr);
+        if (!isNaN(numElv)) {
+          if (numElv < 0) texts.push(`(-) ${Math.abs(numElv)}m`, `(-)${Math.abs(numElv)}`);
+          else texts.push(`(+) ${numElv}m`, `(+)${numElv}`);
+        }
+      }
+      if (r.kp !== undefined && r.kp !== null && r.kp !== "") {
+        texts.push(r.kp.toString());
+        texts.push(`${r.kp}km`);
+      }
+      if (r.fp_kp !== undefined && r.fp_kp !== null && r.fp_kp !== "") {
+        texts.push(r.fp_kp.toString());
+      }
+      if (d.kp) texts.push(d.kp.toString());
+      if (d.fp_kp) texts.push(d.fp_kp.toString());
+      if (d.elevation) texts.push(d.elevation.toString());
+
+      // 10. Column: CP Reading
+      const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp_reading ?? d.cp ?? d.cp_fg_rdg;
+      if (cpVal !== undefined && cpVal !== null && cpVal !== "") {
+        texts.push(cpVal.toString());
+        texts.push(`${cpVal}mv`);
+      }
+
+      // 11. Column: Dive / ROV Job No & Operator
+      texts.push(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "");
+      texts.push(r.insp_dive_jobs?.name || r.insp_rov_jobs?.name || "");
+      texts.push(r.insp_dive_jobs?.diver_name || r.insp_rov_jobs?.rov_operator || "");
+
+      // 12. Column: Tape No & Counter / Timecode
+      texts.push(r.insp_video_tapes?.tape_no || "");
+      if (r.tape_count_no) texts.push(r.tape_count_no.toString());
+      const timecode = d._meta_timecode || d.counter_no || d.counter || d.timecode;
+      if (timecode) texts.push(timecode.toString());
+
+      // 13. SOW Report Number
+      if (r.sow_report_no) texts.push(r.sow_report_no);
+
+      // 14. Deep scan all remaining nested values in inspection_data (MGI, UTWT, RFMD, CP, MPI, ACFMC, etc.)
+      if (d && typeof d === 'object') {
         const extractValues = (obj: any) => {
           Object.values(obj).forEach(val => {
             if (val === null || val === undefined) return;
@@ -960,7 +1071,7 @@ function V10PreviewLayout() {
             else texts.push(val.toString());
           });
         };
-        extractValues(r.inspection_data);
+        extractValues(d);
       }
 
       return texts.map(t => String(t).toLowerCase()).join(" ");
@@ -1081,6 +1192,131 @@ function V10PreviewLayout() {
 
     return sortableRecords;
   }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig]);
+
+  const [isSearchingWorkspace, setIsSearchingWorkspace] = useState(false);
+
+  const fetchFullWorkspaceRecords = useCallback(async () => {
+    if (!jobPackId || isNaN(Number(jobPackId))) return;
+    try {
+      setIsSearchingWorkspace(true);
+      const rawStructureId = structureId?.includes("-") ? structureId.split("-")[1] : structureId;
+      const numStrId = rawStructureId && !isNaN(Number(rawStructureId)) ? Number(rawStructureId) : null;
+      const numJpId = parseInt(jobPackId);
+
+      const selectFields = `
+        *,
+        inspection_type:inspection_type_id!left(id, code, name),
+        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+        insp_video_tapes:tape_id!left(tape_no)
+      `;
+
+      // 1. Get exact total count for parallel batching
+      let countQuery = supabase
+        .from("insp_records")
+        .select("insp_id", { count: "exact", head: true })
+        .eq("jobpack_id", numJpId);
+
+      if (numStrId) {
+        countQuery = countQuery.eq("structure_id", numStrId);
+      }
+
+      const { count: totalCount } = await countQuery;
+      const total = totalCount || 0;
+      const batchSize = 1000;
+      const numBatches = Math.max(1, Math.ceil(total / batchSize));
+
+      // 2. Fetch all pages in parallel to avoid Supabase 1000-row cap
+      const batchPromises = [];
+      for (let i = 0; i < numBatches; i++) {
+        const offset = i * batchSize;
+        let query = supabase
+          .from("insp_records")
+          .select(selectFields)
+          .eq("jobpack_id", numJpId)
+          .order("inspection_date", { ascending: false })
+          .order("inspection_time", { ascending: false })
+          .range(offset, offset + batchSize - 1);
+
+        if (numStrId) {
+          query = query.eq("structure_id", numStrId);
+        }
+        batchPromises.push(query);
+      }
+
+      const batchResults = await Promise.all(batchPromises);
+      const allData: any[] = [];
+      for (const res of batchResults) {
+        if (res.data && res.data.length > 0) {
+          allData.push(...res.data);
+        }
+      }
+
+      if (allData.length === 0) return;
+
+      // 3. Fetch anomalies for all retrieved records
+      const allInspIds = allData.map((r: any) => r.insp_id).filter(Boolean);
+      let anomData: any[] = [];
+      if (allInspIds.length > 0) {
+        const chunkSize = 500;
+        for (let i = 0; i < allInspIds.length; i += chunkSize) {
+          const chunk = allInspIds.slice(i, i + chunkSize);
+          const { data: anoms } = await supabase
+            .from("insp_anomalies")
+            .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description, follow_up_notes, is_rectified, inspection_id")
+            .in("inspection_id", chunk);
+          if (anoms && anoms.length > 0) {
+            anomData.push(...anoms);
+          }
+        }
+      }
+
+      const anomMap = new Map<number, any[]>();
+      anomData.forEach((a: any) => {
+        if (a.inspection_id) {
+          if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
+          anomMap.get(a.inspection_id)!.push(a);
+        }
+      });
+
+      const mappedAll = allData.map((r: any) => {
+        const matchedAnoms = anomMap.get(r.insp_id) || r.insp_anomalies || [];
+        const isAnomaly = matchedAnoms.length > 0 || r.has_anomaly || String(r.status || "").toLowerCase().includes("anomaly") || String(r.status || "").toLowerCase().includes("defect");
+        return {
+          ...r,
+          insp_anomalies: matchedAnoms,
+          has_anomaly: isAnomaly,
+          status: isAnomaly && (!r.status || r.status === "COMPLETED" || r.status === "INSPECTION") ? "ANOMALY" : r.status,
+          inspection_type: r.inspection_type
+            ? {
+                ...r.inspection_type,
+                name: formatInspectionTypeName(r.inspection_type.name),
+              }
+            : null,
+        };
+      });
+      setAllWorkspaceRecords(mappedAll);
+    } catch (err) {
+      console.error("[Search] fetchFullWorkspaceRecords error:", err);
+    } finally {
+      setIsSearchingWorkspace(false);
+    }
+  }, [jobPackId, structureId, supabase]);
+
+  // Pre-load all workspace records in the background so search is instant & complete
+  useEffect(() => {
+    if (jobPackId && structureId) {
+      fetchFullWorkspaceRecords();
+    }
+  }, [jobPackId, structureId, fetchFullWorkspaceRecords]);
+
+  // If user searches while not yet loaded, trigger fetch
+  useEffect(() => {
+    if (recordSearchQuery.trim() !== "" && allWorkspaceRecords.length === 0 && !isSearchingWorkspace) {
+      fetchFullWorkspaceRecords();
+    }
+  }, [recordSearchQuery, allWorkspaceRecords.length, isSearchingWorkspace, fetchFullWorkspaceRecords]);
+
   const [isFetchingDeps, setIsFetchingDeps] = useState(true);
   const [isDeploymentValid, setIsDeploymentValid] = useState(true);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -2585,6 +2821,10 @@ function V10PreviewLayout() {
       // If both are already numbers, no need to resolve
       if (!isJpNaN && !isStrNaN) return;
 
+      const resolveKey = `${jobPackId}_${structureId}_${sowIdFull}_${targetReportNumber}`;
+      if (lastResolvedParamsRef.current === resolveKey) return;
+      lastResolvedParamsRef.current = resolveKey;
+
       let resolvedJobPackId = jobPackId;
       let resolvedStructureId = structureId;
       let resolvedSowId = sowIdFull;
@@ -2691,7 +2931,12 @@ function V10PreviewLayout() {
       if (!jobPackId || !structureId) return;
       if (isNaN(Number(jobPackId)) || isNaN(Number(structureId))) return;
 
+      const headerKey = `${jobPackId}_${structureId}_${sowId || ""}_${jpParam || ""}_${strParam || ""}_${sowParam || ""}_${jtParam || ""}`;
+      if (lastHeaderFetchedKeyRef.current === headerKey) return;
+      lastHeaderFetchedKeyRef.current = headerKey;
+
       const currentParams = new URLSearchParams(window.location.search);
+      let urlNeedsUpdate = false;
       let jobpackName = jpParam || `JP-${jobPackId}`;
       let platformName = strParam || "Unknown Structure";
       let sowReportNo = sowParam || "Unknown Report";
@@ -2727,7 +2972,7 @@ function V10PreviewLayout() {
           jobpackName = jpResult.data.name;
           if (!currentParams.get("jpName")) {
             currentParams.set("jpName", jpResult.data.name);
-            router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+            urlNeedsUpdate = true;
           }
         }
 
@@ -2751,7 +2996,7 @@ function V10PreviewLayout() {
             }));
             if (!strParam && platData.title && !currentParams.get("structName")) {
               currentParams.set("structName", platData.title);
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+              urlNeedsUpdate = true;
             }
             if (!strParam && platData.title) platformName = platData.title;
             if (platData.depth) waterDepth = Number(platData.depth);
@@ -2766,7 +3011,7 @@ function V10PreviewLayout() {
             }));
             if (!strParam && pipeData.title && !currentParams.get("structName")) {
               currentParams.set("structName", pipeData.title);
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+              urlNeedsUpdate = true;
             }
             if (!strParam && pipeData.title) platformName = pipeData.title;
             if (pipeData.depth) waterDepth = Number(pipeData.depth);
@@ -2795,9 +3040,7 @@ function V10PreviewLayout() {
             // Patch the URL so the workspace knows the sow going forward
             if (!currentParams.get("sow")) {
               currentParams.set("sow", String(resolvedSow.id));
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, {
-                scroll: false,
-              });
+              urlNeedsUpdate = true;
             }
           } else if (sowParam) {
             // Create it if sowParam is provided but no record exists yet
@@ -2823,9 +3066,7 @@ function V10PreviewLayout() {
 
             if (newSow) {
               currentParams.set("sow", String(newSow.id));
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, {
-                scroll: false,
-              });
+              urlNeedsUpdate = true;
             }
           }
         } else if (!sowParam && sowId) {
@@ -2869,6 +3110,10 @@ function V10PreviewLayout() {
           vessel,
         });
         setGlobalUrlType(detectedStructureType);
+
+        if (urlNeedsUpdate) {
+          router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+        }
 
       } catch (err) {
         console.error("fetchHeaderInfo error", err);
@@ -2984,7 +3229,7 @@ function V10PreviewLayout() {
     if (panelId === "videoPreview") title = "Photo / Video Grab";
     if (panelId === "form") title = "Inspection Form";
     if (panelId === "events") title = "Captured Events";
-    if (panelId === "components") title = "Component List";
+    if (panelId === "components") title = isPipe ? "Event Menu" : "Component List";
     if (panelId === "history") title = "History Data";
     if (panelId === "inspectionInfo") title = "Inspection Info";
     if (panelId === "quickShortcuts") title = "Quick Log";
@@ -4024,11 +4269,10 @@ function V10PreviewLayout() {
         .from("insp_anomalies")
         .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id");
 
-      let [movsRes, tapesRes, inspsRes, anomsRes] = await Promise.all([
+      let [movsRes, tapesRes, inspsRes] = await Promise.all([
         movementsPromise,
         tapesPromise,
         inspsQuery,
-        anomPromise,
       ]);
 
       const movs = movsRes.data;
@@ -4296,17 +4540,26 @@ function V10PreviewLayout() {
 
       const finalInsps = inspsRes.data || insps;
       if (finalInsps) {
-        // Fetch attachment counts manually for 'attachment' table
-        const { data: allAtts } = await supabase
-          .from("attachment")
-          .select("source_id")
-          .in("source_type", ["inspection", "INSPECTION"])
-          .in(
-            "source_id",
-            finalInsps.map((r: any) => r.insp_id)
-          );
+        const pageInspIds = finalInsps.map((r: any) => r.insp_id).filter(Boolean);
 
-        const countMap = (allAtts || []).reduce((acc: Record<number, number>, curr) => {
+        // Fetch attachment counts and anomalies in parallel strictly scoped to current page inspection IDs
+        const [attsRes, anomsRes] = await Promise.all([
+          pageInspIds.length > 0
+            ? supabase
+                .from("attachment")
+                .select("source_id")
+                .in("source_type", ["inspection", "INSPECTION"])
+                .in("source_id", pageInspIds)
+            : Promise.resolve({ data: [] }),
+          pageInspIds.length > 0
+            ? supabase
+                .from("insp_anomalies")
+                .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id")
+                .in("inspection_id", pageInspIds)
+            : Promise.resolve({ data: [] }),
+        ]);
+
+        const countMap = (attsRes.data || []).reduce((acc: Record<number, number>, curr: any) => {
           acc[curr.source_id] = (acc[curr.source_id] || 0) + 1;
           return acc;
         }, {});
@@ -4336,77 +4589,6 @@ function V10PreviewLayout() {
         });
 
         setCurrentRecords(inspsWithCounts);
-
-        // Fetch all workspace records asynchronously in the background so it doesn't block the main UI loading
-        const fetchAllWorkspaceRecords = async () => {
-          try {
-            let allData: any[] = [];
-            let page = 0;
-            const pageSize = 500;
-            let hasMore = true;
-
-            while (hasMore) {
-              let pageQuery = supabase
-                .from("insp_records")
-                .select(selectFields)
-                .eq("jobpack_id", parseInt(jobPackId || "0"))
-                .order("insp_id", { ascending: true })
-                .range(page * pageSize, (page + 1) * pageSize - 1);
-
-              if (structureId && !isNaN(Number(structureId))) {
-                pageQuery = pageQuery.eq("structure_id", Number(structureId));
-              }
-              if (
-                headerData.sowReportNo &&
-                headerData.sowReportNo !== "N/A" &&
-                headerData.sowReportNo !== "Unknown Report"
-              ) {
-                pageQuery = pageQuery.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`);
-              }
-
-              const { data: pData, error: pErr } = await pageQuery;
-              if (pErr || !pData || pData.length === 0) {
-                hasMore = false;
-              } else {
-                allData.push(...pData);
-                if (pData.length < pageSize) hasMore = false;
-                else page++;
-              }
-            }
-
-            // Also fetch all anomalies for this structure/jobpack to ensure 100% anomaly coverage
-            const { data: anomData } = await supabase
-              .from("insp_anomalies")
-              .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id");
-
-            const anomMap = new Map<number, any[]>();
-            (anomData || []).forEach((a: any) => {
-              if (a.inspection_id) {
-                if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
-                anomMap.get(a.inspection_id)!.push(a);
-              }
-            });
-
-            const mappedAll = allData.map((r: any) => {
-              const matchedAnoms = anomMap.get(r.insp_id) || r.insp_anomalies || [];
-              return {
-                ...r,
-                insp_anomalies: matchedAnoms,
-                has_anomaly: matchedAnoms.length > 0 ? true : r.has_anomaly,
-                inspection_type: r.inspection_type
-                  ? {
-                      ...r.inspection_type,
-                      name: formatInspectionTypeName(r.inspection_type.name),
-                    }
-                  : null,
-              };
-            });
-            setAllWorkspaceRecords(mappedAll);
-          } catch (err) {
-            console.error("[Sync] Background allInsps fetch error:", err);
-          }
-        };
-        fetchAllWorkspaceRecords();
 
         // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
         const logInspectionIds = new Set(allEv.map((ev) => ev.inspectionId).filter(Boolean));
@@ -4544,56 +4726,41 @@ function V10PreviewLayout() {
       const tapeNoMap: Record<string, string> = {};
       const inspTypeMap: Record<string, { name: string; code: string }> = {};
 
-      // Fetch dive_no for all dive_job_ids
-      if (diveJobIds.length > 0) {
-        const { data: diveData } = await supabase
-          .from("insp_dive_jobs")
-          .select("dive_job_id, dive_no")
-          .in("dive_job_id", diveJobIds);
-        if (diveData) {
-          diveData.forEach((d: any) => {
-            diveNoMap[String(d.dive_job_id)] = d.dive_no;
-          });
-        }
-      }
+      // Fetch lookups in PARALLEL
+      const [diveRes, rovRes, tapeRes, itRes] = await Promise.all([
+        diveJobIds.length > 0
+          ? supabase.from("insp_dive_jobs").select("dive_job_id, dive_no").in("dive_job_id", diveJobIds)
+          : Promise.resolve({ data: null }),
+        rovJobIds.length > 0
+          ? supabase.from("insp_rov_jobs").select("rov_job_id, deployment_no").in("rov_job_id", rovJobIds)
+          : Promise.resolve({ data: null }),
+        tapeIds.length > 0
+          ? supabase.from("insp_video_tapes").select("tape_id, tape_no").in("tape_id", tapeIds)
+          : Promise.resolve({ data: null }),
+        inspTypeIds.length > 0
+          ? supabase.from("inspection_type").select("id, name, code").in("id", inspTypeIds)
+          : Promise.resolve({ data: null }),
+      ]);
 
-      // Fetch deployment_no for all rov_job_ids
-      if (rovJobIds.length > 0) {
-        const { data: rovData } = await supabase
-          .from("insp_rov_jobs")
-          .select("rov_job_id, deployment_no")
-          .in("rov_job_id", rovJobIds);
-        if (rovData) {
-          rovData.forEach((d: any) => {
-            rovNoMap[String(d.rov_job_id)] = d.deployment_no;
-          });
-        }
+      if (diveRes.data) {
+        diveRes.data.forEach((d: any) => {
+          diveNoMap[String(d.dive_job_id)] = d.dive_no;
+        });
       }
-
-      // Fetch tape_no for all tape_ids
-      if (tapeIds.length > 0) {
-        const { data: tapeData } = await supabase
-          .from("insp_video_tapes")
-          .select("tape_id, tape_no")
-          .in("tape_id", tapeIds);
-        if (tapeData) {
-          tapeData.forEach((t: any) => {
-            tapeNoMap[String(t.tape_id)] = t.tape_no;
-          });
-        }
+      if (rovRes.data) {
+        rovRes.data.forEach((d: any) => {
+          rovNoMap[String(d.rov_job_id)] = d.deployment_no;
+        });
       }
-
-      // Fetch inspection type names
-      if (inspTypeIds.length > 0) {
-        const { data: itData } = await supabase
-          .from("inspection_type")
-          .select("id, name, code")
-          .in("id", inspTypeIds);
-        if (itData) {
-          itData.forEach((it: any) => {
-            inspTypeMap[String(it.id)] = { name: it.name, code: it.code };
-          });
-        }
+      if (tapeRes.data) {
+        tapeRes.data.forEach((t: any) => {
+          tapeNoMap[String(t.tape_id)] = t.tape_no;
+        });
+      }
+      if (itRes.data) {
+        itRes.data.forEach((it: any) => {
+          inspTypeMap[String(it.id)] = { name: it.name, code: it.code };
+        });
       }
 
       // 3. Build the current deployment IDs set (for matching records without jobpack_id)
@@ -5304,7 +5471,7 @@ function V10PreviewLayout() {
       while (hasMore) {
         const { data: pageData, error: pageErr } = await supabase
           .from("structure_components")
-          .select("*")
+          .select("id, structure_id, q_id, name, code, metadata, is_deleted, water_depth, type")
           .eq("structure_id", parseInt(structureId))
           .not("is_deleted", "eq", true)
           .range(offset, offset + pageSize - 1);
@@ -5527,7 +5694,7 @@ function V10PreviewLayout() {
       const combined = [...assigned, ...unassigned];
       return { assigned, unassigned, all: combined };
     },
-    staleTime: 0, // Always refetch when structure/sow changes
+    staleTime: 60000, // 1 minute cache
     refetchOnWindowFocus: false,
   });
 
@@ -7855,7 +8022,7 @@ function V10PreviewLayout() {
     let name = node.getName();
     if (component === "opsLog") name = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
     if (component === "videoPreview") name = "Photo / Video Grab";
-    if (component === "components") name = "Component List";
+    if (component === "components") name = isPipe ? "Event Menu" : "Component List";
     if (component === "form") name = "Inspection Form";
     if (component === "events") name = "Captured Events";
     if (component === "history") name = "History Data";
@@ -8062,6 +8229,60 @@ function V10PreviewLayout() {
             validateAnomalyRef={validateAnomalyRef}
             setPrevRefNo={setPrevRefNo}
             criteriaRules={criteriaRules}
+            onVoiceActionCommand={(actionIntent: any) => {
+              if (!actionIntent) return;
+              if (actionIntent.target_component_id || actionIntent.action === "SWITCH_COMPONENT") {
+                const target = actionIntent.target_component_id;
+                if (target && componentsSow && componentsSow.length > 0) {
+                  const cleanTarget = String(target).toLowerCase().replace(/[^a-z0-9]/g, "");
+                  const matched = componentsSow.find((c: any) => {
+                    const cName = String(c.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                    const cQid = String(c.q_id || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                    const cCode = String(c.raw?.code || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                    return cName.includes(cleanTarget) || cQid.includes(cleanTarget) || cCode.includes(cleanTarget);
+                  });
+                  if (matched) {
+                    setSelectedComp(matched);
+                    toast.success(`🎯 Voice Command: Switched component to ${matched.name || matched.q_id}`);
+                  }
+                }
+              }
+              if (actionIntent.action === "NEXT_COMPONENT" || actionIntent.action === "PREV_COMPONENT") {
+                if (componentsSow && componentsSow.length > 0) {
+                  const currentIdx = componentsSow.findIndex((c: any) => c.id === selectedComp?.id || c.name === selectedComp?.name);
+                  if (actionIntent.action === "NEXT_COMPONENT") {
+                    const nextIdx = currentIdx >= 0 && currentIdx < componentsSow.length - 1 ? currentIdx + 1 : 0;
+                    setSelectedComp(componentsSow[nextIdx]);
+                    toast.info(`Next component selected: ${componentsSow[nextIdx].name}`);
+                  } else {
+                    const prevIdx = currentIdx > 0 ? currentIdx - 1 : componentsSow.length - 1;
+                    setSelectedComp(componentsSow[prevIdx]);
+                    toast.info(`Previous component selected: ${componentsSow[prevIdx].name}`);
+                  }
+                }
+              }
+              if (actionIntent.action === "SWITCH_DIVING") {
+                setInspMethod("DIVING");
+                setHeaderData((prev: any) => ({ ...prev, mode: "DIVING", inspMethod: "DIVING" }));
+                toast.success("Switched inspection mode to DIVING");
+              } else if (actionIntent.action === "SWITCH_ROV") {
+                setInspMethod("ROV");
+                setHeaderData((prev: any) => ({ ...prev, mode: "ROV", inspMethod: "ROV" }));
+                toast.success("Switched inspection mode to ROV");
+              }
+              if (actionIntent.target_inspection_type && allInspectionTypes && allInspectionTypes.length > 0) {
+                const cleanType = String(actionIntent.target_inspection_type).toLowerCase();
+                const matchedType = allInspectionTypes.find((t: any) => {
+                  const tName = String(t.name || "").toLowerCase();
+                  const tCode = String(t.code || "").toLowerCase();
+                  return tName.includes(cleanType) || cleanType.includes(tName) || tCode === cleanType;
+                });
+                if (matchedType) {
+                  setActiveSpec(matchedType.code);
+                  toast.info(`Active spec set to: ${matchedType.name || matchedType.code}`);
+                }
+              }
+            }}
           />
         );
         break;
@@ -8336,6 +8557,106 @@ function V10PreviewLayout() {
         closedPanels={closedPanels}
         onRestorePanel={handleRestorePanel}
         onRestoreAllPanels={handleRestoreAllPanels}
+        onGlobalVoiceCommand={(parsed: any) => {
+          if (!parsed) return;
+          const actionIntent = parsed.action_intent || {};
+          const extractedFields = parsed.extracted_fields || {};
+          const rawTranscript = parsed.raw_transcript || "";
+
+          let targetComp: any = null;
+
+          if (actionIntent.target_component_id || actionIntent.action === "SWITCH_COMPONENT") {
+            const target = actionIntent.target_component_id;
+            if (target && componentsSow && componentsSow.length > 0) {
+              const cleanTarget = String(target).toLowerCase().replace(/[^a-z0-9]/g, "");
+              const matched = componentsSow.find((c: any) => {
+                const cName = String(c.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const cQid = String(c.q_id || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const cCode = String(c.raw?.code || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                return cName.includes(cleanTarget) || cQid.includes(cleanTarget) || cCode.includes(cleanTarget);
+              });
+              if (matched) {
+                targetComp = matched;
+                setSelectedComp(matched);
+                toast.success(`🎯 Voice Command: Selected component ${matched.name || matched.q_id}`);
+              }
+            }
+          }
+
+          if (!targetComp) {
+            targetComp = selectedComp;
+          }
+
+          if (actionIntent.target_inspection_type && allInspectionTypes && allInspectionTypes.length > 0) {
+            const cleanType = String(actionIntent.target_inspection_type).toLowerCase();
+            const matchedType = allInspectionTypes.find((t: any) => {
+              const tName = String(t.name || "").toLowerCase();
+              const tCode = String(t.code || "").toLowerCase();
+              return tName.includes(cleanType) || cleanType.includes(tName) || tCode === cleanType;
+            });
+            if (matchedType) {
+              setActiveSpec(matchedType.code);
+              toast.info(`Active spec set to: ${matchedType.name || matchedType.code}`);
+            }
+          }
+
+          if (Object.keys(extractedFields).length > 0) {
+            setDynamicProps((prev: any) => ({
+              ...prev,
+              raw_voice_transcript: rawTranscript,
+              ...extractedFields,
+            }));
+          }
+
+          if (parsed.findings_summary) {
+            setRecordNotes(parsed.findings_summary);
+          }
+
+          if (parsed.finding_type) {
+            setFindingType(parsed.finding_type);
+            if (parsed.finding_type === 'Anomaly' || parsed.finding_type === 'Finding') {
+              setManualOverride(true);
+            }
+          }
+
+          if (parsed.defect_code || parsed.recommendations || parsed.priority || parsed.defect_type) {
+            setAnomalyData((prev: any) => ({
+              ...prev,
+              defectCode: parsed.defect_code || prev.defectCode,
+              defectType: parsed.defect_type || prev.defectType,
+              priority: parsed.priority || prev.priority || 'Medium',
+              recommendedAction: parsed.recommendations || prev.recommendedAction,
+            }));
+          }
+
+          if (actionIntent.action === "REGISTER_EVENT" || actionIntent.action === "SAVE_RECORD") {
+            toast.success("✨ Voice Command: Auto-Registering Event...", {
+              description: `Component: ${targetComp?.name || selectedComp?.name || 'Active Component'}`,
+            });
+            setTimeout(() => {
+              handleCommitRecord();
+            }, 400);
+          } else if (actionIntent.action === "NEXT_COMPONENT" || actionIntent.action === "PREV_COMPONENT") {
+            if (componentsSow && componentsSow.length > 0) {
+              const currentIdx = componentsSow.findIndex((c: any) => c.id === selectedComp?.id || c.name === selectedComp?.name);
+              if (actionIntent.action === "NEXT_COMPONENT") {
+                const nextIdx = currentIdx >= 0 && currentIdx < componentsSow.length - 1 ? currentIdx + 1 : 0;
+                setSelectedComp(componentsSow[nextIdx]);
+              } else {
+                const prevIdx = currentIdx > 0 ? currentIdx - 1 : componentsSow.length - 1;
+                setSelectedComp(componentsSow[prevIdx]);
+              }
+            }
+          } else if (actionIntent.action === "SWITCH_DIVING") {
+            setInspMethod("DIVING");
+            setHeaderData((prev: any) => ({ ...prev, mode: "DIVING", inspMethod: "DIVING" }));
+          } else if (actionIntent.action === "SWITCH_ROV") {
+            setInspMethod("ROV");
+            setHeaderData((prev: any) => ({ ...prev, mode: "ROV", inspMethod: "ROV" }));
+          } else if (actionIntent.action === "OPEN_SUMMARY") {
+            setIsSummaryOpen(true);
+          }
+        }}
       />
 
       {/* -- GEODETIC PARAMETERS DIALOG -------------------------------------- */}
@@ -8785,7 +9106,7 @@ function V10PreviewLayout() {
                 renderValues.content = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
               }
               if (componentId === "components") {
-                renderValues.content = "Component List";
+                renderValues.content = isPipe ? "Event Menu" : "Component List";
               }
 
               const isPopped = !!poppedOutWindows[componentId];

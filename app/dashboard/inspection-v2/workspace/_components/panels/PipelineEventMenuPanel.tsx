@@ -991,7 +991,9 @@ export function PipelineEventMenuPanel({
           .from("insp_records")
           .select("fp_kp, inspection_data")
           .eq("structure_id", parseInt(String(structureId)))
-          .not("fp_kp", "is", null);
+          .not("fp_kp", "is", null)
+          .order("insp_id", { ascending: false })
+          .limit(300);
 
         if (!error && data && isMounted) {
           const parsedList: Array<{ eventType: string; kp: number }> = [];
@@ -1282,6 +1284,7 @@ export function PipelineEventMenuPanel({
       localStorage.setItem("pipeline_event_pinned_shortcuts", JSON.stringify(sanitized));
       localStorage.setItem("pipeline_event_usage_counts", JSON.stringify(usageCounts));
       localStorage.setItem("pipeline_event_custom_hotkeys", JSON.stringify(customHotkeys));
+      window.dispatchEvent(new Event("pipeline_shortcuts_changed"));
 
       // Debounced sync to User Account Metadata in background
       const syncTimer = setTimeout(async () => {

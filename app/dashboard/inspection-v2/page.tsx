@@ -75,14 +75,15 @@ export default function InspectionLanding() {
     const [jobPacksLoading, setJobPacksLoading] = useState<boolean>(false);
     const [sowReportsLoading, setSowReportsLoading] = useState<boolean>(false);
 
-    const [selectedJobPack, setSelectedJobPack] = useState<string>(() => getInitialInspectionState("inspection_jobpack", "jobpack"));
-    const [selectedStructure, setSelectedStructure] = useState<string>(() => getInitialInspectionState("inspection_structure", "structure"));
-    const [selectedSOW, setSelectedSOW] = useState<string>(() => getInitialInspectionState("inspection_sow"));
-    const [selectedMode, setSelectedMode] = useState<string>(() => getInitialInspectionState("inspection_mode", "mode"));
+    const [mounted, setMounted] = useState(false);
+    const [selectedJobPack, setSelectedJobPack] = useState<string>("");
+    const [selectedStructure, setSelectedStructure] = useState<string>("");
+    const [selectedSOW, setSelectedSOW] = useState<string>("");
+    const [selectedMode, setSelectedMode] = useState<string>("ROV");
     const [loading, setLoading] = useState(true);
 
-    const prevStructureRef = useRef<string>(getInitialInspectionState("inspection_structure", "structure"));
-    const prevJobPackRef = useRef<string>(getInitialInspectionState("inspection_jobpack", "jobpack"));
+    const prevStructureRef = useRef<string>("");
+    const prevJobPackRef = useRef<string>("");
 
     // Filter states
     const [openJP, setOpenJP] = useState(false);
@@ -182,9 +183,26 @@ export default function InspectionLanding() {
         return b.localeCompare(a); // Descending order
     });
 
-    // Load structures when component mounts
+    // Load structures and restore persisted state safely on mount (prevents SSR hydration mismatch)
     useEffect(() => {
+        setMounted(true);
         loadStructures();
+
+        const initialStructure = getInitialInspectionState("inspection_structure", "structure");
+        const initialJobPack = getInitialInspectionState("inspection_jobpack", "jobpack");
+        const initialSow = getInitialInspectionState("inspection_sow");
+        const initialMode = getInitialInspectionState("inspection_mode", "mode") || "ROV";
+
+        if (initialStructure) {
+            setSelectedStructure(initialStructure);
+            prevStructureRef.current = initialStructure;
+        }
+        if (initialJobPack) {
+            setSelectedJobPack(initialJobPack);
+            prevJobPackRef.current = initialJobPack;
+        }
+        if (initialSow) setSelectedSOW(initialSow);
+        if (initialMode) setSelectedMode(initialMode);
     }, []);
 
     // Sync URL query parameters taking priority if provided
@@ -259,14 +277,13 @@ export default function InspectionLanding() {
             if (rawPrev && rawPrev !== rawCurr) {
                 setSelectedJobPack("");
                 setSelectedSOW("");
-                setSelectedMode("");
+                setSelectedMode(prev => prev || "ROV");
                 setSOWReports([]);
                 setRawSowItems([]);
                 setSowInspRecords([]);
                 setAnomalyCount(0);
                 sessionStorage.removeItem("inspection_jobpack");
                 sessionStorage.removeItem("inspection_sow");
-                sessionStorage.removeItem("inspection_mode");
             }
             prevStructureRef.current = selectedStructure;
 
@@ -275,7 +292,6 @@ export default function InspectionLanding() {
             setJobPacks([]);
             setSelectedJobPack("");
             setSelectedSOW("");
-            setSelectedMode("");
             setSOWReports([]);
             setRawSowItems([]);
             setSowInspRecords([]);
@@ -283,7 +299,6 @@ export default function InspectionLanding() {
             sessionStorage.removeItem("inspection_structure");
             sessionStorage.removeItem("inspection_jobpack");
             sessionStorage.removeItem("inspection_sow");
-            sessionStorage.removeItem("inspection_mode");
             prevStructureRef.current = "";
         }
     }, [selectedStructure]);
@@ -310,13 +325,12 @@ export default function InspectionLanding() {
             // Immediate Reset of downstream SOW selection if job pack changed
             if (prevJobPackRef.current && prevJobPackRef.current !== selectedJobPack) {
                 setSelectedSOW("");
-                setSelectedMode("");
+                setSelectedMode(prev => prev || "ROV");
                 setSOWReports([]);
                 setRawSowItems([]);
                 setSowInspRecords([]);
                 setAnomalyCount(0);
                 sessionStorage.removeItem("inspection_sow");
-                sessionStorage.removeItem("inspection_mode");
             }
             prevJobPackRef.current = selectedJobPack;
 
@@ -724,9 +738,9 @@ export default function InspectionLanding() {
     }, [selectedSOWData, rawSowItems, sowInspRecords, selectedStructureData]);
 
     // Helper to format a jobpack from API response (with metadata)
-    function formatJobPack(jp: any, structureMap: Map<string, { title: string; type: "platform" | "pipeline" }>) {
+    function formatJobPack(jp: any, structureMap: Map<string, { title: string; type: "platform" | "pipeline" }>, fallbackStructureId?: string) {
         const structures = (jp.metadata as any)?.structures || [];
-        const structureList = Array.isArray(structures)
+        let structureList = Array.isArray(structures)
             ? structures
                 .map((s: any) => {
                     const rawSId = s.id || s.structure_id || s.platform_id || s.pipe_id || s.str_id || s.plat_id;
@@ -741,6 +755,17 @@ export default function InspectionLanding() {
                 })
                 .filter((s: Structure) => s.id !== "" && s.name !== "")
             : [];
+
+        if (structureList.length === 0 && fallbackStructureId) {
+            const rawFallbackId = fallbackStructureId.replace(/^(platform|pipeline)-/, "");
+            const fallbackType = fallbackStructureId.startsWith("pipeline") ? "pipeline" : "platform";
+            const mapInfo = structureMap.get(fallbackStructureId);
+            structureList = [{
+                id: fallbackStructureId,
+                name: mapInfo?.title || (jp.metadata as any)?.structure_name || `Structure ${rawFallbackId}`,
+                type: (mapInfo?.type || fallbackType) as "platform" | "pipeline"
+            }];
+        }
 
         const structureNames = structureList.map((s: Structure) => s.name).join(", ");
 
@@ -774,6 +799,20 @@ export default function InspectionLanding() {
 
     async function loadStructures() {
         try {
+            const cached = sessionStorage.getItem("cached_all_structures");
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setAllStructures(parsed);
+                    const map = new Map<string, { title: string; type: "platform" | "pipeline" }>();
+                    parsed.forEach((s: any) => map.set(s.id, { title: s.name, type: s.type }));
+                    structureMapRef.current = map;
+                    setLoading(false);
+                }
+            }
+        } catch (_) {}
+
+        try {
             // Only fetch platforms and pipelines — no jobpack query (it times out due to huge metadata)
             const [platformsRes, pipelinesRes] = await Promise.all([
                 fetch("/api/platform?limit=1000").then(r => r.json()),
@@ -803,6 +842,9 @@ export default function InspectionLanding() {
             structuresList.sort((a, b) => a.name.localeCompare(b.name));
             setAllStructures(structuresList);
             structureMapRef.current = structureMap;
+            try {
+                sessionStorage.setItem("cached_all_structures", JSON.stringify(structuresList));
+            } catch (_) {}
         } catch (error) {
             console.error("Error loading structures:", error);
             toast.error("Failed to load structures");
@@ -812,9 +854,21 @@ export default function InspectionLanding() {
     }
 
     async function loadJobPacksForStructure(structureId: string) {
+        const rawId = structureId.replace(/^(platform|pipeline)-/, "");
+        const cacheKey = `cached_jobpacks_${rawId}`;
+
+        try {
+            const cached = sessionStorage.getItem(cacheKey);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setJobPacks(parsed);
+                }
+            }
+        } catch (_) {}
+
         setJobPacksLoading(true);
         try {
-            const rawId = structureId.replace(/^(platform|pipeline)-/, "");
             console.log("[Jobpack] Fetching jobpacks for structure:", rawId);
             const res = await fetch(`/api/jobpack?structure_id=${rawId}&limit=100`);
             if (!res.ok) {
@@ -827,8 +881,11 @@ export default function InspectionLanding() {
             console.log("[Jobpack] Received", data.length, "jobpacks for structure", rawId);
 
             if (data.length > 0) {
-                const formatted = data.map((jp: any) => formatJobPack(jp, structureMapRef.current));
+                const formatted = data.map((jp: any) => formatJobPack(jp, structureMapRef.current, structureId));
                 setJobPacks(formatted);
+                try {
+                    sessionStorage.setItem(cacheKey, JSON.stringify(formatted));
+                } catch (_) {}
             } else {
                 setJobPacks([]);
             }
@@ -841,10 +898,30 @@ export default function InspectionLanding() {
     }
 
     async function loadSOWReports(jobPackId: string, structureId: string) {
+        const rawId = structureId.includes("-") ? structureId.split("-")[1] : structureId;
+        const cacheKeySow = `cached_sows_${jobPackId}_${rawId}`;
+        const cacheKeyItems = `cached_sow_items_${jobPackId}_${rawId}`;
+
+        try {
+            const cachedSows = sessionStorage.getItem(cacheKeySow);
+            const cachedItems = sessionStorage.getItem(cacheKeyItems);
+            if (cachedSows) {
+                const parsed = JSON.parse(cachedSows);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setSOWReports(parsed);
+                }
+            }
+            if (cachedItems) {
+                const parsed = JSON.parse(cachedItems);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setRawSowItems(parsed);
+                }
+            }
+        } catch (_) {}
+
         setSowReportsLoading(true);
         try {
             console.log("Loading SOW reports via API for job pack:", jobPackId, "structure:", structureId);
-            const rawId = structureId.includes("-") ? structureId.split("-")[1] : structureId;
             const res = await fetch(`/api/sow?jobpack_id=${jobPackId}&structure_id=${rawId}`);
             if (!res.ok) {
                 throw new Error(`Failed to fetch SOW reports: ${res.statusText}`);
@@ -857,6 +934,9 @@ export default function InspectionLanding() {
             const sowData = sow ? [sow] : [];
             const itemsData = sow?.items || [];
             setRawSowItems(itemsData);
+            try {
+                sessionStorage.setItem(cacheKeyItems, JSON.stringify(itemsData));
+            } catch (_) {}
 
             // Group by distinct report numbers (not individual inspection codes)
             const formatted: SOWReport[] = [];
@@ -993,29 +1073,30 @@ export default function InspectionLanding() {
 
             // Restore saved SOW if available in current formatted list
             if (formatted.length > 0) {
-                const savedSOW = sessionStorage.getItem("inspection_sow");
-                const savedMode = sessionStorage.getItem("inspection_mode");
+                const savedSOW = sessionStorage.getItem("inspection_sow") || "";
+                const savedMode = sessionStorage.getItem("inspection_mode") || "";
                 
-                const matchingSow = savedSOW && formatted.find(f => `${f.sow_id}-${f.item_no}` === savedSOW);
+                const matchingSow = savedSOW && formatted.find(f => 
+                    `${f.sow_id}-${f.item_no}` === savedSOW || 
+                    `${f.sow_id}-${f.report_number}` === savedSOW || 
+                    f.report_number === savedSOW || 
+                    f.item_no === savedSOW
+                );
                 if (matchingSow) {
                     setSelectedSOW(`${matchingSow.sow_id}-${matchingSow.item_no}`);
                     const defaultMode = determineDefaultMode(sow, matchingSow.report_number, itemsData);
-                    setSelectedMode(savedMode || defaultMode);
-                } else {
-                    // Do not auto-select an arbitrary SOW report; let the user explicitly pick
-                    setSelectedSOW("");
-                    setSelectedMode("");
+                    setSelectedMode(savedMode || defaultMode || "ROV");
+                } else if (savedSOW) {
+                    setSelectedSOW(savedSOW);
+                    if (savedMode) setSelectedMode(savedMode);
                 }
-            } else {
-                setSelectedSOW("");
-                setSelectedMode("");
             }
         } catch (error) {
             console.error("Error loading SOW reports:", error);
             toast.error("Failed to load SOW reports");
             setSOWReports([]);
             setSelectedSOW("");
-            setSelectedMode("");
+            setSelectedMode(prev => prev || "ROV");
         } finally {
             setSowReportsLoading(false);
         }
@@ -1112,10 +1193,9 @@ export default function InspectionLanding() {
                                                                             if (!isSelected) {
                                                                                 setSelectedStructure(struct.id.toString());
                                                                                 setSelectedSOW("");
-                                                                                setSelectedMode("");
+                                                                                setSelectedMode(prev => prev || "ROV");
                                                                                 sessionStorage.setItem("inspection_structure", struct.id.toString());
                                                                                 sessionStorage.removeItem("inspection_sow");
-                                                                                sessionStorage.removeItem("inspection_mode");
                                                                             }
                                                                             setOpenStruct(false);
                                                                             setSearchStruct("");
@@ -1181,10 +1261,9 @@ export default function InspectionLanding() {
                                                                                      if (!isSelected) {
                                                                                          setSelectedStructure(struct.id.toString());
                                                                                          setSelectedSOW("");
-                                                                                         setSelectedMode("");
+                                                                                         setSelectedMode(prev => prev || "ROV");
                                                                                          sessionStorage.setItem("inspection_structure", struct.id.toString());
                                                                                          sessionStorage.removeItem("inspection_sow");
-                                                                                         sessionStorage.removeItem("inspection_mode");
                                                                                      }
                                                                                      setOpenStruct(false);
                                                                                      setSearchStruct("");
@@ -1231,10 +1310,9 @@ export default function InspectionLanding() {
                                                                                      if (!isSelected) {
                                                                                          setSelectedStructure(struct.id.toString());
                                                                                          setSelectedSOW("");
-                                                                                         setSelectedMode("");
+                                                                                         setSelectedMode(prev => prev || "ROV");
                                                                                          sessionStorage.setItem("inspection_structure", struct.id.toString());
                                                                                          sessionStorage.removeItem("inspection_sow");
-                                                                                         sessionStorage.removeItem("inspection_mode");
                                                                                      }
                                                                                      setOpenStruct(false);
                                                                                      setSearchStruct("");
@@ -1505,8 +1583,6 @@ export default function InspectionLanding() {
                                             onClick={() => {
                                                 if (!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode) return;
                                                 const selectedSOWData = sowReports.find(s => `${s.sow_id}-${s.item_no}` === selectedSOW);
-                                                const isPipeline = selectedStructureData?.type === "pipeline";
-                                                const targetPath = isPipeline ? "/dashboard/inspection-v2/pipeline-workspace" : "/dashboard/inspection-v2/workspace";
                                                 const rawStructId = selectedStructure.includes("-") ? selectedStructure.split("-")[1] : selectedStructure;
                                                 
                                                 const params = new URLSearchParams({
@@ -1519,7 +1595,7 @@ export default function InspectionLanding() {
                                                     sowReport: selectedSOWData?.report_number || "",
                                                     jobType: selectedSOWData?.job_type || "",
                                                 });
-                                                router.push(`${targetPath}?${params.toString()}`);
+                                                router.push(`/dashboard/inspection-v2/workspace?${params.toString()}`);
                                             }}
                                             className={`w-full h-12 text-sm font-black transition-all duration-300 ${
                                                 (!selectedJobPack || !selectedStructure || !selectedSOW || !selectedMode)

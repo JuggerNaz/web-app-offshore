@@ -90,6 +90,7 @@ interface InspectionFormProps {
     validateAnomalyRef: (ref: string) => Promise<boolean>;
     setPrevRefNo: (val: string) => void;
     criteriaRules?: any[];
+    onVoiceActionCommand?: (actionIntent: any) => void;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -146,7 +147,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     onPrintReport,
     validateAnomalyRef,
     setPrevRefNo,
-    criteriaRules = []
+    criteriaRules = [],
+    onVoiceActionCommand
 }) => {
     const [activeCriteriaRules, setActiveCriteriaRules] = React.useState<any[]>(criteriaRules || []);
 
@@ -1118,7 +1120,38 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 handleDynamicPropChange('cp_readings_additional', [...existingCp, ...formattedCp]);
             }
         }
-    }, [handleDynamicPropChange, setRecordNotes, setFindingType, setIsManualOverride, setAnomalyData, dynamicProps]);
+
+        // 7. Handle Voice Action Intent (Register Event / Save Record / Hands-free Shortcuts)
+        if (parsed.action_intent) {
+            const action = parsed.action_intent.action;
+            if (action === "REGISTER_EVENT" || action === "SAVE_RECORD") {
+                toast.success("✨ Executing Voice Command: Registering Event / Saving Record...", {
+                    description: `Target Component: ${selectedComp?.name || 'Active Component'}`,
+                });
+                setTimeout(() => {
+                    handleCommitRecord();
+                }, 350);
+            } else if (action === "CAPTURE_PHOTO") {
+                if (onCapturePhoto) {
+                    onCapturePhoto();
+                    toast.success("📷 Captured inspection photo via voice command!");
+                }
+            } else if (action === "MARK_COMPLETE") {
+                if (setFindingType) setFindingType("Complete");
+                toast.info("Marked inspection record as Complete.");
+            } else if (action === "MARK_ANOMALY") {
+                if (setFindingType) {
+                    setFindingType("Anomaly");
+                    setIsManualOverride(true);
+                }
+                toast.warning("Flagged inspection record as Anomaly via voice.");
+            }
+
+            if (onVoiceActionCommand) {
+                onVoiceActionCommand(parsed.action_intent);
+            }
+        }
+    }, [handleDynamicPropChange, setRecordNotes, setFindingType, setIsManualOverride, setAnomalyData, dynamicProps, handleCommitRecord, onCapturePhoto, onVoiceActionCommand, selectedComp]);
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">

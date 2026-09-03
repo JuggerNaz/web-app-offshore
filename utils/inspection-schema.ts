@@ -11,8 +11,12 @@ export function resolveFields(fields: any[], sharedFields: Record<string, any>):
     if (field && typeof field === 'object' && field.$ref) {
       const shared = sharedFields[field.$ref];
       if (!shared) {
-        console.warn(`[SchemaResolver] Reference not found: ${field.$ref}`);
-        return field;
+        return {
+          name: field.$ref,
+          label: field.label || field.$ref.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+          type: field.type || 'text',
+          ...field,
+        };
       }
       // Merge shared field with local overrides
       const resolved = { ...shared, ...field };

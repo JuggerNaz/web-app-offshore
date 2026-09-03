@@ -43,6 +43,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
+import { VoiceInspectionAssistant } from '@/components/inspection/VoiceInspectionAssistant';
 
 interface InspectionHeaderProps {
     headerData: any;
@@ -102,6 +103,7 @@ interface InspectionHeaderProps {
     onRestoreAllPanels?: () => void;
     onUpdateSowReportNo?: (newReportNo: string) => void;
     onOpenGeodetic?: () => void;
+    onGlobalVoiceCommand?: (parsedResult: any) => void;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -160,7 +162,8 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     onRestorePanel,
     onRestoreAllPanels,
     onUpdateSowReportNo,
-    onOpenGeodetic
+    onOpenGeodetic,
+    onGlobalVoiceCommand
 }) => {
     const isPipeline = headerData?.structureType === "pipeline" || headerData?.isPipeline;
 
@@ -250,7 +253,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     return (
         <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800">
             <div className="flex items-center gap-3 flex-wrap">
-                <Link href="/dashboard/inspection-v2">
+                <Link href={searchParams && searchParams.toString() ? `/dashboard/inspection-v2?${searchParams.toString()}` : "/dashboard/inspection-v2"}>
                     <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-bold shadow-sm">
                         <ArrowLeft className="w-4 h-4" /> <span>Back</span>
                     </Button>
@@ -286,6 +289,19 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         ROV
                     </button>
                 </div>
+
+                <VoiceInspectionAssistant
+                    inspMethod={inspMethod}
+                    structureType={headerData?.structureType || (isPipeline ? 'pipeline' : 'platform')}
+                    componentInfo={{
+                        name: headerData?.platformName,
+                    }}
+                    onApplyExtraction={(parsed) => {
+                        if (onGlobalVoiceCommand) {
+                            onGlobalVoiceCommand(parsed);
+                        }
+                    }}
+                />
 
                 {/* Pipeline Inspection Preset Dropdowns */}
                 {isPipeline && (

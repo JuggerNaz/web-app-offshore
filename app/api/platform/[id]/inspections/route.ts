@@ -13,49 +13,30 @@ export const GET = withTenant(async (request, { companyId, params }) => {
 
     const supabase = await createClient();
 
-    // 1. Fetch u_sow (Scope of Work) for this structure
-    const { data: sows, error: sowsErr } = await (supabase as any)
-      .from("u_sow")
-      .select("id, jobpack_id")
-      .eq("structure_id", structureId)
-      .eq("company_id", companyId);
+    // 1. Fetch u_sow and insp_records in PARALLEL
+    const [sowsRes, recordsRes] = await Promise.all([
+      (supabase as any)
+        .from("u_sow")
+        .select("id, jobpack_id")
+        .eq("structure_id", structureId)
+        .eq("company_id", companyId),
+      (supabase as any)
+        .from("insp_records")
+        .select("jobpack_id, sow_report_no, component_id, inspection_type_id, rov_job_id, dive_job_id")
+        .eq("structure_id", structureId)
+        .eq("company_id", companyId),
+    ]);
 
-    if (sowsErr) throw sowsErr;
+    if (sowsRes.error) throw sowsRes.error;
+    if (recordsRes.error) throw recordsRes.error;
 
-    const sowIds = sows?.map((s: any) => s.id) || [];
-    const sowToJobpackMap: Record<number, number> = {};
-    sows?.forEach((s: any) => {
-      if (s.id && s.jobpack_id) {
-        sowToJobpackMap[s.id] = s.jobpack_id;
-      }
-    });
+    const sows = sowsRes.data || [];
+    const records = recordsRes.data || [];
 
-    // 2. Fetch u_sow_items for the retrieved sows
-    let sowItems: any[] = [];
-    if (sowIds.length > 0) {
-      const { data, error } = await (supabase as any)
-        .from("u_sow_items")
-        .select("sow_id, report_number")
-        .in("sow_id", sowIds)
-        .eq("company_id", companyId);
-      
-      if (error) throw error;
-      sowItems = data || [];
-    }
-
-    // 3. Fetch insp_records for actual inspections
-    const { data: records, error: recordsErr } = await (supabase as any)
-      .from("insp_records")
-      .select("jobpack_id, sow_report_no, component_id, inspection_type_id, rov_job_id, dive_job_id")
-      .eq("structure_id", structureId)
-      .eq("company_id", companyId);
-
-    if (recordsErr) throw recordsErr;
-
-    // 4. Resolve unique jobpack IDs
+    // 2. Resolve unique jobpack IDs
     const jobpackIdsSet = new Set<number>();
-    sows?.forEach((s: any) => s.jobpack_id && jobpackIdsSet.add(s.jobpack_id));
-    records?.forEach((r: any) => r.jobpack_id && jobpackIdsSet.add(r.jobpack_id));
+    sows.forEach((s: any) => s.jobpack_id && jobpackIdsSet.add(s.jobpack_id));
+    records.forEach((r: any) => r.jobpack_id && jobpackIdsSet.add(r.jobpack_id));
     const jobpackIds = Array.from(jobpackIdsSet);
 
     // 5. Fetch jobpacks details
