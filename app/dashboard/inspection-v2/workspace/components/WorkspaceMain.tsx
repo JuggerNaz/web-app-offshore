@@ -1014,12 +1014,20 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
                               </td>
                             );
-                          case 'elev':
+                          case 'elev': {
+                            const kpVal = r.fp_kp ?? r.kp ?? r.inspection_data?.fp_kp ?? r.inspection_data?.kp ?? r.inspection_data?.kp_value;
                             return (
                               <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-400 align-top">
-                                {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
+                                {kpVal !== undefined && kpVal !== null && kpVal !== "" ? (
+                                  <span className="font-mono text-xs font-semibold">{kpVal}</span>
+                                ) : r.elevation ? (
+                                  `${r.elevation}m`
+                                ) : (
+                                  '-'
+                                )}
                               </td>
                             );
+                          }
                           case 'anomaly_ref':
                             return (
                               <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
@@ -1340,12 +1348,20 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                     <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
                                   </td>
                                 );
-                              case 'elev':
+                              case 'elev': {
+                                const kpVal = r.fp_kp ?? r.kp ?? r.inspection_data?.fp_kp ?? r.inspection_data?.kp ?? r.inspection_data?.kp_value;
                                 return (
                                   <td key={col.id} className="px-3 py-3 text-center text-sm font-bold text-slate-600 dark:text-slate-400 align-top">
-                                    {r.elevation ? `${r.elevation}m` : (r.fp_kp || '-')}
+                                    {kpVal !== undefined && kpVal !== null && kpVal !== "" ? (
+                                      <span className="font-mono text-xs font-semibold">{kpVal}</span>
+                                    ) : r.elevation ? (
+                                      `${r.elevation}m`
+                                    ) : (
+                                      '-'
+                                    )}
                                   </td>
                                 );
+                              }
                               case 'anomaly_ref':
                                 return (
                                   <td key={col.id} className="px-3 py-3 align-top text-slate-700">

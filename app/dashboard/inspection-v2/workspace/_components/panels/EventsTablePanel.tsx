@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { 
   Search, 
   Settings2, 
+  SlidersHorizontal,
   Maximize2, 
   ChevronUp, 
   ChevronDown, 
@@ -21,7 +22,9 @@ import {
   CheckCircle2, 
   FileClock, 
   Paperclip,
-  Loader2
+  Loader2,
+  X,
+  Check
 } from "lucide-react";
 import {
   Select,
@@ -58,6 +61,7 @@ interface EventsTablePanelProps {
   recordsLimit: number;
   setRecordsLimit: (val: number) => void;
   totalRecords: number;
+  isPipe?: boolean;
 }
 
 export function EventsTablePanel({
@@ -87,6 +91,7 @@ export function EventsTablePanel({
   setRecordsLimit,
   totalRecords,
   editingRecordId,
+  isPipe = false,
 }: EventsTablePanelProps) {
   function formatCounter(seconds: number | string): string {
     if (seconds === undefined || seconds === null || seconds === "") return "00:00:00";
@@ -123,109 +128,158 @@ export function EventsTablePanel({
     }
   }, [selectedRowId, sortConfig, displayRecords]);
 
+  const [isInPip, setIsInPip] = React.useState(false);
+  React.useEffect(() => {
+    const handlePipChange = () => {
+      setIsInPip(window !== window.parent);
+    };
+    handlePipChange();
+    window.addEventListener("resize", handlePipChange);
+    return () => window.removeEventListener("resize", handlePipChange);
+  }, []);
+
   const renderHeaderToolbar = (isInPip: boolean) => (
-    <div className="bg-slate-800 dark:bg-slate-900/80 text-white px-3 py-2 text-[10px] font-black uppercase tracking-widest flex justify-between items-center h-[36px] shrink-0 border-b dark:border-slate-700 backdrop-blur-sm">
+    <div className="bg-slate-800 dark:bg-slate-900/90 text-white px-3 py-1.5 flex justify-between items-center h-[38px] shrink-0 border-b border-slate-700 select-none">
       <div className="flex items-center gap-2">
-        <span>{isInPip ? "CAPTURED EVENTS (FLOATING)" : "CAPTURED EVENTS"}</span>
-        <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5">
+        <span className="text-[10px] font-black uppercase tracking-wider text-slate-200">
+          {isInPip ? "CAPTURED EVENTS (FLOATING)" : "CAPTURED EVENTS"}
+        </span>
+        <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
           {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
           {recordSearchQuery ? `${displayRecords.length} / ${totalRecords || sortedRecords.length}` : (totalRecords || sortedRecords.length)} Total
         </Badge>
       </div>
 
-      <div className="flex-1 max-w-md mx-4 relative flex items-center gap-1">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+      <div className="flex items-center gap-1.5">
+        <div className="relative flex items-center">
           <Input
-            placeholder="Search terms (e.g. Anode, P1, 0.050)..."
-            className="h-6 text-[9px] pl-8 pr-2 bg-slate-900/50 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-blue-500/30 font-bold tracking-tight rounded-md"
+            placeholder={isPipe ? "Search events, KP, anom, P1..." : "Search terms (e.g. Anode, P1, 0.050)..."}
+            className="h-6 w-36 sm:w-48 text-[10px] bg-slate-900/80 border-slate-700 text-white placeholder:text-slate-500 rounded-l focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:ring-offset-0 border-r-0 pl-2 pr-5"
             value={recordSearchQuery}
             onChange={(e) => setRecordSearchQuery(e.target.value)}
           />
+          {recordSearchQuery && (
+            <button onClick={() => setRecordSearchQuery("")} className="absolute right-1 text-slate-400 hover:text-white">
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
 
-        <Select
-          value={searchMode}
-          onValueChange={(val: "ANY" | "ALL" | "EXACT") => setSearchMode?.(val)}
-        >
-          <SelectTrigger 
-            className="h-6 w-[80px] text-[8px] font-black uppercase bg-slate-900/70 border-slate-700 text-cyan-400 focus:ring-0 focus:ring-offset-0 shrink-0"
-            title="Search Filter Mode: Match ALL conditions, ANY condition, or EXACT phrase"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent 
-            className="bg-slate-900 border-slate-700 text-slate-200 min-w-[130px]"
-            container={isInPip ? capturedEventsPipWindow?.document.body : undefined}
-          >
-            <SelectItem value="ALL" className="text-[10px] font-bold">
-              <span className="text-cyan-400">Match ALL</span> (And)
-            </SelectItem>
-            <SelectItem value="ANY" className="text-[10px] font-bold">
-              <span className="text-emerald-400">Match ANY</span> (Or)
-            </SelectItem>
-            <SelectItem value="EXACT" className="text-[10px] font-bold">
-              <span className="text-amber-400">Exact Phrase</span>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+        {setSearchMode && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-1.5 text-[9px] font-extrabold uppercase tracking-wider bg-slate-900/80 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 rounded-r rounded-l-none border-l-0 shrink-0 flex items-center gap-1"
+                title="Search matching logic"
+              >
+                <span>{searchMode === "EXACT" ? "EXACT" : searchMode === "ANY" ? "ANY" : "MATCH..."}</span>
+                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-48 p-1.5 bg-slate-900 border-slate-700 text-slate-200 shadow-xl"
+              align="end"
+              container={isInPip ? capturedEventsPipWindow?.document.body : undefined}
+            >
+              <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 px-2 py-1 border-b border-slate-800 mb-1">
+                Keyword Matching Mode
+              </div>
+              <button
+                onClick={() => setSearchMode("ALL")}
+                className={`w-full text-left px-2 py-1 rounded text-[10px] font-medium flex items-center justify-between hover:bg-slate-800 ${searchMode === "ALL" ? "text-blue-400 font-bold bg-blue-500/10" : "text-slate-300"}`}
+              >
+                <span>Match ALL (AND)</span>
+                {searchMode === "ALL" && <Check className="w-3 h-3 text-blue-400" />}
+              </button>
+              <button
+                onClick={() => setSearchMode("ANY")}
+                className={`w-full text-left px-2 py-1 rounded text-[10px] font-medium flex items-center justify-between hover:bg-slate-800 ${searchMode === "ANY" ? "text-blue-400 font-bold bg-blue-500/10" : "text-slate-300"}`}
+              >
+                <span>Match ANY (OR)</span>
+                {searchMode === "ANY" && <Check className="w-3 h-3 text-blue-400" />}
+              </button>
+              <button
+                onClick={() => setSearchMode("EXACT")}
+                className={`w-full text-left px-2 py-1 rounded text-[10px] font-medium flex items-center justify-between hover:bg-slate-800 ${searchMode === "EXACT" ? "text-blue-400 font-bold bg-blue-500/10" : "text-slate-300"}`}
+              >
+                <span>Exact Phrase</span>
+                {searchMode === "EXACT" && <Check className="w-3 h-3 text-blue-400" />}
+              </button>
+            </PopoverContent>
+          </Popover>
+        )}
 
-      <div className="flex items-center gap-2">
-        <Select 
-          value={recordsLimit.toString()} 
-          onValueChange={(val) => {
-            setRecordsLimit(parseInt(val));
-            setRecordsOffset(0);
-          }}
-        >
-          <SelectTrigger className="h-6 w-[60px] text-[9px] bg-slate-900/50 border-slate-700 text-slate-400 font-black uppercase ring-offset-slate-900 focus:ring-slate-700">
-            <SelectValue placeholder={recordsLimit.toString()} />
-          </SelectTrigger>
-          <SelectContent 
-            className="bg-slate-900 border-slate-700 text-slate-200 min-w-[60px]"
-            container={isInPip ? capturedEventsPipWindow?.document.body : undefined}
-          >
-            <SelectItem value="25" className="text-[9px] font-bold">25 Rows</SelectItem>
-            <SelectItem value="50" className="text-[9px] font-bold">50 Rows</SelectItem>
-            <SelectItem value="100" className="text-[9px] font-bold">100 Rows</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex items-center bg-slate-900/50 border border-slate-700 rounded-md overflow-hidden">
+        <div className="h-4 w-px bg-slate-700 mx-0.5" />
+        
+        <div className="flex items-center gap-1">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-1.5 text-[9px] font-bold bg-slate-900/80 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 rounded shrink-0 flex items-center gap-1"
+                title="Records per page"
+              >
+                <span>{recordsLimit}..</span>
+                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-32 p-1 bg-slate-900 border-slate-700 text-slate-200 shadow-xl"
+              align="end"
+              container={isInPip ? capturedEventsPipWindow?.document.body : undefined}
+            >
+              <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 px-2 py-1 border-b border-slate-800 mb-1">
+                Page Size
+              </div>
+              {[25, 50, 100].map((size) => (
+                <button
+                  key={size}
+                  onClick={() => {
+                    setRecordsLimit(size);
+                    setRecordsOffset(0);
+                  }}
+                  className={`w-full text-left px-2 py-1 rounded text-[10px] font-medium flex items-center justify-between hover:bg-slate-800 ${recordsLimit === size ? "text-blue-400 font-bold bg-blue-500/10" : "text-slate-300"}`}
+                >
+                  <span>{size} records</span>
+                  {recordsLimit === size && <Check className="w-3 h-3 text-blue-400" />}
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
           <Button 
             variant="ghost" 
             size="sm" 
-            className="h-6 px-2 text-[9px] font-black uppercase text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-20 transition-all"
+            className="h-6 px-1.5 text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30"
             onClick={() => setRecordsOffset(Math.max(0, recordsOffset - recordsLimit))}
             disabled={recordsOffset === 0 || syncLoading}
+            title="Previous page"
           >
             Prev
           </Button>
-          <div className="px-2 border-x border-slate-700 h-6 flex items-center bg-slate-950/30">
-            <span className="text-[9px] text-blue-400 font-black tabular-nums">
-              {totalRecords > 0 ? `${recordsOffset + 1}-${Math.min(recordsOffset + recordsLimit, totalRecords)}` : '0-0'} 
-              <span className="text-slate-500 mx-1">/</span> 
-              {totalRecords}
-            </span>
-          </div>
+          <span className="text-[9px] font-mono text-slate-400 px-0.5">
+            {totalRecords > 0 ? `${recordsOffset + 1}-${Math.min(recordsOffset + recordsLimit, totalRecords)}` : '0-0'}
+          </span>
           <Button 
             variant="ghost" 
             size="sm" 
-            className="h-6 px-2 text-[9px] font-black uppercase text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-20 transition-all"
+            className="h-6 px-1.5 text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30"
             onClick={() => setRecordsOffset(recordsOffset + recordsLimit)}
             disabled={recordsOffset + recordsLimit >= totalRecords || syncLoading}
+            title="Next page"
           >
             Next
           </Button>
         </div>
-      </div>
 
-      <div className="flex items-center gap-1 ml-1">
+        <div className="h-4 w-px bg-slate-700 mx-0.5" />
+        
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700">
-              <Settings2 className="w-3 h-3" />
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700" title="Manage Columns">
+              <SlidersHorizontal className="w-3 h-3" />
             </Button>
           </PopoverTrigger>
           <PopoverContent 
@@ -238,19 +292,22 @@ export function EventsTablePanel({
             </div>
             <ScrollArea className="h-[300px]">
               <div className="p-2 space-y-1">
-                {columnSettings.map((col, idx) => (
-                  <div key={col.id} className="flex items-center gap-3 p-2 hover:bg-slate-800/50 rounded-md group/col transition-colors">
-                    <div className="flex flex-col gap-1">
-                      <button onClick={() => handleMoveColumn(idx, "up")} className="p-0.5 hover:text-blue-400 opacity-0 group-hover/col:opacity-100"><ChevronUp className="w-3 h-3" /></button>
-                      <button onClick={() => handleMoveColumn(idx, "down")} className="p-0.5 hover:text-blue-400 opacity-0 group-hover/col:opacity-100"><ChevronDown className="w-3 h-3" /></button>
+                {columnSettings.map((col, idx) => {
+                  const displayLabel = col.id === "elev" ? (isPipe ? "KP / FP" : "Elevation") : col.label;
+                  return (
+                    <div key={col.id} className="flex items-center gap-3 p-2 hover:bg-slate-800/50 rounded-md group/col transition-colors">
+                      <div className="flex flex-col gap-1">
+                        <button onClick={() => handleMoveColumn(idx, "up")} className="p-0.5 hover:text-blue-400 opacity-0 group-hover/col:opacity-100"><ChevronUp className="w-3 h-3" /></button>
+                        <button onClick={() => handleMoveColumn(idx, "down")} className="p-0.5 hover:text-blue-400 opacity-0 group-hover/col:opacity-100"><ChevronDown className="w-3 h-3" /></button>
+                      </div>
+                      <div className="flex-1 flex items-center gap-2">
+                        <Checkbox checked={col.visible} onCheckedChange={() => toggleColumnVisibility(col.id)} />
+                        <span className="text-[10px] font-bold uppercase tracking-tight">{displayLabel}</span>
+                      </div>
+                      <GripVertical className="w-3 h-3 text-slate-600 cursor-grab" />
                     </div>
-                    <div className="flex-1 flex items-center gap-2">
-                      <Checkbox checked={col.visible} onCheckedChange={() => toggleColumnVisibility(col.id)} />
-                      <span className="text-[10px] font-bold uppercase tracking-tight">{col.label}</span>
-                    </div>
-                    <GripVertical className="w-3 h-3 text-slate-600 cursor-grab" />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </ScrollArea>
           </PopoverContent>
@@ -258,9 +315,9 @@ export function EventsTablePanel({
         <Button 
           variant="ghost" 
           size="sm" 
-          className={`h-6 ${isInPip ? "px-2 text-[9px] font-bold uppercase tracking-wider text-blue-400 hover:text-white bg-blue-500/20 hover:bg-blue-600 border border-blue-500/30" : "w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700"} ${capturedEventsPipWindow && !isInPip ? "text-blue-400 bg-blue-500/10" : ""}`} 
+          className={`h-6 ${isInPip ? "px-2 text-[9px] font-bold uppercase tracking-wider text-blue-400 hover:text-white bg-blue-500/20 hover:bg-blue-600 border border-blue-500/30" : "w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700"}`} 
           onClick={handlePopoutCapturedEvents}
-          title={isInPip ? "Dock back to workspace" : capturedEventsPipWindow ? "Dock back" : "Pop out to floating window"}
+          title={isInPip ? "Dock back to workspace" : "Pop out to floating window"}
         >
           {isInPip ? "Dock Back" : <Maximize2 className="w-3 h-3" />}
         </Button>
@@ -274,14 +331,17 @@ export function EventsTablePanel({
         <table className="min-w-full border-collapse">
           <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
             <tr>
-              {activeTableColumns.map((col) => (
-                <th key={col.id} className="px-3 py-2 text-left text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] whitespace-nowrap cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => col.id !== "actions" && col.id !== "status" && handleSort(col.id)}>
-                  <div className="flex items-center gap-1.5">
-                    {col.label}
-                    {sortConfig.key === col.id && (sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />)}
-                  </div>
-                </th>
-              ))}
+              {activeTableColumns.map((col) => {
+                const displayLabel = col.id === "elev" ? (isPipe ? "KP / FP" : "Elev") : col.label;
+                return (
+                  <th key={col.id} className="px-3 py-2 text-left text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] whitespace-nowrap cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => col.id !== "actions" && col.id !== "status" && handleSort(col.id)}>
+                    <div className="flex items-center gap-1.5">
+                      {displayLabel}
+                      {sortConfig.key === col.id && (sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />)}
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
@@ -383,8 +443,34 @@ export function EventsTablePanel({
                           <div className="text-[10px] text-slate-400 dark:text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || "-"}</div>
                         </td>
                       );
-                    case "elev":
-                      return <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top">{r.elevation ? `${r.elevation}m` : r.fp_kp || "-"}</td>;
+                    case "elev": {
+                      const kpVal = r.fp_kp ?? r.kp ?? r.inspection_data?.fp_kp ?? r.inspection_data?.kp ?? r.inspection_data?.kp_value ?? r.inspection_data?.kp_fp;
+                      const elevVal = r.elevation ?? r.inspection_data?.elevation;
+                      if (isPipe) {
+                        return (
+                          <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top">
+                            {kpVal !== undefined && kpVal !== null && kpVal !== "" ? (
+                              <span className="font-mono text-xs font-semibold">{kpVal}</span>
+                            ) : elevVal ? (
+                              <span>{elevVal}m</span>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600">-</span>
+                            )}
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={col.id} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top">
+                          {elevVal !== undefined && elevVal !== null && elevVal !== "" ? (
+                            <span>{elevVal}m</span>
+                          ) : kpVal !== undefined && kpVal !== null && kpVal !== "" ? (
+                            <span className="font-mono text-xs font-semibold">{kpVal}</span>
+                          ) : (
+                            <span className="text-slate-300 dark:text-slate-600">-</span>
+                          )}
+                        </td>
+                      );
+                    }
                     case "anomaly_ref":
                       return (
                         <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">

@@ -127,26 +127,94 @@ export function PipelineSeabedEventMap({
     }
   }, [isOpen, maxCalculatedKp]);
 
-  // Event Categories list
+  // Helper to filter out VIDEO LOG and MARINE GROWTH
+  const isExcludedEvent = (name?: string, type?: string) => {
+    const n = (name || "").toUpperCase().trim();
+    const t = (type || "").toUpperCase().trim();
+    if (
+      n.includes("VIDEO LOG") ||
+      n.includes("VIDEOLOG") ||
+      n.includes("VIDEO_LOG") ||
+      n.includes("TAPE LOG") ||
+      t.includes("VIDEO LOG") ||
+      t.includes("VIDEOLOG") ||
+      t.includes("VIDEO_LOG") ||
+      t.includes("TAPE LOG")
+    ) {
+      return true;
+    }
+    if (
+      n.includes("MARINE GROWTH") ||
+      n.includes("MARINE_GROWTH") ||
+      n === "MGI" ||
+      n === "DMGI" ||
+      n === "RMGI" ||
+      t.includes("MARINE GROWTH") ||
+      t.includes("MARINE_GROWTH") ||
+      t === "MGI" ||
+      t === "DMGI" ||
+      t === "RMGI"
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  // Helper to split Seabed Profile into Event Type and Position
+  const getEventDisplay = (evt: PipelineEventItem) => {
+    const nameUpper = (evt.event_name || "").toUpperCase().trim();
+    const typeUpper = (evt.event_type || "").trim();
+    const posUpper = (evt.event_position || "").trim();
+
+    if (nameUpper.includes("SEABED") || nameUpper.includes("SEABED PROFILE")) {
+      const pTitle = typeUpper ? typeUpper : "SEABED";
+      const sTitle = posUpper ? posUpper : "";
+      const cat = typeUpper ? `SEABED: ${typeUpper.toUpperCase()}` : posUpper ? `SEABED (${posUpper.toUpperCase()})` : "SEABED PROFILE";
+      return {
+        category: cat,
+        primaryTitle: pTitle,
+        subTitle: sTitle,
+        fullLabel: sTitle ? `${pTitle} (${sTitle})` : pTitle,
+      };
+    }
+
+    const title = evt.event_name || evt.event_type || "Event";
+    return {
+      category: title,
+      primaryTitle: title,
+      subTitle: posUpper,
+      fullLabel: posUpper ? `${title} (${posUpper})` : title,
+    };
+  };
+
+  // Event Categories list (Excluding Video Log and Marine Growth, and splitting Seabed Profile)
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
     events.forEach((e) => {
-      const cat = e.event_name || e.event_type || "General";
-      if (cat) set.add(cat);
+      if (isExcludedEvent(e.event_name, e.event_type)) return;
+      const { category } = getEventDisplay(e);
+      if (category) set.add(category);
     });
-    return Array.from(set);
+    return Array.from(set).sort();
   }, [events]);
 
   // Filtered Events List
   const filteredEvents = useMemo(() => {
     return events.filter((evt) => {
+      // Exclude Video Log and Marine Growth
+      if (isExcludedEvent(evt.event_name, evt.event_type)) return false;
+
       // Category filter
       if (selectedCategories.length > 0) {
-        const cat = evt.event_name || evt.event_type || "General";
-        if (!selectedCategories.includes(cat)) return false;
+        const { category, primaryTitle } = getEventDisplay(evt);
+        const isMatch =
+          selectedCategories.includes(category) ||
+          selectedCategories.includes(primaryTitle) ||
+          (selectedCategories.includes("SEABED PROFILE") && (evt.event_name || "").toUpperCase().includes("SEABED"));
+        if (!isMatch) return false;
       }
       // Anomalies only filter
-      if (showAnomaliesOnly && evt.finding_type !== "Anomaly" && evt.finding_type !== "Finding") {
+      if (showAnomaliesOnly && evt.finding_type !== "Anomaly" && evt.finding_type !== "Finding" && !evt.anomaly_code) {
         return false;
       }
       // Search query
@@ -154,10 +222,11 @@ export function PipelineSeabedEventMap({
         const q = searchQuery.toLowerCase();
         const matchName = evt.event_name?.toLowerCase().includes(q);
         const matchType = evt.event_type?.toLowerCase().includes(q);
+        const matchPos = evt.event_position?.toLowerCase().includes(q);
         const matchDesc = evt.event_description?.toLowerCase().includes(q);
         const matchKp = evt.kp?.toString().includes(q);
         const matchAnomaly = evt.anomaly_code?.toLowerCase().includes(q);
-        if (!matchName && !matchType && !matchDesc && !matchKp && !matchAnomaly) {
+        if (!matchName && !matchType && !matchPos && !matchDesc && !matchKp && !matchAnomaly) {
           return false;
         }
       }
@@ -165,42 +234,119 @@ export function PipelineSeabedEventMap({
     });
   }, [events, selectedCategories, showAnomaliesOnly, searchQuery]);
 
-  // Handle Box Selection Zooming
+  // Handle Box Selection & Canvas Panning
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const [panStartX, setPanStartX] = useState<number>(0);
+  const [panStartKpRange, setPanStartKpRange] = useState<{ start: number; end: number }>({ start: 0, end: 10 });
+  const scrollbarTrackRef = useRef<HTMLDivElement>(null);
+  const [isDraggingScrollbar, setIsDraggingScrollbar] = useState<boolean>(false);
+
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isMarkAreaMode || !containerRef.current) return;
+    if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    setSelectionBox({ startX: x, endX: x });
-    setIsSelecting(true);
+
+    if (isMarkAreaMode) {
+      setSelectionBox({ startX: x, endX: x });
+      setIsSelecting(true);
+    } else {
+      // Pan mode
+      setIsPanning(true);
+      setPanStartX(e.clientX);
+      setPanStartKpRange({ start: viewStartKp, end: viewEndKp });
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isSelecting || !selectionBox || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    setSelectionBox((prev) => (prev ? { ...prev, endX: x } : null));
+    if (!containerRef.current) return;
+
+    if (isSelecting && selectionBox) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      setSelectionBox((prev) => (prev ? { ...prev, endX: x } : null));
+    } else if (isPanning) {
+      const deltaX = e.clientX - panStartX;
+      const width = containerRef.current.clientWidth;
+      if (width > 0) {
+        const span = panStartKpRange.end - panStartKpRange.start;
+        const deltaKp = -(deltaX / width) * span;
+        let newStart = panStartKpRange.start + deltaKp;
+        let newEnd = panStartKpRange.end + deltaKp;
+
+        if (newStart < 0) {
+          newStart = 0;
+          newEnd = span;
+        }
+        if (newEnd > maxCalculatedKp) {
+          newEnd = maxCalculatedKp;
+          newStart = Math.max(0, maxCalculatedKp - span);
+        }
+        setViewStartKp(newStart);
+        setViewEndKp(newEnd);
+      }
+    }
   };
 
   const handleMouseUp = () => {
-    if (!isSelecting || !selectionBox || !containerRef.current) return;
-    setIsSelecting(false);
-    const width = containerRef.current.clientWidth;
-    const startX = Math.min(selectionBox.startX, selectionBox.endX);
-    const endX = Math.max(selectionBox.startX, selectionBox.endX);
-    const dragDistance = endX - startX;
+    if (isSelecting && selectionBox && containerRef.current) {
+      setIsSelecting(false);
+      const width = containerRef.current.clientWidth;
+      const startX = Math.min(selectionBox.startX, selectionBox.endX);
+      const endX = Math.max(selectionBox.startX, selectionBox.endX);
+      const dragDistance = endX - startX;
 
-    if (dragDistance > 15 && width > 0) {
-      const currentSpan = viewEndKp - viewStartKp;
-      const newStartKp = viewStartKp + (startX / width) * currentSpan;
-      const newEndKp = viewStartKp + (endX / width) * currentSpan;
+      if (dragDistance > 15 && width > 0) {
+        const currentSpan = viewEndKp - viewStartKp;
+        const newStartKp = viewStartKp + (startX / width) * currentSpan;
+        const newEndKp = viewStartKp + (endX / width) * currentSpan;
 
-      setViewStartKp(Math.max(0, newStartKp));
-      setViewEndKp(Math.min(maxCalculatedKp, newEndKp));
-      setZoomLevel(maxCalculatedKp / (newEndKp - newStartKp));
-      toast.info(`Zoomed to KP ${newStartKp.toFixed(3)} - ${newEndKp.toFixed(3)}`);
+        setViewStartKp(Math.max(0, newStartKp));
+        setViewEndKp(Math.min(maxCalculatedKp, newEndKp));
+        setZoomLevel(maxCalculatedKp / (newEndKp - newStartKp));
+        toast.info(`Zoomed to KP ${newStartKp.toFixed(3)} - ${newEndKp.toFixed(3)}`);
+      }
+      setSelectionBox(null);
+      setIsMarkAreaMode(false);
     }
-    setSelectionBox(null);
-    setIsMarkAreaMode(false);
+    setIsPanning(false);
+  };
+
+  // Scrollbar Pan Controls
+  const handleScrollbarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!scrollbarTrackRef.current) return;
+    const rect = scrollbarTrackRef.current.getBoundingClientRect();
+    const clickFraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const span = viewEndKp - viewStartKp;
+    const centerKp = clickFraction * maxCalculatedKp;
+    let nStart = centerKp - span / 2;
+    let nEnd = centerKp + span / 2;
+
+    if (nStart < 0) {
+      nStart = 0;
+      nEnd = span;
+    }
+    if (nEnd > maxCalculatedKp) {
+      nEnd = maxCalculatedKp;
+      nStart = Math.max(0, maxCalculatedKp - span);
+    }
+    setViewStartKp(nStart);
+    setViewEndKp(nEnd);
+  };
+
+  const handlePanStep = (direction: "left" | "right") => {
+    const span = viewEndKp - viewStartKp;
+    const step = span * 0.25;
+    if (direction === "left") {
+      let nStart = Math.max(0, viewStartKp - step);
+      let nEnd = nStart + span;
+      setViewStartKp(nStart);
+      setViewEndKp(nEnd);
+    } else {
+      let nEnd = Math.min(maxCalculatedKp, viewEndKp + step);
+      let nStart = Math.max(0, nEnd - span);
+      setViewStartKp(nStart);
+      setViewEndKp(nEnd);
+    }
   };
 
   // Zoom Controls
@@ -238,6 +384,144 @@ export function PipelineSeabedEventMap({
     if (span <= 0) return 0;
     return ((kp - viewStartKp) / span) * 100;
   };
+
+  // Dynamic Tree / Leaf Top Flags Auto-Arranger (Auto-scales and spaces flags when few/many events visible)
+  const arrangedFlags = useMemo(() => {
+    const visible = filteredEvents
+      .map((evt) => {
+        const pct = kpToPercent(evt.kp);
+        const display = getEventDisplay(evt);
+        return {
+          event: evt,
+          pct,
+          display,
+          isAnomaly: evt.finding_type === "Anomaly" || evt.finding_type === "Finding" || String(evt.anomaly_code || "").trim() !== "",
+          isSelected: activeEvent?.id === evt.id,
+        };
+      })
+      .filter((f) => f.pct >= -4 && f.pct <= 104)
+      .sort((a, b) => a.pct - b.pct);
+
+    const visibleCount = visible.length;
+    if (visibleCount === 0) return [];
+
+    // Dynamically adjust vertical tier spacing based on density of events on screen
+    let minStem = 36;
+    let tierStep = 44;
+    let maxTiers = 5;
+
+    if (visibleCount <= 5) {
+      minStem = 45;
+      tierStep = 55;
+      maxTiers = 4;
+    } else if (visibleCount <= 12) {
+      minStem = 38;
+      tierStep = 48;
+      maxTiers = 5;
+    } else if (visibleCount <= 25) {
+      minStem = 34;
+      tierStep = 40;
+      maxTiers = 6;
+    } else {
+      minStem = 30;
+      tierStep = 34;
+      maxTiers = 6;
+    }
+
+    const tierHeights = Array.from({ length: maxTiers }, (_, i) => minStem + i * tierStep);
+    const lastPctForTier = new Array(maxTiers).fill(-100);
+    const minGapPct = visibleCount <= 8 ? 7.0 : visibleCount <= 18 ? 5.5 : 4.5;
+
+    return visible.map((item, idx) => {
+      const prevItem = visible[idx - 1];
+      const nextItem = visible[idx + 1];
+      const prevDist = prevItem ? Math.abs(item.pct - prevItem.pct) : 999;
+      const nextDist = nextItem ? Math.abs(item.pct - nextItem.pct) : 999;
+      const isIsolated = prevDist > 14 && nextDist > 14;
+
+      let assignedTier = 0;
+
+      if (isIsolated && visibleCount <= 10) {
+        // When there are few events and they are well separated, auto-arrange them across staggered heights to fill space nicely
+        assignedTier = idx % Math.min(3, maxTiers);
+      } else {
+        // Find the first available tier that avoids horizontal collision
+        let foundTier = -1;
+        for (let t = 0; t < maxTiers; t++) {
+          if (item.pct - lastPctForTier[t] >= minGapPct) {
+            foundTier = t;
+            break;
+          }
+        }
+        if (foundTier !== -1) {
+          assignedTier = foundTier;
+        } else {
+          // All tiers occupied recently; pick the tier with the greatest distance
+          let bestTier = 0;
+          let maxDist = -1;
+          for (let i = 0; i < maxTiers; i++) {
+            const dist = item.pct - lastPctForTier[i];
+            if (dist > maxDist) {
+              maxDist = dist;
+              bestTier = i;
+            }
+          }
+          assignedTier = bestTier;
+        }
+      }
+
+      lastPctForTier[assignedTier] = item.pct;
+
+      return {
+        ...item,
+        tier: assignedTier,
+        stemHeight: Math.min(240, tierHeights[assignedTier]),
+      };
+    });
+  }, [filteredEvents, viewStartKp, viewEndKp, activeEvent]);
+
+  // Jump to KP Position helper
+  const jumpToKp = (targetKp: number) => {
+    const span = viewEndKp - viewStartKp;
+    let nStart = targetKp - span / 2;
+    let nEnd = targetKp + span / 2;
+    if (nStart < 0) {
+      nStart = 0;
+      nEnd = span;
+    }
+    if (nEnd > maxCalculatedKp) {
+      nEnd = maxCalculatedKp;
+      nStart = Math.max(0, maxCalculatedKp - span);
+    }
+    setViewStartKp(nStart);
+    setViewEndKp(nEnd);
+    toast.info(`Jumped to KP ${targetKp.toFixed(3)}`);
+  };
+
+  const currentMidKp = (viewStartKp + viewEndKp) / 2;
+  const prevMatch = useMemo(() => {
+    const matchesBefore = filteredEvents.filter((e) => e.kp < viewStartKp).sort((a, b) => b.kp - a.kp);
+    return matchesBefore[0] || null;
+  }, [filteredEvents, viewStartKp]);
+
+  const nextMatch = useMemo(() => {
+    const matchesAfter = filteredEvents.filter((e) => e.kp > viewEndKp).sort((a, b) => a.kp - b.kp);
+    return matchesAfter[0] || null;
+  }, [filteredEvents, viewEndKp]);
+
+  const nearestMatch = useMemo(() => {
+    if (filteredEvents.length === 0) return null;
+    let closest = filteredEvents[0];
+    let minDiff = Math.abs(closest.kp - currentMidKp);
+    for (const evt of filteredEvents) {
+      const diff = Math.abs(evt.kp - currentMidKp);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = evt;
+      }
+    }
+    return closest;
+  }, [filteredEvents, currentMidKp]);
 
   // Rulers & Ticks Calculation
   const rulerTicks = useMemo(() => {
@@ -298,6 +582,10 @@ export function PipelineSeabedEventMap({
     window.print();
   };
 
+  // Scrollbar thumb metrics
+  const scrollThumbLeftPct = maxCalculatedKp > 0 ? (viewStartKp / maxCalculatedKp) * 100 : 0;
+  const scrollThumbWidthPct = maxCalculatedKp > 0 ? Math.max(3, ((viewEndKp - viewStartKp) / maxCalculatedKp) * 100) : 100;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-7xl w-[96vw] h-[92vh] flex flex-col p-0 gap-0 bg-slate-950 text-slate-100 border-slate-800 overflow-hidden rounded-xl shadow-2xl">
@@ -315,7 +603,7 @@ export function PipelineSeabedEventMap({
                 </Badge>
               </DialogTitle>
               <DialogDescription className="text-[10px] text-slate-400">
-                Full-length 3D metallic pipeline profile, events, continuous spans, anomalies & multi-scale ruler
+                Full-length 3D metallic pipeline profile, tree/leaf top flags, continuous spans, anomalies & interactive panning scrollbar
               </DialogDescription>
             </div>
           </div>
@@ -534,7 +822,7 @@ export function PipelineSeabedEventMap({
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            className={`flex-1 relative flex flex-col justify-center p-6 overflow-hidden transition-all ${
+            className={`flex-1 relative flex flex-col justify-end p-6 pb-2 overflow-hidden transition-all ${
               isMarkAreaMode ? "cursor-crosshair bg-amber-950/10" : "cursor-grab active:cursor-grabbing"
             }`}
           >
@@ -557,16 +845,21 @@ export function PipelineSeabedEventMap({
             )}
 
             {/* Active KP Range Header Indicator */}
-            <div className="absolute top-3 left-4 text-[10px] font-mono text-slate-400 flex items-center gap-3 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-800">
+            <div className="absolute top-3 left-4 text-[10px] font-mono text-slate-400 flex items-center gap-3 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-800 z-10">
               <span className="text-blue-400 font-bold">VISIBLE KP: {viewStartKp.toFixed(3)} km</span>
               <span>→</span>
               <span className="text-blue-400 font-bold">{viewEndKp.toFixed(3)} km</span>
               <span className="text-slate-500">| Total Span: {(viewEndKp - viewStartKp).toFixed(3)} km</span>
+              {zoomLevel > 1 && (
+                <Badge variant="outline" className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/30">
+                  Drag canvas or use bottom scrollbar to pan
+                </Badge>
+              )}
             </div>
 
             {/* Historical Comparison Parallel Pipeline Track */}
             {showComparison && previousEvents.length > 0 && (
-              <div className="relative w-full h-12 mb-6 border-b border-indigo-500/30 flex items-center">
+              <div className="relative w-full h-10 mb-4 border-b border-indigo-500/30 flex items-center shrink-0">
                 <div className="absolute top-0 left-2 text-[8px] font-black uppercase tracking-widest text-indigo-400">
                   Previous Survey Run Track (Historical Comparison)
                 </div>
@@ -588,10 +881,130 @@ export function PipelineSeabedEventMap({
               </div>
             )}
 
+            {/* TREE / LEAF TOP FLAGS LAYER (Placed Above Pipeline) */}
+            <div className="relative w-full h-64 mb-1 overflow-visible select-none">
+              {/* Notice Banner when filtered events exist on the pipeline but are outside current viewport */}
+              {filteredEvents.length > 0 && arrangedFlags.length === 0 && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900/95 border border-blue-500/50 rounded-xl p-4 shadow-2xl flex flex-col items-center gap-2 z-30 max-w-md text-center backdrop-blur-md">
+                  <div className="flex items-center gap-2 text-blue-400 font-bold text-xs uppercase">
+                    <Search className="w-4 h-4" />
+                    <span>{filteredEvents.length} Matching Events Found On Pipeline</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    No matching events in current visible range (KP {viewStartKp.toFixed(3)} - {viewEndKp.toFixed(3)}).
+                    Click any highlighted dot on the bottom scrollbar or jump to nearest match:
+                  </p>
+                  {nearestMatch && (
+                    <Button
+                      size="sm"
+                      onClick={() => jumpToKp(nearestMatch.kp)}
+                      className="h-7 text-[10px] font-bold uppercase bg-blue-600 hover:bg-blue-700 text-white mt-1 px-3 shadow"
+                    >
+                      Jump to Nearest Match @ KP {nearestMatch.kp.toFixed(3)} →
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* SVG Connecting Branches/Stems */}
+              <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none z-10">
+                {arrangedFlags.map((item, idx) => {
+                  const xPct = `${item.pct}%`;
+                  const bottomY = 256; // bottom of flags canvas (connects to pipe)
+                  const topY = bottomY - item.stemHeight;
+                  const isAnom = item.isAnomaly;
+                  const strokeColor = item.isSelected ? "#38bdf8" : isAnom ? "#ef4444" : "#475569";
+                  const strokeWidth = item.isSelected ? 2 : isAnom ? 1.5 : 1;
+
+                  return (
+                    <g key={`stem-${idx}`}>
+                      {/* Vertical branch line */}
+                      <line
+                        x1={xPct}
+                        y1={topY}
+                        x2={xPct}
+                        y2={bottomY}
+                        stroke={strokeColor}
+                        strokeWidth={strokeWidth}
+                        strokeDasharray={item.tier > 2 ? "2 2" : "none"}
+                        opacity={item.isSelected ? 1 : 0.75}
+                      />
+                      {/* Anchor pin dot at pipe connection */}
+                      <circle
+                        cx={xPct}
+                        cy={bottomY}
+                        r={isAnom ? 4 : 2.5}
+                        fill={isAnom ? "#ef4444" : item.isSelected ? "#38bdf8" : "#94a3b8"}
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+
+              {/* HTML Interactive Flag / Leaf Cards */}
+              {arrangedFlags.map((item, idx) => {
+                const isAnom = item.isAnomaly;
+                const isSel = item.isSelected;
+                const evt = item.event;
+
+                return (
+                  <div
+                    key={`flag-${idx}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isMeasureMode) {
+                        if (!measurePoint1) setMeasurePoint1(evt);
+                        else if (!measurePoint2) setMeasurePoint2(evt);
+                      } else {
+                        setActiveEvent(evt);
+                        onSelectEvent?.(evt);
+                      }
+                    }}
+                    style={{
+                      left: `${item.pct}%`,
+                      bottom: `${item.stemHeight}px`,
+                    }}
+                    className={`absolute -translate-x-1/2 cursor-pointer transition-all duration-150 transform hover:scale-110 hover:z-50 ${
+                      isSel ? "scale-110 z-50 ring-2 ring-cyan-400 rounded shadow-cyan-500/50 shadow-lg" : "z-20"
+                    }`}
+                  >
+                    {isAnom ? (
+                      /* Anomaly Flag Card (Glowing Red / Warning Leaf) */
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-red-950/90 border border-red-500 shadow-md shadow-red-950 text-white whitespace-nowrap text-[9px] font-bold">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                        </span>
+                        <span className="text-red-300 font-extrabold">{evt.anomaly_code || "ANOMALY"}</span>
+                        <span className="text-slate-400 font-mono text-[8px]">({evt.kp.toFixed(3)})</span>
+                        {evt.findings && (
+                          <span className="bg-red-900 text-white text-[8px] px-1 rounded uppercase font-black">
+                            {evt.findings.slice(0, 10)}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      /* Standard Event Flag Card (Leaf-style Glass Tag) */
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700 hover:border-slate-500 shadow-md text-slate-200 whitespace-nowrap text-[8.5px] font-bold hover:text-white">
+                        <div className={`w-2 h-2 rounded-full ${getEventBadgeColor(evt)}`} />
+                        <span className="truncate max-w-[130px]">{item.display?.primaryTitle || evt.event_name || evt.event_type || "Event"}</span>
+                        {item.display?.subTitle && (
+                          <span className="text-[7.5px] text-amber-300 bg-amber-950/70 px-1 py-0.2 rounded border border-amber-800/40 uppercase font-black">
+                            {item.display.subTitle}
+                          </span>
+                        )}
+                        <span className="text-blue-400 font-mono text-[8px]">{evt.kp.toFixed(3)}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
             {/* MAIN 3D METALLIC STEEL PIPELINE GRAPHIC */}
-            <div className="relative w-full h-24 my-4 flex items-center">
+            <div className="relative w-full h-12 my-1 flex items-center shrink-0">
               {/* 3D Pipe Body */}
-              <div className="w-full h-10 rounded-full bg-gradient-to-b from-slate-600 via-slate-300 to-slate-800 dark:from-slate-700 dark:via-slate-200 dark:to-slate-900 border border-slate-400/50 shadow-[0_10px_25px_rgba(0,0,0,0.6)] relative overflow-visible flex items-center">
+              <div className="w-full h-9 rounded-full bg-gradient-to-b from-slate-600 via-slate-300 to-slate-800 dark:from-slate-700 dark:via-slate-200 dark:to-slate-900 border border-slate-400/50 shadow-[0_10px_25px_rgba(0,0,0,0.6)] relative overflow-visible flex items-center">
                 {/* Specular Highlight Streak running along the 3D pipe */}
                 <div className="absolute top-1 left-0 right-0 h-1.5 bg-gradient-to-r from-white/40 via-white/80 to-white/40 blur-[1px] rounded-full pointer-events-none" />
 
@@ -633,68 +1046,11 @@ export function PipelineSeabedEventMap({
                     </div>
                   );
                 })}
-
-                {/* POINT EVENT & ANOMALY MARKERS */}
-                {filteredEvents.map((evt, idx) => {
-                  const pct = kpToPercent(evt.kp);
-                  if (pct < 0 || pct > 100) return null;
-
-                  const isAnomaly = evt.finding_type === "Anomaly" || evt.finding_type === "Finding";
-                  const isSelected = activeEvent?.id === evt.id;
-
-                  return (
-                    <div
-                      key={`evt-${idx}`}
-                      onClick={() => {
-                        if (isMeasureMode) {
-                          if (!measurePoint1) setMeasurePoint1(evt);
-                          else if (!measurePoint2) setMeasurePoint2(evt);
-                        } else {
-                          setActiveEvent(evt);
-                          onSelectEvent?.(evt);
-                        }
-                      }}
-                      style={{ left: `${pct}%` }}
-                      className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer z-20 transition-all transform hover:scale-125 ${
-                        isSelected ? "scale-125 z-30" : ""
-                      }`}
-                    >
-                      {/* Anomaly Pulsing Warning Marker */}
-                      {isAnomaly ? (
-                        <div className="relative group">
-                          <span className="absolute -inset-1 rounded-full bg-red-600 animate-ping opacity-75" />
-                          <div className="relative w-7 h-7 rounded-full bg-red-600 border-2 border-white flex items-center justify-center shadow-lg shadow-red-600/50 text-white font-black text-[10px]">
-                            <AlertTriangle className="w-4 h-4" />
-                          </div>
-                          {/* Floating Marker Badge Label */}
-                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-red-950 border border-red-700 text-red-200 font-mono font-bold text-[8px] px-1.5 py-0.5 rounded shadow">
-                            {evt.anomaly_code || "ANOMALY"} @ KP {evt.kp.toFixed(3)}
-                          </div>
-                        </div>
-                      ) : (
-                        /* Regular Event Marker */
-                        <div className="relative group">
-                          <div
-                            className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow-md text-white font-bold text-[9px] ${getEventBadgeColor(
-                              evt
-                            )}`}
-                          >
-                            <MapPin className="w-3 h-3" />
-                          </div>
-                          {/* Marker Label */}
-                          <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900/90 border border-slate-700 text-slate-200 font-mono text-[8px] px-1.5 py-0.5 rounded shadow opacity-90 group-hover:opacity-100">
-                            {evt.event_name || evt.event_type} ({evt.kp.toFixed(3)})
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             </div>
 
             {/* DYNAMIC SCALE RULER (KM & METER AUTO-ARRANGING TICK MARKS) */}
-            <div className="relative w-full h-10 border-t-2 border-slate-700 mt-2 pt-1 flex items-center font-mono text-[9px] text-slate-400 select-none">
+            <div className="relative w-full h-8 border-t-2 border-slate-700 mt-1 pt-1 flex items-center font-mono text-[9px] text-slate-400 select-none shrink-0">
               {rulerTicks.map((t, idx) => (
                 <div
                   key={idx}
@@ -703,7 +1059,7 @@ export function PipelineSeabedEventMap({
                 >
                   <div
                     className={`w-0.5 ${
-                      t.isMajor ? "h-3.5 bg-blue-400 font-black" : "h-2 bg-slate-600"
+                      t.isMajor ? "h-3 bg-blue-400 font-black" : "h-1.5 bg-slate-600"
                     }`}
                   />
                   <span className={`mt-0.5 ${t.isMajor ? "text-blue-300 font-bold" : "text-slate-500"}`}>
@@ -713,9 +1069,103 @@ export function PipelineSeabedEventMap({
               ))}
             </div>
 
+            {/* INTERACTIVE HORIZONTAL SCROLLBAR & MINI-MAP PAN SLIDER */}
+            <div className="w-full bg-slate-900/90 border border-slate-800 rounded-md p-1.5 my-2 flex items-center gap-2 select-none shrink-0">
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePanStep("left")}
+                  disabled={viewStartKp <= 0}
+                  className="h-6 px-2 text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30"
+                  title="Pan Left along pipeline"
+                >
+                  ◀ Pan Left
+                </Button>
+                {prevMatch && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => jumpToKp(prevMatch.kp)}
+                    className="h-6 px-1.5 text-[8px] font-bold text-cyan-300 border-cyan-700 bg-cyan-950/40 hover:bg-cyan-900/60"
+                    title={`Jump to previous matching event at KP ${prevMatch.kp.toFixed(3)}`}
+                  >
+                    ← Match ({prevMatch.kp.toFixed(2)})
+                  </Button>
+                )}
+              </div>
+
+              {/* Scrollbar Track Rendering Filtered Event Ticks */}
+              <div
+                ref={scrollbarTrackRef}
+                onClick={handleScrollbarClick}
+                className="flex-1 h-5 bg-slate-950 border border-slate-800 rounded relative cursor-pointer overflow-hidden flex items-center"
+              >
+                {/* Filtered Event Markers in mini-track */}
+                {filteredEvents.map((e, idx) => {
+                  if (!maxCalculatedKp) return null;
+                  const ePct = (e.kp / maxCalculatedKp) * 100;
+                  const isAnom = e.finding_type === "Anomaly" || e.finding_type === "Finding" || !!e.anomaly_code;
+                  return (
+                    <div
+                      key={`mini-evt-${idx}`}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        jumpToKp(e.kp);
+                      }}
+                      className={`absolute top-1/2 -translate-y-1/2 rounded-full cursor-pointer hover:scale-150 transition-transform ${
+                        isAnom
+                          ? "bg-red-500 z-10 w-2 h-3.5 shadow-[0_0_6px_rgba(239,68,68,0.9)] ring-1 ring-red-300"
+                          : "bg-cyan-400 w-1.5 h-2.5 shadow-[0_0_4px_rgba(34,211,238,0.7)]"
+                      }`}
+                      style={{ left: `${ePct}%` }}
+                      title={`Click to jump to: ${e.event_name || e.event_type} @ KP ${e.kp.toFixed(3)}`}
+                    />
+                  );
+                })}
+
+                {/* Draggable Viewport Slider Thumb */}
+                <div
+                  style={{
+                    left: `${scrollThumbLeftPct}%`,
+                    width: `${scrollThumbWidthPct}%`,
+                  }}
+                  className="absolute top-0 bottom-0 bg-blue-600/30 border-2 border-blue-400 rounded shadow-[0_0_10px_rgba(59,130,246,0.5)] flex items-center justify-center transition-all cursor-grab active:cursor-grabbing hover:bg-blue-600/40"
+                >
+                  <span className="text-[8px] font-black uppercase text-blue-200 tracking-tighter truncate px-1 pointer-events-none">
+                    {viewStartKp.toFixed(1)}k - {viewEndKp.toFixed(1)}k
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {nextMatch && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => jumpToKp(nextMatch.kp)}
+                    className="h-6 px-1.5 text-[8px] font-bold text-cyan-300 border-cyan-700 bg-cyan-950/40 hover:bg-cyan-900/60"
+                    title={`Jump to next matching event at KP ${nextMatch.kp.toFixed(3)}`}
+                  >
+                    Match ({nextMatch.kp.toFixed(2)}) →
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePanStep("right")}
+                  disabled={viewEndKp >= maxCalculatedKp}
+                  className="h-6 px-2 text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30"
+                  title="Pan Right along pipeline"
+                >
+                  Pan Right ▶
+                </Button>
+              </div>
+            </div>
+
             {/* PROFILE GRAPH (SPAN HEIGHT & BURIAL DEPTH LONGITUDINAL PROFILE) */}
             {showProfileGraph && (
-              <div className="w-full h-28 bg-slate-900/60 border border-slate-800 rounded-lg p-2 mt-3 relative flex flex-col">
+              <div className="w-full h-24 bg-slate-900/60 border border-slate-800 rounded-lg p-2 mt-1 relative flex flex-col shrink-0">
                 <div className="flex items-center justify-between text-[9px] font-black uppercase text-cyan-400 border-b border-slate-800 pb-1 mb-1">
                   <span className="flex items-center gap-1">
                     <TrendingUp className="w-3 h-3 text-cyan-400" /> Longitudinal Seabed & Pipe Profile (Span Height / Burial Depth)
@@ -740,7 +1190,7 @@ export function PipelineSeabedEventMap({
                       const burialD = evt.burial_depth || 0;
 
                       if (spanH > 0) {
-                        const heightPx = Math.min(35, spanH * 15);
+                        const heightPx = Math.min(30, spanH * 15);
                         return (
                           <g key={`span-graph-${idx}`}>
                             <line x1={`${pct}%`} y1="50%" x2={`${pct}%`} y2={`${50 - heightPx}%`} stroke="#10b981" strokeWidth="2" />
@@ -751,7 +1201,7 @@ export function PipelineSeabedEventMap({
                       }
 
                       if (burialD > 0) {
-                        const depthPx = Math.min(35, burialD * 15);
+                        const depthPx = Math.min(30, burialD * 15);
                         return (
                           <g key={`burial-graph-${idx}`}>
                             <line x1={`${pct}%`} y1="50%" x2={`${pct}%`} y2={`${50 + depthPx}%`} stroke="#3b82f6" strokeWidth="2" />
@@ -779,6 +1229,11 @@ export function PipelineSeabedEventMap({
                   <span className="font-black text-xs uppercase tracking-wider text-white">
                     {activeEvent.event_name || activeEvent.event_type}
                   </span>
+                  {activeEvent.event_position && (
+                    <Badge variant="outline" className="text-[9px] text-amber-300 border-amber-500/40 bg-amber-950/40">
+                      {activeEvent.event_position}
+                    </Badge>
+                  )}
                 </div>
                 <Button
                   variant="ghost"
@@ -795,6 +1250,14 @@ export function PipelineSeabedEventMap({
                   <div>
                     <span className="text-slate-500 uppercase text-[9px] block">KP Position</span>
                     <span className="text-blue-400 font-bold">{activeEvent.kp.toFixed(3)} km</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 uppercase text-[9px] block">Event Type</span>
+                    <span className="text-slate-200 font-bold">{activeEvent.event_type || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 uppercase text-[9px] block">Position</span>
+                    <span className="text-slate-200">{activeEvent.event_position || "—"}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 uppercase text-[9px] block">Depth</span>

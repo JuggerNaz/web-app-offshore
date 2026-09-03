@@ -8315,6 +8315,7 @@ function V10PreviewLayout() {
             setRecordsLimit={setRecordsLimit}
             totalRecords={totalRecords}
             editingRecordId={editingRecordId}
+            isPipe={isPipe}
           />
         );
         break;
