@@ -82,7 +82,7 @@ The application uses three different Supabase client patterns depending on the c
    ```
 
 3. **Middleware** (`utils/supabase/middleware.ts`):
-   - Used in `middleware.ts` for session management
+   - Used in `proxy.ts` for session management
    - Handles auth state across all requests
 
 ### Directory Structure
@@ -133,7 +133,7 @@ import { Button } from "@/components/ui/button";
 
 ### Authentication Flow
 
-1. **Middleware**: All routes pass through `middleware.ts`, which calls `updateSession()` to maintain auth state
+1. **Middleware**: All routes pass through `proxy.ts`, which calls `updateSession()` to maintain auth state
 2. **Protected Routes**: Dashboard layout (`app/dashboard/layout.tsx`) checks for authenticated user and redirects to home if not logged in
 3. **Server Actions**: Authentication actions in `app/actions.ts`:
    - `signUpAction`: User registration
