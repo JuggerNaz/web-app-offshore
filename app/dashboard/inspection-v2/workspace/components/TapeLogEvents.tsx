@@ -31,16 +31,38 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     isFloating = false,
     inline = false,
 }) => {
-    const sortedEvents = [...videoEvents].sort((a, b) => {
-        const timeA = a.eventTime ? new Date(a.eventTime).getTime() : 0;
-        const timeB = b.eventTime ? new Date(b.eventTime).getTime() : 0;
-        
-        // Final descending sort by event time (latest first)
-        if (timeA === timeB) {
-            return (b.realId || b.id || 0) - (a.realId || a.id || 0);
-        }
-        return timeB - timeA;
-    });
+    const [selectedTapeFilter, setSelectedTapeFilter] = React.useState<string>("ALL");
+
+    const sortedEvents = React.useMemo(() => {
+        return [...videoEvents].sort((a, b) => {
+            const timeA = a.eventTime ? new Date(a.eventTime).getTime() : 0;
+            const timeB = b.eventTime ? new Date(b.eventTime).getTime() : 0;
+            
+            // Final descending sort by event time (latest first)
+            if (timeA === timeB) {
+                return (b.realId || b.id || 0) - (a.realId || a.id || 0);
+            }
+            return timeB - timeA;
+        });
+    }, [videoEvents]);
+
+    // Extract all distinct tapes from videoEvents
+    const distinctTapes = React.useMemo(() => {
+        const tapeCounts: Record<string, number> = {};
+        sortedEvents.forEach(ev => {
+            const tNo = ev.tapeNo && ev.tapeNo !== "N/A" ? ev.tapeNo : "Unassigned";
+            tapeCounts[tNo] = (tapeCounts[tNo] || 0) + 1;
+        });
+        return tapeCounts;
+    }, [sortedEvents]);
+
+    const filteredEvents = React.useMemo(() => {
+        if (selectedTapeFilter === "ALL") return sortedEvents;
+        return sortedEvents.filter(ev => {
+            const tNo = ev.tapeNo && ev.tapeNo !== "N/A" ? ev.tapeNo : "Unassigned";
+            return tNo === selectedTapeFilter;
+        });
+    }, [sortedEvents, selectedTapeFilter]);
 
     const latestEvent = sortedEvents.length > 0 ? sortedEvents[0] : null;
 
@@ -49,11 +71,11 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     const commonDiveNo = firstEvent?.diveNo || "N/A";
     const commonStructure = firstEvent?.structure || "N/A";
 
-    // Group events by chapter number (sorted descending)
+    // Group filtered events by chapter number (sorted descending)
     const groupedEvents = React.useMemo(() => {
-        const groups: Record<string, typeof sortedEvents> = {};
+        const groups: Record<string, typeof filteredEvents> = {};
         
-        sortedEvents.forEach(ev => {
+        filteredEvents.forEach(ev => {
             const ch = ev.chapterNo || "N/A";
             if (!groups[ch]) {
                 groups[ch] = [];
@@ -77,26 +99,71 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             groups,
             sortedKeys
         };
-    }, [sortedEvents]);
+    }, [filteredEvents]);
+
+    const renderTapeFilterBar = () => {
+        const tapeKeys = Object.keys(distinctTapes).sort((a, b) => {
+            if (a === "Unassigned") return 1;
+            if (b === "Unassigned") return -1;
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        if (tapeKeys.length <= 1 && tapeKeys[0] === "Unassigned") return null;
+
+        return (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-3 border-b border-slate-200 dark:border-slate-800 custom-scrollbar shrink-0">
+                <button
+                    type="button"
+                    onClick={() => setSelectedTapeFilter("ALL")}
+                    className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${
+                        selectedTapeFilter === "ALL"
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    }`}
+                >
+                    <Video className="w-3 h-3" />
+                    All Tapes
+                    <span className="text-[9px] opacity-80 font-bold">({sortedEvents.length})</span>
+                </button>
+                {tapeKeys.map(tNo => (
+                    <button
+                        key={tNo}
+                        type="button"
+                        onClick={() => setSelectedTapeFilter(tNo)}
+                        className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-lg transition-all shrink-0 flex items-center gap-1.5 ${
+                            selectedTapeFilter === tNo
+                                ? "bg-blue-600 text-white shadow-sm"
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        }`}
+                    >
+                        Tape: {tNo}
+                        <span className="text-[9px] opacity-80 font-bold">({distinctTapes[tNo]})</span>
+                    </button>
+                ))}
+            </div>
+        );
+    };
 
     const renderEventList = () => (
-        <div className="space-y-6">
-            {sortedEvents.length === 0 ? (
+        <div className="space-y-4">
+            {renderTapeFilterBar()}
+            {filteredEvents.length === 0 ? (
                 <div className="py-12 text-center flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-3">
                     <History className="w-10 h-10 opacity-20" />
-                    <span className="text-[10px] uppercase font-bold tracking-widest italic">No events logged for this session</span>
+                    <span className="text-[10px] uppercase font-bold tracking-widest italic">No events logged for this selection</span>
                 </div>
             ) : (
                 groupedEvents.sortedKeys.map(chapterKey => (
                     <div key={chapterKey} className="space-y-2">
                         {/* Chapter Group Header */}
-                        <div className="flex items-center gap-2 px-1 py-1 border-b border-slate-200 dark:border-slate-800">
-                            <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider">
-                                Chapter: {chapterKey}
-                            </span>
-                            <span className="bg-blue-100/65 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
-                                {groupedEvents.groups[chapterKey].length} {groupedEvents.groups[chapterKey].length === 1 ? 'event' : 'events'}
-                            </span>
+                        <div className="flex items-center justify-between px-1 py-1 border-b border-slate-200 dark:border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider">
+                                    Chapter: {chapterKey}
+                                </span>
+                                <span className="bg-blue-100/65 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                                    {groupedEvents.groups[chapterKey].length} {groupedEvents.groups[chapterKey].length === 1 ? 'event' : 'events'}
+                                </span>
+                            </div>
                         </div>
 
                         {/* Group Items */}
@@ -112,16 +179,30 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                     
                                     <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                         <div className="flex flex-col">
-                                            <span className={`text-[12px] font-black uppercase tracking-wide truncate ${
-                                                ev.action.includes('Start') ? 'text-green-600 dark:text-green-400' : 
-                                                ev.action.includes('Stop') || ev.action.includes('End') ? 'text-red-600 dark:text-red-400' : 
-                                                ev.action.includes('Pause') ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-slate-200'
-                                            }`}>
-                                                {ev.action}
-                                            </span>
-                                            <div className="flex items-center gap-1.5 text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">
-                                                <Clock className="w-3.5 h-3.5" />
-                                                {ev.eventTime ? format(new Date(ev.eventTime), 'MMM dd, HH:mm:ss') : '-'}
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className={`text-[12px] font-black uppercase tracking-wide truncate ${
+                                                    ev.action.includes('Start') ? 'text-green-600 dark:text-green-400' : 
+                                                    ev.action.includes('Stop') || ev.action.includes('End') ? 'text-red-600 dark:text-red-400' : 
+                                                    ev.action.includes('Pause') ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-slate-200'
+                                                }`}>
+                                                    {ev.action}
+                                                </span>
+                                                {ev.tapeNo && ev.tapeNo !== "N/A" && (
+                                                    <span className="px-1.5 py-0.2 rounded bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-400 text-[8px] font-black uppercase border border-cyan-200 dark:border-cyan-800/30">
+                                                        {ev.tapeNo}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2 text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">
+                                                <div className="flex items-center gap-1">
+                                                    <Clock className="w-3 h-3" />
+                                                    {ev.eventTime ? format(new Date(ev.eventTime), 'MMM dd, HH:mm:ss') : '-'}
+                                                </div>
+                                                {ev.remarks && ev.remarks !== "-" && (
+                                                    <span className="text-slate-500 dark:text-slate-400 font-normal truncate max-w-xs">
+                                                        • {ev.remarks}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                         
@@ -149,8 +230,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                         </div>
                     </div>
                 ))
-            )
-        }
+            )}
         </div>
     );
 

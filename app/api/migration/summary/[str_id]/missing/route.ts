@@ -552,7 +552,7 @@ export const POST = withAuth(
 
         // Oracle (ROV tapes from PLATGI)
         const rovRes = await connection.execute(
-          `SELECT TAPE_NO, COMMENTS FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND UPPER(DESCRIPTION) LIKE '%TAPE LOG%'`,
+          `SELECT TAPE_NO, COMMENTS FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND (UPPER(DESCRIPTION) LIKE '%TAPE%' OR UPPER(DESCRIPTION) LIKE '%RECORDING%' OR UPPER(DESCRIPTION) LIKE '%VIDEO LOG%' OR TAPE_NO IS NOT NULL)`,
           { strId: str_id, inspNo: String(inspno) }
         );
         const rovTapesGrouped = new Map<string, string[]>();

@@ -118,6 +118,7 @@ export function AnomalyDetailDialog({
               *,
               inspection:insp_records(
                 *,
+                jobpack:jobpack_id(id, name),
                 structure_components:component_id(q_id, code),
                 insp_rov_jobs:rov_job_id(job_no:deployment_no),
                 insp_dive_jobs:dive_job_id(job_no:dive_no),
@@ -131,17 +132,19 @@ export function AnomalyDetailDialog({
           
           const fullAnomaly = { ...anomaly, ...data };
           
-          // Initialize form fields
-          setEditDefectCode(fullAnomaly.defect_type_code || "");
-          setEditDefectType(fullAnomaly.defect_category_code || "");
-          setEditPriority(fullAnomaly.priority_code || fullAnomaly.priority || "");
+          // Initialize form fields with robust fallbacks
+          const initDefectCode = fullAnomaly.defect_type_code || fullAnomaly.defect_type || fullAnomaly.category || "";
+          const initDefectType = fullAnomaly.defect_category_code || fullAnomaly.category || fullAnomaly.defect_type || "";
+          const initPriority = fullAnomaly.priority_code || fullAnomaly.priority || "";
+
+          setEditDefectCode(initDefectCode);
+          setEditDefectType(initDefectType);
+          setEditPriority(initPriority);
           setRectificationNotes(fullAnomaly.follow_up_notes || "");
           setRectifiedDate(fullAnomaly.rectified_date ? new Date(fullAnomaly.rectified_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
           setApprovedBy(fullAnomaly.approved_by || "");
           setEvaluatedBy(fullAnomaly.reviewed_by || "");
           
-          // Update the local anomaly state with full data
-          // Note: We might want to keep the original anomaly but use the full data for the UI
           setFullAnomalyState(fullAnomaly);
         } catch (e: any) {
           console.error("Error fetching full anomaly data:", e);
@@ -181,7 +184,7 @@ export function AnomalyDetailDialog({
         setAvailableDefectTypes(allDefectTypes);
         return;
       }
-      const selectedCodeItem = defectCodes.find(c => c.lib_desc === editDefectCode);
+      const selectedCodeItem = defectCodes.find(c => c.lib_desc?.toUpperCase() === editDefectCode.toUpperCase());
       if (!selectedCodeItem) {
         setAvailableDefectTypes(allDefectTypes);
         return;
@@ -324,13 +327,47 @@ export function AnomalyDetailDialog({
 
   if (!currentAnomaly) return null;
 
-  const typeCode = currentAnomaly.inspection?.inspection_type_code;
+  const typeCode = currentAnomaly.inspection?.inspection_type_code || currentAnomaly.inspection_type_code;
   const typeInfo = typeCode ? inspectionTypeMap[typeCode] : null;
   const boxTitle = typeInfo 
     ? `${typeInfo.name}${typeInfo.mode ? ` (${typeInfo.mode})` : ''}` 
     : (typeCode || "Inspection Details");
 
   const findings = currentAnomaly.defect_description || currentAnomaly.description;
+  const inspData = currentAnomaly.inspection?.inspection_data || {};
+
+  // Tape No resolution
+  const tapeNo = currentAnomaly.inspection?.insp_video_tapes?.tape_no
+    || currentAnomaly.inspection?.tape_no
+    || inspData.tape_no
+    || inspData.tape
+    || currentAnomaly.tape_no
+    || "N/A";
+
+  // Dive / ROV No resolution
+  const diveNo = currentAnomaly.inspection?.insp_rov_jobs?.job_no
+    || currentAnomaly.inspection?.insp_dive_jobs?.job_no
+    || currentAnomaly.inspection?.dive_no
+    || inspData.dive_no
+    || inspData.deployment_no
+    || currentAnomaly.dive_no
+    || "N/A";
+
+  // Tape Counter / Timecode resolution
+  const tapeCounter = currentAnomaly.inspection?.tape_count_no
+    || inspData.timecode
+    || inspData.counter_no
+    || inspData.counter
+    || currentAnomaly.inspection?.inspection_time
+    || "N/A";
+
+  // Pipeline Specific Telemetry
+  const kpVal = currentAnomaly.inspection?.fp_kp || inspData.kp || inspData.fp || inspData.fp_kp || currentAnomaly.fp_kp || null;
+  const formattedKp = kpVal !== null && !isNaN(Number(kpVal)) ? `KP ${Number(kpVal).toFixed(3)}` : (kpVal || "N/A");
+
+  const eventName = inspData.event_name || inspData.eventName || inspData.actionName || currentAnomaly.inspection?.description || "N/A";
+  const eventType = inspData.event_type || inspData.eventType || inspData.eventCategory || "N/A";
+  const eventPos = inspData.event_position || inspData.eventPosition || inspData.pos || "N/A";
 
   return (
     <>
@@ -382,6 +419,9 @@ export function AnomalyDetailDialog({
                         className="flex h-9 w-full rounded-md border border-border bg-background px-2.5 text-xs font-semibold focus-visible:ring-red-500"
                       >
                         <option value="">Select Code</option>
+                        {editDefectCode && !defectCodes.some(c => c.lib_desc?.toUpperCase() === editDefectCode.toUpperCase()) && (
+                          <option value={editDefectCode}>{editDefectCode}</option>
+                        )}
                         {defectCodes.map(c => (
                           <option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>
                         ))}
@@ -395,6 +435,9 @@ export function AnomalyDetailDialog({
                         className="flex h-9 w-full rounded-md border border-border bg-background px-2.5 text-xs font-semibold focus-visible:ring-red-500"
                       >
                         <option value="">Select Type</option>
+                        {editDefectType && !availableDefectTypes.some(t => t.lib_desc?.toUpperCase() === editDefectType.toUpperCase()) && (
+                          <option value={editDefectType}>{editDefectType}</option>
+                        )}
                         {availableDefectTypes.map(t => (
                           <option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>
                         ))}
@@ -411,6 +454,9 @@ export function AnomalyDetailDialog({
                         className="flex h-9 w-full rounded-md border border-border bg-background px-2.5 text-xs font-semibold focus-visible:ring-red-500"
                       >
                         <option value="">Select Priority</option>
+                        {editPriority && !priorities.some(p => p.lib_desc?.toUpperCase() === editPriority.toUpperCase()) && (
+                          <option value={editPriority}>{editPriority}</option>
+                        )}
                         {priorities.map(p => (
                           <option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>
                         ))}
@@ -442,36 +488,48 @@ export function AnomalyDetailDialog({
                   <div className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-1">
                     {boxTitle}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-sm">
                     <div className="flex justify-between border-b border-border/50 pb-1">
-                      <span className="text-muted-foreground font-medium">Jobpack:</span>
-                      <span className="text-foreground font-semibold truncate max-w-[150px]">{currentAnomaly.jobpack_name || currentAnomaly.inspection?.jobpack?.name || "N/A"}</span>
+                      <span className="text-muted-foreground font-medium text-xs">Jobpack:</span>
+                      <span className="text-foreground font-semibold text-xs truncate max-w-[150px]">{currentAnomaly.jobpack_name || currentAnomaly.inspection?.jobpack?.name || "N/A"}</span>
                     </div>
                     <div className="flex justify-between border-b border-border/50 pb-1">
-                      <span className="text-muted-foreground font-medium">SOW Report No:</span>
-                      <span className="text-foreground font-semibold">{currentAnomaly.inspection?.sow_report_no || "N/A"}</span>
+                      <span className="text-muted-foreground font-medium text-xs">SOW Report No:</span>
+                      <span className="text-foreground font-semibold text-xs">{currentAnomaly.inspection?.sow_report_no || "N/A"}</span>
                     </div>
                     <div className="flex justify-between border-b border-border/50 pb-1">
-                      <span className="text-muted-foreground font-medium">Component QID:</span>
-                      <span className="text-foreground font-semibold">{currentAnomaly.component_qid || currentAnomaly.q_id || currentAnomaly.inspection?.structure_components?.q_id || "N/A"}</span>
+                      <span className="text-muted-foreground font-medium text-xs">Component QID:</span>
+                      <span className="text-foreground font-semibold text-xs">{currentAnomaly.component_qid || currentAnomaly.q_id || currentAnomaly.inspection?.structure_components?.q_id || "N/A"}</span>
                     </div>
                     <div className="flex justify-between border-b border-border/50 pb-1">
-                      <span className="text-muted-foreground font-medium">Dive/ROV No:</span>
-                      <span className="text-foreground font-semibold">
-                        {currentAnomaly.inspection?.insp_dive_jobs?.job_no || currentAnomaly.inspection?.insp_rov_jobs?.job_no || "N/A"}
-                      </span>
+                      <span className="text-muted-foreground font-medium text-xs">Dive/ROV No:</span>
+                      <span className="text-foreground font-semibold text-xs">{diveNo}</span>
                     </div>
                     <div className="flex justify-between border-b border-border/50 pb-1">
-                      <span className="text-muted-foreground font-medium">Tape No:</span>
-                      <span className="text-foreground font-semibold">
-                        {currentAnomaly.inspection?.insp_video_tapes?.tape_no || "N/A"}
-                      </span>
+                      <span className="text-muted-foreground font-medium text-xs">Tape No:</span>
+                      <span className="text-foreground font-semibold text-xs font-mono">{tapeNo}</span>
                     </div>
                     <div className="flex justify-between border-b border-border/50 pb-1">
-                      <span className="text-muted-foreground font-medium">Tape Counter:</span>
-                      <span className="text-foreground font-semibold">
-                        {currentAnomaly.inspection?.tape_count_no || "N/A"}
-                      </span>
+                      <span className="text-muted-foreground font-medium text-xs">Tape Counter:</span>
+                      <span className="text-foreground font-semibold text-xs font-mono">{tapeCounter}</span>
+                    </div>
+
+                    {/* Pipeline Telemetry Fields */}
+                    <div className="flex justify-between border-b border-border/50 pb-1 bg-cyan-950/20 px-2 py-0.5 rounded">
+                      <span className="text-cyan-400 font-bold text-xs">KP / FP:</span>
+                      <span className="text-cyan-300 font-mono font-black text-xs">{formattedKp}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-border/50 pb-1 bg-cyan-950/20 px-2 py-0.5 rounded">
+                      <span className="text-cyan-400 font-bold text-xs">Event Name:</span>
+                      <span className="text-cyan-200 font-semibold text-xs truncate max-w-[130px]" title={eventName}>{eventName}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-border/50 pb-1 bg-cyan-950/20 px-2 py-0.5 rounded">
+                      <span className="text-cyan-400 font-bold text-xs">Event Type:</span>
+                      <span className="text-cyan-200 font-semibold text-xs truncate max-w-[130px]" title={eventType}>{eventType}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-border/50 pb-1 bg-cyan-950/20 px-2 py-0.5 rounded sm:col-span-3">
+                      <span className="text-cyan-400 font-bold text-xs">Event Position:</span>
+                      <span className="text-cyan-200 font-semibold text-xs truncate" title={eventPos}>{eventPos}</span>
                     </div>
                   </div>
                   <div className="pt-2 text-sm">

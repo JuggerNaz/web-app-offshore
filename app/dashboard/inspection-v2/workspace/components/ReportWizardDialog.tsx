@@ -21,6 +21,7 @@ import {
     ChevronLeft,
     Settings2,
     Eye,
+    EyeOff,
     Globe,
     List,
     LayoutGrid
@@ -529,6 +530,7 @@ export function ReportWizardDialog({
     const [activeCategory, setActiveCategory] = useState<string>("Inspection");
     const [activeMode, setActiveMode] = useState<string>("ALL");
     const [viewMode, setViewMode] = useState<"card" | "table">("card");
+    const [showAllTemplates, setShowAllTemplates] = useState<boolean>(false);
 
     const templates: ReportTemplate[] = useMemo(() => {
         const hasRecords = (codes: string[]) => 
@@ -537,23 +539,23 @@ export function ReportWizardDialog({
         const baseTemplates: ReportTemplate[] = [
             // ── INSPECTION REPORTS (ROV) ───────────────────────────────────────────
             { id: 'rgvi', code: 'RGVI', name: 'General Visual Inspection (ROV)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
-            { id: 'cp_rov', code: 'CP', name: 'CP Survey Report (ROV)', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
+            { id: 'cp_rov', code: 'CP', name: 'CP Survey Report (ROV)', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || (r.inspection_type_code || '').toUpperCase() === 'CP') },
             { id: 'rswni_rov', code: 'RSWNI', name: 'Selected Node Report (ROV)', description: 'Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSWNIReport, available: hasRecords(['RSWNI', 'SWNI']) },
             { id: 'rov_ricmi_report', code: 'RICMI', name: 'Inclinometer Survey Report (ROV)', description: 'Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRICMIReport, available: hasRecords(['RICMI']) },
             { id: 'anode_rov', code: 'ANODE', name: 'Anode Inspection Report (ROV)', description: 'Detailed depletion measurements and attachment status (excluding RSANI).', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
-                return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
+                const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD' || typeCode === 'PL_AN';
+                return (isAnode || compCode === 'AN') && typeCode !== 'RSANI';
             }) },
             { id: 'anode_rsani_rov', code: 'RSANI', name: 'Selected Anode Report (ROV)', description: 'Selected Anode Close Visual Inspection (CVI) Report (RSANI) with depletion measurements and CP readings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeRsaniReport, available: currentRecords.some(r => {
                 const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                return typeCode === 'RSANI' && compCode === 'AN';
+                return typeCode === 'RSANI' || (compCode === 'AN' && typeCode === 'RSANI');
             }) },
-            { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report (ROV)', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: true },
+            { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report (ROV)', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: currentRecords.some(r => (r.tape_logs && r.tape_logs.length > 0) || r.tape_no || r.video_no || r.dive_no || (r.dive_logs && r.dive_logs.length > 0) || currentRecords.length > 0) },
             { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey Report (ROV)', description: 'Flooded Member Detection summary report with QID, Elevation, Dive and Tape details', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
-            { id: 'utwt_rov', code: 'RUTWT', name: 'UT Thickness Report (ROV)', description: 'Detailed ROV UT wall thickness report with 4 clock positions and elevation reference', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT']) },
+            { id: 'utwt_rov', code: 'RUTWT', name: 'UT Thickness Report (ROV)', description: 'Detailed ROV UT wall thickness report with 4 clock positions and elevation reference', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT', 'UTWT', 'UTWTK']) },
             { id: 'seabed_rov', code: 'RSEAB-SKETCH', name: 'Seabed Survey Inspection Sketch Report (ROV)', description: 'General unfiltered Seabed GUI maps showing all debris, craters, and gas seepages.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('rov-seabed-report'), available: hasRecords(['RSEAB', 'SEABED']) },
             { id: 'seabed_rov_debris_sketch', code: 'RSEAB-DEBRIS', name: 'Seabed Survey Debris Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with debris items marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-debris'), available: hasRecords(['RSEAB', 'SEABED']) },
             { id: 'seabed_rov_gas_sketch', code: 'RSEAB-GAS', name: 'Seabed Survey Gas Seepage Sketch Report (ROV)', description: 'Filtered Seabed GUI maps with gas seepages marked.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('seabed-survey-gas'), available: hasRecords(['RSEAB', 'SEABED']) },
@@ -563,24 +565,24 @@ export function ReportWizardDialog({
             { id: 'seabed_rov_crater_detail', code: 'RSEAB-DET-CRATER', name: 'Seabed Survey Crater Inspection Report (ROV)', description: 'Detailed portrait tabular Seabed Survey Crater inspection report with anomalies and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSeabedCraterDetailReport, available: hasRecords(['RSEAB', 'SEABED']) },
             { id: 'rwdi', code: 'RWDI', name: 'Water Depth Inspection Report (ROV)', description: 'Portrait ROV Water Depth Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
             { id: 'mgi_rov', code: 'RMGI-GRAPH', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
-            { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI']) },
-            { id: 'szci_rov', code: 'RSZCI', name: 'Splash Zone Inspection Report (ROV)', description: 'Splash zone wall thickness and CP inspection summary with clock positions', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
+            { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
+            { id: 'szci_rov', code: 'RSZCI', name: 'Splash Zone Inspection Report (ROV)', description: 'Splash zone wall thickness and CP inspection summary with clock positions', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI', 'SZCI']) },
             { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report (ROV)', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
             { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch Report v2 (ROV)', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
-            { id: 'rrisi_rov', code: 'RRISI', name: 'Riser Survey Inspection Sketch Report (ROV)', description: 'ROV Riser inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI']) },
-            { id: 'rrisi_detail_rov', code: 'RRISI-DETAIL', name: 'Riser Inspection Report (ROV)', description: 'Detailed portrait Riser inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIDetailReport, available: hasRecords(['RRISI']) },
-            { id: 'jtisi_rov', code: 'JTISI', name: 'J-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI', 'RRISI']) },
-            { id: 'jtisi_detail_rov', code: 'JTISI-DETAIL', name: 'J-Tube Inspection Report (ROV)', description: 'Detailed portrait J-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIDetailReport, available: hasRecords(['JTISI', 'RRISI']) },
-            { id: 'itisi_rov', code: 'ITISI', name: 'I-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI', 'RRISI']) },
-            { id: 'itisi_detail_rov', code: 'ITISI-DETAIL', name: 'I-Tube Inspection Report (ROV)', description: 'Detailed portrait I-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIDetailReport, available: hasRecords(['ITISI', 'RRISI']) },
+            { id: 'rrisi_rov', code: 'RRISI', name: 'Riser Survey Inspection Sketch Report (ROV)', description: 'ROV Riser inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI', 'DRISI']) },
+            { id: 'rrisi_detail_rov', code: 'RRISI-DETAIL', name: 'Riser Inspection Report (ROV)', description: 'Detailed portrait Riser inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIDetailReport, available: hasRecords(['RRISI', 'DRISI']) },
+            { id: 'jtisi_rov', code: 'JTISI', name: 'J-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI']) },
+            { id: 'jtisi_detail_rov', code: 'JTISI-DETAIL', name: 'J-Tube Inspection Report (ROV)', description: 'Detailed portrait J-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIDetailReport, available: hasRecords(['JTISI']) },
+            { id: 'itisi_rov', code: 'ITISI', name: 'I-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV I-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIReport, available: hasRecords(['ITISI']) },
+            { id: 'itisi_detail_rov', code: 'ITISI-DETAIL', name: 'I-Tube Inspection Report (ROV)', description: 'Detailed portrait I-Tube inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateITISIDetailReport, available: hasRecords(['ITISI']) },
             { id: 'rcasn_rov', code: 'RCASN', name: 'Caisson Inspection Report (ROV)', description: 'ROV Caisson Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNReport, available: hasRecords(['RCASN']) },
             { id: 'rcasn_sketch_rov', code: 'RCASN-S', name: 'Caisson Sketch Report (ROV)', description: 'ROV Caisson Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCASNSketchReport, available: hasRecords(['RCASN']) },
             { id: 'rcond_rov', code: 'RCOND', name: 'Conductor Inspection Report (ROV)', description: 'ROV Conductor Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDReport, available: hasRecords(['RCOND', 'RCON']) },
             { id: 'rcond_sketch_rov', code: 'RCOND-S', name: 'Conductor Sketch Report (ROV)', description: 'ROV Conductor Sketch Report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRCONDSketchReport, available: hasRecords(['RCOND', 'RCON']) },
-            { id: 'pipeline_event_sketch_report', code: 'PIPE-EVT-S', name: 'Pipeline Event List Sketch Report', description: 'Landscape Pipeline Navigation event list sketch report with graphical KP pipeline elevation profile, span/burial profiles, geodetic header, and matched event table.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePipelineEventSketchReport || (() => {}), available: true },
-            { id: 'rov_navig_report', code: 'NAVIG', name: 'Pipeline Visual Inspection Report', description: 'Landscape Pipeline Visual Inspection Report for inspection type NAVIG — Item No., Date, Time, Easting, Northing, KP, Depth, CP Reading, Event Name, Finding & Anomaly Priority.', mode: 'ROV', category: 'Inspection', handler: (handlers as any).generateROVNavigReport || (() => {}), available: true },
-            { id: 'defect_summary_pipeline', code: 'DSR-PL', name: 'Defect Summary Report (Pipeline)', description: 'Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding.', mode: 'BOTH', category: 'Inspection', handler: (handlers as any).generatePipelineDefectSummaryReport || handlers.generateFullInspectionReport, available: true },
-            { id: 'findings_summary_pipeline', code: 'FSR-PL', name: 'Finding Summary Report (Pipeline)', description: 'Priority-ordered summary of pipeline findings with reference numbers containing "F" and combined span/burial events.', mode: 'BOTH', category: 'Inspection', handler: (handlers as any).generatePipelineFindingSummaryReport || (handlers as any).generatePipelineDefectSummaryReport || handlers.generateFullInspectionReport, available: true },
+            { id: 'pipeline_event_sketch_report', code: 'PIPE-EVT-S', name: 'Pipeline Event List Sketch Report', description: 'Landscape Pipeline Navigation event list sketch report with graphical KP pipeline elevation profile, span/burial profiles, geodetic header, and matched event table.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePipelineEventSketchReport || (() => {}), available: hasRecords(['PIPE-EVT-S', 'PIPE_EVT_S', 'NAVIG', 'EVENT', 'PL_EV']) || currentRecords.some(r => (r.kp !== undefined && r.kp !== null) || (r.pipeline_events && r.pipeline_events.length > 0)) },
+            { id: 'rov_navig_report', code: 'NAVIG', name: 'Pipeline Visual Inspection Report', description: 'Landscape Pipeline Visual Inspection Report for inspection type NAVIG — Item No., Date, Time, Easting, Northing, KP, Depth, CP Reading, Event Name, Finding & Anomaly Priority.', mode: 'ROV', category: 'Inspection', handler: (handlers as any).generateROVNavigReport || (() => {}), available: hasRecords(['NAVIG', 'PL_NAV']) || currentRecords.some(r => (r.kp !== undefined && r.kp !== null)) },
+            { id: 'defect_summary_pipeline', code: 'DSR-PL', name: 'Defect Summary Report (Pipeline)', description: 'Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding.', mode: 'BOTH', category: 'Inspection', handler: (handlers as any).generatePipelineDefectSummaryReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => (r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous') && ((r.kp !== undefined && r.kp !== null) || ['NAVIG', 'PIPE'].includes((r.inspection_type_code || '').toUpperCase()))) },
+            { id: 'findings_summary_pipeline', code: 'FSR-PL', name: 'Finding Summary Report (Pipeline)', description: 'Priority-ordered summary of pipeline findings with reference numbers containing "F" and combined span/burial events.', mode: 'BOTH', category: 'Inspection', handler: (handlers as any).generatePipelineFindingSummaryReport || (handlers as any).generatePipelineDefectSummaryReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => (r.findings || r.has_finding) && ((r.kp !== undefined && r.kp !== null) || ['NAVIG', 'PIPE'].includes((r.inspection_type_code || '').toUpperCase()))) },
             { id: 'bl_rov', code: 'BL', name: 'Boatlanding Inspection Report (ROV)', description: 'ROV Boatlanding Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateBLReport, available: currentRecords.some(r => isBLRecord(r)) },
             { id: 'rg_rov', code: 'RG', name: 'Riser Guard Inspection Report (ROV)', description: 'ROV Riser Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGReport, available: currentRecords.some(r => isRGRecord(r)) },
             { id: 'sg_rov', code: 'SG', name: 'Caisson Guard Inspection Report (ROV)', description: 'ROV Caisson Guard Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateSGReport, available: currentRecords.some(r => isSGRecord(r)) },
@@ -596,7 +598,7 @@ export function ReportWizardDialog({
             { id: 'mpins', code: 'MPINS', name: 'Magnetic Particle Inspection (Diving)', description: 'Detailed magnetic particle inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateMPINSReport, available: hasRecords(['MPINS']) },
             { id: 'utwtk', code: 'UTWTK', name: 'UT Wall Thickness Inspection (Diving)', description: 'UT Wall Thickness Inspection.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTWTKReport, available: hasRecords(['UTWTK', 'DUTWT']) },
             { id: 'szone', code: 'SZONE', name: 'Splash Zone Inspection (Diving)', description: 'Splash zone wall thickness and CP inspection summary with grouped clock positions', mode: 'DIVING', category: 'Inspection', handler: handlers.generateSZONEReport, available: hasRecords(['SZONE', 'DSZCI']) },
-            { id: 'diver_log', code: 'DIVLOG', name: 'Diver Log Report (Diving)', description: 'Chronological diver activities and findings per dive.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: true },
+            { id: 'diver_log', code: 'DIVLOG', name: 'Diver Log Report (Diving)', description: 'Chronological diver activities and findings per dive.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: hasRecords(['DIVLOG', 'DIVER_LOG', 'DIVE_LOG']) || (inspMethod === 'DIVING' && currentRecords.length > 0) },
             { id: 'acfmc', code: 'ACFMC', name: 'ACFM Crack Inspection (Diving)', description: 'Landscape Diving ACFM Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingACFMCReport, available: hasRecords(['ACFMC']) },
             { id: 'plco', code: 'PL_CO', name: 'Coating Damage Inspection (Diving)', description: 'Landscape Diving Coating Damage Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingPLCOReport, available: hasRecords(['PL_CO']) },
             { id: 'cp_div', code: 'CP', name: 'CP Survey Report (Diving)', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
@@ -667,19 +669,19 @@ export function ReportWizardDialog({
             }) },
 
             { id: 'insp_report', code: 'INSP', name: 'Inspection Report', description: 'Detailed inspection findings, observations and results.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
-            { id: 'defect_summary', code: 'DEFECT', name: 'Defect Summary Report', description: 'Priority-ordered summary of all anomalies with status.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly) },
+            { id: 'defect_summary', code: 'DEFECT', name: 'Defect Summary Report', description: 'Priority-ordered summary of all anomalies with status.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
             { id: 'findings', code: 'FINDINGS', name: 'Findings Summary Report', description: 'Consolidated summary of all findings across the SOW.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
-            { id: 'anomaly', code: 'ANOM', name: 'Defect / Anomaly Report', description: 'Detailed defect and anomaly report including images.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly) },
-            { id: 'photo', code: 'PHOTO', name: 'Photography Report', description: 'Visual documentation of all inspection points.', mode: 'BOTH', category: 'Inspection', handler: handlers.generatePhotographyReport, available: true },
-            { id: 'compliance', code: 'COMP', name: 'Compliance Report', description: 'Regulatory compliance and standards documentation.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: true },
+            { id: 'anomaly', code: 'ANOM', name: 'Defect / Anomaly Report', description: 'Detailed defect and anomaly report including images.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
+            { id: 'photo', code: 'PHOTO', name: 'Photography Report', description: 'Visual documentation of all inspection points.', mode: 'BOTH', category: 'Inspection', handler: handlers.generatePhotographyReport, available: currentRecords.some(r => (r.photos && r.photos.length > 0) || (r.attachments && r.attachments.length > 0) || r.has_photo || r.photo_count > 0 || currentRecords.length > 0) },
+            { id: 'compliance', code: 'COMP', name: 'Compliance Report', description: 'Regulatory compliance and standards documentation.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
 
             // ── JOB PACK & STRUCTURE REPORTS ──────────────────────────────────────
-            { id: 'jp_summary', code: 'JP_SUM', name: 'Job Pack Summary', description: 'Aggregated progress and status of the entire job pack.', mode: 'BOTH', category: 'Job Pack', handler: handlers.generateFullInspectionReport, available: true },
-            { id: 'sow_report', code: 'SOW_REP', name: 'Scope of Work Report', description: 'Detailed tracking of SOW items and completion status.', mode: 'BOTH', category: 'Job Pack', handler: handlers.generateFullInspectionReport, available: true },
-            { id: 'struct_over', code: 'STR_OVR', name: 'Structure Overview', description: 'Summary of all inspection work performed on this structure.', mode: 'BOTH', category: 'Structure', handler: handlers.generateFullInspectionReport, available: true },
+            { id: 'jp_summary', code: 'JP_SUM', name: 'Job Pack Summary', description: 'Aggregated progress and status of the entire job pack.', mode: 'BOTH', category: 'Job Pack', handler: handlers.generateFullInspectionReport, available: !!headerData?.jobpackName || currentRecords.length > 0 },
+            { id: 'sow_report', code: 'SOW_REP', name: 'Scope of Work Report', description: 'Detailed tracking of SOW items and completion status.', mode: 'BOTH', category: 'Job Pack', handler: handlers.generateFullInspectionReport, available: !!headerData?.sowReport || currentRecords.length > 0 },
+            { id: 'struct_over', code: 'STR_OVR', name: 'Structure Overview', description: 'Summary of all inspection work performed on this structure.', mode: 'BOTH', category: 'Structure', handler: handlers.generateFullInspectionReport, available: !!headerData?.platformName || currentRecords.length > 0 },
             
             // ── FINAL REPORTS ──────────────────────────────────────────────────────
-            { id: 'exec_sum', code: 'EXEC', name: 'Executive Summary', description: 'High-level management summary of the entire operation.', mode: 'BOTH', category: 'Final', handler: handlers.generateFullInspectionReport, available: true },
+            { id: 'exec_sum', code: 'EXEC', name: 'Executive Summary', description: 'High-level management summary of the entire operation.', mode: 'BOTH', category: 'Final', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 || !!headerData?.platformName },
         ];
 
         // Base codes already handled by primary baseTemplates
@@ -750,14 +752,39 @@ export function ReportWizardDialog({
         return unique;
     }, [currentRecords, allInspectionTypes, handlers]);
 
-    const filteredTemplates = useMemo(() => {
+    const categoryTemplates = useMemo(() => {
         return templates.filter(t => {
-            const matchesSearch = t.name.toLowerCase().includes(search.toLowerCase()) || t.code.toLowerCase().includes(search.toLowerCase());
             const matchesCategory = t.category === activeCategory;
             const matchesMode = activeCategory !== "Inspection" || activeMode === "ALL" || t.mode === "BOTH" || t.mode === activeMode;
-            return matchesSearch && matchesCategory && matchesMode;
+            return matchesCategory && matchesMode;
         });
-    }, [templates, search, activeCategory, activeMode]);
+    }, [templates, activeCategory, activeMode]);
+
+    const hiddenUnavailableCount = useMemo(() => {
+        return categoryTemplates.filter(t => !t.available).length;
+    }, [categoryTemplates]);
+
+    const searchHiddenCount = useMemo(() => {
+        if (showAllTemplates) return 0;
+        return categoryTemplates.filter(t => {
+            const matchesSearch = !search.trim() || 
+                t.name.toLowerCase().includes(search.toLowerCase()) || 
+                t.code.toLowerCase().includes(search.toLowerCase()) ||
+                (t.description && t.description.toLowerCase().includes(search.toLowerCase()));
+            return matchesSearch && !t.available;
+        }).length;
+    }, [categoryTemplates, search, showAllTemplates]);
+
+    const filteredTemplates = useMemo(() => {
+        return categoryTemplates.filter(t => {
+            const matchesSearch = !search.trim() || 
+                t.name.toLowerCase().includes(search.toLowerCase()) || 
+                t.code.toLowerCase().includes(search.toLowerCase()) ||
+                (t.description && t.description.toLowerCase().includes(search.toLowerCase()));
+            const matchesAvailability = showAllTemplates ? true : t.available;
+            return matchesSearch && matchesAvailability;
+        });
+    }, [categoryTemplates, search, showAllTemplates]);
 
     const groupedTemplates = useMemo(() => {
         const rov = filteredTemplates.filter(t => t.mode === 'ROV');
@@ -920,20 +947,51 @@ export function ReportWizardDialog({
                                             />
                                         </div>
 
-                                        <div className="flex items-center gap-4 shrink-0 w-full md:w-auto justify-between md:justify-end">
+                                        <div className="flex items-center gap-3 shrink-0 w-full md:w-auto justify-between md:justify-end">
                                             {activeCategory === "Inspection" && (
                                                 <Tabs value={activeMode} onValueChange={setActiveMode} className="w-full md:w-auto">
                                                     <TabsList className="bg-slate-200/50 dark:bg-slate-800 h-11 p-1 gap-1">
-                                                        <TabsTrigger value="ALL" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">All Modes</TabsTrigger>
-                                                        <TabsTrigger value="ROV" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-blue-600 data-[state=active]:text-white flex gap-2">
+                                                        <TabsTrigger value="ALL" className="px-5 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">All Modes</TabsTrigger>
+                                                        <TabsTrigger value="ROV" className="px-5 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-blue-600 data-[state=active]:text-white flex gap-1.5">
                                                             <Cpu className="w-3.5 h-3.5" /> ROV
                                                         </TabsTrigger>
-                                                        <TabsTrigger value="DIVING" className="px-6 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white flex gap-2">
+                                                        <TabsTrigger value="DIVING" className="px-5 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-emerald-600 data-[state=active]:text-white flex gap-1.5">
                                                             <Waves className="w-3.5 h-3.5" /> Diving
                                                         </TabsTrigger>
                                                     </TabsList>
                                                 </Tabs>
                                             )}
+
+                                            <Button
+                                                type="button"
+                                                variant={showAllTemplates ? "secondary" : "outline"}
+                                                onClick={() => setShowAllTemplates(prev => !prev)}
+                                                className={`h-11 px-3.5 gap-2 text-[10px] font-black uppercase tracking-wider rounded-lg border transition-all ${
+                                                    showAllTemplates
+                                                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/25 shadow-sm"
+                                                        : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm"
+                                                }`}
+                                                title={showAllTemplates ? "Showing all templates. Click to show only templates with inspection data." : "Currently showing templates with data. Click to show all."}
+                                            >
+                                                {showAllTemplates ? (
+                                                    <>
+                                                        <EyeOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                                        <span className="hidden sm:inline">Show Available Only</span>
+                                                        <span className="sm:hidden">Available</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Eye className="w-3.5 h-3.5 text-slate-400" />
+                                                        <span className="hidden sm:inline">Show All Templates</span>
+                                                        <span className="sm:hidden">Show All</span>
+                                                        {hiddenUnavailableCount > 0 && (
+                                                            <Badge variant="secondary" className="px-1.5 py-0 text-[9px] font-black bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                                                +{hiddenUnavailableCount}
+                                                            </Badge>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </Button>
 
                                             <div className="flex items-center gap-1 bg-slate-200/50 dark:bg-slate-800 p-1 rounded-lg h-11">
                                                 <Button
@@ -969,7 +1027,23 @@ export function ReportWizardDialog({
 
                                 <ScrollArea className="flex-1 -mr-2 pr-4 mt-4">
                                     {filteredTemplates.length > 0 ? (
-                                        <div className="space-y-8 pb-4">
+                                        <div className="space-y-6 pb-4">
+                                            {!showAllTemplates && hiddenUnavailableCount > 0 && (
+                                                <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-lg bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 text-[11px]">
+                                                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                                                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                                                        <span>Displaying <strong>{filteredTemplates.length}</strong> active template{filteredTemplates.length === 1 ? '' : 's'} with recorded data</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowAllTemplates(true)}
+                                                        className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer flex items-center gap-1 text-[11px]"
+                                                    >
+                                                        Show {hiddenUnavailableCount} hidden template{hiddenUnavailableCount === 1 ? '' : 's'} without data &rarr;
+                                                    </button>
+                                                </div>
+                                            )}
+
                                             {groupedTemplates.map((group) => (
                                                 <div key={group.label} className="space-y-4">
                                                     <div className="flex items-center gap-3">
@@ -1053,18 +1127,43 @@ export function ReportWizardDialog({
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="flex flex-col items-center justify-center py-20 text-center">
+                                        <div className="flex flex-col items-center justify-center py-16 text-center">
                                             <div className="p-4 rounded-full bg-slate-100 dark:bg-slate-900 mb-4">
                                                 <Search className="w-10 h-10 text-slate-300 dark:text-slate-700" />
                                             </div>
-                                            <h3 className="font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-1">No templates found</h3>
-                                            <Button 
-                                                variant="link" 
-                                                className="mt-4 text-blue-600 dark:text-blue-400 font-bold"
-                                                onClick={() => { setSearch(""); setActiveMode("ALL"); setActiveCategory("Inspection"); }}
-                                            >
-                                                Clear all filters
-                                            </Button>
+                                            <h3 className="font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-1">
+                                                {search.trim() ? "No matching templates found" : "No templates with inspection data"}
+                                            </h3>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
+                                                {search.trim()
+                                                    ? (searchHiddenCount > 0 
+                                                        ? `Found ${searchHiddenCount} hidden template(s) without inspection records matching "${search}".` 
+                                                        : `No templates matched your search "${search}".`)
+                                                    : `There are currently no recorded inspection data entries for ${activeCategory} templates in this job.`}
+                                            </p>
+                                            <div className="flex flex-wrap items-center justify-center gap-2">
+                                                {hiddenUnavailableCount > 0 && !showAllTemplates && (
+                                                    <Button 
+                                                        variant="default" 
+                                                        size="sm" 
+                                                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs"
+                                                        onClick={() => setShowAllTemplates(true)}
+                                                    >
+                                                        <Eye className="w-3.5 h-3.5 mr-1.5" />
+                                                        Show All {hiddenUnavailableCount} Templates (Including Empty)
+                                                    </Button>
+                                                )}
+                                                {(search.trim() || activeMode !== "ALL" || showAllTemplates) && (
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm" 
+                                                        className="text-xs font-bold"
+                                                        onClick={() => { setSearch(""); setActiveMode("ALL"); setShowAllTemplates(false); }}
+                                                    >
+                                                        Clear Filters
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </ScrollArea>

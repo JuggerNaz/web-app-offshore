@@ -51,7 +51,7 @@ export default function InspectionLanding() {
     const [selectedJobPack, setSelectedJobPack] = useState<string>("");
     const [selectedStructure, setSelectedStructure] = useState<string>("");
     const [selectedSOW, setSelectedSOW] = useState<string>("");
-    const [selectedMode, setSelectedMode] = useState<string>("");
+    const [selectedMode, setSelectedMode] = useState<string>("ROV");
     const [loading, setLoading] = useState(true);
 
     // Filter states
@@ -81,9 +81,14 @@ export default function InspectionLanding() {
     // Derive job packs that are assigned to the selected structure, sorted by start date desc
     const jobPacksForSelectedStructure = useMemo(() => {
         if (!selectedStructure) return [];
-        return jobPacks.filter((jp) =>
-            jp.structures.some((s) => s.id.toString() === selectedStructure)
-        ).sort((a, b) => {
+        const rawId = selectedStructure.replace(/^(platform|pipeline)-/, "");
+        return jobPacks.filter((jp) => {
+            if (!jp.structures || jp.structures.length === 0) return true;
+            return jp.structures.some((s) => {
+                const sIdStr = String(s.id).replace(/^(platform|pipeline)-/, "");
+                return s.id.toString() === selectedStructure || sIdStr === rawId;
+            });
+        }).sort((a, b) => {
             if (!a.start_date) return 1;
             if (!b.start_date) return -1;
             return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
@@ -245,16 +250,61 @@ export default function InspectionLanding() {
 
         async function fetchAnomalyCount(structId: string, jpId: string, sowReportNo: string) {
             try {
-                const { count, error } = await supabase
-                    .from("insp_anomalies")
-                    .select("anomaly_id, insp_records!inner(structure_id, jobpack_id, sow_report_no)", { count: "exact", head: true })
-                    .eq("insp_records.structure_id", parseInt(structId))
-                    .eq("insp_records.jobpack_id", parseInt(jpId))
-                    .eq("insp_records.sow_report_no", sowReportNo);
+                const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
+                const numRawId = parseInt(rawId);
+                const numJpId = parseInt(jpId);
 
-                if (!error && count !== null) {
-                    setAnomalyCount(count);
+                // 1. Direct query against insp_anomalies joined with insp_records
+                let anomQuery = supabase
+                    .from("insp_anomalies")
+                    .select("anomaly_id, insp_records!inner(insp_id, structure_id, jobpack_id, sow_report_no)", { count: "exact", head: true })
+                    .eq("insp_records.structure_id", numRawId)
+                    .eq("insp_records.jobpack_id", numJpId);
+
+                const sNoUpper = (sowReportNo || "").trim().toUpperCase();
+                if (sNoUpper && sNoUpper !== "UNASSIGNED ITEMS" && sNoUpper !== "N/A" && sNoUpper !== "ALL") {
+                    anomQuery = anomQuery.or(`sow_report_no.eq."${sowReportNo}",sow_report_no.is.null`, { foreignTable: "insp_records" });
                 }
+
+                const { count, error: countErr } = await anomQuery;
+                if (!countErr && count !== null) {
+                    setAnomalyCount(count);
+                    return;
+                }
+
+                // 2. Fallback: Paginated loop through insp_records
+                let allRecs: any[] = [];
+                let page = 0;
+                const pageSize = 1000;
+                let hasMore = true;
+
+                while (hasMore) {
+                    const { data: pData, error: pErr } = await supabase
+                        .from("insp_records")
+                        .select("insp_id, has_anomaly, status, sow_report_no")
+                        .eq("structure_id", numRawId)
+                        .eq("jobpack_id", numJpId)
+                        .order("inspection_date", { ascending: false })
+                        .order("inspection_time", { ascending: false })
+                        .range(page * pageSize, (page + 1) * pageSize - 1);
+
+                    if (pErr || !pData || pData.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allRecs.push(...pData);
+                        if (pData.length < pageSize) hasMore = false;
+                        else page++;
+                    }
+                }
+
+                const relevantRecs = allRecs.filter((r: any) => {
+                    if (!sNoUpper || sNoUpper === "UNASSIGNED ITEMS" || sNoUpper === "N/A" || sNoUpper === "ALL") return true;
+                    const rSow = String(r.sow_report_no || "").trim().toUpperCase();
+                    return !rSow || rSow === sNoUpper;
+                });
+
+                const total = relevantRecs.filter((r: any) => r.has_anomaly || String(r.status || "").toLowerCase() === "anomaly").length;
+                setAnomalyCount(total);
             } catch (err) {
                 console.error("Error fetching anomaly count:", err);
             }
@@ -373,11 +423,13 @@ export default function InspectionLanding() {
     async function loadJobPacks() {
         try {
             const res = await fetch("/api/jobpack?limit=1000");
-            if (!res.ok) {
-                throw new Error(`Failed to fetch jobpacks: ${res.statusText}`);
+            let data: any[] = [];
+            if (res.ok) {
+                const resJson = await res.json();
+                data = resJson.data || [];
+            } else {
+                console.warn(`[Jobpack] API returned status ${res.status}`);
             }
-            const resJson = await res.json();
-            const data = resJson.data;
 
             console.log("Raw jobpack data from API:", data);
 

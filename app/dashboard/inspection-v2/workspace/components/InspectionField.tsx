@@ -16,6 +16,8 @@ import {
     MARINE_GROWTH_LIST, 
     COATING_CONDITION_LIST, 
     COMPONENT_CONDITION_LIST, 
+    DEBRIS_LIST,
+    DEBRIS_MATERIAL_LIST,
     ANODE_TYPE_LIST, 
     ANODE_DEPLETION_LIST,
     ANODE_DEPLETION_GROUPS 
@@ -61,11 +63,13 @@ const InspectionField = ({
     const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
     const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
     const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
+    const isDebris = fieldName === 'debris' || fieldName.includes('debris_type') || fieldName.includes('debris_desc') || fieldName === 'debris description';
+    const isDebrisMaterial = fieldName.includes('debris_material') || fieldName.includes('debris material') || fieldName === 'material' || fieldName.includes('material type');
     const isCpField = fieldName.includes('cp');
 
     const isTimeField = fieldName.includes('time') || fieldName.includes('counter') || p.type === 'time' || p.name === 'tape_count_no' || p.name === 'inspection_time';
 
-    const isComboEligible = p.type !== 'number' && p.type !== 'time' && (isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || p.type === 'select' || p.type === 'combo' || !!p.lib_code || !!p.optionsSource);
+    const isComboEligible = p.type !== 'number' && p.type !== 'time' && (isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || isDebris || isDebrisMaterial || p.type === 'select' || p.type === 'combo' || !!p.lib_code || !!p.optionsSource);
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
 
@@ -131,6 +135,10 @@ const InspectionField = ({
             options = Array.from(new Set([...options, ...COATING_CONDITION_LIST]));
         } else if (isCompCondition) {
             options = Array.from(new Set([...options, ...COMPONENT_CONDITION_LIST]));
+        } else if (isDebris) {
+            options = Array.from(new Set([...options, ...DEBRIS_LIST]));
+        } else if (isDebrisMaterial) {
+            options = Array.from(new Set([...options, ...DEBRIS_MATERIAL_LIST]));
         } else if (isAnodeType && options.length === 0) {
             options = [...ANODE_TYPE_LIST];
         } else if (isAnodeDep && options.length === 0) {

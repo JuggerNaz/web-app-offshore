@@ -22,15 +22,30 @@ export const POST = withAuth(
         return NextResponse.json({ error: "Missing required str_id or inspno parameters" }, { status: 400 });
       }
 
-      const structType = structureType || "PLATFORM";
+      let structType = structureType || "PLATFORM";
 
       const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
       const supabase = useAdmin ? createAdminClient() : createClient();
 
       connection = await getOracleConnection(config);
 
-      let rovInspections = [];
-      let divingInspections = [];
+      // Auto-detect structure type from Oracle v_structure / structure
+      try {
+        const ptypeRes = await connection.execute(
+          `SELECT PTYPE FROM v_structure WHERE STR_ID = :strId`,
+          { strId: str_id }
+        );
+        if (ptypeRes.rows && ptypeRes.rows.length > 0) {
+          const row: any = ptypeRes.rows[0];
+          const pVal = String(row.PTYPE || row[0] || "").toUpperCase().trim();
+          if (pVal === "PIPE" || pVal === "PIPELINE") {
+            structType = "PIPELINE";
+          }
+        }
+      } catch (_) {}
+
+      let rovInspections: any[] = [];
+      let divingInspections: any[] = [];
 
       if (structType === "PLATFORM") {
         // 1. ROV platform inspections reside in the PLATGI table, grouped by subcode (INSP_SCODE)
@@ -163,9 +178,9 @@ export const POST = withAuth(
             const count = Number(row.REC_COUNT || row.rec_count || 0);
             const upperCode = code.toUpperCase().trim();
             
-            if (upperCode === 'NAVIG') {
+            if (upperCode === 'NAVIG' || upperCode === 'ROVCLB') {
               rovInspections.push({ code, name, count });
-            } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM'].includes(upperCode)) {
+            } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB'].includes(upperCode)) {
               divingInspections.push({ code, name, count });
             }
           }
@@ -188,9 +203,9 @@ export const POST = withAuth(
               const count = Number(row.REC_COUNT || row.rec_count || 0);
               const upperCode = code.toUpperCase().trim();
               
-              if (upperCode === 'NAVIG') {
+              if (upperCode === 'NAVIG' || upperCode === 'ROVCLB') {
                 rovInspections.push({ code, name, count });
-              } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM'].includes(upperCode)) {
+              } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB'].includes(upperCode)) {
                 divingInspections.push({ code, name, count });
               }
             }
@@ -212,9 +227,9 @@ export const POST = withAuth(
                 const count = Number(row.REC_COUNT || row.rec_count || 0);
                 const upperCode = code.toUpperCase().trim();
                 
-                if (upperCode === 'NAVIG') {
+                if (upperCode === 'NAVIG' || upperCode === 'ROVCLB') {
                   rovInspections.push({ code, name, count });
-                } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM'].includes(upperCode)) {
+                } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB'].includes(upperCode)) {
                   divingInspections.push({ code, name, count });
                 }
               }
@@ -223,14 +238,76 @@ export const POST = withAuth(
             }
           }
         }
+
+        // Directly query NAVIG table for ROV Pipeline survey events
+        try {
+          let navigCountQuery = `SELECT COUNT(*) AS REC_COUNT FROM NAVIG WHERE STR_ID = :strId`;
+          const binds: any = { strId: str_id };
+          if (inspno) {
+            navigCountQuery += ` AND (INSPNO = :inspNo OR INSPNO IS NULL)`;
+            binds.inspNo = String(inspno);
+          }
+          const navRes = await connection.execute(navigCountQuery, binds);
+          const navCount = Number(navRes.rows?.[0]?.REC_COUNT || navRes.rows?.[0]?.[0] || 0);
+          if (navCount > 0) {
+            const existingNav = rovInspections.find((i: any) => i.code.toUpperCase() === 'NAVIG');
+            if (existingNav) {
+              existingNav.count = Math.max(existingNav.count, navCount);
+            } else {
+              rovInspections.push({
+                code: 'NAVIG',
+                name: 'ROV Pipeline Navigation / Survey',
+                count: navCount
+              });
+            }
+          }
+        } catch (navErr: any) {
+          console.warn("Direct NAVIG table query failed:", navErr.message);
+        }
+
+        // Direct check on NAVIG table for Pipeline ROV survey records
+        try {
+          const rawInspNo = String(inspno).trim();
+          const cleanInspNo = rawInspNo.replace(/^0+/, "") || rawInspNo;
+          const navigRes = await connection.execute(
+            `SELECT COUNT(*) AS REC_COUNT FROM NAVIG 
+             WHERE STR_ID = :strId AND (
+               TRIM(INSPNO) = :rawNo 
+               OR LTRIM(INSPNO, '0') = :cleanNo
+               OR INSPNO = :cleanNo
+             )`,
+            { strId: str_id, rawNo: rawInspNo, cleanNo: cleanInspNo }
+          );
+          const nRows = navigRes.rows || [];
+          const navigCnt = Number(nRows[0]?.REC_COUNT || nRows[0]?.rec_count || (nRows[0] ? Object.values(nRows[0])[0] : 0) || 0);
+          if (navigCnt > 0) {
+            const existingNavig = rovInspections.find((r: any) => r.code.toUpperCase() === 'NAVIG');
+            if (existingNavig) {
+              existingNavig.count = Math.max(existingNavig.count, navigCnt);
+            } else {
+              rovInspections.push({
+                code: "NAVIG",
+                name: "Pipeline Navigation Survey (ROV)",
+                count: navigCnt
+              });
+            }
+          }
+        } catch (navigErr: any) {
+          console.warn("Direct NAVIG count check:", navigErr.message);
+        }
       }
 
-      // 3. Query Diver logs (LOGS table counts)
+      // 3. Query Diver / ROV logs (Oracle LOGS table for all structures)
       let logsCount = 0;
       try {
+        const rawInspNo = String(inspno).trim();
+        const cleanInspNo = rawInspNo.replace(/^0+/, "") || rawInspNo;
         const result = await connection.execute(
-          `SELECT COUNT(*) AS REC_COUNT FROM LOGS WHERE STR_ID = :strId AND INSPNO = :inspNo`,
-          { strId: str_id, inspNo: String(inspno) }
+          `SELECT COUNT(*) AS REC_COUNT FROM LOGS 
+           WHERE STR_ID = :strId AND (
+             TRIM(INSPNO) = :rawNo OR LTRIM(INSPNO, '0') = :cleanNo OR INSPNO = :cleanNo
+           )`,
+          { strId: str_id, rawNo: rawInspNo, cleanNo: cleanInspNo }
         );
         const rows = result.rows || [];
         if (rows.length > 0) {
@@ -240,46 +317,73 @@ export const POST = withAuth(
         console.warn("Query LOGS count failed:", err.message);
       }
 
-      // 4. Query ROV Video log (PLATG/PLATGI table counts)
+      // 4. Query ROV Video log (PLATG/PLATGI for Platform, NAVIG for Pipeline where EVENT = 'VIDEO LOG' or TAPE_NO IS NOT NULL)
       let platgVideoCount = 0;
-      try {
-        const result = await connection.execute(
-          `SELECT COUNT(*) AS REC_COUNT FROM PLATG WHERE STR_ID = :strId AND INSPNO = :inspNo`,
-          { strId: str_id, inspNo: String(inspno) }
-        );
-        const rows = result.rows || [];
-        if (rows.length > 0) {
-          platgVideoCount = Number(rows[0].REC_COUNT || rows[0].rec_count || Object.values(rows[0])[0] || 0);
+      let videoCount = 0;
+
+      if (structType === "PIPELINE") {
+        try {
+          const rawInspNo = String(inspno).trim();
+          const cleanInspNo = rawInspNo.replace(/^0+/, "") || rawInspNo;
+          const result = await connection.execute(
+            `SELECT COUNT(DISTINCT TAPE_NO) AS TAPE_CNT, COUNT(*) AS LOG_CNT FROM NAVIG 
+             WHERE STR_ID = :strId AND (
+               UPPER(TRIM(EVENT)) = 'VIDEO LOG' OR TAPE_NO IS NOT NULL
+             ) AND (
+               TRIM(INSPNO) = :rawNo OR LTRIM(INSPNO, '0') = :cleanNo OR INSPNO = :cleanNo
+             )`,
+            { strId: str_id, rawNo: rawInspNo, cleanNo: cleanInspNo }
+          );
+          const rows = result.rows || [];
+          if (rows.length > 0) {
+            const row: any = rows[0];
+            const tapeCnt = Number(row.TAPE_CNT || row[0] || 0);
+            const logCnt = Number(row.LOG_CNT || row[1] || 0);
+            videoCount = tapeCnt > 0 ? tapeCnt : (logCnt > 0 ? 1 : 0);
+            platgVideoCount = logCnt;
+          }
+        } catch (err: any) {
+          console.warn("Query NAVIG video count failed:", err.message);
         }
-      } catch (err: any) {
-        console.warn("Query PLATG video count failed, trying fallback with PLATGI:", err.message);
+      } else {
         try {
           const result = await connection.execute(
-            `SELECT COUNT(*) AS REC_COUNT FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND COMP_ID > 0`,
+            `SELECT COUNT(*) AS REC_COUNT FROM PLATG WHERE STR_ID = :strId AND INSPNO = :inspNo`,
             { strId: str_id, inspNo: String(inspno) }
           );
           const rows = result.rows || [];
           if (rows.length > 0) {
             platgVideoCount = Number(rows[0].REC_COUNT || rows[0].rec_count || Object.values(rows[0])[0] || 0);
           }
-        } catch (err2: any) {
-          console.warn("Query PLATGI count failed:", err2.message);
+        } catch (err: any) {
+          console.warn("Query PLATG video count failed, trying fallback with PLATGI:", err.message);
+          try {
+            const result = await connection.execute(
+              `SELECT COUNT(*) AS REC_COUNT FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND COMP_ID > 0`,
+              { strId: str_id, inspNo: String(inspno) }
+            );
+            const rows = result.rows || [];
+            if (rows.length > 0) {
+              platgVideoCount = Number(rows[0].REC_COUNT || rows[0].rec_count || Object.values(rows[0])[0] || 0);
+            }
+          } catch (err2: any) {
+            console.error("All fallback queries for ROV video count failed:", err2.message);
+          }
         }
-      }
 
-      // 5. Query Diving Video log (video table counts)
-      let videoCount = 0;
-      try {
-        const result = await connection.execute(
-          `SELECT COUNT(*) AS REC_COUNT FROM video WHERE STR_ID = :strId AND INSPNO = :inspNo`,
-          { strId: str_id, inspNo: String(inspno) }
-        );
-        const rows = result.rows || [];
-        if (rows.length > 0) {
-          videoCount = Number(rows[0].REC_COUNT || rows[0].rec_count || Object.values(rows[0])[0] || 0);
+        // 5. Query Diving Video log (video table counts)
+        try {
+          const result = await connection.execute(
+            `SELECT COUNT(*) AS REC_COUNT FROM video WHERE STR_ID = :strId AND INSPNO = :inspNo`,
+            { strId: str_id, inspNo: String(inspno) }
+          );
+          const rows = result.rows || [];
+          if (rows.length > 0) {
+            videoCount = Number(rows[0].REC_COUNT || rows[0].rec_count || Object.values(rows[0])[0] || 0);
+          }
+        } catch (err: any) {
+          console.warn("Query video count failed:", err.message);
         }
-      } catch (err: any) {
-        console.warn("Query video count failed:", err.message);
       }
 
       // Query Oracle counts for additional SOW, Anomalies and attachments
@@ -302,6 +406,8 @@ export const POST = withAuth(
              SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
              UNION
              SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+             UNION
+             SELECT INSP_ID FROM NAVIG WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
            )`,
           { strId: str_id, inspNo: String(inspno) }
         );
@@ -315,6 +421,8 @@ export const POST = withAuth(
              SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
              UNION
              SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+             UNION
+             SELECT INSP_ID FROM NAVIG WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
            )`,
           { strId: str_id, inspNo: String(inspno) }
         );

@@ -31,10 +31,16 @@ export const createClient = () => {
 };
 export const createAdminClient = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn(
+      "[Supabase] SUPABASE_SERVICE_ROLE_KEY is missing in environment variables. Falling back to NEXT_PUBLIC_SUPABASE_ANON_KEY. Admin bypass capabilities may be restricted by RLS."
+    );
+  }
 
   if (!url || !key) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for admin operations. Please add it to your .env.local file.");
+    throw new Error("Supabase URL or Key is missing. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY to your .env.local file.");
   }
 
   return createServerClient<Database>(url, key, {

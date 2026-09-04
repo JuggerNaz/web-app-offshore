@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOracleConnection, OracleConnectionConfig } from "@/utils/oracle-db";
+import { getOracleConnection, OracleConnectionConfig, isOracleDisconnectError } from "@/utils/oracle-db";
 import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { getDefaultUnit } from "@/utils/unit-helpers";
 import specUiConfig from "@/utils/spec-ui-config.json";
@@ -7,6 +7,13 @@ import { getStorageHandler } from "@/utils/storage-factory";
 import fs from "fs";
 import path from "path";
 import { EXECUTIVE_SUMMARY_TOC } from "@/app/dashboard/reports/executive-summary/constants";
+import {
+  migratePipelineStructureAndGeodetics,
+  migratePipelineComponents,
+  migratePipelineNavigInspections,
+  migratePipelineAnomalies,
+  migratePipelineAttachments
+} from "@/utils/pipeline-migration-handler";
 
 
 export const maxDuration = 300; // Allow 5 minutes for this route (Vercel/Next.js config)
@@ -49,58 +56,53 @@ async function getOracleTableColumns(oracleConn: any, tableName: string): Promis
 }
 
 function cleanOracleDate(str: string): string {
-  const s = str.trim().toUpperCase();
-  if (!s) {
+  if (!str) {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  const s = String(str).trim();
+
+  // 1. YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+  }
+
+  // 2. DD-MON-YYYY or DD-MON-YY (e.g. 04-APR-18, 04-APR-2018)
+  const monMatch = s.match(/^(\d{1,2})[-/ ]([A-Za-z]{3,4})[-/ ](\d{2,4})/);
+  if (monMatch) {
+    const day = monMatch[1].padStart(2, '0');
+    const monStr = monMatch[2].toUpperCase();
+    const yearRaw = monMatch[3];
+    const months: Record<string, string> = {
+      'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+      'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+    };
+    let month = '01';
+    for (const [k, v] of Object.entries(months)) {
+      if (monStr.startsWith(k)) {
+        month = v;
+        break;
+      }
+    }
+    let year = Number(yearRaw);
+    if (yearRaw.length === 2) {
+      year = year > 50 ? 1900 + year : 2000 + year;
+    }
+    return `${year}-${month}-${day}`;
+  }
+
+  // 3. DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
   }
 
   const parsed = Date.parse(s);
   if (!isNaN(parsed)) {
     const d = new Date(parsed);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-
-  const match = s.match(/^(\d{1,2})[-/]([A-Z]{2,3})(?:[-/](\d{2,4}))?$/);
-  if (match) {
-    const day = match[1].padStart(2, '0');
-    const monStr = match[2];
-    const yearStr = match[3];
-
-    const months: Record<string, string> = {
-      'JA': '01', 'JAN': '01',
-      'FE': '02', 'FEB': '02',
-      'MA': '03', 'MAR': '03',
-      'AP': '04', 'APR': '04',
-      'MY': '05', 'MAY': '05',
-      'JN': '06', 'JUN': '06',
-      'JL': '07', 'JUL': '07',
-      'AU': '08', 'AUG': '08',
-      'SE': '09', 'SEP': '09',
-      'OC': '10', 'OCT': '10',
-      'NO': '11', 'NOV': '11',
-      'DE': '12', 'DEC': '12'
-    };
-
-    let month = '01';
-    for (const key of Object.keys(months)) {
-      if (monStr.startsWith(key)) {
-        month = months[key];
-        break;
-      }
-    }
-
-    let year = new Date().getFullYear();
-    if (yearStr) {
-      if (yearStr.length === 2) {
-        const yr = Number(yearStr);
-        year = yr > 50 ? 1900 + yr : 2000 + yr;
-      } else {
-        year = Number(yearStr);
-      }
-    }
-
-    return `${year}-${month}-${day}`;
   }
 
   const d = new Date();
@@ -116,36 +118,13 @@ function formatLocalISOString(dateVal: any): string {
     const hh = String(dateVal.getHours()).padStart(2, '0');
     const min = String(dateVal.getMinutes()).padStart(2, '0');
     const sec = String(dateVal.getSeconds()).padStart(2, '0');
-    const ms = String(dateVal.getMilliseconds()).padStart(3, '0');
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
   }
   
   const str = String(dateVal).trim();
-  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T ](\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?)?/);
-  if (isoMatch) {
-    const yyyy = isoMatch[1];
-    const mm = isoMatch[2].padStart(2, '0');
-    const dd = isoMatch[3].padStart(2, '0');
-    const hh = (isoMatch[4] || "00").padStart(2, '0');
-    const min = (isoMatch[5] || "00").padStart(2, '0');
-    const sec = (isoMatch[6] || "00").padStart(2, '0');
-    const ms = (isoMatch[7] || "000").padEnd(3, '0').slice(0, 3);
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
-  }
-
-  const parsed = Date.parse(str);
-  if (isNaN(parsed)) {
-    return str;
-  }
-  const d = new Date(parsed);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  const sec = String(d.getSeconds()).padStart(2, '0');
-  const ms = String(d.getMilliseconds()).padStart(3, '0');
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}.${ms}`;
+  const dateStr = cleanOracleDate(str);
+  const timeStr = formatTimeOnly(null, str);
+  return `${dateStr}T${timeStr}`;
 }
 
 function formatLocalDateOnly(dateVal: any): string | null {
@@ -157,16 +136,8 @@ function formatLocalDateOnly(dateVal: any): string | null {
     return `${yyyy}-${mm}-${dd}`;
   }
   const str = String(dateVal).trim();
-  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (isoMatch) {
-    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
-  }
-  const parsed = Date.parse(str);
-  if (isNaN(parsed)) {
-    return cleanOracleDate(str);
-  }
-  const d = new Date(parsed);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (!str) return null;
+  return cleanOracleDate(str);
 }
 
 function getObjProperty(obj: any, propName: string): any {
@@ -225,6 +196,57 @@ function getThresholdsSignature(thresholds: any[]): string {
 }
 
 
+/**
+ * Converts legacy Oracle numeric COUNTER_NO (e.g. 12345, 10235, 123456, 45) to "HH:MM:SS" timecode.
+ * In Oracle, numeric counter values represent concatenated digits of hours, minutes, and seconds (HHMMSS)
+ * where leading zeros were dropped by Oracle's numeric column.
+ * e.g. 12345 -> "012345" -> "01:23:45" (1h 23m 45s - not 12345 total seconds)
+ *      45    -> "000045" -> "00:00:45"
+ *      10235 -> "010235" -> "01:02:35"
+ */
+function parseOracleCounterToTimecode(val: any): string {
+  if (val === undefined || val === null) return '00:00:00';
+  const strVal = String(val).trim();
+  if (!strVal || strVal === '0' || strVal === '00:00:00') return '00:00:00';
+
+  // If already in HH:MM:SS format
+  if (strVal.includes(':')) {
+    const parts = strVal.split(':').map(p => p.trim());
+    if (parts.length === 3) {
+      return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
+    } else if (parts.length === 2) {
+      return `00:${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+    } else if (parts.length === 1) {
+      return `00:00:${parts[0].padStart(2, '0')}`;
+    }
+  }
+
+  // Remove non-digit characters
+  const digits = strVal.replace(/\D/g, '');
+  if (!digits) return '00:00:00';
+
+  // Pad with leading zeros to at least 6 digits (e.g. "12345" -> "012345", "45" -> "000045")
+  const padded = digits.padStart(6, '0');
+
+  // Split into hours, minutes, and seconds from the padded string
+  const ss = padded.slice(-2);
+  const mm = padded.slice(-4, -2);
+  const hh = padded.slice(0, -4).padStart(2, '0');
+
+  return `${hh}:${mm}:${ss}`;
+}
+
+function timecodeToSeconds(timecode: string): number {
+  if (!timecode) return 0;
+  const parts = timecode.split(':').map(p => parseInt(p, 10) || 0);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return parts[0] || 0;
+}
+
 function parseDivingChapter(inspCond: string): string | null {
   if (!inspCond) return null;
   const match = inspCond.match(/chapter\s*(?:number|no)?\s*:?\s*(\d+)/i);
@@ -237,37 +259,12 @@ function parseDivingChapter(inspCond: string): string | null {
 }
 
 function combineDateTime(dateVal: any, timeVal: any): string {
-  if (!dateVal) {
-    const d = new Date();
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return `${dateStr}T${formatTimeOnly(timeVal)}`;
-  }
-
-  let dateStr = "";
-  if (dateVal instanceof Date) {
-    dateStr = `${dateVal.getFullYear()}-${String(dateVal.getMonth() + 1).padStart(2, '0')}-${String(dateVal.getDate()).padStart(2, '0')}`;
-  } else {
-    const str = String(dateVal).trim();
-    const datePartOnly = str.split('T')[0].split(' ')[0].trim();
-    const parsed = Date.parse(datePartOnly);
-    if (!isNaN(parsed)) {
-      const d = new Date(parsed);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      dateStr = `${yyyy}-${mm}-${dd}`;
-    } else {
-      dateStr = cleanOracleDate(datePartOnly);
-    }
-  }
-
-  const timeStr = formatTimeOnly(timeVal);
+  const dateStr = formatLocalDateOnly(dateVal) || formatLocalDateOnly(new Date())!;
+  const timeStr = formatTimeOnly(timeVal, dateVal);
   return `${dateStr}T${timeStr}`;
 }
 
-function formatTimeOnly(timeVal: any): string {
-  if (timeVal === null || timeVal === undefined) return "00:00:00";
-  
+function formatTimeOnly(timeVal: any, fallbackDateVal?: any): string {
   if (timeVal instanceof Date) {
     const hh = String(timeVal.getHours()).padStart(2, '0');
     const mm = String(timeVal.getMinutes()).padStart(2, '0');
@@ -275,36 +272,69 @@ function formatTimeOnly(timeVal: any): string {
     return `${hh}:${mm}:${ss}`;
   }
 
-  let str = String(timeVal).trim();
-  if (!str) return "00:00:00";
+  let str = timeVal !== null && timeVal !== undefined ? String(timeVal).trim() : "";
+  
+  if (str) {
+    // If it has 'T' or space separator with date
+    if (str.includes('T') || str.includes(' ')) {
+      const parts = str.split(/[T ]/);
+      if (parts.length > 1 && parts[1]) {
+        str = parts[1].split('.')[0].split('Z')[0].trim();
+      }
+    }
 
-  // If it's a full ISO string or has a 'T'
-  if (str.includes('T')) {
-    const timePart = str.split('T')[1].split('.')[0].split('Z')[0];
-    return timePart;
-  }
+    // Try to match HH:MM:SS or HH:MM or HH.MM.SS (with optional AM/PM)
+    const match = str.match(/(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*(AM|PM)?/i);
+    if (match) {
+      let hh = parseInt(match[1], 10);
+      const mm = match[2];
+      const ss = match[3] || "00";
+      const ampm = (match[4] || "").toUpperCase();
+      if (ampm === "PM" && hh < 12) hh += 12;
+      if (ampm === "AM" && hh === 12) hh = 0;
+      return `${String(hh).padStart(2, '0')}:${mm}:${ss}`;
+    }
 
-  // Try to match HH:MM:SS or HH:MM
-  const match = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (match) {
-    const hh = match[1].padStart(2, '0');
-    const mm = match[2];
-    const ss = match[3] || "00";
-    return `${hh}:${mm}:${ss}`;
-  }
-
-  // Handle HHMMSS or HHMM raw digits format
-  const digits = str.replace(/\D/g, '');
-  if (digits.length > 0) {
-    if (digits.length <= 4) {
-      const padded = digits.padStart(4, '0');
-      return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:00`;
-    } else {
-      const padded = digits.padStart(6, '0');
-      return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:${padded.substring(4, 6)}`;
+    // Handle HHMMSS or HHMM raw digits format
+    const digits = str.replace(/\D/g, '');
+    if (digits.length >= 3) {
+      if (digits.length <= 4) {
+        const padded = digits.padStart(4, '0');
+        const hh = parseInt(padded.substring(0, 2), 10);
+        const mm = parseInt(padded.substring(2, 4), 10);
+        if (hh < 24 && mm < 60) {
+          return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:00`;
+        }
+      } else {
+        const padded = digits.padStart(6, '0');
+        const hh = parseInt(padded.substring(0, 2), 10);
+        const mm = parseInt(padded.substring(2, 4), 10);
+        const ss = parseInt(padded.substring(4, 6), 10);
+        if (hh < 24 && mm < 60 && ss < 60) {
+          return `${padded.substring(0, 2)}:${padded.substring(2, 4)}:${padded.substring(4, 6)}`;
+        }
+      }
     }
   }
-  
+
+  // Fallback: check if fallbackDateVal contains a non-zero time
+  if (fallbackDateVal) {
+    if (fallbackDateVal instanceof Date) {
+      const h = fallbackDateVal.getHours();
+      const m = fallbackDateVal.getMinutes();
+      const s = fallbackDateVal.getSeconds();
+      if (h > 0 || m > 0 || s > 0) {
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+    } else if (typeof fallbackDateVal === 'string') {
+      const fStr = fallbackDateVal.trim();
+      const tMatch = fStr.match(/[T ](\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?/);
+      if (tMatch) {
+        return `${tMatch[1].padStart(2, '0')}:${tMatch[2]}:${tMatch[3] || '00'}`;
+      }
+    }
+  }
+
   return "00:00:00";
 }
 
@@ -437,8 +467,12 @@ async function setRlsStatus(disable: boolean, logs: string[]): Promise<boolean> 
   }
 
   const { Client } = require('pg');
-  const client = new Client({ connectionString: databaseUrl });
+  let client: any;
   try {
+    client = new Client({ connectionString: databaseUrl });
+    client.on('error', (err: any) => {
+      console.warn('[Direct PG Client Error Handled]:', err.message);
+    });
     await client.connect();
     const action = disable ? 'DISABLE' : 'ENABLE';
     logs.push(`Direct PG Connection: Attempting to ${action} RLS on relational tables...`);
@@ -475,6 +509,22 @@ async function setRlsStatus(disable: boolean, logs: string[]): Promise<boolean> 
 
     if (disable) {
       await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;`);
+
+      // Ensure table-wide single-column unique constraints on dive_no & deployment_no are removed
+      // so the same dive/ROV numbers can be reused across different jobpacks & SOW report numbers
+      try {
+        await client.query(`
+          ALTER TABLE public.insp_dive_jobs DROP CONSTRAINT IF EXISTS uk_dive_no;
+          ALTER TABLE public.insp_dive_jobs DROP CONSTRAINT IF EXISTS insp_dive_jobs_dive_no_key;
+          ALTER TABLE public.insp_dive_jobs DROP CONSTRAINT IF EXISTS insp_dive_jobs_deployment_no_key;
+          ALTER TABLE public.insp_rov_jobs DROP CONSTRAINT IF EXISTS uk_deployment_no;
+          ALTER TABLE public.insp_rov_jobs DROP CONSTRAINT IF EXISTS insp_rov_jobs_deployment_no_key;
+          CREATE INDEX IF NOT EXISTS idx_dive_jobs_struct_jp_sow_no ON public.insp_dive_jobs(structure_id, jobpack_id, sow_report_no, dive_no);
+          CREATE INDEX IF NOT EXISTS idx_rov_jobs_struct_jp_sow_no ON public.insp_rov_jobs(structure_id, jobpack_id, sow_report_no, deployment_no);
+        `);
+      } catch (ddlErr: any) {
+        logs.push(`Note on DDL constraints: ${ddlErr.message}`);
+      }
     }
 
     logs.push(`Direct PG Connection: Successfully ${action}D RLS and permissions on all tables.`);
@@ -483,9 +533,11 @@ async function setRlsStatus(disable: boolean, logs: string[]): Promise<boolean> 
     logs.push(`WARNING: Direct PG Connection to bypass RLS failed: ${err.message}`);
     return false;
   } finally {
-    try {
-      await client.end();
-    } catch (e) {}
+    if (client) {
+      try {
+        await client.end();
+      } catch (e) {}
+    }
   }
 }
 
@@ -647,10 +699,16 @@ function fillRecordUnits(rec: Record<string, any>, isImp: boolean, compCode?: st
 interface MigrationPayload {
   config: OracleConnectionConfig;
   structureId: string;
+  structureType?: "PLATFORM" | "PIPELINE";
   mappings: Record<string, { oracleCol: string; pgCol: string }[]>;
   selectedInspNo?: string;
+  selectedInspNos?: string[];
   legacyAttachmentPath?: string;
   componentsOnly?: boolean;
+  updateStructureSpecs?: boolean;
+  updateComponentSpecs?: boolean;
+  insertNewComponents?: boolean;
+  migrateAttachments?: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -674,8 +732,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload format" }, { status: 400 });
   }
 
-  const { config, structureId, mappings, selectedInspNo: rawSelectedInspNo, legacyAttachmentPath, componentsOnly } = payload;
-  const selectedInspNo = rawSelectedInspNo || (payload as any).inspNo;
+  const { 
+    config, 
+    structureId, 
+    structureType: rawStructureType, 
+    mappings, 
+    selectedInspNo: rawSelectedInspNo, 
+    selectedInspNos: rawSelectedInspNos,
+    legacyAttachmentPath, 
+    componentsOnly,
+    updateStructureSpecs = false,
+    updateComponentSpecs = false,
+    insertNewComponents = true,
+    migrateAttachments = true
+  } = payload;
+
+  const selectedInspNos: string[] = (Array.isArray(rawSelectedInspNos) && rawSelectedInspNos.length > 0) 
+    ? rawSelectedInspNos.map(String) 
+    : (rawSelectedInspNo ? [String(rawSelectedInspNo)] : []);
+  const selectedInspNo = selectedInspNos[0] || (payload as any).inspNo;
   if (!config || !structureId || !mappings) {
     return NextResponse.json({ error: "Missing required payload parameters" }, { status: 400 });
   }
@@ -1045,211 +1120,291 @@ export async function POST(request: NextRequest) {
 
     logs.push(`Started migration for Structure ID: ${structureId}`);
 
-    // Query Structure Unit Type (DEF_UNIT)
+    // Auto-detect Structure Type (PIPELINE vs PLATFORM), Unit Type (DEF_UNIT), and Structure Title
+    let structureType = (rawStructureType || "").toUpperCase();
     let structureUnit = "METRIC";
+
     try {
-      const unitResult = await oracleConn.execute(
-        `SELECT DEF_UNIT FROM v_structure WHERE STR_ID = :strId`,
+      const typeResult = await oracleConn.execute(
+        `SELECT STR_ID, TITLE, PTYPE, DEF_UNIT FROM v_structure WHERE STR_ID = :strId`,
         { strId: structureId }
       );
-      if (unitResult.rows && unitResult.rows.length > 0) {
-        const row: any = unitResult.rows[0];
-        const val = String((row.DEF_UNIT || row[0]) || "").toUpperCase().trim();
-        if (val === "IMPERIAL" || val === "METRIC") {
-          structureUnit = val;
+      if (typeResult.rows && typeResult.rows.length > 0) {
+        const row: any = typeResult.rows[0];
+        const ptypeVal = String((row.PTYPE || row.STR_TYPE || row[2]) || "").toUpperCase().trim();
+        if (ptypeVal === "PIPE" || ptypeVal === "PIPELINE") {
+          structureType = "PIPELINE";
+        } else if (ptypeVal === "PLAT" || ptypeVal === "PLATFORM") {
+          structureType = "PLATFORM";
+        }
+
+        const unitVal = String((row.DEF_UNIT || row[3]) || "").toUpperCase().trim();
+        if (unitVal === "IMPERIAL" || unitVal === "I" || unitVal === "1" || unitVal === "FT" || unitVal === "IN") {
+          structureUnit = "IMPERIAL";
+        } else if (unitVal === "METRIC" || unitVal === "M" || unitVal === "0" || unitVal === "MM") {
+          structureUnit = "METRIC";
+        }
+
+        if (!structureTitle) {
+          structureTitle = String((row.TITLE || row[1]) || "").trim();
         }
       }
-    } catch (unitErr: any) {
-      logs.push(`WARNING: Could not fetch DEF_UNIT from v_structure: ${unitErr.message}`);
+    } catch (typeErr: any) {
+      logs.push(`WARNING: Could not fetch structure metadata from v_structure: ${typeErr.message}`);
+      // Fallback check against U_PIPELINE table in Oracle
+      try {
+        const pipeCheck = await oracleConn.execute(
+          `SELECT COUNT(*) as CNT FROM U_PIPELINE WHERE PIPE_ID = :strId`,
+          { strId: structureId }
+        );
+        const cnt = Number(pipeCheck.rows?.[0]?.CNT || pipeCheck.rows?.[0]?.[0] || 0);
+        if (cnt > 0) structureType = "PIPELINE";
+      } catch (_) {}
     }
+
+    if (!structureType) {
+      structureType = "PLATFORM";
+    }
+
+    const isPipeline = structureType === "PIPELINE";
+    let targetTable = isPipeline ? "u_pipeline" : "platform";
+
+    // Extra fallback check for DEF_UNIT in U_PIPELINE if still METRIC
+    if (structureUnit === "METRIC" && isPipeline) {
+      try {
+        const pUnitRes = await oracleConn.execute(
+          `SELECT DEF_UNIT FROM U_PIPELINE WHERE PIPE_ID = :strId`,
+          { strId: structureId }
+        );
+        if (pUnitRes.rows && pUnitRes.rows.length > 0) {
+          const pu = String(pUnitRes.rows[0].DEF_UNIT || pUnitRes.rows[0][0] || "").toUpperCase().trim();
+          if (pu === "IMPERIAL" || pu === "I" || pu === "1" || pu === "FT" || pu === "IN") {
+            structureUnit = "IMPERIAL";
+          }
+        }
+      } catch (_) {}
+    }
+
+    logs.push(`Structure Type determined as: ${structureType} (Target: ${targetTable})`);
     logs.push(`Structure Unit Type determined as: ${structureUnit}`);
     const isImperial = structureUnit === "IMPERIAL";
 
-    // Query Structure Name/Title from Oracle
-    try {
-      const nameResult = await oracleConn.execute(
-        `SELECT NAME FROM v_structure WHERE STR_ID = :strId`,
-        { strId: structureId }
-      );
-      if (nameResult.rows && nameResult.rows.length > 0) {
-        const row: any = nameResult.rows[0];
-        structureTitle = String(row.NAME || row[0] || "").trim();
-      }
-    } catch (nameErr1: any) {
+    // Query Structure Name/Title fallback if not found
+    if (!structureTitle) {
       try {
-        const nameResult2 = await oracleConn.execute(
-          `SELECT TITLE FROM v_structure WHERE STR_ID = :strId`,
-          { strId: structureId }
-        );
-        if (nameResult2.rows && nameResult2.rows.length > 0) {
-          const row: any = nameResult2.rows[0];
+        const nameQuery = isPipeline
+          ? `SELECT TITLE FROM U_PIPELINE WHERE PIPE_ID = :strId`
+          : `SELECT TITLE FROM PLATFORM WHERE PLAT_ID = :strId`;
+        const nameResult = await oracleConn.execute(nameQuery, { strId: structureId });
+        if (nameResult.rows && nameResult.rows.length > 0) {
+          const row: any = nameResult.rows[0];
           structureTitle = String(row.TITLE || row[0] || "").trim();
         }
-      } catch (nameErr2: any) {
-        logs.push(`WARNING: Could not fetch NAME or TITLE from Oracle v_structure: ${nameErr2.message}`);
-      }
+      } catch (_) {}
     }
+
     if (structureTitle) {
       logs.push(`Legacy Structure Name resolved as: "${structureTitle}"`);
     }
 
-    let targetTable = "platform";
     let structureSuccess = true; // Default to true if skipped
 
     // --- 1. MIGRATE STRUCTURE ---
-    await writeStreamEvent({ type: "progress", current: 2, total: 9, label: "Migrating primary Structure master...", percent: 15 });
-    const strMappings = mappings["STRUCTURE"] || [];
+    await writeStreamEvent({ type: "progress", current: 2, total: 9, label: `Migrating primary ${structureType} Structure master...`, percent: 15 });
+    const strMappings = isPipeline
+      ? (mappings["STRUCTURE_PIPELINE"] || mappings["STRUCTURE"] || [])
+      : (mappings["STRUCTURE_PLATFORM"] || mappings["STRUCTURE"] || []);
+
     if (strMappings.length > 0) {
       structureSuccess = false; // must succeed if mapped
       report["STRUCTURE"].status = "failed"; // set to failed by default once mapped, success later
 
-      // Build dynamic SELECT query based on mapped Oracle columns
-      const oracleColumns = strMappings.map(m => m.oracleCol).filter(Boolean);
-      if (oracleColumns.length > 0) {
-        // Dynamically determine the source table based on primary key mappings
-        let oracleTable = 'v_structure';
-        let idCol = 'STR_ID';
+      let oracleTable = isPipeline ? 'U_PIPELINE' : 'PLATFORM';
+      let idCol = isPipeline ? 'PIPE_ID' : 'PLAT_ID';
 
-        if (oracleColumns.includes('PLAT_ID')) {
-          oracleTable = 'PLATFORM';
-          idCol = 'PLAT_ID';
-        } else if (oracleColumns.includes('PIPE_ID')) {
-          oracleTable = 'U_PIPELINE';
-          idCol = 'PIPE_ID';
-        }
+      let rows: any[] = [];
 
-        const strQuery = `SELECT ${oracleColumns.join(', ')} FROM ${oracleTable} WHERE ${idCol} = :strId`;
+      try {
+        const strQuery = `SELECT * FROM ${oracleTable} WHERE ${idCol} = :strId`;
+        const strResult = await oracleConn.execute(strQuery, { strId: structureId });
+        rows = strResult.rows as any[];
+      } catch (tableErr: any) {
+        logs.push(`Querying ${oracleTable} failed (${tableErr.message}). Trying fallback from v_structure...`);
         try {
-          const strResult = await oracleConn.execute(strQuery, { strId: structureId });
-          const rows = strResult.rows as any[];
+          const strQuery2 = `SELECT * FROM v_structure WHERE STR_ID = :strId`;
+          const strResult2 = await oracleConn.execute(strQuery2, { strId: structureId });
+          rows = strResult2.rows as any[];
+        } catch (vErr: any) {
+          logs.push(`Querying v_structure fallback failed: ${vErr.message}`);
+        }
+      }
 
-          if (rows && rows.length > 0) {
-            report["STRUCTURE"].oracleRows = 1;
-            const oracleData = rows[0];
+      if (rows && rows.length > 0) {
+        report["STRUCTURE"].oracleRows = 1;
+        const oracleData = rows[0];
 
-            // Map to Postgres format
-            const pgRecord: Record<string, any> = {};
-            strMappings.forEach(mapping => {
-              if (mapping.oracleCol && mapping.pgCol && oracleData[mapping.oracleCol] !== undefined) {
-                let val = oracleData[mapping.oracleCol];
-
-                // Prevent timezone recognition issues
-                if (typeof val === 'string' && val.toLowerCase().includes('gmt')) {
+          // Map to Postgres format
+          const pgRecord: Record<string, any> = {};
+          strMappings.forEach((mapping: any) => {
+            if (mapping.oracleCol && mapping.pgCol) {
+              const col = mapping.oracleCol;
+              let val = oracleData[col] ?? oracleData[col.toUpperCase()] ?? oracleData[col.toLowerCase()];
+              if (val !== undefined && val !== null) {
+                // Prevent timezone recognition / offset issues on dates (preserve exact calendar date YYYY-MM-DD)
+                if (mapping.pgCol.includes('date') || col.toUpperCase().includes('DATE')) {
+                  try {
+                    const d = new Date(val);
+                    if (!isNaN(d.getTime())) {
+                      const yr = d.getFullYear();
+                      const mo = String(d.getMonth() + 1).padStart(2, '0');
+                      const da = String(d.getDate()).padStart(2, '0');
+                      val = `${yr}-${mo}-${da}`;
+                    }
+                  } catch (_) {}
+                } else if (typeof val === 'string' && val.toLowerCase().includes('gmt')) {
                   val = formatLocalISOString(val);
                 }
 
                 val = coerceValue(mapping.pgCol, val);
                 setNestedProperty(pgRecord, mapping.pgCol, val);
               }
-            });
-
-            // Set structure spec unit defaults
-            fillRecordUnits(pgRecord, isImperial);
-
-            // Determine target table based on PTYPE (Platform or Pipeline)
-            const ptypeMappedField = strMappings.find(m => m.oracleCol.toUpperCase() === "PTYPE")?.pgCol;
-            if (ptypeMappedField && pgRecord[ptypeMappedField] === "PIPE") {
-              targetTable = "u_pipeline";
-            } else if (oracleData["PTYPE"] === "PIPE") {
-              targetTable = "u_pipeline";
             }
+          });
 
-            const conflictCol = targetTable === "u_pipeline" ? "pipe_id" : "plat_id";
-
-            // Fix mapped id key to avoid conflict
-            if (pgRecord.id !== undefined) {
-              if (pgRecord[conflictCol] === undefined) {
-                pgRecord[conflictCol] = pgRecord.id;
-              }
-              delete pgRecord.id;
-            }
-
-            // Ensure structural primary key is present
-            if (pgRecord[conflictCol] === undefined) {
-              pgRecord[conflictCol] = resolvedStructureId;
-            }
-
-            // --- 3-CASE CONFLICT RESOLUTION ---
-            const titleMapping = strMappings.find(
-              m => m.oracleCol.toUpperCase() === "TITLE" || m.oracleCol.toUpperCase() === "NAME"
-            );
-            const titlePgCol = titleMapping?.pgCol || "title";
-            const incomingTitle = String(oracleData[titleMapping?.oracleCol || "TITLE"] || "").trim();
-
-            logs.push(`Analyzing structure database conflicts in Postgres...`);
-
-            // Fetch by ID
-            const { data: existingById, error: errById } = await supabase
-              .from(targetTable as any)
-              .select(`${conflictCol}, ${titlePgCol}`)
-              .eq(conflictCol, Number(structureId))
-              .maybeSingle();
-
-            if (errById) {
-              logs.push(`WARNING: Checking structure by ID failed: ${errById.message}`);
-            }
-
-            // Fetch by Title (case-insensitive)
-            const { data: existingByTitle, error: errByTitle } = await supabase
-              .from(targetTable as any)
-              .select(`${conflictCol}, ${titlePgCol}`)
-              .ilike(titlePgCol, incomingTitle)
-              .maybeSingle();
-
-            if (errByTitle) {
-              logs.push(`WARNING: Checking structure by Title failed: ${errByTitle.message}`);
-            }
-
-            if (existingByTitle) {
-              // Case 2: Different ID, Same Title (Alignment / Subsequent migration) -> Reuse the existing Postgres ID
-              resolvedStructureId = Number((existingByTitle as any)[conflictCol]);
-              (pgRecord as any)[conflictCol] = resolvedStructureId;
-              logs.push(`Case 2 Match: Title "${incomingTitle}" already exists in Postgres with ID ${resolvedStructureId}. Reusing this ID for migration.`);
-            } else if (existingById) {
-              const existingTitle = String((existingById as any)[titlePgCol] || "").trim();
-              if (existingTitle.toLowerCase() !== incomingTitle.toLowerCase()) {
-                // Case 1: Same ID, Different Title (Collision) -> Generate a new Postgres ID
-                const { data: maxResult, error: maxErr } = await supabase
-                  .from(targetTable as any)
-                  .select(conflictCol)
-                  .order(conflictCol, { ascending: false })
-                  .limit(1)
-                  .maybeSingle();
-
-                if (maxErr) {
-                  logs.push(`WARNING: Fetching max ID failed: ${maxErr.message}`);
+          // Also copy any direct uppercase/lowercase Oracle structure columns that may be missing in mapping
+          Object.keys(oracleData).forEach((k) => {
+            const lowerK = k.toLowerCase();
+            if (pgRecord[lowerK] === undefined && pgRecord[k] === undefined) {
+              let v = oracleData[k];
+              if (v !== undefined && v !== null && String(v).trim() !== "") {
+                if (lowerK.includes('date')) {
+                  try {
+                    const d = new Date(v);
+                    if (!isNaN(d.getTime())) {
+                      const yr = d.getFullYear();
+                      const mo = String(d.getMonth() + 1).padStart(2, '0');
+                      const da = String(d.getDate()).padStart(2, '0');
+                      v = `${yr}-${mo}-${da}`;
+                    }
+                  } catch (_) {}
                 }
-
-                const maxId = maxResult ? Number((maxResult as any)[conflictCol]) : 0;
-                resolvedStructureId = Math.max(maxId, 10000) + 1;
-                (pgRecord as any)[conflictCol] = resolvedStructureId;
-
-                logs.push(`Case 1 Match: ID ${structureId} is already occupied by "${existingTitle}". Generated safe new Postgres ID ${resolvedStructureId} for "${incomingTitle}".`);
-              } else {
-                // Same ID, Same Title (Re-migration / Update of same structure) -> Normal flow
-                resolvedStructureId = Number(structureId);
-                (pgRecord as any)[conflictCol] = resolvedStructureId;
-                logs.push(`Case 3 Match: Identical structure "${incomingTitle}" (ID ${structureId}) already exists. Updating in-place.`);
+                pgRecord[lowerK] = v;
               }
+            }
+          });
+
+          // Set structure spec unit defaults
+          if (isPipeline) {
+            pgRecord.def_unit = isImperial ? "IMPERIAL" : "METRIC";
+          }
+          fillRecordUnits(pgRecord, isImperial);
+
+          const conflictCol = isPipeline ? "pipe_id" : "plat_id";
+
+          // Fix mapped id key to avoid conflict
+          if (pgRecord.id !== undefined) {
+            if (pgRecord[conflictCol] === undefined) {
+              pgRecord[conflictCol] = pgRecord.id;
+            }
+            delete pgRecord.id;
+          }
+
+          // Ensure structural primary key is present
+          if (pgRecord[conflictCol] === undefined) {
+            pgRecord[conflictCol] = resolvedStructureId;
+          }
+
+          // --- 3-CASE CONFLICT RESOLUTION ---
+          const titleMapping = strMappings.find(
+            m => m.oracleCol.toUpperCase() === "TITLE" || m.oracleCol.toUpperCase() === "NAME"
+          );
+          const titlePgCol = titleMapping?.pgCol || "title";
+          const incomingTitle = String(oracleData[titleMapping?.oracleCol || "TITLE"] || "").trim();
+
+          logs.push(`Analyzing structure database conflicts in Postgres...`);
+
+          // Fetch by ID
+          const { data: existingById, error: errById } = await supabase
+            .from(targetTable as any)
+            .select(`${conflictCol}, ${titlePgCol}`)
+            .eq(conflictCol, Number(structureId))
+            .maybeSingle();
+
+          if (errById) {
+            logs.push(`WARNING: Checking structure by ID failed: ${errById.message}`);
+          }
+
+          // Fetch by Title (case-insensitive)
+          const { data: existingByTitle, error: errByTitle } = await supabase
+            .from(targetTable as any)
+            .select(`${conflictCol}, ${titlePgCol}`)
+            .ilike(titlePgCol, incomingTitle)
+            .maybeSingle();
+
+          if (errByTitle) {
+            logs.push(`WARNING: Checking structure by Title failed: ${errByTitle.message}`);
+          }
+
+          if (existingByTitle) {
+            // Case 2: Different ID, Same Title (Alignment / Subsequent migration) -> Reuse the existing Postgres ID
+            resolvedStructureId = Number((existingByTitle as any)[conflictCol]);
+            (pgRecord as any)[conflictCol] = resolvedStructureId;
+            logs.push(`Case 2 Match: Title "${incomingTitle}" already exists in Postgres with ID ${resolvedStructureId}. Reusing this ID for migration.`);
+          } else if (existingById) {
+            const existingTitle = String((existingById as any)[titlePgCol] || "").trim();
+            if (existingTitle.toLowerCase() !== incomingTitle.toLowerCase()) {
+              // Case 1: Same ID, Different Title (Collision) -> Generate a new Postgres ID
+              const { data: maxResult, error: maxErr } = await supabase
+                .from(targetTable as any)
+                .select(conflictCol)
+                .order(conflictCol, { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (maxErr) {
+                logs.push(`WARNING: Fetching max ID failed: ${maxErr.message}`);
+              }
+
+              const maxId = maxResult ? Number((maxResult as any)[conflictCol]) : 0;
+              resolvedStructureId = Math.max(maxId, 10000) + 1;
+              (pgRecord as any)[conflictCol] = resolvedStructureId;
+
+              logs.push(`Case 1 Match: ID ${structureId} is already occupied by "${existingTitle}". Generated safe new Postgres ID ${resolvedStructureId} for "${incomingTitle}".`);
             } else {
-              // Case 3: No matching ID and no matching Title -> Normal flow
+              // Same ID, Same Title (Re-migration / Update of same structure) -> Normal flow
               resolvedStructureId = Number(structureId);
               (pgRecord as any)[conflictCol] = resolvedStructureId;
-              logs.push(`Case 3 Match: No existing ID or Title matches in Postgres. Migrating with original Oracle ID ${resolvedStructureId}.`);
+              logs.push(`Case 3 Match: Identical structure "${incomingTitle}" (ID ${structureId}) already exists. Updating in-place.`);
             }
+          } else {
+            // Case 3: No matching ID and no matching Title -> Normal flow
+            resolvedStructureId = Number(structureId);
+            (pgRecord as any)[conflictCol] = resolvedStructureId;
+            logs.push(`Case 3 Match: No existing ID or Title matches in Postgres. Migrating with original Oracle ID ${resolvedStructureId}.`);
+          }
 
-            // Ensure the parent record exists in public.structure first to satisfy the foreign key constraint
-            const parentStructureObj = {
-              str_id: resolvedStructureId,
-              str_type: targetTable === 'u_pipeline' ? 'PIPELINE' : 'PLATFORM'
-            };
-            const { error: parentStructureErr } = await supabase
-              .from("structure" as any)
-              .upsert(parentStructureObj as any, { onConflict: 'str_id' });
-            if (parentStructureErr) {
-              logs.push(`WARNING: Failed to insert parent structure record: ${parentStructureErr.message}`);
-            }
+          // Ensure the parent record exists in public.structure first to satisfy the foreign key constraint
+          const parentStructureObj = {
+            str_id: resolvedStructureId,
+            str_type: targetTable === 'u_pipeline' ? 'PIPELINE' : 'PLATFORM'
+          };
+          const { error: parentStructureErr } = await supabase
+            .from("structure" as any)
+            .upsert(parentStructureObj as any, { onConflict: 'str_id' });
+          if (parentStructureErr) {
+            logs.push(`WARNING: Failed to insert parent structure record: ${parentStructureErr.message}`);
+          }
 
+          const existingTitleForCheck = existingById ? String((existingById as any)[titlePgCol] || "").trim() : "";
+          const isStructureAlreadyExisting = existingByTitle || (existingById && existingTitleForCheck.toLowerCase() === incomingTitle.toLowerCase());
+
+          if (isStructureAlreadyExisting && !updateStructureSpecs) {
+            logs.push(`Structure master specs for "${incomingTitle}" (ID: ${resolvedStructureId}) already exist in Postgres. Preserving existing specs (updateStructureSpecs is disabled).`);
+            report["STRUCTURE"].status = "success";
+            report["STRUCTURE"].migratedRows = 1;
+            structureSuccess = true;
+            structureTitle = incomingTitle;
+          } else {
             // Insert/Upsert in Supabase
             const { error: insertErr } = await supabase
               .from(targetTable as any)
@@ -1260,35 +1415,140 @@ export async function POST(request: NextRequest) {
               logs.push(`ERROR inserting structure: ${insertErr.message}`);
               report["STRUCTURE"].errors.push(insertErr.message);
             } else {
-              logs.push(`Successfully migrated Structure!`);
+              logs.push(`Successfully migrated Structure "${incomingTitle}" (ID: ${resolvedStructureId})!`);
               report["STRUCTURE"].status = "success";
               report["STRUCTURE"].migratedRows = 1;
               structureSuccess = true;
               structureTitle = incomingTitle;
             }
-          } else {
-            logs.push(`WARNING: Structure ID ${structureId} not found in ${oracleTable}.`);
-            report["STRUCTURE"].errors.push(`Structure ID not found in ${oracleTable}`);
           }
-        } catch (err: any) {
-          logs.push(`ERROR querying Oracle Structure: ${err.message}`);
-          report["STRUCTURE"].errors.push(err.message);
+
+          // If PIPELINE structure, also migrate Geodetic Parameters from PIPE_GEO (fallback to U_PIPEGEO)
+          if (targetTable === 'u_pipeline' && structureSuccess) {
+              try {
+                logs.push(`[Pipeline Route] Checking PIPE_GEO / U_PIPEGEO for geodetic parameters (STR_ID: ${structureId})...`);
+                let geoRes: any = null;
+                try {
+                  geoRes = await oracleConn.execute(
+                    `SELECT * FROM PIPE_GEO WHERE STR_ID = :strId`,
+                    { strId: structureId }
+                  );
+                } catch (e1: any) {
+                  try {
+                    geoRes = await oracleConn.execute(
+                      `SELECT * FROM PIPE_GEO WHERE PIPE_ID = :strId`,
+                      { strId: structureId }
+                    );
+                  } catch (e2: any) {
+                    try {
+                      geoRes = await oracleConn.execute(
+                        `SELECT * FROM U_PIPEGEO WHERE STR_ID = :strId`,
+                        { strId: structureId }
+                      );
+                    } catch (e3: any) {
+                      logs.push(`[Pipeline Route] Note on PIPE_GEO / U_PIPEGEO queries: ${e3.message}`);
+                    }
+                  }
+                }
+
+                if (geoRes && geoRes.rows && geoRes.rows.length > 0) {
+                  const geoRow = geoRes.rows[0];
+                  const geoRecord = {
+                    str_id: resolvedStructureId,
+                    geo_proj_nam: geoRow.GEO_PROJ_NAM || geoRow.PROJ_NAM || geoRow.PROJECTION || "Timbalai 1948 RSO Borneo Feet (BRS0)",
+                    geo_datum: geoRow.GEO_DATUM || geoRow.DATUM || "Timbalai 1948",
+                    geo_elli_sph: geoRow.GEO_ELLI_SPH || geoRow.ELLIPSOID || geoRow.SPHEROID || "Everest 1830 Modified",
+                    geo_units: geoRow.GEO_UNITS || geoRow.UNITS || (isImperial ? "Feet" : "Meters"),
+                    geo_dir: geoRow.GEO_DIR || geoRow.DATUM_SHIFT || "WGS-84 To Timbalai",
+                    geo_dx: geoRow.GEO_DX !== undefined ? Number(geoRow.GEO_DX) : (geoRow.DX !== undefined ? Number(geoRow.DX) : 0),
+                    geo_dx_u: isImperial ? "ft" : "m",
+                    geo_dy: geoRow.GEO_DY !== undefined ? Number(geoRow.GEO_DY) : (geoRow.DY !== undefined ? Number(geoRow.DY) : 0),
+                    geo_dy_u: isImperial ? "ft" : "m",
+                    geo_dz: geoRow.GEO_DZ !== undefined ? Number(geoRow.GEO_DZ) : (geoRow.DZ !== undefined ? Number(geoRow.DZ) : 0),
+                    geo_dz_u: isImperial ? "ft" : "m",
+                    cr_user: geoRow.CR_USER ? String(geoRow.CR_USER) : null,
+                    cr_date: geoRow.CR_DATE ? new Date(geoRow.CR_DATE).toISOString() : null,
+                    workunit: geoRow.WORKUNIT ? String(geoRow.WORKUNIT) : null,
+                  };
+                  await (supabase.from as any)("u_pipegeo").upsert(geoRecord, { onConflict: "str_id" });
+                  logs.push(`[Pipeline Route] Successfully migrated Geodetic parameters into u_pipegeo.`);
+                  report["U_PIPEGEO"] = { status: "success", oracleRows: 1, migratedRows: 1, errors: [] };
+                }
+
+                const pipeLen = pgRecord.plength !== undefined && pgRecord.plength !== null ? Number(pgRecord.plength) : (pgRecord.end_fp !== undefined ? Number(pgRecord.end_fp) : 10.6);
+                const { data: existingComp } = await (supabase.from as any)("structure_components")
+                  .select("id, id_no, comp_id")
+                  .eq("structure_id", resolvedStructureId)
+                  .limit(1)
+                  .maybeSingle();
+
+                const defaultCompMetadata = {
+                  kp_start: 0,
+                  kp_end: pipeLen,
+                  start_kp: 0,
+                  end_kp: pipeLen,
+                  kp: `0.000 - ${pipeLen}`,
+                  kp_u: "km",
+                  kp_unit: "km",
+                  start_kp_unit: "km",
+                  end_kp_unit: "km",
+                  description: "Default Pipeline Trunkline / Main Segment",
+                  length: pipeLen,
+                  st_loc: pgRecord.st_loc,
+                  end_loc: pgRecord.end_loc,
+                  easting: pgRecord.st_x,
+                  northing: pgRecord.st_y,
+                  st_x: pgRecord.st_x,
+                  st_y: pgRecord.st_y,
+                  end_x: pgRecord.end_x,
+                  end_y: pgRecord.end_y,
+                  easting_unit: "m",
+                  northing_unit: "m",
+                };
+
+                if (!existingComp) {
+                  const defaultCompRecord = {
+                    structure_id: resolvedStructureId,
+                    comp_id: 999999,
+                    id_no: "PIPE-MAIN-01",
+                    q_id: `PIPE-${resolvedStructureId}`,
+                    code: "PIPE",
+                    is_deleted: false,
+                    metadata: defaultCompMetadata
+                  };
+                  await (supabase.from as any)("structure_components").insert(defaultCompRecord);
+                  logs.push(`[Pipeline Route] Auto-created default pipeline component with KP Range 0.000 - ${pipeLen} km`);
+                } else if (existingComp.comp_id === 999999 || existingComp.id_no === "PIPE-MAIN-01") {
+                  await (supabase.from as any)("structure_components")
+                    .update({ metadata: defaultCompMetadata })
+                    .eq("id", existingComp.id);
+                  logs.push(`[Pipeline Route] Updated default pipeline component with KP Range 0.000 - ${pipeLen} km`);
+                }
+              } catch (geoErr: any) {
+                logs.push(`[Pipeline Route] Note on PIPE_GEO / U_PIPEGEO: ${geoErr.message}`);
+              }
+            }
+        } else {
+          logs.push(`WARNING: Structure ID ${structureId} not found in ${oracleTable}.`);
+          report["STRUCTURE"].errors.push(`Structure ID not found in ${oracleTable}`);
         }
+      } else {
+        logs.push("Skipped Structure migration (No mappings defined).");
+        report["STRUCTURE"].status = "skipped";
+        structureSuccess = true; // allow other mappings if no structural mapping is set
       }
-    } else {
-      logs.push("Skipped Structure migration (No mappings defined).");
-      report["STRUCTURE"].status = "skipped";
-      structureSuccess = true; // allow other mappings if no structural mapping is set
-    }
 
     const compIdMap = new Map<number, number>();
     const qIdMap = new Map<string, number>();
     const compTypeCache = new Map<number, string>();
 
     // --- 1.5 MIGRATE STRUCTURAL CHILD TABLES ---
-    await writeStreamEvent({ type: "progress", current: 3, total: 9, label: "Copying structural elevations & levels...", percent: 25 });
-    const structuralTables = ["STR_ELV", "STR_LEVEL", "STR_FACES"];
-    if (structureSuccess) {
+    await writeStreamEvent({ type: "progress", current: 3, total: 9, label: isPipeline ? "Skipping structural elevations & levels (Pipeline)..." : "Copying structural elevations & levels...", percent: 25 });
+    const structuralTables = isPipeline ? [] : ["STR_ELV", "STR_LEVEL", "STR_FACES"];
+    if (isPipeline) {
+      logs.push("Skipped Structural Elevations, Levels & Faces (Not applicable to Pipeline).");
+    }
+    if (structureSuccess && structuralTables.length > 0) {
       for (const childTable of structuralTables) {
         const childMappings = mappings[childTable] || [];
         if (childMappings.length > 0) {
@@ -1382,16 +1642,79 @@ export async function POST(request: NextRequest) {
       "LOGS_JOBS", "LOGS_MOVEMENTS", "LOGS_ROV", "LOGS_DIVE",
       "VIDEO", "ANOMALY", "U_ASSOC", "INSP_ATTACHMENT"
     ];
-    const componentCodes = Object.keys(mappings).filter(k =>
-      !nonComponentKeys.includes(k) &&
-      !childTables.includes(k) &&
-      !k.startsWith("INSP_ROV") &&
-      !k.startsWith("INSP_DIV")
-    );
+    // Fetch valid component codes from Postgres components table based on structure type
+    let allowedTypeCodes: Set<string> | null = null;
+    try {
+      const typeColumn = isPipeline ? 'pipe' : 'plat';
+      const { data: validComps } = await supabase.from('components').select('code').eq(typeColumn, 1);
+      if (validComps && validComps.length > 0) {
+        allowedTypeCodes = new Set(validComps.map((c: any) => String(c.code).toUpperCase().trim()));
+      }
+    } catch (_) {}
 
-    if (structureSuccess) {
-      // Fetch all existing components for this structure to update in place and avoid duplicating/deleting them!
-      const existingCompMap = new Map<number, number>(); // comp_id -> pg_id
+    // Query actual registered component codes in Oracle ALLCOMPID for this specific structure
+    const registeredOracleCodes = new Set<string>();
+    try {
+      const compCheck = await oracleConn.execute(
+        `SELECT DISTINCT CODE FROM ALLCOMPID 
+         WHERE STR_ID = :strId 
+           AND NOT (NVL(DEL, 0) = 1 AND NOT EXISTS (
+             SELECT 1 FROM allinspid i WHERE i.COMP_ID = ALLCOMPID.COMP_ID AND i.STR_ID = ALLCOMPID.STR_ID
+           ))`,
+        { strId: structureId }
+      );
+      if (compCheck.rows && compCheck.rows.length > 0) {
+        compCheck.rows.forEach((r: any) => {
+          const c = String(r.CODE || r[0] || "").toUpperCase().trim();
+          if (c) registeredOracleCodes.add(c);
+        });
+      }
+    } catch (checkErr: any) {
+      logs.push(`Note checking registered Oracle components: ${checkErr.message}`);
+    }
+
+    const componentCodes = Object.keys(mappings).filter(k => {
+      const upper = k.toUpperCase();
+      return (
+        !nonComponentKeys.includes(k) &&
+        !childTables.includes(k) &&
+        !k.startsWith("INSP_ROV") &&
+        !k.startsWith("INSP_DIV") &&
+        (!allowedTypeCodes || allowedTypeCodes.has(upper)) &&
+        registeredOracleCodes.has(upper)
+      );
+    });
+
+    if (structureSuccess && (isPipeline || targetTable === 'u_pipeline' || structureType === 'PIPELINE')) {
+      logs.push(`[Pipeline Route] Running dedicated Pipeline Components migration...`);
+      await migratePipelineComponents({
+        oracleConn,
+        supabase,
+        structureId,
+        resolvedStructureId,
+        isImperial,
+        compIdMap,
+        qIdMap,
+        compTypeCache,
+        jpIdMap: new Map(),
+        rovJobsCache: new Map(),
+        diveJobsCache: new Map(),
+        tapesCache: new Map(),
+        inspIdCache: new Map(),
+        jobpackDefaultPrefixMap: new Map(),
+        sowReportMap: new Map(),
+        mappings,
+        logs,
+        report,
+        writeStreamEvent,
+        updateComponentSpecs,
+        insertNewComponents
+      });
+    } else if (structureSuccess && componentCodes.length > 0) {
+      // Fetch all existing components for this structure to match by Q_ID, ID_NO, and COMP_ID across databases
+      const existingCompByQIdMap = new Map<string, number>(); // q_id.toLowerCase().trim() -> pg_id
+      const existingCompByIdNoMap = new Map<string, number>(); // id_no.toLowerCase().trim() -> pg_id
+      const existingCompByCompIdMap = new Map<number, number>(); // comp_id -> pg_id
       try {
         let page = 0;
         const pageSize = 1000;
@@ -1399,7 +1722,7 @@ export async function POST(request: NextRequest) {
         while (hasMore) {
           const { data: existingComps, error } = await supabase
             .from("structure_components")
-            .select("id, comp_id")
+            .select("id, comp_id, q_id, id_no, code")
             .eq("structure_id", resolvedStructureId)
             .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -1409,8 +1732,15 @@ export async function POST(request: NextRequest) {
             hasMore = false;
           } else {
             existingComps.forEach((c: any) => {
-              if (c.comp_id) {
-                existingCompMap.set(Number(c.comp_id), Number(c.id));
+              const pgId = Number(c.id);
+              if (c.comp_id !== null && c.comp_id !== undefined) {
+                existingCompByCompIdMap.set(Number(c.comp_id), pgId);
+              }
+              if (c.q_id && String(c.q_id).trim()) {
+                existingCompByQIdMap.set(String(c.q_id).trim().toLowerCase(), pgId);
+              }
+              if (c.id_no && String(c.id_no).trim()) {
+                existingCompByIdNoMap.set(String(c.id_no).trim().toLowerCase(), pgId);
               }
             });
             if (existingComps.length < pageSize) {
@@ -1426,11 +1756,19 @@ export async function POST(request: NextRequest) {
 
       await writeStreamEvent({ type: "progress", current: 4, total: 9, label: "Processing mapped components...", percent: 40 });
       for (const code of componentCodes) {
-        const compMappings = mappings[code] || [];
+        if (!report[code]) {
+          report[code] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
+        }
+        const upperCode = code.toUpperCase();
+        const isPlatSpecific = !isPipeline && (upperCode === "AN" || upperCode === "RC" || upperCode === "IT");
+        const compMappings = isPipeline
+          ? (mappings[`${upperCode}_PIPELINE`] || mappings[`${upperCode}_PIPE`] || mappings[upperCode] || mappings[code] || [])
+          : (isPlatSpecific
+              ? (mappings[`${upperCode}_PLATFORM`] || mappings[`${upperCode}_PLAT`] || mappings[upperCode] || mappings[code] || [])
+              : (mappings[upperCode] || mappings[code] || []));
         if (compMappings.length === 0) continue;
 
-        report[code] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [] };
-        logs.push(`Migrating ${code} components...`);
+        logs.push(`Checking ${code} components...`);
         const oracleColumns = compMappings.map(m => m.oracleCol).filter(Boolean);
 
         if (oracleColumns.length > 0) {
@@ -1441,9 +1779,15 @@ export async function POST(request: NextRequest) {
           if (!queryCols.has('Q_ID')) queryCols.add('Q_ID');
           if (!queryCols.has('DEL')) queryCols.add('DEL');
 
-          let specTableName = `${code}_comp`.toUpperCase();
-          if (code.toLowerCase() === 'an') {
-            specTableName = (targetTable === 'u_pipeline' ? 'an_comp_pipe' : 'an_comp_plat').toUpperCase();
+          let specTableName = `${upperCode}_COMP`;
+          if (isPipeline) {
+            if (upperCode === 'AN') specTableName = 'AN_COMP_PIPE';
+            else if (upperCode === 'PC') specTableName = 'PC_COMP_PIPE';
+            else if (upperCode === 'RC') specTableName = 'RC_COMP_PIPE';
+          } else {
+            if (upperCode === 'AN') specTableName = 'AN_COMP_PLAT';
+            else if (upperCode === 'RC') specTableName = 'RC_COMP_PLAT';
+            else if (upperCode === 'IT') specTableName = 'IT_COMP_PLAT';
           }
 
           let query = `
@@ -1484,7 +1828,8 @@ export async function POST(request: NextRequest) {
             }
 
             if (rows && rows.length > 0) {
-              report[code].oracleRows = rows.length;
+              report[code] = { status: "pending", oracleRows: rows.length, migratedRows: 0, errors: [] };
+              logs.push(`Processing ${rows.length} ${code} components...`);
               const pgRecords = rows.map(oracleData => {
                 const isDeletedVal = oracleData['DEL'];
                 const pgRecord: Record<string, any> = {
@@ -1536,59 +1881,90 @@ export async function POST(request: NextRequest) {
                 return pgRecord;
               });
 
-              // Insert or update in place
-              const compsToInsert: any[] = [];
               let migratedCount = 0;
 
               for (const record of pgRecords) {
-                const pgId = record.comp_id ? existingCompMap.get(Number(record.comp_id)) : null;
-                if (pgId) {
-                  // Update existing component in place
-                  const { error: updateErr } = await supabase
-                    .from("structure_components")
-                    .update(record as any)
-                    .eq("id", pgId);
+                const rawQId = record.q_id ? String(record.q_id).trim().toLowerCase() : "";
+                const rawIdNo = record.id_no ? String(record.id_no).trim().toLowerCase() : "";
+                const rawCompId = record.comp_id !== undefined && record.comp_id !== null ? Number(record.comp_id) : null;
 
-                  if (updateErr) {
-                    logs.push(`ERROR updating component ${record.q_id || record.comp_id}: ${updateErr.message}`);
-                    report[code].errors.push(updateErr.message);
-                  } else {
-                    migratedCount++;
-                    compIdMap.set(Number(record.comp_id), pgId);
-                    compTypeCache.set(Number(record.comp_id), code);
-                    if (record.q_id) {
-                      qIdMap.set(String(record.q_id).trim(), pgId);
-                    }
-                  }
-                } else {
-                  // Queue for insertion
-                  compsToInsert.push(record);
+                // Match candidate by Q_ID first (canonical physical identifier), then ID_NO, then COMP_ID
+                let pgId = rawQId ? existingCompByQIdMap.get(rawQId) : null;
+                if (!pgId && rawIdNo) {
+                  pgId = existingCompByIdNoMap.get(rawIdNo) || null;
                 }
-              }
+                if (!pgId && rawCompId !== null) {
+                  pgId = existingCompByCompIdMap.get(rawCompId) || null;
+                }
 
-              if (compsToInsert.length > 0) {
-                const { data: insertedComps, error: insertErr } = await supabase
-                  .from("structure_components")
-                  .insert(compsToInsert)
-                  .select("id, comp_id, q_id");
-
-                if (insertErr) {
-                  logs.push(`ERROR inserting new ${code} components: ${insertErr.message}`);
-                  report[code].errors.push(insertErr.message);
-                } else {
-                  migratedCount += compsToInsert.length;
-                  if (insertedComps) {
-                    insertedComps.forEach(comp => {
-                      const newPgId = Number(comp.id);
-                      if (comp.comp_id) {
-                        compIdMap.set(Number(comp.comp_id), newPgId);
-                        compTypeCache.set(Number(comp.comp_id), code);
-                      }
-                      if (comp.q_id) {
-                        qIdMap.set(String(comp.q_id).trim(), newPgId);
-                      }
-                    });
+                if (pgId) {
+                  // Existing component found in Supabase
+                  if (rawCompId !== null) {
+                    compIdMap.set(rawCompId, pgId);
+                    compTypeCache.set(rawCompId, code);
+                    existingCompByCompIdMap.set(rawCompId, pgId);
                   }
+                  if (record.q_id) {
+                    const qStr = String(record.q_id).trim();
+                    qIdMap.set(qStr.toUpperCase(), pgId);
+                    qIdMap.set(qStr, pgId);
+                    existingCompByQIdMap.set(rawQId, pgId);
+                  }
+                  if (record.id_no) {
+                    existingCompByIdNoMap.set(rawIdNo, pgId);
+                  }
+
+                  if (updateComponentSpecs) {
+                    // Update existing component specs in place
+                    const { error: updateErr } = await supabase
+                      .from("structure_components")
+                      .update(record as any)
+                      .eq("id", pgId);
+
+                    if (updateErr) {
+                      logs.push(`ERROR updating component ${record.q_id || record.id_no || record.comp_id}: ${updateErr.message}`);
+                      report[code].errors.push(updateErr.message);
+                    } else {
+                      migratedCount++;
+                      logs.push(`Updated existing component "${record.q_id || record.id_no || record.comp_id}" (Postgres ID: ${pgId}) with Oracle specs.`);
+                    }
+                  } else {
+                    // Clean specs preserved without overwriting
+                    migratedCount++;
+                    logs.push(`Preserved existing component "${record.q_id || record.id_no || record.comp_id}" (Postgres ID: ${pgId}) without overwriting. Linked Oracle COMP_ID ${rawCompId} -> Postgres ID ${pgId}.`);
+                  }
+                } else if (insertNewComponents) {
+                  // New component found -> Insert
+                  const { data: insertedComp, error: insertErr } = await supabase
+                    .from("structure_components")
+                    .insert(record as any)
+                    .select("id, comp_id, q_id, id_no")
+                    .single();
+
+                  if (insertErr) {
+                    logs.push(`ERROR inserting new component ${record.q_id || record.id_no || record.comp_id}: ${insertErr.message}`);
+                    report[code].errors.push(insertErr.message);
+                  } else if (insertedComp) {
+                    const newPgId = Number(insertedComp.id);
+                    migratedCount++;
+                    if (rawCompId !== null) {
+                      compIdMap.set(rawCompId, newPgId);
+                      compTypeCache.set(rawCompId, code);
+                      existingCompByCompIdMap.set(rawCompId, newPgId);
+                    }
+                    if (record.q_id) {
+                      const qKey = String(record.q_id).trim();
+                      qIdMap.set(qKey.toUpperCase(), newPgId);
+                      qIdMap.set(qKey, newPgId);
+                      existingCompByQIdMap.set(qKey.toLowerCase(), newPgId);
+                    }
+                    if (record.id_no) {
+                      existingCompByIdNoMap.set(String(record.id_no).trim().toLowerCase(), newPgId);
+                    }
+                    logs.push(`Inserted new discovered component "${record.q_id || record.id_no || record.comp_id}" (New Postgres ID: ${newPgId}).`);
+                  }
+                } else {
+                  logs.push(`Skipped new component "${record.q_id || record.id_no || record.comp_id}" (Insert New Components is disabled).`);
                 }
               }
 
@@ -1597,10 +1973,12 @@ export async function POST(request: NextRequest) {
               report[code].migratedRows = migratedCount;
             } else {
               logs.push(`No Oracle components found for code ${code} and Structure ID ${structureId}.`);
+              if (!report[code]) report[code] = { status: "success", oracleRows: 0, migratedRows: 0, errors: [] };
               report[code].status = "success";
             }
           } catch (err: any) {
             logs.push(`ERROR querying Oracle ${code} components: ${err.message}`);
+            if (!report[code]) report[code] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [] };
             report[code].errors.push(err.message);
           }
         }
@@ -1631,14 +2009,16 @@ export async function POST(request: NextRequest) {
               hasMore = false;
             } else {
               existingComps.forEach((comp: any) => {
-                if (comp.comp_id) {
+                const pgIdNum = Number(comp.id);
+                if (comp.comp_id !== null && comp.comp_id !== undefined) {
                   const compIdNum = Number(comp.comp_id);
-                  const pgIdNum = Number(comp.id);
                   compIdMap.set(compIdNum, pgIdNum);
                   compTypeCache.set(compIdNum, String(comp.code || '').trim());
-                  if (comp.q_id) {
-                    qIdMap.set(String(comp.q_id).trim().toUpperCase(), pgIdNum);
-                  }
+                }
+                if (comp.q_id && String(comp.q_id).trim()) {
+                  const qStr = String(comp.q_id).trim();
+                  qIdMap.set(qStr.toUpperCase(), pgIdNum);
+                  qIdMap.set(qStr, pgIdNum);
                 }
               });
               if (existingComps.length < pageSize) {
@@ -1791,6 +2171,11 @@ export async function POST(request: NextRequest) {
     const mediaTables = ["ATTACHMENT", "COMMENT"];
     if (structureSuccess) {
       for (const childTable of mediaTables) {
+        if (childTable === "ATTACHMENT" && !migrateAttachments) {
+          logs.push(`Skipped component & structure attachments migration (migrateAttachments option is disabled).`);
+          report["ATTACHMENT"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
+          continue;
+        }
         const childMappings = mappings[childTable] || [];
         if (childMappings.length > 0) {
           logs.push(`Migrating ${childTable}...`);
@@ -2001,74 +2386,111 @@ export async function POST(request: NextRequest) {
         logs.push(`Starting Relational Inspection Migration Pipeline (Phases 1 - 6)`);
         logs.push(`================================================================`);
 
-        // Purge existing relational data in PostgreSQL for this structure to ensure 100% idempotent clean re-runs
+        // Purge existing relational data in PostgreSQL for the target jobpack(s)
         logs.push(`Cleaning up existing inspection data in Postgres for Structure ID ${resolvedStructureId}...`);
 
-        const { data: existingInsps } = await supabase
-          .from("insp_records")
-          .select("insp_id")
-          .eq("structure_id", resolvedStructureId);
+        let targetInspIds: number[] = [];
+        let targetRovJobIds: number[] = [];
+        let targetDiveJobIds: number[] = [];
 
-        const inspIds = existingInsps?.map(i => i.insp_id) || [];
-        if (inspIds.length > 0) {
-          // Delete inspection attachments
-          await supabase.from("attachment").delete().in("source_type", ["inspection", "INSPECTION"]).in("source_id", inspIds);
-          // Delete anomalies
-          await supabase.from("insp_anomalies").delete().in("inspection_id", inspIds);
-          // Delete inspection records
-          await supabase.from("insp_records").delete().eq("structure_id", resolvedStructureId);
+        if (selectedInspNos && selectedInspNos.length > 0) {
+          // Scoped cleanup: only delete records belonging to the selected jobpack(s)
+          const { data: allStructJps } = await (supabase.from as any)("jobpack")
+            .select("id, name, oracle_insp_no, metadata, structure_id")
+            .or(`structure_id.eq.${resolvedStructureId},structure_id.eq.platform-${resolvedStructureId},structure_id.eq.pipeline-${resolvedStructureId}`);
+
+          const inspSet = new Set(selectedInspNos.map((s: any) => String(s).trim().toUpperCase()));
+
+          const targetJps = (allStructJps || []).filter((j: any) => {
+            const oNo = String(j.oracle_insp_no || "").trim().toUpperCase();
+            const n = String(j.name || "").trim().toUpperCase();
+            const mNo = String(j.metadata?.oracle_insp_no || j.metadata?.inspno || "").trim().toUpperCase();
+            return inspSet.has(oNo) || inspSet.has(n) || inspSet.has(mNo);
+          });
+
+          const targetJpIds = targetJps.map((j: any) => j.id).filter(Boolean);
+          if (targetJpIds.length > 0) {
+            logs.push(`Found ${targetJpIds.length} existing Job Pack(s) in Postgres to overwrite (IDs: ${targetJpIds.join(', ')})...`);
+
+            const { data: insps } = await supabase
+              .from("insp_records")
+              .select("insp_id")
+              .in("jobpack_id", targetJpIds);
+            targetInspIds = insps?.map((i: any) => i.insp_id) || [];
+
+            const { data: rJobs } = await (supabase.from as any)("insp_rov_jobs")
+              .select("rov_job_id")
+              .in("jobpack_id", targetJpIds);
+            targetRovJobIds = rJobs?.map((j: any) => j.rov_job_id) || [];
+
+            const { data: dJobs } = await (supabase.from as any)("insp_dive_jobs")
+              .select("dive_job_id")
+              .in("jobpack_id", targetJpIds);
+            targetDiveJobIds = dJobs?.map((j: any) => j.dive_job_id) || [];
+
+            const { data: sows } = await (supabase.from as any)("u_sow").select("id").in("jobpack_id", targetJpIds);
+            const sowIds = sows?.map((s: any) => s.id) || [];
+            if (sowIds.length > 0) {
+              await (supabase.from as any)("u_sow_items").delete().in("sow_id", sowIds);
+            }
+            await (supabase.from as any)("u_sow").delete().in("jobpack_id", targetJpIds);
+            await (supabase.from as any)("jobpack").delete().in("id", targetJpIds);
+          }
+        } else {
+          // Full structure inspection cleanup
+          const { data: existingInsps } = await supabase
+            .from("insp_records")
+            .select("insp_id")
+            .eq("structure_id", resolvedStructureId);
+          targetInspIds = existingInsps?.map(i => i.insp_id) || [];
+
+          const { data: rovJobs } = await (supabase.from as any)("insp_rov_jobs").select("rov_job_id").eq("structure_id", resolvedStructureId);
+          targetRovJobIds = rovJobs?.map((j: any) => j.rov_job_id) || [];
+
+          const { data: diveJobs } = await (supabase.from as any)("insp_dive_jobs").select("dive_job_id").eq("structure_id", resolvedStructureId);
+          targetDiveJobIds = diveJobs?.map((j: any) => j.dive_job_id) || [];
+
+          const { data: allSows } = await (supabase.from as any)("u_sow").select("id").eq("structure_id", resolvedStructureId);
+          const allSowIds = allSows?.map((s: any) => s.id) || [];
+          if (allSowIds.length > 0) {
+            await (supabase.from as any)("u_sow_items").delete().in("sow_id", allSowIds);
+          }
+          await (supabase.from as any)("u_sow").delete().eq("structure_id", resolvedStructureId);
+          await (supabase.from as any)("jobpack").delete().eq("structure_id", resolvedStructureId);
         }
 
-        const { data: rovJobs } = await (supabase.from as any)("insp_rov_jobs").select("rov_job_id").eq("structure_id", resolvedStructureId);
-        const rovJobIds = rovJobs?.map((j: any) => j.rov_job_id) || [];
-
-        const { data: diveJobs } = await (supabase.from as any)("insp_dive_jobs").select("dive_job_id").eq("structure_id", resolvedStructureId);
-        const diveJobIds = diveJobs?.map((j: any) => j.dive_job_id) || [];
+        if (targetInspIds.length > 0) {
+          await supabase.from("attachment").delete().in("source_type", ["inspection", "INSPECTION"]).in("source_id", targetInspIds);
+          await supabase.from("insp_anomalies").delete().in("inspection_id", targetInspIds);
+          await supabase.from("insp_records").delete().in("insp_id", targetInspIds);
+        }
 
         const tapeIds: number[] = [];
-        if (rovJobIds.length > 0) {
-          const { data: rovTapes, error: rtErr } = await (supabase.from as any)("insp_video_tapes")
-            .select("tape_id")
-            .in("rov_job_id", rovJobIds);
-          if (rtErr) {
-            logs.push(`WARNING: failed to select existing ROV tapes: ${rtErr.message}`);
-          } else if (rovTapes) {
-            rovTapes.forEach((t: any) => tapeIds.push(Number(t.tape_id)));
-          }
+        if (targetRovJobIds.length > 0) {
+          const { data: rovTapes } = await (supabase.from as any)("insp_video_tapes").select("tape_id").in("rov_job_id", targetRovJobIds);
+          rovTapes?.forEach((t: any) => tapeIds.push(Number(t.tape_id)));
         }
-        if (diveJobIds.length > 0) {
-          const { data: diveTapes, error: dtErr } = await (supabase.from as any)("insp_video_tapes")
-            .select("tape_id")
-            .in("dive_job_id", diveJobIds);
-          if (dtErr) {
-            logs.push(`WARNING: failed to select existing Diving tapes: ${dtErr.message}`);
-          } else if (diveTapes) {
-            diveTapes.forEach((t: any) => tapeIds.push(Number(t.tape_id)));
-          }
+        if (targetDiveJobIds.length > 0) {
+          const { data: diveTapes } = await (supabase.from as any)("insp_video_tapes").select("tape_id").in("dive_job_id", targetDiveJobIds);
+          diveTapes?.forEach((t: any) => tapeIds.push(Number(t.tape_id)));
         }
 
         if (tapeIds.length > 0) {
-          const { error: vlErr } = await (supabase.from as any)("insp_video_logs").delete().in("tape_id", tapeIds);
-          if (vlErr) logs.push(`WARNING: failed to delete existing video logs: ${vlErr.message}`);
-          const { error: vtErr } = await (supabase.from as any)("insp_video_tapes").delete().in("tape_id", tapeIds);
-          if (vtErr) logs.push(`WARNING: failed to delete existing video tapes: ${vtErr.message}`);
+          await (supabase.from as any)("insp_video_logs").delete().in("tape_id", tapeIds);
+          await (supabase.from as any)("insp_video_tapes").delete().in("tape_id", tapeIds);
         }
 
-        if (rovJobIds.length > 0) {
-          const { error: rvmErr } = await (supabase.from as any)("insp_rov_movements").delete().in("rov_job_id", rovJobIds);
-          if (rvmErr) logs.push(`WARNING: failed to delete existing ROV movements: ${rvmErr.message}`);
-          const { error: rvjErr } = await (supabase.from as any)("insp_rov_jobs").delete().in("rov_job_id", rovJobIds);
-          if (rvjErr) logs.push(`WARNING: failed to delete existing ROV jobs: ${rvjErr.message}`);
+        if (targetRovJobIds.length > 0) {
+          await (supabase.from as any)("insp_rov_movements").delete().in("rov_job_id", targetRovJobIds);
+          await (supabase.from as any)("insp_rov_jobs").delete().in("rov_job_id", targetRovJobIds);
         }
 
-        if (diveJobIds.length > 0) {
-          const { error: dvmErr } = await (supabase.from as any)("insp_dive_movements").delete().in("dive_job_id", diveJobIds);
-          if (dvmErr) logs.push(`WARNING: failed to delete existing Dive movements: ${dvmErr.message}`);
-          const { error: dvjErr } = await (supabase.from as any)("insp_dive_jobs").delete().in("dive_job_id", diveJobIds);
-          if (dvjErr) logs.push(`WARNING: failed to delete existing Dive jobs: ${dvjErr.message}`);
+        if (targetDiveJobIds.length > 0) {
+          await (supabase.from as any)("insp_dive_movements").delete().in("dive_job_id", targetDiveJobIds);
+          await (supabase.from as any)("insp_dive_jobs").delete().in("dive_job_id", targetDiveJobIds);
         }
 
-        logs.push(`Successfully purged existing relational data for a clean migration run.`);
+        logs.push(`Successfully prepared relational target tables for migration.`);
 
         // ---------------------------------------------------------------------
         // Phase 1: Fetch & Create Jobpack (jobpack) and SOW (u_sow)
@@ -2138,16 +2560,39 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Filter by selectedInspNo if provided
-        if (selectedInspNo) {
-          const matched = inspNos.filter(n => n === selectedInspNo);
+        // Fallback for Pipeline structures: check NAVIG table for INSPNOs
+        if (inspNos.length === 0) {
+          logs.push(`Trying NAVIG as fallback for Pipeline INSPNOs...`);
+          try {
+            const navResult = await oracleConn.execute(
+              `SELECT DISTINCT INSPNO FROM NAVIG WHERE STR_ID = :strId AND INSPNO IS NOT NULL`,
+              { strId: structureId }
+            );
+            if (navResult.rows) {
+              for (const row of navResult.rows as any[]) {
+                const inspno = String((row as any).INSPNO || (Array.isArray(row) ? row[0] : '') || '').trim();
+                if (inspno && !inspNos.includes(inspno)) {
+                  inspNos.push(inspno);
+                }
+              }
+              logs.push(`NAVIG fallback: Found ${inspNos.length} INSPNO(s).`);
+            }
+          } catch (navErr: any) {
+            logs.push(`Note on NAVIG INSPNO check: ${navErr.message}`);
+          }
+        }
+
+        // Filter by selectedInspNos if provided
+        if (selectedInspNos && selectedInspNos.length > 0) {
+          const targetSet = new Set(selectedInspNos.map(String));
+          const matched = inspNos.filter(n => targetSet.has(String(n)));
           inspNos.length = 0;
           if (matched.length > 0) {
-            inspNos.push(selectedInspNo);
+            inspNos.push(...matched);
           } else {
-            inspNos.push(selectedInspNo);
+            inspNos.push(...selectedInspNos.map(String));
           }
-          logs.push(`Filtering migration to single selected Job Pack (INSPNO: ${selectedInspNo}).`);
+          logs.push(`Filtering migration to ${inspNos.length} selected Job Pack(s): ${inspNos.join(', ')}.`);
         }
 
         // Build IN-clause bind variables for subsequent queries
@@ -2230,37 +2675,116 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Step 4: Fetch report prefix from sow_insp (STR_ID + INSPNO → REP_PREFIX)
+        // Step 4: Fetch report prefix from Oracle tables (sow_insp, taskstr, workpl, etc.)
         const sowPrefixMap = new Map<string, string>();
         if (inspNos.length > 0) {
           const { placeholders, binds } = buildInClause(inspNos);
+          
+          // 4a. Query sow_insp
           try {
-            // Check if sow_insp has STR_ID column
             const sowCols = await getOracleTableColumns(oracleConn, 'sow_insp');
-            let sowQuery: string;
-            let sowBinds: Record<string, any>;
-            if (sowCols.has('STR_ID')) {
-              sowQuery = `SELECT INSPNO, REP_PREFIX FROM sow_insp WHERE STR_ID = :strId AND INSPNO IN (${placeholders})`;
-              sowBinds = { strId: structureId, ...binds };
-            } else {
-              sowQuery = `SELECT INSPNO, REP_PREFIX FROM sow_insp WHERE INSPNO IN (${placeholders})`;
-              sowBinds = { ...binds };
-            }
-            const siResult = await oracleConn.execute(sowQuery, sowBinds);
-            if (siResult.rows) {
-              for (const row of siResult.rows as any[]) {
-                const inspno = String((row as any).INSPNO || (Array.isArray(row) ? row[0] : '') || '').trim();
-                const repPrefix = String((row as any).REP_PREFIX || (Array.isArray(row) ? row[1] : '') || '').trim();
-                // Keep first REP_PREFIX per INSPNO (avoid duplicates from multiple COMP_IDs)
-                if (inspno && repPrefix && !sowPrefixMap.has(inspno)) {
-                  sowPrefixMap.set(inspno, repPrefix);
-                }
+            if (sowCols.size > 0) {
+              const repCol = sowCols.has('REP_PREFIX') ? 'REP_PREFIX' : (sowCols.has('REP_NO') ? 'REP_NO' : (sowCols.has('REPORT_NO') ? 'REPORT_NO' : 'REP_PREFIX'));
+              
+              // First try with STR_ID match
+              if (sowCols.has('STR_ID')) {
+                try {
+                  const siResult = await oracleConn.execute(
+                    `SELECT INSPNO, ${repCol} FROM sow_insp WHERE STR_ID = :strId AND INSPNO IN (${placeholders})`,
+                    { strId: structureId, ...binds }
+                  );
+                  if (siResult.rows) {
+                    for (const row of siResult.rows as any[]) {
+                      const inspno = String((row as any).INSPNO || (Array.isArray(row) ? row[0] : '') || '').trim();
+                      const repPrefix = String((row as any)[repCol] || (row as any).REP_PREFIX || (row as any).REP_NO || (Array.isArray(row) ? row[1] : '') || '').trim();
+                      if (inspno && repPrefix && !sowPrefixMap.has(inspno)) {
+                        sowPrefixMap.set(inspno, repPrefix);
+                        logs.push(`sow_insp (by STR_ID): Found Report Prefix "${repPrefix}" for INSPNO "${inspno}".`);
+                      }
+                    }
+                  }
+                } catch (_) {}
               }
-              logs.push(`sow_insp: Fetched ${sowPrefixMap.size} report prefix(es).`);
+
+              // Fallback query sow_insp by INSPNO directly (for pipelines where STR_ID is null or 0 in sow_insp)
+              const missingInspNos = inspNos.filter(n => !sowPrefixMap.has(n));
+              if (missingInspNos.length > 0) {
+                try {
+                  const { placeholders: mPh, binds: mBinds } = buildInClause(missingInspNos);
+                  const siFallback = await oracleConn.execute(
+                    `SELECT INSPNO, ${repCol} FROM sow_insp WHERE INSPNO IN (${mPh})`,
+                    mBinds
+                  );
+                  if (siFallback.rows) {
+                    for (const row of siFallback.rows as any[]) {
+                      const inspno = String((row as any).INSPNO || (Array.isArray(row) ? row[0] : '') || '').trim();
+                      const repPrefix = String((row as any)[repCol] || (row as any).REP_PREFIX || (row as any).REP_NO || (Array.isArray(row) ? row[1] : '') || '').trim();
+                      if (inspno && repPrefix && !sowPrefixMap.has(inspno)) {
+                        sowPrefixMap.set(inspno, repPrefix);
+                        logs.push(`sow_insp (by INSPNO): Found Report Prefix "${repPrefix}" for INSPNO "${inspno}".`);
+                      }
+                    }
+                  }
+                } catch (_) {}
+              }
             }
           } catch (siErr: any) {
             logs.push(`WARNING: Failed to query sow_insp: ${siErr.message}`);
           }
+
+          // 4b. Fallback check on taskstr for REP_PREFIX
+          const missingTaskstrNos = inspNos.filter(n => !sowPrefixMap.has(n));
+          if (missingTaskstrNos.length > 0) {
+            try {
+              const taskCols = await getOracleTableColumns(oracleConn, 'taskstr');
+              if (taskCols.has('REP_PREFIX') || taskCols.has('REP_NO') || taskCols.has('REPORT_PREFIX') || taskCols.has('REPORT_NO')) {
+                const repCol = taskCols.has('REP_PREFIX') ? 'REP_PREFIX' : (taskCols.has('REP_NO') ? 'REP_NO' : (taskCols.has('REPORT_PREFIX') ? 'REPORT_PREFIX' : 'REPORT_NO'));
+                const { placeholders: tPh, binds: tBinds } = buildInClause(missingTaskstrNos);
+                const tResult = await oracleConn.execute(
+                  `SELECT INSPNO, ${repCol} FROM taskstr WHERE STR_ID = :strId AND INSPNO IN (${tPh})`,
+                  { strId: structureId, ...tBinds }
+                );
+                if (tResult.rows) {
+                  for (const row of tResult.rows as any[]) {
+                    const inspno = String((row as any).INSPNO || (Array.isArray(row) ? row[0] : '') || '').trim();
+                    const repPrefix = String((row as any)[repCol] || (Array.isArray(row) ? row[1] : '') || '').trim();
+                    if (inspno && repPrefix && !sowPrefixMap.has(inspno)) {
+                      sowPrefixMap.set(inspno, repPrefix);
+                      logs.push(`taskstr: Found Report Prefix "${repPrefix}" for INSPNO "${inspno}".`);
+                    }
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
+          // 4c. Fallback check on workpl for REP_PREFIX
+          const missingWorkplNos = inspNos.filter(n => !sowPrefixMap.has(n));
+          if (missingWorkplNos.length > 0) {
+            try {
+              const wpCols = await getOracleTableColumns(oracleConn, 'workpl');
+              if (wpCols.has('REP_PREFIX') || wpCols.has('REP_NO') || wpCols.has('REPORT_PREFIX') || wpCols.has('PREFIX')) {
+                const repCol = wpCols.has('REP_PREFIX') ? 'REP_PREFIX' : (wpCols.has('REP_NO') ? 'REP_NO' : (wpCols.has('REPORT_PREFIX') ? 'REPORT_PREFIX' : 'PREFIX'));
+                const { placeholders: wPh, binds: wBinds } = buildInClause(missingWorkplNos);
+                const wResult = await oracleConn.execute(
+                  `SELECT INSPNO, ${repCol} FROM workpl WHERE INSPNO IN (${wPh})`,
+                  wBinds
+                );
+                if (wResult.rows) {
+                  for (const row of wResult.rows as any[]) {
+                    const inspno = String((row as any).INSPNO || (Array.isArray(row) ? row[0] : '') || '').trim();
+                    const repPrefix = String((row as any)[repCol] || (Array.isArray(row) ? row[1] : '') || '').trim();
+                    if (inspno && repPrefix && !sowPrefixMap.has(inspno)) {
+                      sowPrefixMap.set(inspno, repPrefix);
+                      logs.push(`workpl: Found Report Prefix "${repPrefix}" for INSPNO "${inspno}".`);
+                    }
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
+          logs.push(`Total Oracle Report Prefixes resolved: ${sowPrefixMap.size} of ${inspNos.length} jobpack(s).`);
         }
 
         // Step 4.5: Pre-fetch MGI profiles from Oracle (filtered by selected INSPNOs) and build signature cache from Postgres
@@ -2694,10 +3218,37 @@ export async function POST(request: NextRequest) {
               // Distribute to ROV/Diving modes
               for (const item of pipelineInspections) {
                 const codeUpper = item.code.toUpperCase();
-                if (codeUpper === 'NAVIG') {
+                if (codeUpper === 'NAVIG' || codeUpper === 'ROVCLB') {
                   rovInspections.push(item);
-                } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO'].includes(codeUpper)) {
+                } else if (!['PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB'].includes(codeUpper)) {
                   divingInspections.push(item);
+                }
+              }
+
+              // Also directly check Oracle NAVIG table for ROV pipeline survey events
+              try {
+                const navigCheck = await oracleConn.execute(
+                  `SELECT COUNT(*) as CNT FROM NAVIG WHERE STR_ID = :strId AND (INSPNO = :inspNo OR INSPNO IS NULL)`,
+                  { strId: structureId, inspNo: oracleInspNo }
+                );
+                const navCnt = Number(navigCheck.rows?.[0]?.CNT || navigCheck.rows?.[0]?.[0] || 0);
+                if (navCnt > 0) {
+                  if (!rovInspections.some(i => i.code.toUpperCase() === 'NAVIG')) {
+                    rovInspections.push({
+                      code: 'NAVIG',
+                      name: 'ROV Pipeline Navigation / Survey'
+                    });
+                  }
+                }
+              } catch (_) {}
+
+              // Fallback: ensure NAVIG is always registered for Pipeline ROV mode
+              if (rovInspections.length === 0 || isPipeline || structureType === 'PIPELINE') {
+                if (!rovInspections.some(i => i.code.toUpperCase() === 'NAVIG')) {
+                  rovInspections.push({
+                    code: 'NAVIG',
+                    name: 'ROV Pipeline Navigation / Survey'
+                  });
                 }
               }
             }
@@ -2894,9 +3445,14 @@ export async function POST(request: NextRequest) {
             const hasNoReportNo = !repPrefixVal || repPrefixVal.toUpperCase() === "UNKNOWN" || repPrefixVal.toUpperCase() === "UNKNOW";
             const resolvedRepPrefix = hasNoReportNo ? startYear : repPrefixVal;
 
+            const isPipelineStruct = structureType === "PIPELINE" || isPipeline;
+            const defaultJobType = isPipelineStruct ? "ROV" : (jobTypeVal || "UNKNOWN");
+            const defaultInspType = isPipelineStruct ? "NAVIG" : undefined;
+
             const reportNumbers = [{
               number: resolvedRepPrefix,
-              job_type: jobTypeVal || "UNKNOWN"
+              job_type: defaultJobType,
+              insp_type: defaultInspType
             }];
 
             let parsedCrDate: string | undefined = undefined;
@@ -3026,6 +3582,92 @@ export async function POST(request: NextRequest) {
           report["JOBPACK"].status = "success";
         }
 
+        // ---------------------------------------------------------------------
+        // Pre-Migration Clean Sweep: Purge existing inspection data for selected Jobpack(s) & Structure
+        // ---------------------------------------------------------------------
+        const targetJobpackIds = Array.from(jpIdMap.values()).map(Number).filter(Boolean);
+        if (targetJobpackIds.length > 0 && resolvedStructureId) {
+          logs.push(`[Pre-Migration Clean Sweep] Purging previous inspection data, jobs, tapes, logs, anomalies, and attachments for Jobpack ID(s): [${targetJobpackIds.join(', ')}] on Structure ID: ${resolvedStructureId}...`);
+          try {
+            // 1. Fetch existing insp_records IDs
+            const { data: oldRecords } = await (supabase.from as any)("insp_records")
+              .select("insp_id")
+              .eq("structure_id", resolvedStructureId)
+              .in("jobpack_id", targetJobpackIds);
+
+            const oldInspIds = (oldRecords || []).map((r: any) => Number(r.insp_id)).filter(Boolean);
+            if (oldInspIds.length > 0) {
+              for (let i = 0; i < oldInspIds.length; i += 200) {
+                const chunk = oldInspIds.slice(i, i + 200);
+                await (supabase.from as any)("insp_anomalies").delete().in("insp_id", chunk);
+                await (supabase.from as any)("insp_attachments").delete().in("insp_id", chunk);
+                await (supabase.from as any)("insp_records").delete().in("insp_id", chunk);
+              }
+              logs.push(`[Pre-Migration Clean Sweep] Purged ${oldInspIds.length} existing insp_records and associated anomalies/attachments.`);
+            }
+
+            // 2. Fetch and purge existing ROV & Diving Jobs
+            const { data: oldRovJobs } = await (supabase.from as any)("insp_rov_jobs")
+              .select("rov_job_id")
+              .eq("structure_id", resolvedStructureId)
+              .in("jobpack_id", targetJobpackIds);
+
+            const { data: oldDiveJobs } = await (supabase.from as any)("insp_dive_jobs")
+              .select("dive_job_id")
+              .eq("structure_id", resolvedStructureId)
+              .in("jobpack_id", targetJobpackIds);
+
+            const oldRovJobIds = (oldRovJobs || []).map((j: any) => Number(j.rov_job_id)).filter(Boolean);
+            const oldDiveJobIds = (oldDiveJobs || []).map((j: any) => Number(j.dive_job_id)).filter(Boolean);
+
+            // 3. Find and purge Video Tapes & Video Logs
+            const oldTapeIds: number[] = [];
+            if (oldRovJobIds.length > 0) {
+              const { data: rovTapes } = await (supabase.from as any)("insp_video_tapes").select("tape_id").in("rov_job_id", oldRovJobIds);
+              if (rovTapes) oldTapeIds.push(...rovTapes.map((t: any) => Number(t.tape_id)));
+            }
+            if (oldDiveJobIds.length > 0) {
+              const { data: diveTapes } = await (supabase.from as any)("insp_video_tapes").select("tape_id").in("dive_job_id", oldDiveJobIds);
+              if (diveTapes) oldTapeIds.push(...diveTapes.map((t: any) => Number(t.tape_id)));
+            }
+
+            if (oldTapeIds.length > 0) {
+              for (let i = 0; i < oldTapeIds.length; i += 200) {
+                const chunk = oldTapeIds.slice(i, i + 200);
+                await (supabase.from as any)("insp_video_logs").delete().in("tape_id", chunk);
+                await (supabase.from as any)("insp_video_tapes").delete().in("tape_id", chunk);
+              }
+              logs.push(`[Pre-Migration Clean Sweep] Purged ${oldTapeIds.length} existing video tape(s) and their video logs.`);
+            }
+
+            // 4. Purge Movements and Jobs
+            if (oldRovJobIds.length > 0) {
+              for (let i = 0; i < oldRovJobIds.length; i += 200) {
+                const chunk = oldRovJobIds.slice(i, i + 200);
+                await (supabase.from as any)("insp_rov_movements").delete().in("rov_job_id", chunk);
+                await (supabase.from as any)("insp_movements").delete().in("rov_job_id", chunk);
+                await (supabase.from as any)("insp_rov_jobs").delete().in("rov_job_id", chunk);
+              }
+            }
+
+            if (oldDiveJobIds.length > 0) {
+              for (let i = 0; i < oldDiveJobIds.length; i += 200) {
+                const chunk = oldDiveJobIds.slice(i, i + 200);
+                await (supabase.from as any)("insp_dive_movements").delete().in("dive_job_id", chunk);
+                await (supabase.from as any)("insp_movements").delete().in("dive_job_id", chunk);
+                await (supabase.from as any)("insp_dive_jobs").delete().in("dive_job_id", chunk);
+              }
+            }
+
+            // 5. Purge u_sow for this structure & jobpack
+            await (supabase.from as any)("u_sow").delete().eq("structure_id", resolvedStructureId).in("jobpack_id", targetJobpackIds);
+
+            logs.push(`[Pre-Migration Clean Sweep] Completed cleanly. Ready for fresh data migration.`);
+          } catch (sweepErr: any) {
+            logs.push(`[Pre-Migration Clean Sweep] Notice: ${sweepErr.message}`);
+          }
+        }
+
         // Cache SOW report number scope from Oracle sow_insp table
         // Keys cached: exactKey (inspNo_compId_code), compKey (inspNo_compId), codeKey (inspNo__code)
         const sowInspCache = new Map<string, string>();
@@ -3103,6 +3745,19 @@ export async function POST(request: NextRequest) {
               logs.push(`Loaded ${sowInspCache.size} scope of work mappings from Oracle 'sow_insp' into SOW Report Cache.`);
             }
           }
+
+          // For pipelines, ensure default NAVIG sow_report_no is registered in sowInspCache
+          if (isPipeline || structureType === "PIPELINE") {
+            for (const [inspNo, repPrefix] of Array.from(jobpackDefaultPrefixMap.entries())) {
+              const codeKey = `code_${inspNo}_NAVIG`;
+              if (!sowInspCache.has(codeKey)) {
+                sowInspCache.set(codeKey, repPrefix);
+              }
+              if (!sowInspCache.has(`${inspNo}_NAVIG`)) {
+                sowInspCache.set(`${inspNo}_NAVIG`, repPrefix);
+              }
+            }
+          }
         } catch (sowErr: any) {
           logs.push(`WARNING: SOW scope load skipped: ${sowErr.message}`);
         }
@@ -3176,7 +3831,9 @@ export async function POST(request: NextRequest) {
             const superCol = logsCols.has('SUPV') ? 'SUPV' : (logsCols.has('SUPERVISOR') ? 'SUPERVISOR' : null);
             const coordCol = logsCols.has('REC_CORD') ? 'REC_CORD' : (logsCols.has('REP_CO') ? 'REP_CO' : null);
 
+            const repNoCol = logsCols.has('REP_PREFIX') ? 'REP_PREFIX' : (logsCols.has('REP_NO') ? 'REP_NO' : (logsCols.has('REPORT_NO') ? 'REPORT_NO' : (logsCols.has('SOW_REPORT_NO') ? 'SOW_REPORT_NO' : null)));
             const selectCols: string[] = ['STR_ID', 'INSPNO'];
+            if (repNoCol) selectCols.push(repNoCol);
             if (typeCol) selectCols.push(typeCol);
             if (dateCol) selectCols.push(dateCol);
             if (timeCol) selectCols.push(timeCol);
@@ -3206,13 +3863,14 @@ export async function POST(request: NextRequest) {
 
             const logsResult = await oracleConn.execute(logsQuery, { strId: structureId });
             let rows = logsResult.rows as any[];
-            if (selectedInspNo && rows && rows.length > 0) {
+            if (inspNos.length > 0 && rows && rows.length > 0) {
+              const targetSet = new Set(inspNos.map(String));
               const inspNoIdx = selectCols.indexOf('INSPNO');
               rows = rows.filter((row: any) => {
                 const rObj = Array.isArray(row) ? { INSPNO: row[inspNoIdx > -1 ? inspNoIdx : 1] } : row;
-                return String(rObj.INSPNO || "").trim() === selectedInspNo;
+                return targetSet.has(String(rObj.INSPNO || "").trim());
               });
-              logs.push(`Filtered LOGS rows to ${rows.length} record(s) matching selected INSPNO ${selectedInspNo}.`);
+              logs.push(`Filtered LOGS rows to ${rows.length} record(s) matching selected Job Pack(s) (${inspNos.join(', ')}).`);
             }
 
             if (rows && rows.length > 0) {
@@ -3232,6 +3890,7 @@ export async function POST(request: NextRequest) {
                 const standardObj = {
                   STR_ID: rowObj.STR_ID,
                   INSPNO: rowObj.INSPNO,
+                  REP_PREFIX: rowObj[repNoCol || ''] || rowObj.REP_PREFIX || rowObj.REP_NO || rowObj.REPORT_NO || '',
                   LOG_TYPE: rowObj[typeCol || ''] || rowObj.LOG_TYPE,
                   LOG_DATE: rowObj[dateCol || ''] || rowObj.LOG_DATE || rowObj.INSP_DATE,
                   LOG_TIME: rowObj[timeCol || ''] || rowObj.LOG_TIME || rowObj.INSP_TIME,
@@ -3250,6 +3909,7 @@ export async function POST(request: NextRequest) {
                 const diveNo = String(standardObj.DIVE_NO || "").trim();
                 const tapeNo = String(standardObj.TAPE_NO || "").trim();
                 const logType = String(standardObj.LOG_TYPE || "").trim().toUpperCase();
+                const repNo = String(standardObj.REP_PREFIX || jobpackDefaultPrefixMap.get(inspNo) || "").trim();
 
                 if (inspNo && diveNo) {
                   inspNoToDiveMap.set(inspNo.toUpperCase(), diveNo);
@@ -3279,12 +3939,14 @@ export async function POST(request: NextRequest) {
                   return;
                 }
 
-                const key = `${inspNo}_${diveNo}`;
+                // Differentiate by INSPNO, SOW report number, and DIVE_NO
+                const key = repNo ? `${inspNo}_${repNo}_${diveNo}` : `${inspNo}_${diveNo}`;
 
                 // Pack raw rowObj and standardObj inside the item so we can access both in helper
                 const packedObj = {
                   raw: rowObj,
-                  standard: standardObj
+                  standard: standardObj,
+                  repNo
                 };
 
                 if (logType === 'ROV LOG') {
@@ -3298,71 +3960,73 @@ export async function POST(request: NextRequest) {
 
               report["LOGS_JOBS"].oracleRows = rovGroups.size + diveGroups.size;
 
-              // Count only the records that were actually eligible for migration
-              // (i.e. after filtering out vessel logs, records with missing keys, and unsupported types)
-              let eligibleMovementCount = 0;
-              for (const items of Array.from(rovGroups.values())) eligibleMovementCount += items.length;
-              for (const items of Array.from(diveGroups.values())) eligibleMovementCount += items.length;
-              report["LOGS_MOVEMENTS"].oracleRows = eligibleMovementCount;
-
               let rovJobsCount = 0;
               let rovMovementsCount = 0;
               let diveJobsCount = 0;
               let diveMovementsCount = 0;
 
-              // Create ROV Jobs
-              for (const [key, items] of Array.from(rovGroups.entries())) {
-                const firstItem = items[0];
-                const lastItem = items[items.length - 1];
-                const [inspNo, diveNo] = key.split('_');
+            // Create ROV Jobs
+            for (const [key, items] of Array.from(rovGroups.entries())) {
+              const firstItem = items[0];
+              const lastItem = items[items.length - 1];
+              const inspNo = String(firstItem.standard.INSPNO || "").trim();
+              const diveNo = String(firstItem.standard.DIVE_NO || "").trim();
+              const sowReportNo = String(firstItem.repNo || jobpackDefaultPrefixMap.get(inspNo) || "").trim();
 
-                const pgJpId = jpIdMap.get(inspNo);
+              const pgJpId = jpIdMap.get(inspNo);
 
-                const op = String(getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.rov_operator", "DIVER") || getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.rov_operator", "OPERATOR") || 'MIGRATION').trim();
-                const sv = String(getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.rov_supervisor", "SUPERVISOR") || 'MIGRATION').trim();
-                const co = String(getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.report_coordinator", "REP_CO") || 'MIGRATION').trim();
+              const op = String(getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.rov_operator", "OPERATOR") || 'MIGRATION').trim();
+              const sv = String(getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.rov_supervisor", "SUPERVISOR") || 'MIGRATION').trim();
+              const co = String(getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.report_coordinator", "REP_CO") || 'MIGRATION').trim();
 
-                const mappedDiveNo = String(getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.deployment_no", "DIVE_NO") || diveNo).trim();
-                const uniqueDeploymentNo = mappedDiveNo;
+              const mappedDeploymentNo = String(getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.deployment_no", "DIVE_NO") || diveNo).trim();
+              const deploymentNo = mappedDeploymentNo;
+              const deploymentDate = formatLocalDateOnly(firstItem.standard.LOG_DATE) || formatLocalDateOnly(new Date())!;
 
-                // Delete existing ROV Job with this deployment_no to avoid unique key conflicts and clear old movements/tapes
-                const { data: existingRovJob } = await (supabase.from as any)("insp_rov_jobs")
-                  .select("rov_job_id")
-                  .eq("deployment_no", uniqueDeploymentNo)
-                  .maybeSingle();
+              // Check if an existing ROV Job exists for THIS structure, jobpack, and SOW report number
+              let existingJobQuery = (supabase.from as any)("insp_rov_jobs")
+                .select("rov_job_id, jobpack_id, structure_id, sow_report_no")
+                .eq("deployment_no", deploymentNo)
+                .eq("structure_id", resolvedStructureId);
 
-                if (existingRovJob) {
-                  const oldRovJobId = Number(existingRovJob.rov_job_id);
-                  logs.push(`Found existing ROV Job (ID: ${oldRovJobId}) for deployment "${uniqueDeploymentNo}". Purging it and its dependencies for a clean re-run.`);
-                  
-                  // Delete associated movements and tapes first to be safe
-                  await (supabase.from as any)("insp_rov_movements").delete().eq("rov_job_id", oldRovJobId);
-                  
-                  const { data: oldTapes } = await (supabase.from as any)("insp_video_tapes").select("tape_id").eq("rov_job_id", oldRovJobId);
-                  if (oldTapes && oldTapes.length > 0) {
-                    const tapeIds = oldTapes.map((t: any) => Number(t.tape_id));
-                    await (supabase.from as any)("insp_video_logs").delete().in("tape_id", tapeIds);
-                    await (supabase.from as any)("insp_video_tapes").delete().in("tape_id", tapeIds);
-                  }
-                  
-                  // Delete the job itself
-                  const { error: delErr } = await (supabase.from as any)("insp_rov_jobs").delete().eq("rov_job_id", oldRovJobId);
-                  if (delErr) {
-                    logs.push(`WARNING: Failed to delete existing ROV Job ID ${oldRovJobId}: ${delErr.message}`);
-                  }
-                }
+              if (pgJpId) {
+                existingJobQuery = existingJobQuery.eq("jobpack_id", pgJpId);
+              } else {
+                existingJobQuery = existingJobQuery.is("jobpack_id", null);
+              }
 
-                const mappedDate = getMappedValue(rovLogMappings, firstItem.raw, firstItem.standard, "job.deployment_date", "LOG_DATE");
-                const deploymentDate = mappedDate
-                  ? combineDateTime(mappedDate, firstItem.standard.LOG_TIME).split('T')[0]
-                  : combineDateTime(firstItem.standard.LOG_DATE, firstItem.standard.LOG_TIME).split('T')[0];
+              if (sowReportNo) {
+                existingJobQuery = existingJobQuery.eq("sow_report_no", sowReportNo);
+              }
 
+              const { data: existingJob } = await existingJobQuery.maybeSingle();
+
+              let rovJobId: number | null = null;
+              if (existingJob) {
+                // Safely update/reuse existing job for this jobpack and SOW report
+                rovJobId = Number(existingJob.rov_job_id);
+                await (supabase.from as any)("insp_rov_movements").delete().eq("rov_job_id", rovJobId);
+                await (supabase.from as any)("insp_video_tapes").delete().eq("rov_job_id", rovJobId);
+                await (supabase.from as any)("insp_rov_jobs").update({
+                  sow_report_no: sowReportNo || jobpackDefaultPrefixMap.get(inspNo) || null,
+                  rov_serial_no: 'ROV-01',
+                  rov_operator: op,
+                  rov_supervisor: sv,
+                  report_coordinator: co,
+                  deployment_date: deploymentDate,
+                  start_time: formatTimeOnly(firstItem.standard.LOG_TIME),
+                  end_time: formatTimeOnly(lastItem.standard.LOG_TIME),
+                  status: 'COMPLETED',
+                  additional_info: { original_dive_no: diveNo }
+                }).eq("rov_job_id", rovJobId);
+                logs.push(`Reused and updated ROV Job ID: ${rovJobId} for deployment "${deploymentNo}" (JP: ${inspNo}, SOW: ${sowReportNo || 'N/A'})`);
+              } else {
                 const { data: newJob, error: jobErr } = await (supabase.from as any)("insp_rov_jobs")
                   .insert({
-                    deployment_no: uniqueDeploymentNo,
+                    deployment_no: deploymentNo,
                     structure_id: resolvedStructureId,
                     jobpack_id: pgJpId || null,
-                    sow_report_no: jobpackDefaultPrefixMap.get(inspNo) || null,
+                    sow_report_no: sowReportNo || jobpackDefaultPrefixMap.get(inspNo) || null,
                     rov_serial_no: 'ROV-01',
                     rov_operator: op,
                     rov_supervisor: sv,
@@ -3379,36 +4043,40 @@ export async function POST(request: NextRequest) {
                   .single();
 
                 if (jobErr) {
-                  logs.push(`ERROR creating ROV Job for deployment ${uniqueDeploymentNo}: ${jobErr.message}`);
-                  report["LOGS_JOBS"].errors.push(jobErr.message);
-                  continue;
+                  // Fallback in case of existing match
+                  const { data: fallbackJob } = await (supabase.from as any)("insp_rov_jobs")
+                    .select("rov_job_id")
+                    .eq("deployment_no", deploymentNo)
+                    .eq("structure_id", resolvedStructureId)
+                    .maybeSingle();
+                  if (fallbackJob) {
+                    rovJobId = Number(fallbackJob.rov_job_id);
+                    logs.push(`Reused matched ROV Job ID: ${rovJobId} for deployment "${deploymentNo}"`);
+                  } else {
+                    logs.push(`ERROR creating ROV Job for deployment ${deploymentNo} (JP: ${inspNo}, SOW: ${sowReportNo}): ${jobErr.message}`);
+                    report["LOGS_JOBS"].errors.push(jobErr.message);
+                    continue;
+                  }
+                } else if (newJob) {
+                  rovJobId = Number(newJob.rov_job_id);
                 }
+              }
 
-                const rovJobId = Number(newJob.rov_job_id);
+              if (rovJobId) {
                 rovJobsCache.set(key, rovJobId);
+                rovJobsCache.set(`${inspNo}_${diveNo}`, rovJobId);
                 rovJobsCount++;
-                logs.push(`Created ROV Job ID: ${rovJobId} (deployment ${uniqueDeploymentNo}) with structure_id: ${resolvedStructureId}, jobpack_id: ${pgJpId || 'null'}, sow_report_no: ${jobpackDefaultPrefixMap.get(inspNo) || 'null'}`);
 
-                // Insert Movements (including all items so no events are lost)
-                const movements = items.map(item => {
-                  const detail = String(getMappedValue(rovLogMappings, item.raw, item.standard, "movement.remarks", "LOG_DETAIL") || "").trim();
-                  const mType = getRovMovementType(detail);
-
-                  const depthVal = getMappedValue(rovLogMappings, item.raw, item.standard, "movement.depth_meters", "WATER_DEPTH") || getMappedValue(rovLogMappings, item.raw, item.standard, "movement.depth_meters", "DEPTH");
-                  const depth = depthVal ? Number(depthVal) : null;
-
-                  const itemLogDate = getMappedValue(rovLogMappings, item.raw, item.standard, "movement.movement_time", "LOG_DATE") || item.standard.LOG_DATE;
-
-                  return {
-                    rov_job_id: rovJobId,
-                    movement_type: mType,
-                    movement_time: combineDateTime(itemLogDate, item.standard.LOG_TIME),
-                    depth_meters: depth,
-                    remarks: detail,
-                    cr_user: 'migration',
-                    workunit: '000'
-                  };
-                });
+                // Insert Movements
+                const movements = items.map(item => ({
+                  rov_job_id: rovJobId,
+                  movement_type: getRovMovementType(item.standard.LOG_DETAIL),
+                  movement_time: combineDateTime(item.standard.LOG_DATE, item.standard.LOG_TIME),
+                  depth_meters: item.standard.DEPTH ? Number(item.standard.DEPTH) : null,
+                  remarks: item.standard.LOG_DETAIL,
+                  cr_user: 'migration',
+                  workunit: '000'
+                }));
 
                 if (movements.length > 0) {
                   const { error: mvErr } = await (supabase.from as any)("insp_rov_movements").insert(movements);
@@ -3420,63 +4088,69 @@ export async function POST(request: NextRequest) {
                   }
                 }
               }
+            }
 
-              // Create Dive Jobs
-              for (const [key, items] of Array.from(diveGroups.entries())) {
-                const firstItem = items[0];
-                const lastItem = items[items.length - 1];
-                const [inspNo, diveNo] = key.split('_');
+            // Create Dive Jobs
+            for (const [key, items] of Array.from(diveGroups.entries())) {
+              const firstItem = items[0];
+              const lastItem = items[items.length - 1];
+              const inspNo = String(firstItem.standard.INSPNO || "").trim();
+              const diveNo = String(firstItem.standard.DIVE_NO || "").trim();
+              const sowReportNo = String(firstItem.repNo || jobpackDefaultPrefixMap.get(inspNo) || "").trim();
 
-                const pgJpId = jpIdMap.get(inspNo);
+              const pgJpId = jpIdMap.get(inspNo);
 
-                const diver = String(getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.diver_name", "DIVER") || 'MIGRATION').trim();
-                const sv = String(getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.dive_supervisor", "SUPERVISOR") || 'MIGRATION').trim();
-                const co = String(getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.report_coordinator", "REP_CO") || 'MIGRATION').trim();
+              const diver = String(getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.diver_name", "DIVER") || 'MIGRATION').trim();
+              const sv = String(getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.dive_supervisor", "SUPERVISOR") || 'MIGRATION').trim();
+              const co = String(getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.report_coordinator", "REP_CO") || 'MIGRATION').trim();
 
-                const mappedDiveNo = String(getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.dive_no", "DIVE_NO") || diveNo).trim();
-                const uniqueDiveNo = mappedDiveNo;
+              const mappedDiveNo = String(getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.dive_no", "DIVE_NO") || diveNo).trim();
+              const diveNoVal = mappedDiveNo;
+              const diveDate = formatLocalDateOnly(firstItem.standard.LOG_DATE) || formatLocalDateOnly(new Date())!;
 
-                // Delete existing Diving Job with this dive_no to avoid unique key conflicts and clear old movements/tapes
-                const { data: existingDiveJob } = await (supabase.from as any)("insp_dive_jobs")
-                  .select("dive_job_id")
-                  .eq("dive_no", uniqueDiveNo)
-                  .maybeSingle();
+              // Check if an existing Diving Job with this dive_no exists for THIS structure, jobpack, and SOW report number
+              let existingDiveQuery = (supabase.from as any)("insp_dive_jobs")
+                .select("dive_job_id, jobpack_id, structure_id, sow_report_no")
+                .eq("dive_no", diveNoVal)
+                .eq("structure_id", resolvedStructureId);
 
-                if (existingDiveJob) {
-                  const oldDiveJobId = Number(existingDiveJob.dive_job_id);
-                  logs.push(`Found existing Diving Job (ID: ${oldDiveJobId}) for dive "${uniqueDiveNo}". Purging it and its dependencies for a clean re-run.`);
-                  
-                  // Delete associated movements and tapes first to be safe
-                  await (supabase.from as any)("insp_dive_movements").delete().eq("dive_job_id", oldDiveJobId);
-                  
-                  const { data: oldTapes } = await (supabase.from as any)("insp_video_tapes").select("tape_id").eq("dive_job_id", oldDiveJobId);
-                  if (oldTapes && oldTapes.length > 0) {
-                    const tapeIds = oldTapes.map((t: any) => Number(t.tape_id));
-                    await (supabase.from as any)("insp_video_logs").delete().in("tape_id", tapeIds);
-                    await (supabase.from as any)("insp_video_tapes").delete().in("tape_id", tapeIds);
-                  }
-                  
-                  // Delete the job itself
-                  const { error: delErr } = await (supabase.from as any)("insp_dive_jobs").delete().eq("dive_job_id", oldDiveJobId);
-                  if (delErr) {
-                    logs.push(`WARNING: Failed to delete existing Diving Job ID ${oldDiveJobId}: ${delErr.message}`);
-                  }
-                }
+              if (pgJpId) {
+                existingDiveQuery = existingDiveQuery.eq("jobpack_id", pgJpId);
+              } else {
+                existingDiveQuery = existingDiveQuery.is("jobpack_id", null);
+              }
 
-                const mappedDate = getMappedValue(diveLogMappings, firstItem.raw, firstItem.standard, "job.dive_date", "LOG_DATE");
-                const diveDate = mappedDate
-                  ? combineDateTime(mappedDate, firstItem.standard.LOG_TIME).split('T')[0]
-                  : combineDateTime(firstItem.standard.LOG_DATE, firstItem.standard.LOG_TIME).split('T')[0];
+              if (sowReportNo) {
+                existingDiveQuery = existingDiveQuery.eq("sow_report_no", sowReportNo);
+              }
 
-                const hasBell = items.some(item => String(item.standard.LOG_TYPE).toUpperCase() === 'BELL LOG');
+              const { data: existingDiveJob } = await existingDiveQuery.maybeSingle();
 
+              let diveJobId: number | null = null;
+              if (existingDiveJob) {
+                // Safely update/reuse existing dive job for this jobpack and SOW report number
+                diveJobId = Number(existingDiveJob.dive_job_id);
+                await (supabase.from as any)("insp_dive_movements").delete().eq("dive_job_id", diveJobId);
+                await (supabase.from as any)("insp_video_tapes").delete().eq("dive_job_id", diveJobId);
+                await (supabase.from as any)("insp_dive_jobs").update({
+                  sow_report_no: sowReportNo || jobpackDefaultPrefixMap.get(inspNo) || null,
+                  diver_name: diver,
+                  dive_supervisor: sv,
+                  report_coordinator: co,
+                  dive_date: diveDate,
+                  start_time: formatTimeOnly(firstItem.standard.LOG_TIME),
+                  end_time: formatTimeOnly(lastItem.standard.LOG_TIME),
+                  status: 'COMPLETED',
+                  additional_info: { original_dive_no: diveNo }
+                }).eq("dive_job_id", diveJobId);
+                logs.push(`Reused and updated Diving Job ID: ${diveJobId} for dive "${diveNoVal}" (JP: ${inspNo}, SOW: ${sowReportNo || 'N/A'})`);
+              } else {
                 const { data: newJob, error: jobErr } = await (supabase.from as any)("insp_dive_jobs")
                   .insert({
-                    dive_no: uniqueDiveNo,
+                    dive_no: diveNoVal,
                     structure_id: resolvedStructureId,
                     jobpack_id: pgJpId || null,
-                    sow_report_no: jobpackDefaultPrefixMap.get(inspNo) || null,
-                    dive_type: hasBell ? 'BELL' : 'AIR',
+                    sow_report_no: sowReportNo || jobpackDefaultPrefixMap.get(inspNo) || null,
                     diver_name: diver,
                     dive_supervisor: sv,
                     report_coordinator: co,
@@ -3484,86 +4158,83 @@ export async function POST(request: NextRequest) {
                     start_time: formatTimeOnly(firstItem.standard.LOG_TIME),
                     end_time: formatTimeOnly(lastItem.standard.LOG_TIME),
                     status: 'COMPLETED',
-                    additional_info: { original_dive_no: diveNo, dive_type: hasBell ? 'BELL' : 'DIVER' },
+                    additional_info: { original_dive_no: diveNo },
                     cr_user: 'migration',
+                    workunit: '000'
                   })
                   .select("dive_job_id")
                   .single();
 
                 if (jobErr) {
-                  logs.push(`ERROR creating Dive Job for dive ${uniqueDiveNo}: ${jobErr.message}`);
-                  report["LOGS_JOBS"].errors.push(jobErr.message);
-                  continue;
+                  // Fallback in case of existing match
+                  const { data: fallbackDive } = await (supabase.from as any)("insp_dive_jobs")
+                    .select("dive_job_id")
+                    .eq("dive_no", diveNoVal)
+                    .eq("structure_id", resolvedStructureId)
+                    .maybeSingle();
+                  if (fallbackDive) {
+                    diveJobId = Number(fallbackDive.dive_job_id);
+                    logs.push(`Reused matched Diving Job ID: ${diveJobId} for dive "${diveNoVal}"`);
+                  } else {
+                    logs.push(`ERROR creating Diving Job for dive ${diveNoVal} (JP: ${inspNo}, SOW: ${sowReportNo}): ${jobErr.message}`);
+                    report["LOGS_JOBS"].errors.push(jobErr.message);
+                    continue;
+                  }
+                } else if (newJob) {
+                  diveJobId = Number(newJob.dive_job_id);
                 }
+              }
 
-                const diveJobId = Number(newJob.dive_job_id);
+              if (diveJobId) {
                 diveJobsCache.set(key, diveJobId);
+                diveJobsCache.set(`${inspNo}_${diveNo}`, diveJobId);
                 diveJobsCount++;
-                logs.push(`Created Diving Job ID: ${diveJobId} (dive ${uniqueDiveNo}) with structure_id: ${resolvedStructureId}, jobpack_id: ${pgJpId || 'null'}, sow_report_no: ${jobpackDefaultPrefixMap.get(inspNo) || 'null'}`);
 
-                // Insert Movements (including all items so no events are lost)
-                const movements = items.map(item => {
-                  const detail = String(getMappedValue(diveLogMappings, item.raw, item.standard, "movement.remarks", "LOG_DETAIL") || "").trim();
-                  const mType = getDiveMovementType(detail);
-
-                  const depthVal = getMappedValue(diveLogMappings, item.raw, item.standard, "movement.depth_meters", "WATER_DEPTH") || getMappedValue(diveLogMappings, item.raw, item.standard, "movement.depth_meters", "DEPTH");
-                  const depth = depthVal ? Number(depthVal) : null;
-
-                  const itemLogDate = getMappedValue(diveLogMappings, item.raw, item.standard, "movement.movement_time", "LOG_DATE") || item.standard.LOG_DATE;
-
-                  return {
-                    dive_job_id: diveJobId,
-                    movement_type: mType,
-                    movement_time: combineDateTime(itemLogDate, item.standard.LOG_TIME),
-                    depth_meters: depth,
-                    remarks: detail,
-                    cr_user: 'migration',
-                    workunit: '000'
-                  };
-                });
+                // Insert Movements
+                const movements = items.map(item => ({
+                  dive_job_id: diveJobId,
+                  movement_type: getDiveMovementType(item.standard.LOG_DETAIL),
+                  movement_time: combineDateTime(item.standard.LOG_DATE, item.standard.LOG_TIME),
+                  depth_meters: item.standard.DEPTH ? Number(item.standard.DEPTH) : null,
+                  remarks: item.standard.LOG_DETAIL,
+                  cr_user: 'migration',
+                  workunit: '000'
+                }));
 
                 if (movements.length > 0) {
                   const { error: mvErr } = await (supabase.from as any)("insp_dive_movements").insert(movements);
                   if (mvErr) {
-                    logs.push(`WARNING: inserting Dive Movements failed: ${mvErr.message}`);
+                    logs.push(`WARNING: inserting Diving Movements failed: ${mvErr.message}`);
                     report["LOGS_MOVEMENTS"].errors.push(mvErr.message);
                   } else {
                     diveMovementsCount += movements.length;
                   }
                 }
               }
-
-              logs.push(`Successfully migrated ${rovJobsCount} ROV Jobs & ${diveJobsCount} Diving Jobs.`);
-              logs.push(`Successfully migrated ${rovMovementsCount} ROV Movements & ${diveMovementsCount} Dive Movements.`);
-
-              report["LOGS_JOBS"].status = report["LOGS_JOBS"].errors.length > 0 ? "failed" : "success";
-              report["LOGS_JOBS"].migratedRows = rovJobsCount + diveJobsCount;
-
-              report["LOGS_MOVEMENTS"].status = report["LOGS_MOVEMENTS"].errors.length > 0 ? "failed" : "success";
-              report["LOGS_MOVEMENTS"].migratedRows = rovMovementsCount + diveMovementsCount;
-            } else {
-              logs.push(`No logs found in Oracle 'LOGS' table for Structure ID ${structureId}.`);
-              report["LOGS_JOBS"].status = "success";
-              report["LOGS_MOVEMENTS"].status = "success";
             }
+
+            report["LOGS_JOBS"].status = "success";
+            report["LOGS_JOBS"].migratedRows = rovJobsCount + diveJobsCount;
+            report["LOGS_MOVEMENTS"].status = "success";
+            report["LOGS_MOVEMENTS"].migratedRows = rovMovementsCount + diveMovementsCount;
+            logs.push(`Phase 2 complete: Created ${rovJobsCount} ROV Job(s), ${diveJobsCount} Diving Job(s), ${rovMovementsCount} ROV Movement(s), and ${diveMovementsCount} Diving Movement(s).`);
           } else {
-            logs.push(`Oracle 'LOGS' table not present. Skipped LOGS migration.`);
-            report["LOGS_JOBS"].status = "skipped";
-            report["LOGS_MOVEMENTS"].status = "skipped";
+            logs.push(`No LOGS records found to migrate.`);
+            report["LOGS_JOBS"].status = "success";
+            report["LOGS_MOVEMENTS"].status = "success";
           }
-        } catch (logsErr: any) {
-          logs.push(`ERROR in Phase 2 logs migration block: ${logsErr.message}`);
-          console.error("Phase 2 LOGS migration failed:", logsErr);
-          report["LOGS_JOBS"].status = "failed";
-          report["LOGS_JOBS"].errors.push(logsErr.message);
-          report["LOGS_MOVEMENTS"].status = "failed";
-          report["LOGS_MOVEMENTS"].errors.push(logsErr.message);
+        }
+      } catch (err: any) {
+          logs.push(`ERROR in Phase 2 (LOGS): ${err.message}`);
+          report["LOGS_JOBS"].errors.push(err.message);
+          report["LOGS_MOVEMENTS"].errors.push(err.message);
         }
 
         // ---------------------------------------------------------------------
         // Phase 3: Migrate Video Tapes & Video Logs
         // ---------------------------------------------------------------------
-        report["VIDEO"].status = "failed";
+        report["VIDEO_TAPES"] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [] };
+        report["VIDEO_LOGS"] = { status: "failed", oracleRows: 0, migratedRows: 0, errors: [] };
         logs.push(`Phase 3: Migrating Video Tapes & Video Logs...`);
 
         const tapesCache = new Map<string, number>();
@@ -3572,11 +4243,65 @@ export async function POST(request: NextRequest) {
         let videoLogsCount = 0;
         let oracleVideoTapesCount = 0;
 
-        // 3a. Migrate ROV Tapes and Logs (from PLATGI)
+        // 3a. Migrate ROV Tapes and Logs (from PLATGI or NAVIG)
         const platgiCols = await getOracleTableColumns(oracleConn, 'PLATGI');
-        if (platgiCols.size > 0 && platgiCols.has('TAPE_NO')) {
-          // Pre-fetch all TAPE LOG rows from PLATGI to parse metadata
-          const tapeLogRows: any[] = [];
+        const navigCols = await getOracleTableColumns(oracleConn, 'NAVIG');
+        const tapeLogRows: any[] = [];
+
+        if ((isPipeline || targetTable === 'u_pipeline' || structureType === 'PIPELINE') && navigCols.size > 0) {
+          const dateCol = navigCols.has('INSP_DATE') ? 'INSP_DATE' : (navigCols.has('I_DATE') ? 'I_DATE' : 'I_DATE');
+          const timeCol = navigCols.has('INSP_TIME') ? 'INSP_TIME' : (navigCols.has('I_TIME') ? 'I_TIME' : 'I_TIME');
+          const descCol = navigCols.has('DESCR') ? 'DESCR' : (navigCols.has('FINDINGS') ? 'FINDINGS' : (navigCols.has('DESCRIPTION') ? 'DESCRIPTION' : 'EVENT'));
+          const logQCols = ['TAPE_NO', 'DIVE_NO', 'INSPNO', descCol];
+          if (navigCols.has('COUNTER_NO')) logQCols.push('COUNTER_NO');
+          if (navigCols.has('TIMECODE')) logQCols.push('TIMECODE');
+          if (navigCols.has('COMMENTS')) logQCols.push('COMMENTS');
+          if (navigCols.has('EVENT')) logQCols.push('EVENT');
+          if (navigCols.has('TYPE')) logQCols.push('TYPE');
+          if (navigCols.has('POS')) logQCols.push('POS');
+          if (navigCols.has('KP')) logQCols.push('KP');
+          if (navigCols.has('DEPTH')) logQCols.push('DEPTH');
+          if (navigCols.has(dateCol)) logQCols.push(`${dateCol} as I_DATE`);
+          if (navigCols.has(timeCol)) logQCols.push(`${timeCol} as I_TIME`);
+          if (navigCols.has('CR_DATE')) logQCols.push('CR_DATE');
+
+          try {
+            logs.push(`Pre-fetching ROV Tapes and Video Logs from Oracle 'NAVIG' (EVENT = 'VIDEO LOG' or TAPE_NO IS NOT NULL)...`);
+            let navWhere = `STR_ID = :strId AND (UPPER(TRIM(EVENT)) LIKE '%VIDEO%' OR TAPE_NO IS NOT NULL)`;
+            const navBinds: any = { strId: structureId };
+            if (inspNos.length === 1) {
+              navWhere += ` AND INSPNO = :inspNo`;
+              navBinds.inspNo = inspNos[0];
+            } else if (inspNos.length > 1) {
+              const placeholders = inspNos.map((_, i) => `:i${i}`).join(', ');
+              inspNos.forEach((val, i) => { navBinds[`i${i}`] = val; });
+              navWhere += ` AND INSPNO IN (${placeholders})`;
+            }
+
+            const navResult = await oracleConn.execute(`
+              SELECT ${logQCols.join(', ')} 
+              FROM NAVIG 
+              WHERE ${navWhere}
+            `, navBinds);
+            if (navResult.rows) {
+              const normalized = (navResult.rows as any[]).map(r => {
+                const comments = r.COMMENTS || [r.EVENT, r.TYPE, r.POS, r.DESCR || r.FINDINGS, r.KP ? `KP:${r.KP}` : null].filter(Boolean).join(' - ');
+                return {
+                  ...r,
+                  TAPE_NO: r.TAPE_NO || (r.EVENT === 'VIDEO LOG' ? (r.TYPE || 'TAPE-1') : 'TAPE-1'),
+                  COMMENTS: comments,
+                  COUNTER_NO: parseOracleCounterToTimecode(r.COUNTER_NO ?? r.COINTER_NO ?? r.TIMECODE),
+                  I_DATE: r.I_DATE || r.CR_DATE,
+                  I_TIME: r.I_TIME || '00:00:00'
+                };
+              });
+              tapeLogRows.push(...normalized);
+              logs.push(`Loaded ${normalized.length} ROV video log events from NAVIG.`);
+            }
+          } catch (err: any) {
+            logs.push(`WARNING: Pre-fetching NAVIG video logs failed: ${err.message}`);
+          }
+        } else if (platgiCols.size > 0 && platgiCols.has('TAPE_NO')) {
           if (platgiCols.has('DESCRIPTION') || platgiCols.has('DESCR')) {
             const descCol = platgiCols.has('DESCRIPTION') ? 'DESCRIPTION' : 'DESCR';
             const logQCols = ['TAPE_NO', 'DIVE_NO', 'INSPNO', descCol];
@@ -3590,7 +4315,12 @@ export async function POST(request: NextRequest) {
               const logResult = await oracleConn.execute(`
                 SELECT ${logQCols.join(', ')} 
                 FROM PLATGI 
-                WHERE STR_ID = :strId AND UPPER(${descCol}) LIKE '%TAPE LOG%'
+                WHERE STR_ID = :strId AND (
+                  UPPER(${descCol}) LIKE '%TAPE%' OR 
+                  UPPER(${descCol}) LIKE '%RECORDING%' OR 
+                  UPPER(${descCol}) LIKE '%VIDEO LOG%' OR
+                  TAPE_NO IS NOT NULL
+                )
               `, { strId: structureId });
               if (logResult.rows) {
                 tapeLogRows.push(...logResult.rows);
@@ -3599,7 +4329,9 @@ export async function POST(request: NextRequest) {
               logs.push(`WARNING: Pre-fetching TAPE LOGS failed: ${err.message}`);
             }
           }
+        }
 
+        if (tapeLogRows.length > 0) {
           // In-memory index of parsed tape groups: key is tapeNo (grouping purely by tape_no to avoid duplicates)
           const tapeGroups = new Map<string, any[]>();
           tapeLogRows.forEach(row => {
@@ -3613,7 +4345,7 @@ export async function POST(request: NextRequest) {
             tapeGroups.get(key)!.push(row);
           });
 
-          logs.push(`Migrating unique ROV tapes parsed from 'PLATGI'...`);
+          logs.push(`Migrating unique ROV tapes parsed from '${isPipeline ? 'NAVIG' : 'PLATGI'}'...`);
           for (const [tapeNo, groupRows] of Array.from(tapeGroups.entries())) {
             // Sort chronologically by date, time, and counter_no
             const sortedRows = groupRows.sort((a, b) => {
@@ -3625,14 +4357,15 @@ export async function POST(request: NextRequest) {
               const dtB = combineDateTime(dateB, timeB);
               if (dtA !== dtB) return dtA < dtB ? -1 : 1;
 
-              const cntA = Number(getObjProperty(a, 'COUNTER_NO') || 0);
-              const cntB = Number(getObjProperty(b, 'COUNTER_NO') || 0);
+              const cntA = timecodeToSeconds(parseOracleCounterToTimecode(getObjProperty(a, 'COUNTER_NO') ?? getObjProperty(a, 'COINTER_NO') ?? getObjProperty(a, 'TIMECODE')));
+              const cntB = timecodeToSeconds(parseOracleCounterToTimecode(getObjProperty(b, 'COUNTER_NO') ?? getObjProperty(b, 'COINTER_NO') ?? getObjProperty(b, 'TIMECODE')));
               return cntA - cntB;
             });
 
-            // If selectedInspNo is provided, only migrate this tape if any event in it matches selectedInspNo
-            if (selectedInspNo) {
-              const hasSelectedInsp = sortedRows.some(row => String(getObjProperty(row, 'INSPNO') || "").trim() === selectedInspNo);
+            // If inspNos is active, only migrate this tape if any event in it matches active inspNos
+            if (inspNos.length > 0) {
+              const targetSet = new Set(inspNos.map(String));
+              const hasSelectedInsp = sortedRows.some(row => targetSet.has(String(getObjProperty(row, 'INSPNO') || "").trim()));
               if (!hasSelectedInsp) continue;
             }
 
@@ -3839,7 +4572,9 @@ export async function POST(request: NextRequest) {
               // Map all logs for this specific tape chapter
               const vLogs = chapterRows
                 .map(row => {
-                  const comments = String(getObjProperty(row, 'COMMENTS') || "").trim();
+                  const rawDesc = String(getObjProperty(row, 'DESCRIPTION') || getObjProperty(row, 'DESCR') || "").trim();
+                  const rawComments = String(getObjProperty(row, 'COMMENTS') || "").trim();
+                  const comments = rawComments || rawDesc || "TAPE LOG";
                   const parsed = parseComments(comments);
 
                   let eventType = 'CUSTOM';
@@ -3890,9 +4625,10 @@ export async function POST(request: NextRequest) {
                   const itemLogTime = getObjProperty(row, 'I_TIME') || '00:00:00';
                   const combinedEventTime = combineDateTime(itemLogDate, itemLogTime);
 
-                  // Parse counter_no cleanly
-                  const counterValRaw = getObjProperty(row, 'COUNTER_NO');
-                  const counterVal = counterValRaw !== undefined && counterValRaw !== null ? Number(counterValRaw) : null;
+                  // Parse counter_no cleanly into formatted HH:MM:SS timecode and total seconds
+                  const counterValRaw = getObjProperty(row, 'COUNTER_NO') ?? getObjProperty(row, 'COINTER_NO') ?? getObjProperty(row, 'TIMECODE');
+                  const timecodeStart = parseOracleCounterToTimecode(counterValRaw);
+                  const totalSeconds = timecodeToSeconds(timecodeStart);
 
                   // Parse cr_date cleanly
                   let parsedCrDate = formatLocalISOString(new Date());
@@ -3905,13 +4641,13 @@ export async function POST(request: NextRequest) {
                     tape_id: tapeId,
                     event_type: eventType,
                     event_time: combinedEventTime,
-                    timecode_start: '00:00:00',
+                    timecode_start: timecodeStart,
                     timecode_end: null,
                     remarks: remarksVal,
                     cr_user: 'migration',
                     cr_date: parsedCrDate,
                     workunit: '000',
-                    tape_counter_start: counterVal,
+                    tape_counter_start: totalSeconds,
                     counter_format: 'HH:MM:SS'
                   };
                 })
@@ -4004,8 +4740,9 @@ export async function POST(request: NextRequest) {
             const diveNo = String(getObjProperty(firstRow, 'DIVE_NO') || "").trim();
             const inspNo = String(getObjProperty(firstRow, 'INSPNO') || "").trim();
 
-            if (selectedInspNo) {
-              const hasSelectedInsp = sortedRows.some(row => String(getObjProperty(row, 'INSPNO') || "").trim() === selectedInspNo);
+            if (inspNos.length > 0) {
+              const targetSet = new Set(inspNos.map(String));
+              const hasSelectedInsp = sortedRows.some(row => targetSet.has(String(getObjProperty(row, 'INSPNO') || "").trim()));
               if (!hasSelectedInsp) continue;
             }
 
@@ -4183,15 +4920,10 @@ export async function POST(request: NextRequest) {
                 const itemLogTime = getObjProperty(row, 'INSP_TIME') || '00:00:00';
                 const combinedEventTime = combineDateTime(itemLogDate, itemLogTime);
 
-                // Parse tape footage cleanly as counter number
-                let counterVal = null;
+                // Parse tape footage cleanly as counter number / timecode
                 const footageVal = getObjProperty(row, 'TAPE_FOOTAGE');
-                if (footageVal !== undefined && footageVal !== null) {
-                  const cleanStr = String(footageVal).replace(/\D/g, '');
-                  if (cleanStr) {
-                    counterVal = Number(cleanStr);
-                  }
-                }
+                const timecodeStart = parseOracleCounterToTimecode(footageVal);
+                const totalSeconds = timecodeToSeconds(timecodeStart);
 
                 // Parse cr_date cleanly
                 let parsedCrDate = formatLocalISOString(new Date());
@@ -4204,13 +4936,13 @@ export async function POST(request: NextRequest) {
                   tape_id: tapeId,
                   event_type: eventType,
                   event_time: combinedEventTime,
-                  timecode_start: '00:00:00',
+                  timecode_start: timecodeStart,
                   timecode_end: null,
                   remarks: remarksVal,
                   cr_user: 'migration',
                   cr_date: parsedCrDate,
                   workunit: '000',
-                  tape_counter_start: counterVal,
+                  tape_counter_start: totalSeconds,
                   counter_format: 'HH:MM:SS'
                 };
               })
@@ -4228,9 +4960,24 @@ export async function POST(request: NextRequest) {
         }
 
         logs.push(`Successfully migrated ${videoTapesCount} Video Tapes and ${videoLogsCount} Video Logs!`);
-        report["VIDEO"].status = "success";
-        report["VIDEO"].oracleRows = oracleVideoTapesCount;
-        report["VIDEO"].migratedRows = videoTapesCount;
+        report["VIDEO_TAPES"] = {
+          status: "success",
+          oracleRows: oracleVideoTapesCount,
+          migratedRows: videoTapesCount,
+          errors: []
+        };
+        report["VIDEO_LOGS"] = {
+          status: "success",
+          oracleRows: videoLogsCount,
+          migratedRows: videoLogsCount,
+          errors: []
+        };
+        report["VIDEO"] = {
+          status: "success",
+          oracleRows: oracleVideoTapesCount,
+          migratedRows: videoTapesCount,
+          errors: []
+        };
 
         // ---------------------------------------------------------------------
         // Phase 4: Migrate Inspection Records (insp_records)
@@ -4280,12 +5027,14 @@ export async function POST(request: NextRequest) {
               } else {
                 existingComps.forEach((comp: any) => {
                   const pgId = Number(comp.id);
-                  if (comp.comp_id) {
+                  if (comp.comp_id !== null && comp.comp_id !== undefined) {
                     compIdMap.set(Number(comp.comp_id), pgId);
                     compTypeCache.set(Number(comp.comp_id), String(comp.code || '').trim());
                   }
-                  if (comp.q_id) {
-                    qIdMap.set(String(comp.q_id).trim().toUpperCase(), pgId);
+                  if (comp.q_id && String(comp.q_id).trim()) {
+                    const qStr = String(comp.q_id).trim();
+                    qIdMap.set(qStr.toUpperCase(), pgId);
+                    qIdMap.set(qStr, pgId);
                   }
                 });
                 if (existingComps.length < pageSize) {
@@ -4433,16 +5182,17 @@ export async function POST(request: NextRequest) {
             `;
             const binds: any = { strId: structureId };
             
-            if (selectedInspNo) {
+            if (inspNos.length > 0) {
+              const { placeholders, binds: inspBinds } = buildInClause(inspNos);
               query = `
                 SELECT INSP_ID, CMNTS FROM COMP_NOT_INSP
                 WHERE INSP_ID IN (
-                  SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+                  SELECT INSP_ID FROM PLATGI WHERE STR_ID = :strId AND INSPNO IN (${placeholders}) AND INSP_ID IS NOT NULL
                   UNION
-                  SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO = :inspNo AND INSP_ID IS NOT NULL
+                  SELECT INSP_ID FROM allinspid WHERE STR_ID = :strId AND INSPNO IN (${placeholders}) AND INSP_ID IS NOT NULL
                 )
               `;
-              binds.inspNo = selectedInspNo;
+              Object.assign(binds, inspBinds);
             }
             
             const notInspRes = await oracleConn.execute(query, binds);
@@ -4585,6 +5335,32 @@ export async function POST(request: NextRequest) {
           let qCols: string[] = [];
 
           if (isRov) {
+            if (targetTable === 'u_pipeline' || isPipeline || structureType === 'PIPELINE') {
+              logs.push(`[Pipeline Route] Running dedicated ROV Pipeline Navigation Survey migration from NAVIG table...`);
+              await migratePipelineNavigInspections({
+                oracleConn,
+                supabase,
+                structureId,
+                resolvedStructureId,
+                isImperial,
+                selectedInspNo,
+                selectedInspNos: inspNos,
+                mappings,
+                logs,
+                report,
+                writeStreamEvent,
+                compIdMap,
+                jpIdMap,
+                rovJobsCache,
+                diveJobsCache,
+                tapesCache,
+                inspIdCache,
+                jobpackDefaultPrefixMap,
+                sowReportMap: sowInspCache,
+              });
+              return;
+            }
+
             if (platgiCols.size === 0 || !platgiCols.has('INSP_ID')) {
               logs.push(`No PLATGI table or INSP_ID column found for ROV. Skipping.`);
               report[reportKey].status = "skipped";
@@ -4617,9 +5393,10 @@ export async function POST(request: NextRequest) {
               }
             });
 
-            const whereCond = platgiCols.has('DESCRIPTION')
-              ? "(DESCRIPTION IS NULL OR (DESCRIPTION != 'TAPE LOG' AND NOT (DESCRIPTION IN ('CP LOG', 'IMAGE LOG') AND (COMP_ID IS NULL OR COMP_ID = 0))))"
-              : (platgiCols.has('DESCR') ? "(DESCR IS NULL OR (DESCR != 'TAPE LOG' AND NOT (DESCR IN ('CP LOG', 'IMAGE LOG') AND (COMP_ID IS NULL OR COMP_ID = 0))))" : "1=1");
+            const targetDescCol = platgiCols.has('DESCRIPTION') ? 'DESCRIPTION' : (platgiCols.has('DESCR') ? 'DESCR' : null);
+            const whereCond = targetDescCol
+              ? `(${targetDescCol} IS NULL OR (NOT (UPPER(${targetDescCol}) LIKE '%TAPE%' OR UPPER(${targetDescCol}) LIKE '%RECORDING%' OR UPPER(${targetDescCol}) LIKE '%VIDEO LOG%') AND NOT (${targetDescCol} IN ('CP LOG', 'IMAGE LOG') AND (COMP_ID IS NULL OR COMP_ID = 0))))`
+              : "1=1";
 
             try {
               const result = await oracleConn.execute(`
@@ -4650,11 +5427,12 @@ export async function POST(request: NextRequest) {
                 
                 if (elimResult.rows && elimResult.rows.length > 0) {
                   let filteredElimRows = elimResult.rows;
-                  // If selectedInspNo is provided, filter by that
-                  if (selectedInspNo) {
+                  // If inspNos is provided, filter by that
+                  if (inspNos.length > 0) {
+                    const targetSet = new Set(inspNos.map(String));
                     filteredElimRows = elimResult.rows.filter((row: any) => {
                       const val = String(row.INSPNO || row.inspno || row[1] || '').trim();
-                      return val === selectedInspNo;
+                      return targetSet.has(val);
                     });
                   }
                   
@@ -4750,7 +5528,7 @@ export async function POST(request: NextRequest) {
                 SELECT ${qCols.join(', ')} 
                 FROM ALLINSPID 
                 WHERE STR_ID = :strId AND INSP_ID IS NOT NULL AND INSP_ID > 0 AND INSP_TYPE IS NOT NULL
-                  AND TRIM(UPPER(INSP_TYPE)) NOT IN ('PLATGI', 'LOGS', 'EXSUM', 'VIDEO')
+                  AND TRIM(UPPER(INSP_TYPE)) NOT IN ('PLATGI', 'NAVIG', 'LOGS', 'EXSUM', 'VIDEO', 'ROVCLB')
               `, { strId: structureId });
               primaryInspections = result.rows || [];
             } catch (err: any) {
@@ -4760,19 +5538,24 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Filter by selectedInspNo if provided
-          if (selectedInspNo && primaryInspections.length > 0) {
+          // Filter by inspNos if provided
+          if (inspNos.length > 0 && primaryInspections.length > 0) {
+            const targetSet = new Set(inspNos.map(String));
             const inspNoIdx = qCols.findIndex(c => c.toUpperCase() === 'INSPNO');
             primaryInspections = primaryInspections.filter(row => {
               const val = String(row.INSPNO || (Array.isArray(row) ? row[inspNoIdx] : '') || '').trim();
-              return val === selectedInspNo;
+              return targetSet.has(val);
             });
-            logs.push(`Filtered primary inspections to ${primaryInspections.length} rows for INSPNO ${selectedInspNo}.`);
+            logs.push(`Filtered primary inspections to ${primaryInspections.length} rows for selected Job Pack(s) (${inspNos.join(', ')}).`);
           }
 
           if (primaryInspections.length === 0) {
             logs.push(`No ${isRov ? 'ROV' : 'Diving'} primary inspection records found in Oracle.`);
-            report[reportKey].status = "success";
+            if (isPipeline && !isRov) {
+              delete report[reportKey];
+            } else {
+              report[reportKey].status = "success";
+            }
             return;
           }
 
@@ -5557,7 +6340,7 @@ export async function POST(request: NextRequest) {
                 // For Diving, if no dive number is resolved, fallback to a default dive log group
                 legacyDiveNo = `DEFAULT-${legacyInspNo || 'JOB'}-DIV`;
               } else {
-                continue;
+                legacyDiveNo = `DEFAULT-${legacyInspNo || 'JOB'}-ROV`;
               }
             }
 
@@ -5581,15 +6364,17 @@ export async function POST(request: NextRequest) {
                      compTypeCache.set(legacyCompId, compTypeCache.get(pgCompId) || '');
                    }
                    
-                   // Heal permanently in PostgreSQL structure_components
-                   supabase.from('structure_components')
-                     .update({ comp_id: legacyCompId })
-                     .eq('id', pgCompId)
-                     .then(({ error }) => {
-                       if (error) {
-                         console.error(`Failed to permanently heal comp_id ${legacyCompId} in Supabase:`, error.message);
-                       }
-                     });
+                   if (updateComponentSpecs) {
+                     // Update permanently in PostgreSQL structure_components only if overwrite is enabled
+                     supabase.from('structure_components')
+                       .update({ comp_id: legacyCompId })
+                       .eq('id', pgCompId)
+                       .then(({ error }) => {
+                         if (error) {
+                           console.error(`Failed to update comp_id ${legacyCompId} in Supabase:`, error.message);
+                         }
+                       });
+                   }
                  }
                }
              }
@@ -5758,14 +6543,30 @@ export async function POST(request: NextRequest) {
             const tapeKey = `${isRov ? 'ROV' : 'DIV'}_${legacyTapeNo}_${legacyDiveNo}_${legacyInspNo}`;
             const pgTapeId = tapesCache.get(tapeKey) || tapesCache.get(`${isRov ? 'ROV' : 'DIV'}_${legacyTapeNo}_${legacyDiveNo}`) || null;
 
+            const rawCounter = rowObj.COUNTER_NO !== undefined && rowObj.COUNTER_NO !== null
+              ? rowObj.COUNTER_NO
+              : (rowObj.COINTER_NO !== undefined && rowObj.COINTER_NO !== null
+                ? rowObj.COINTER_NO
+                : (rowObj.TIMECODE !== undefined && rowObj.TIMECODE !== null ? rowObj.TIMECODE : (rowObj.TAPE_COUNT_NO || mappedTypeData.counter_no || mappedTypeData.COUNTER_NO)));
 
+            let formattedTimecode: string | null = null;
+            let counterTotalSeconds: number | null = null;
+            if (rawCounter !== undefined && rawCounter !== null && String(rawCounter).trim() !== '') {
+              formattedTimecode = parseOracleCounterToTimecode(rawCounter);
+              counterTotalSeconds = timecodeToSeconds(formattedTimecode);
+            }
+
+            const getCounterNoVal = () => {
+              return counterTotalSeconds !== null ? String(counterTotalSeconds) : null;
+            };
 
             const sowReportNo = getSowReportNo(legacyInspNo, legacyCompId, typCode.toUpperCase());
 
             const rowDateVal = rowObj.INSP_DATE || rowObj.I_DATE || rowObj.i_date || rowObj.I_Date || rowObj.LOG_DATE || mappedTypeData.inspection_date || mappedTypeData.INSP_DATE || mappedTypeData.I_DATE || mappedTypeData.i_date || mappedTypeData.I_Date;
             const rowTimeVal = rowObj.INSP_TIME || rowObj.I_TIME || rowObj.i_time || rowObj.I_Time || rowObj.TIME || rowObj.time || rowObj.LOG_TIME || mappedTypeData.inspection_time || mappedTypeData.INSP_TIME || mappedTypeData.I_TIME || mappedTypeData.i_time || mappedTypeData.TIME || mappedTypeData.time;
-            const dateStr = combineDateTime(rowDateVal, rowTimeVal);
-            const timeStr = formatTimeOnly(rowTimeVal);
+            const inspDateOnly = formatLocalDateOnly(rowDateVal) || formatLocalDateOnly(new Date())!;
+            const inspTimeOnly = formatTimeOnly(rowTimeVal, rowDateVal);
+            const combinedDateTimeStr = `${inspDateOnly}T${inspTimeOnly}`;
 
             const compCode = compTypeCache.get(legacyCompId) || '';
 
@@ -5794,38 +6595,8 @@ export async function POST(request: NextRequest) {
               mappedTypeData.depletion = anodeDetails.depletion;
               mappedTypeData.anode_depletion = anodeDetails.depletion;
             }
-            if (anodeDetails.anodeType) mappedTypeData.anode_type = anodeDetails.anodeType;
-
             const incompleteReason = compNotInspMap.get(legacyInspId) || null;
             const hasAnomaly = defectKeysSet.has(`${legacyInspId}_${legacyCompId}`);
-
-            const getCounterNoVal = () => {
-              if (!isRov) return null;
-              const val = rowObj.COUNTER_NO !== undefined && rowObj.COUNTER_NO !== null ? rowObj.COUNTER_NO : rowObj.COINTER_NO;
-              if (val === undefined || val === null) return null;
-              
-              const strVal = String(val).trim();
-              if (!strVal) return null;
-
-              if (strVal.includes(':')) {
-                const parts = strVal.split(':');
-                if (parts.length === 3) {
-                  return String(Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2]));
-                } else if (parts.length === 2) {
-                  return String(Number(parts[0]) * 60 + Number(parts[1]));
-                }
-              }
-
-              const numVal = parseInt(strVal);
-              if (isNaN(numVal)) return null;
-
-              const sec = numVal % 100;
-              const min = Math.floor((numVal % 10000) / 100);
-              const hrs = Math.floor(numVal / 10000);
-
-              const totalSeconds = hrs * 3600 + min * 60 + sec;
-              return String(totalSeconds);
-            };
 
             const elevationRaw = rowObj.ELEVATION || rowObj.ELV || (elvIdx > -1 ? rowObj[qCols[elvIdx]] : null) || mappedTypeData.elevation || mappedTypeData.ELEVATION;
             const elevationVal = elevationRaw !== undefined && elevationRaw !== null ? Number(elevationRaw) : null;
@@ -5914,6 +6685,14 @@ export async function POST(request: NextRequest) {
             if (anodeDetails.depletion) {
               inspectionDataObj.anode_depletion = anodeDetails.depletion;
               inspectionDataObj.depletion = anodeDetails.depletion;
+            }
+
+            // Explicitly set parsed timecode / counter_no
+            if (formattedTimecode) {
+              inspectionDataObj.counter_no = formattedTimecode;
+              inspectionDataObj.counter = formattedTimecode;
+              inspectionDataObj._meta_timecode = formattedTimecode;
+              inspectionDataObj.timecode = formattedTimecode;
             }
 
             // 2e. Perform CP Calibration (CPCLB) Mapping
@@ -6875,8 +7654,9 @@ export async function POST(request: NextRequest) {
               inspection_type_id: inspTypeMap.get(typCode.toUpperCase()) || null,
               component_type: compCode || null,
               tape_count_no: getCounterNoVal(),
-              inspection_date: dateStr,
-              inspection_time: timeStr,
+              inspection_date: inspDateOnly,
+              inspection_time: inspTimeOnly,
+              cr_date: combinedDateTimeStr,
               tape_id: pgTapeId,
               elevation: elevationVal,
               fp_kp: kpVal,
@@ -7124,10 +7904,14 @@ export async function POST(request: NextRequest) {
         // ---------------------------------------------------------------------
         // Phase 6: Migrate Inspection Attachments (attachment)
         // ---------------------------------------------------------------------
-        report["INSP_ATTACHMENT"].status = "failed";
-        logs.push(`Phase 6: Migrating Inspection specific attachments...`);
+        if (!migrateAttachments) {
+          logs.push(`Phase 6: Skipped inspection attachments migration (migrateAttachments option is disabled).`);
+          report["INSP_ATTACHMENT"] = { status: "skipped", oracleRows: 0, migratedRows: 0, errors: [] };
+        } else {
+          report["INSP_ATTACHMENT"].status = "failed";
+          logs.push(`Phase 6: Migrating Inspection specific attachments...`);
 
-        const attachCols = await getOracleTableColumns(oracleConn, 'U_ATTACH_1');
+          const attachCols = await getOracleTableColumns(oracleConn, 'U_ATTACH_1');
         if (attachCols.size > 0 && attachCols.has('INSP_ID') && inspIdCache.size > 0) {
           const qCols = ['ATTACH_ID', 'STR_ID', 'INSPNO', 'COMP_ID', 'INSP_ID'];
           if (attachCols.has('A_FILENAME')) qCols.push('A_FILENAME');
@@ -7145,15 +7929,16 @@ export async function POST(request: NextRequest) {
           `, { strId: structureId });
 
           let attachRows = attachResult.rows as any[];
-          if (selectedInspNo && attachRows && attachRows.length > 0) {
+          if (inspNos.length > 0 && attachRows && attachRows.length > 0) {
+            const targetSet = new Set(inspNos.map(String));
             attachRows = attachRows.filter(row => {
               const rObj = Array.isArray(row) ? qCols.reduce((acc, col, idx) => {
                 acc[col] = row[idx];
                 return acc;
               }, {} as Record<string, any>) : row;
-              return String(rObj.INSPNO || "").trim() === selectedInspNo;
+              return targetSet.has(String(rObj.INSPNO || "").trim());
             });
-            logs.push(`Filtered legacy attachments to ${attachRows.length} record(s) matching selected INSPNO ${selectedInspNo}.`);
+            logs.push(`Filtered legacy attachments to ${attachRows.length} record(s) matching selected Job Pack(s) (${inspNos.join(', ')}).`);
           }
           if (attachRows && attachRows.length > 0) {
             report["INSP_ATTACHMENT"].oracleRows = attachRows.length;
@@ -7187,20 +7972,43 @@ export async function POST(request: NextRequest) {
                 return acc;
               }, {} as Record<string, any>) : row;
 
-              const oInspId = Number(rObj.INSP_ID);
-              const oCompId = Number(rObj.COMP_ID);
+              const oInspId = Number(rObj.INSP_ID || 0);
+              const oCompId = Number(rObj.COMP_ID || 0);
 
-              const pgInspId = inspIdCache.get(oInspId);
-              
-              if (!pgInspId) {
-                logs.push(`Skipping attachment ${rObj.ATTACH_ID}: no matching Postgres inspection (ID: ${oInspId || 'null'}) found.`);
-                continue;
+              let sourceId: number = resolvedStructureId;
+              let sourceType: string = 'STRUCTURE';
+
+              // Pipeline default component fallback (e.g. PIPE-1162 or PP trunkline component)
+              const firstCompId = compIdMap.size > 0 ? Array.from(compIdMap.values())[0] : null;
+
+              if (oInspId && inspIdCache.has(oInspId)) {
+                sourceId = inspIdCache.get(oInspId)!;
+                sourceType = 'INSPECTION';
+              } else if (oCompId && compIdMap.has(oCompId)) {
+                sourceId = compIdMap.get(oCompId)!;
+                sourceType = 'COMPONENT';
+              } else if (structureType === 'pipeline' && firstCompId) {
+                // If it's a pipeline and title/file indicates an anomaly or inspection, link to the pipeline component
+                const attTitle = String(rObj.TITLE || rObj.A_FILENAME || "").toUpperCase();
+                if (attTitle.includes("ANOMALY") || attTitle.includes("A-") || attTitle.includes("INSP") || attTitle.includes("PHOTO")) {
+                  sourceId = firstCompId;
+                  sourceType = 'COMPONENT';
+                  logs.push(`Attachment ${rObj.ATTACH_ID} (${rObj.TITLE || rObj.A_FILENAME}) linked to Pipeline Component ${firstCompId}.`);
+                } else {
+                  sourceId = resolvedStructureId;
+                  sourceType = 'STRUCTURE';
+                  logs.push(`Attachment ${rObj.ATTACH_ID} linked to Pipeline Structure ${resolvedStructureId}.`);
+                }
+              } else {
+                sourceId = resolvedStructureId;
+                sourceType = 'STRUCTURE';
+                logs.push(`Attachment ${rObj.ATTACH_ID} (Legacy INSP_ID: ${oInspId || 'none'}, COMP_ID: ${oCompId || 'none'}) linked to Structure ${resolvedStructureId}.`);
               }
 
               const mime = getMimeType(String(rObj.A_FILETYPE || ""));
               const pgRecord: any = {
-                source_id: pgInspId,
-                source_type: 'INSPECTION',
+                source_id: sourceId,
+                source_type: sourceType,
                 name: rObj.TITLE ? String(rObj.TITLE).trim() : (rObj.A_FILENAME ? String(rObj.A_FILENAME).trim() : `Legacy_File_${rObj.ATTACH_ID}`),
                 path: rObj.A_PATH ? String(rObj.A_PATH).trim() : '',
                 created_at: rObj.CR_DATE ? (formatLocalISOString(rObj.CR_DATE) || formatLocalISOString(new Date())) : formatLocalISOString(new Date()),
@@ -7211,7 +8019,9 @@ export async function POST(request: NextRequest) {
                   file_path: rObj.A_PATH ? String(rObj.A_PATH).trim() : '',
                   file_type: mime,
                   type: mime.startsWith('video/') ? 'VIDEO' : (mime.startsWith('image/') ? 'PHOTO' : 'DOCUMENT'),
-                  insp_id: oInspId,
+                  insp_id: oInspId || null,
+                  comp_id: oCompId || null,
+                  inspno: rObj.INSPNO || null,
                   storage_provider: 'Legacy'
                 }
               };
@@ -7348,6 +8158,7 @@ export async function POST(request: NextRequest) {
         } else {
           logs.push(`No legacy attachments matching migrated inspections found.`);
           report["INSP_ATTACHMENT"].status = "skipped";
+        }
         }
 
         // ---------------------------------------------------------------------
@@ -7631,29 +8442,45 @@ export async function POST(request: NextRequest) {
 
     } catch (error: any) {
       console.error("[Migration Execute Error]:", error);
+      const isDisconnect = isOracleDisconnectError(error);
+      const errorMessage = isDisconnect 
+        ? "Database disconnected: Connection to Oracle database was lost during migration."
+        : "Migration failed";
+      const details = isDisconnect
+        ? `${error.message}. Please check your network/VPN connection and re-run migration.`
+        : error.message;
+
+      logs.push(`[CRITICAL ERROR]: ${errorMessage} (${details})`);
+
       await writeStreamEvent({
         type: "error",
-        message: "Migration failed",
-        details: error.message
+        message: errorMessage,
+        details: details
       });
     } finally {
-      // Re-enable Row Level Security (RLS) at the very end to keep the database secure
-      await setRlsStatus(false, logs);
+      // Re-enable Row Level Security (RLS) safely at the very end
+      try {
+        await setRlsStatus(false, logs);
+      } catch (rlsErr: any) {
+        console.warn("[Migration Finally RLS Error]:", rlsErr?.message);
+      }
 
       if (oracleConn) {
         try {
           await oracleConn.close();
-        } catch (err) {
-          console.error("Error closing Oracle connection:", err);
+        } catch (err: any) {
+          console.warn("[Migration Oracle Close Warning]:", err?.message);
         }
       }
 
-      // Close the stream writer
+      // Close the stream writer safely
       try {
         await writer.close();
       } catch (e) {}
     }
-  })();
+  })().catch((fatalErr: any) => {
+    console.error("[Migration Execute Process Fatal Guard Caught]:", fatalErr);
+  });
 
   return new Response(transformStream.readable, {
     headers: {

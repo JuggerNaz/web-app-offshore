@@ -105,9 +105,13 @@ export async function POST(request: NextRequest) {
       console.error("Restore pipeline failed:", err);
       await sendEvent("error", err.message || "An unexpected error occurred during database restore.");
     } finally {
-      await writer.close();
+      try {
+        await writer.close();
+      } catch (_) {}
     }
-  })();
+  })().catch(err => {
+    console.error("[Restore Pipeline Process Guard]:", err);
+  });
 
   return new NextResponse(stream.readable, {
     headers: {

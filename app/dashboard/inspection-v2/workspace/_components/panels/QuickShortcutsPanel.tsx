@@ -127,8 +127,21 @@ export function QuickShortcutsPanel({
     return () => observer.disconnect();
   }, []);
 
-  // ─── Cross-window & polling sync ──────────────────────────────────────
+  // ─── Cross-window & In-App Event Sync ──────────────────────────────────────
   useEffect(() => {
+    const syncFromLS = () => {
+      const pins = readLS<string[]>(LS_PINNED, []);
+      const sanitized = pins.filter((id) => !TOGGLE_PAIRS.some((p) => p.endId === id));
+      const effective = sanitized.length > 0 ? sanitized : INITIAL_SHORTCUT_IDS;
+      setPinnedIds(effective);
+
+      const toggles = readLS<Record<string, boolean>>(LS_TOGGLES, {});
+      setActiveToggles(toggles);
+
+      const hks = readLS<Record<string, string>>(LS_HOTKEYS, DEFAULT_HOTKEYS);
+      setCustomHotkeys(hks);
+    };
+
     const handler = (e: StorageEvent) => {
       if (e.key === LS_PINNED && e.newValue) {
         try {
@@ -143,31 +156,13 @@ export function QuickShortcutsPanel({
         try { setCustomHotkeys(JSON.parse(e.newValue)); } catch { /* ignore */ }
       }
     };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, []);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const pins = readLS<string[]>(LS_PINNED, []);
-      const sanitized = pins.filter((id) => !TOGGLE_PAIRS.some((p) => p.endId === id));
-      const effective = sanitized.length > 0 ? sanitized : INITIAL_SHORTCUT_IDS;
-      setPinnedIds((prev) => {
-        if (JSON.stringify(prev) !== JSON.stringify(effective)) return effective;
-        return prev;
-      });
-      const toggles = readLS<Record<string, boolean>>(LS_TOGGLES, {});
-      setActiveToggles((prev) => {
-        if (JSON.stringify(prev) !== JSON.stringify(toggles)) return toggles;
-        return prev;
-      });
-      const hks = readLS<Record<string, string>>(LS_HOTKEYS, DEFAULT_HOTKEYS);
-      setCustomHotkeys((prev) => {
-        if (JSON.stringify(prev) !== JSON.stringify(hks)) return hks;
-        return prev;
-      });
-    }, 800);
-    return () => clearInterval(interval);
+    window.addEventListener("storage", handler);
+    window.addEventListener("pipeline_shortcuts_changed", syncFromLS);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener("pipeline_shortcuts_changed", syncFromLS);
+    };
   }, []);
 
   // ─── Flattened events master list ───────────────────────────────────────

@@ -54,7 +54,16 @@ export function ComponentListPanel({
   handleEditRecord,
   handleTaskChange,
   setShowTaskSelector,
-}: ComponentListPanelProps) {
+  isFormDirty,
+  handleCommitRecord,
+  resetForm,
+  onDirectSelectTask,
+}: ComponentListPanelProps & {
+  isFormDirty?: boolean;
+  handleCommitRecord?: () => void;
+  resetForm?: () => void;
+  onDirectSelectTask?: (comp: any, taskCode: string) => void;
+}) {
   return (
     <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
       <WorkspaceResources
@@ -67,6 +76,7 @@ export function ComponentListPanel({
         selectedComp={selectedComp}
         handleComponentSelection={handleComponentSelection}
         handleTaskChange={handleTaskChange}
+        handleEditRecord={handleEditRecord}
         setShowTaskSelector={setShowTaskSelector}
         setCompSpecDialogOpen={setCompSpecDialogOpen}
         currentRecords={currentRecords}
@@ -80,6 +90,10 @@ export function ComponentListPanel({
         allInspectionTypes={allInspectionTypes}
         structureType={structureType}
         unitSystem={unitSystem}
+        isFormDirty={isFormDirty}
+        handleCommitRecord={handleCommitRecord}
+        resetForm={resetForm}
+        onDirectSelectTask={onDirectSelectTask}
       />
     </div>
   );
