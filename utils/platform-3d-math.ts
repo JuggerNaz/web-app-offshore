@@ -39,26 +39,42 @@ export function computeRiserOffsetEndpoints(
 
     // 1. Determine normal direction from leg metadata
     if (sLegStr && fLegStr) {
-        const sRow = sLegStr.charAt(0);
-        const fRow = fLegStr.charAt(0);
-        if ((sRow === 'A' || sRow === 'B') && sRow === fRow) {
-            // Row A or Row B face (runs horizontally in X, face normal in Z)
-            isNormalZ = true;
-        } else if (sLegStr !== fLegStr && sLegStr.replace(/[AB]/, '') === fLegStr.replace(/[AB]/, '')) {
-            // Cross end column face (runs horizontally in Z, face normal in X)
-            isNormalZ = false;
+        const sMatch = sLegStr.match(/^([A-Z]+)(\d+)$/i) || sLegStr.match(/^(\d+)([A-Z]+)$/i);
+        const fMatch = fLegStr.match(/^([A-Z]+)(\d+)$/i) || fLegStr.match(/^(\d+)([A-Z]+)$/i);
+
+        if (sMatch && fMatch) {
+            const sRow = sMatch[1].toUpperCase();
+            const fRow = fMatch[1].toUpperCase();
+            const sCol = sMatch[2];
+            const fCol = fMatch[2];
+
+            if (sRow === fRow) {
+                // Shared row face (e.g., A1-A2, B1-B2, C1-C2, D1-D2) -> face normal is along Z
+                isNormalZ = true;
+            } else if (sCol && fCol && sCol === fCol) {
+                // Shared column face (e.g., A1-B1, A2-B2, A3-C3) -> face normal is along X
+                isNormalZ = false;
+            }
+        } else {
+            const sRow = sLegStr.charAt(0);
+            const fRow = fLegStr.charAt(0);
+            if (sRow === fRow) {
+                isNormalZ = true;
+            } else if (sLegStr !== fLegStr && sLegStr.replace(/[A-Z]/g, '') === fLegStr.replace(/[A-Z]/g, '')) {
+                isNormalZ = false;
+            }
         }
     } else if (sLegStr || fLegStr) {
-        const leg = sLegStr || fLegStr;
-        if (leg.startsWith('A') || leg.startsWith('B')) {
+        const leg = (sLegStr || fLegStr).toUpperCase();
+        if (/^[A-Z]\d+$/i.test(leg) || /^ROW/i.test(leg)) {
             isNormalZ = true;
         }
     }
 
     // 2. Explicit face string overrides
-    if (faceStr.includes("ROW A") || faceStr.includes("ROW B") || faceStr.includes("FACE A") || faceStr.includes("FACE B")) {
+    if (/(?:ROW|FACE)\s*[A-Z]/i.test(faceStr) || faceStr.includes("NORTH") || faceStr.includes("SOUTH")) {
         isNormalZ = true;
-    } else if (faceStr.includes("ROW 1") || faceStr.includes("ROW 3") || faceStr.includes("SIDE")) {
+    } else if (/(?:ROW|FACE)\s*\d+/i.test(faceStr) || faceStr.includes("SIDE") || faceStr.includes("EAST") || faceStr.includes("WEST")) {
         isNormalZ = false;
     } else if (!sLegStr && !fLegStr && !faceStr) {
         // Fallback: If Z offset from center is significant, treat as Row face (normal in Z)
@@ -146,6 +162,14 @@ export function isDegenerateFootprint(legCoords: Array<{ x: number; z: number }>
 }
 
 export function generatePlatform3DCoordinates(platformDetails: any, elevations: any[], faces: any[], components: any[]) {
+    // [HOTFIX] In-memory data patch for HOM N758-N764 to bypass Row 1 naming collision
+    components.forEach(c => {
+        if (c.q_id === "HOM N758-N764" && c.metadata) {
+            c.metadata.s_node = "758_B2";
+            c.metadata.f_node = "764_A2";
+        }
+    });
+
     const sanitizeElevation = (elvVal: any): number => {
         if (elvVal === undefined || elvVal === null) return 0;
         let val = typeof elvVal === "number" ? elvVal : parseFloat(elvVal);
@@ -689,6 +713,50 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             return undefined;
         };
 
+        const resolveSupportWeldPosition = (
+            item: any
+        ): THREE.Vector3 | null => {
+            if (!item) return null;
+            const md = item.metadata || item;
+            const sNodeName = (md.s_node || md.start_node || item.s_node || "").toString().trim().toUpperCase();
+            const fNodeName = (md.f_node || md.end_node || item.f_node || "").toString().trim().toUpperCase();
+            const sLegName = (md.s_leg || md.leg || item.s_leg || "").toString().trim().toUpperCase();
+            const fLegName = (md.f_leg || md.leg || item.f_leg || "").toString().trim().toUpperCase();
+
+            const sNodePos = sNodeName ? (lookupNode(sNodeName, sLegName) || lookupNode(sNodeName, undefined)) : null;
+            const fNodePos = fNodeName ? (lookupNode(fNodeName, fLegName) || lookupNode(fNodeName, undefined)) : null;
+
+            let basePos: THREE.Vector3 | null = null;
+            if (sNodePos && fNodePos) {
+                if (sNodePos.distanceTo(fNodePos) > 0.001) {
+                    // Midpoint between distinct start node and end node
+                    basePos = sNodePos.clone().lerp(fNodePos, 0.5);
+                } else {
+                    // Identical start node and end node -> default to single start node position
+                    basePos = sNodePos.clone();
+                }
+            } else if (sNodePos) {
+                basePos = sNodePos.clone();
+            } else if (fNodePos) {
+                basePos = fNodePos.clone();
+            }
+
+            if (basePos && md.dist) {
+                const code = (item.code || "").toUpperCase();
+                const isAnode = code === "AN" || code.includes("ANOD");
+                if (!isAnode) {
+                    const distance = parseFloat(md.dist);
+                    if (distance > 0 && distance < 3.0) {
+                        const clockPos = parseFloat(md.clk_pos || "12");
+                        const angle = getEffectiveClockAngle(clockPos);
+                        basePos.x += Math.sin(angle) * distance;
+                        basePos.z += Math.cos(angle) * distance;
+                    }
+                }
+            }
+            return basePos;
+        };
+
         // PASS 1.2: Register endpoints for all primary member components
         components.forEach((c) => {
             const md = c.metadata || {};
@@ -1010,6 +1078,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
         }
 
         const pendingAttachments: typeof components = [];
+        const pendingCaissons: typeof components = [];
         const pendingSpanAccessories: { component: any; sNode: THREE.Vector3; fNode: THREE.Vector3 }[] =
             [];
         const pendingRiserSupports: { component: any; riserNum: string; targetElv: number }[] = [];
@@ -1118,7 +1187,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
             let thickness = 0.15;
             if (code.includes("LG")) thickness = 0.48;
-            else if (isPile) thickness = 0.2;
+            else if (isPile) thickness = 0.08;
             else if (code === "RS" || code.includes("RISER") || code.includes("RISR")) thickness = 0.3;
             else if (code.includes("HM") || code.includes("HD")) thickness = 0.2;
             else if (code.includes("VM") || code.includes("VD")) thickness = 0.16;
@@ -1137,38 +1206,66 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             const isPointNodeWeld = isWeld && (!md.s_node || !md.f_node || md.s_node === md.f_node || md.s_node.toString().toUpperCase() === extractBareNode(c.q_id));
 
             if (isPile) {
-                const legMatch = qIdUpper.match(/(?:LEG\s*|PL\s*|PILE\s*|LEG\-?)([A-Z0-9]+)/i) || qIdUpper.match(/([A-Z]\d+)/i);
+                const legMatch = qIdUpper.match(/PILE\s*LEG\s*([A-Z0-9]+)/i) || qIdUpper.match(/(?:LEG\s*|PL\s*|PILE\s*|LEG\-?)([A-Z0-9]+)/i) || qIdUpper.match(/([A-Z]\d+)/i);
                 const targetLeg = (md.s_leg || md.f_leg || md.leg || (legMatch?.[1]) || "").toUpperCase();
 
-                const nodeMatch = (qIdUpper.match(/(?:WN\s*|N\s*)?(\d+)/i) || [])[1];
-                const targetNode = String(md.s_node || md.f_node || md.start_node || md.end_node || nodeMatch || "").toUpperCase().trim();
+                let resolvedStart = hasStartNode ? startNode?.clone() : undefined;
+                let resolvedEnd = hasEndNode ? endNode?.clone() : undefined;
 
-                const nodePos = (targetNode ? lookupNode(targetNode, targetLeg) : undefined) ||
-                                (targetNode ? lookupNode(targetNode, undefined) : undefined) ||
-                                (hasStartNode ? startNode : hasEndNode ? endNode : undefined);
-
-                const yTop = nodePos ? nodePos.y : (md.elv_1 ? sanitizeElevation(md.elv_1) : minElv);
-                const pileLength = md.length ? Math.abs(parseFloat(md.length)) : 2.0;
-                const yBottom = yTop - pileLength;
-
-                let topCoords = nodePos ? nodePos.clone() : new THREE.Vector3(0, yTop, 0);
-                if (!nodePos && targetLeg) {
-                    const cTop = getLegCoordsAtElv(targetLeg, yTop);
-                    topCoords.set(cTop.x, yTop, cTop.z);
+                if (!resolvedStart && md.elv_1 !== undefined) {
+                    const y1 = sanitizeElevation(md.elv_1);
+                    const legName = (md.s_leg || targetLeg || "").toUpperCase();
+                    if (legName) {
+                        const coords = getLegCoordsAtElv(legName, y1);
+                        resolvedStart = new THREE.Vector3(coords.x, y1, coords.z);
+                    }
                 }
 
-                let bottomCoords = new THREE.Vector3();
-                if (targetLeg) {
-                    const cBot = getLegCoordsAtElv(targetLeg, yBottom);
-                    bottomCoords.set(cBot.x, yBottom, cBot.z);
+                if (!resolvedEnd && md.elv_2 !== undefined) {
+                    const y2 = sanitizeElevation(md.elv_2);
+                    const legName = (md.f_leg || targetLeg || "").toUpperCase();
+                    if (legName) {
+                        const coords = getLegCoordsAtElv(legName, y2);
+                        resolvedEnd = new THREE.Vector3(coords.x, y2, coords.z);
+                    }
+                }
+
+                if (resolvedStart && resolvedEnd && resolvedStart.distanceTo(resolvedEnd) > 0.001) {
+                    start.copy(resolvedStart);
+                    end.copy(resolvedEnd);
+                    thickness = 0.2;
+                    resolved = true;
                 } else {
-                    bottomCoords.set(topCoords.x, yBottom, topCoords.z);
-                }
+                    const nodeMatch = (qIdUpper.match(/(?:WN\s*|N\s*)?(\d+)/i) || [])[1];
+                    const targetNode = String(md.s_node || md.f_node || md.start_node || md.end_node || nodeMatch || "").toUpperCase().trim();
 
-                start.copy(topCoords);
-                end.copy(bottomCoords);
-                thickness = 0.2;
-                resolved = true;
+                    const nodePos = (targetNode ? lookupNode(targetNode, targetLeg) : undefined) ||
+                                    (targetNode ? lookupNode(targetNode, undefined) : undefined) ||
+                                    (hasStartNode ? startNode : hasEndNode ? endNode : undefined);
+
+                    const yTop = nodePos ? nodePos.y : (md.elv_1 !== undefined ? sanitizeElevation(md.elv_1) : minElv);
+                    const pileLength = md.length ? Math.abs(parseFloat(md.length)) : 2.0;
+                    const yBottom = yTop - pileLength;
+
+                    let topCoords = nodePos ? nodePos.clone() : new THREE.Vector3(0, yTop, 0);
+                    if (!nodePos && targetLeg) {
+                        const cTop = getLegCoordsAtElv(targetLeg, yTop);
+                        topCoords.set(cTop.x, yTop, cTop.z);
+                    }
+
+                    let bottomCoords = new THREE.Vector3();
+                    if (targetLeg) {
+                        const cBot = getLegCoordsAtElv(targetLeg, yBottom);
+                        bottomCoords.set(cBot.x, yBottom, cBot.z);
+                    } else {
+                        bottomCoords.set(topCoords.x, yBottom, topCoords.z);
+                    }
+
+                    start.copy(topCoords);
+                    end.copy(bottomCoords);
+                    thickness = 0.2;
+                    resolved = true;
+                }
             } else if (md.associated_comp_id && code !== "VM") {
                 if (code !== "WN") {
                     pendingAttachments.push(c);
@@ -1183,22 +1280,29 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 pendingSpanAccessories.push({ component: c, sNode: startNode!, fNode: endNode! });
                 return;
             } else if (isPointAccessory && (hasStartNode || hasEndNode || md.s_leg || md.elv_1 !== undefined || isPointNodeWeld)) {
-                const y = md.elv_1 ? sanitizeElevation(md.elv_1) : (startNode?.y ?? endNode?.y ?? 0);
-                const bareNode = extractBareNode(c.q_id);
-                const nodePos = startNode || endNode || lookupNode(bareNode, md.s_leg);
-                if (nodePos) {
-                    start.set(nodePos.x, y || nodePos.y, nodePos.z);
-                } else if (md.s_leg) {
-                    const coords = getLegCoordsAtElv(md.s_leg.toUpperCase(), y);
-                    start.set(coords.x, y, coords.z);
-                }
-                if (md.dist && !isAnode) {
-                    const distance = parseFloat(md.dist);
-                    if (distance > 0 && distance < 3.0) {
-                        const clockPos = parseFloat(md.clk_pos || "12");
-                        const angle = (clockPos / 12) * Math.PI * 2;
-                        start.x += Math.sin(angle) * distance;
-                        start.z += Math.cos(angle) * distance;
+                const isSupportWeld = code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
+                const suppMidpoint = isSupportWeld ? resolveSupportWeldPosition(c) : null;
+
+                if (suppMidpoint) {
+                    start.copy(suppMidpoint);
+                } else {
+                    const y = md.elv_1 ? sanitizeElevation(md.elv_1) : (startNode?.y ?? endNode?.y ?? 0);
+                    const bareNode = extractBareNode(c.q_id);
+                    const nodePos = startNode || endNode || lookupNode(bareNode, md.s_leg);
+                    if (nodePos) {
+                        start.set(nodePos.x, y || nodePos.y, nodePos.z);
+                    } else if (md.s_leg) {
+                        const coords = getLegCoordsAtElv(md.s_leg.toUpperCase(), y);
+                        start.set(coords.x, y, coords.z);
+                    }
+                    if (md.dist && !isAnode) {
+                        const distance = parseFloat(md.dist);
+                        if (distance > 0 && distance < 3.0) {
+                            const clockPos = parseFloat(md.clk_pos || "12");
+                            const angle = (clockPos / 12) * Math.PI * 2;
+                            start.x += Math.sin(angle) * distance;
+                            start.z += Math.cos(angle) * distance;
+                        }
                     }
                 }
                 end.copy(start);
@@ -1209,58 +1313,8 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 code.includes("CAIS") ||
                 qIdUpper.startsWith("CS-")
             ) {
-                // Caisson 3D Placement: Detect start node (s_node) and place top under start node weld in flush contact
-                const sNodeName = (md.s_node || md.start_node || c.s_node || "").toString().trim().toUpperCase();
-                const fNodeName = (md.f_node || md.end_node || c.f_node || "").toString().trim().toUpperCase();
-                const sLegName = (md.s_leg || md.leg || c.s_leg || "").toString().trim().toUpperCase();
-                const fLegName = (md.f_leg || md.leg || c.f_leg || "").toString().trim().toUpperCase();
-
-                const sNodePos = sNodeName ? (lookupNode(sNodeName, sLegName) || lookupNode(sNodeName, undefined)) : null;
-                const fNodePos = fNodeName ? (lookupNode(fNodeName, fLegName) || lookupNode(fNodeName, undefined)) : null;
-
-                const contactOffset = 0.275; // Half height of weld collar (0.55m) for flush contact below weld collar
-
-                if (sNodePos) {
-                    start.set(sNodePos.x, sNodePos.y - contactOffset, sNodePos.z);
-                } else if (sLegName && md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== "") {
-                    const y1 = sanitizeElevation(md.elv_1);
-                    const coords1 = getLegCoordsAtElv(sLegName, y1);
-                    start.set(coords1.x, y1 - contactOffset, coords1.z);
-                } else if (md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== "") {
-                    const y1 = sanitizeElevation(md.elv_1);
-                    start.set(0, y1 - contactOffset, 0);
-                } else {
-                    start.set(0, maxElv - contactOffset, 0);
-                }
-
-                if (fNodePos) {
-                    const y2 = (md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "")
-                        ? sanitizeElevation(md.elv_2)
-                        : fNodePos.y;
-                    end.set(fNodePos.x, y2, fNodePos.z);
-                } else if (fLegName && md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "") {
-                    const y2 = sanitizeElevation(md.elv_2);
-                    const coords2 = getLegCoordsAtElv(fLegName, y2);
-                    end.set(coords2.x, y2, coords2.z);
-                } else if (md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "") {
-                    const y2 = sanitizeElevation(md.elv_2);
-                    end.set(start.x, y2, start.z);
-                } else {
-                    end.set(start.x, seabedY, start.z);
-                }
-
-                if (end.y >= start.y) {
-                    if (md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "") {
-                        const y2 = sanitizeElevation(md.elv_2);
-                        if (y2 < start.y) end.setY(y2);
-                        else end.setY(start.y - 2.0);
-                    } else {
-                        end.setY(seabedY < start.y ? seabedY : start.y - 2.0);
-                    }
-                }
-
-                thickness = 0.30;
-                resolved = true;
+                pendingCaissons.push(c);
+                return;
             } else if (
                 code === "RS" ||
                 code === "CO" ||
@@ -1566,6 +1620,130 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             }
         });
 
+        // Pass 1.9: Resolve deferred Caisson Placements
+        pendingCaissons.forEach(c => {
+            const md = c.metadata || {};
+            let thickness = 0.30;
+            let start = new THREE.Vector3();
+            let end = new THREE.Vector3();
+
+            const sNodeName = (md.s_node || md.start_node || c.s_node || "").toString().trim().toUpperCase();
+            const fNodeName = (md.f_node || md.end_node || c.f_node || "").toString().trim().toUpperCase();
+            const sLegName = (md.s_leg || md.leg || c.s_leg || "").toString().trim().toUpperCase();
+            const fLegName = (md.f_leg || md.leg || c.f_leg || "").toString().trim().toUpperCase();
+
+            const sNodePos = sNodeName ? (lookupNode(sNodeName, sLegName) || lookupNode(sNodeName, undefined)) : null;
+            const fNodePos = fNodeName ? (lookupNode(fNodeName, fLegName) || lookupNode(fNodeName, undefined)) : null;
+
+            const compQIdUpper = (c.q_id || "").toUpperCase().trim();
+            const compIdStr = String(c.id);
+
+            const matchingCaissonSupps = components.filter((other) => {
+                const oCode = (other.code || "").toUpperCase();
+                const oQId = (other.q_id || "").toUpperCase();
+                const isSupp = oCode === "WP" || oCode === "CL" || oQId.includes("SUPP") || oQId.includes("CLP");
+                if (!isSupp) return false;
+
+                const assocId = other.metadata?.associated_comp_id;
+                if (assocId && String(assocId) === compIdStr) return true;
+                if (compQIdUpper && (oQId.startsWith(`${compQIdUpper}-`) || oQId.startsWith(`${compQIdUpper}_`) || oQId.startsWith(`${compQIdUpper} `))) return true;
+
+                // Fallback 1: Check if they are explicitly attached to the exact same logical node
+                const oMd = other.metadata || {};
+                const oSNode = (oMd.s_node || oMd.start_node || other.s_node || "").toString().trim().toUpperCase();
+                if (sNodeName && oSNode && sNodeName === oSNode) return true;
+
+                // Fallback 2: Loose substring matching (e.g. Caisson "C1" inside Support "SUPP-C1-WEST")
+                if (compQIdUpper && compQIdUpper.length > 2 && oQId.includes(compQIdUpper)) return true;
+
+                return false;
+            });
+
+            const suppCoords: { elv: number; pos: THREE.Vector3 }[] = [];
+            for (const supp of matchingCaissonSupps) {
+                let pos: THREE.Vector3 | null = null;
+                if (intermediateLayouts.has(supp.id)) {
+                    pos = intermediateLayouts.get(supp.id)!.start.clone();
+                } else {
+                    const rPos = resolveSupportWeldPosition(supp);
+                    if (rPos) pos = rPos;
+                    else if (supp._webapp3d && supp._webapp3d.start_x !== undefined && supp._webapp3d.start_x !== null) {
+                        pos = new THREE.Vector3(Number(supp._webapp3d.start_x), Number(supp._webapp3d.start_y), Number(supp._webapp3d.start_z));
+                    }
+                }
+                
+                if (pos) {
+                    suppCoords.push({ elv: pos.y, pos });
+                }
+            }
+
+            const contactOffset = 0.275;
+
+            // Define Caisson absolute top and bottom elevations
+            const y1 = sNodePos ? sNodePos.y : (md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== "" ? sanitizeElevation(md.elv_1) : maxElv);
+            const y2 = fNodePos ? fNodePos.y : (md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "" ? sanitizeElevation(md.elv_2) : seabedY);
+
+            if (suppCoords.length >= 2) {
+                // Sort supports by elevation descending
+                suppCoords.sort((a, b) => b.elv - a.elv);
+                
+                const topSupp = suppCoords[0].pos;
+                const botSupp = suppCoords[suppCoords.length - 1].pos;
+                
+                // Calculate slope trajectory
+                const dir = botSupp.clone().sub(topSupp).normalize();
+                
+                if (dir.lengthSq() > 0.001 && Math.abs(dir.y) > 0.001) {
+                    // Extrapolate start coordinate along the slope
+                    const tStart = (y1 - contactOffset - topSupp.y) / dir.y;
+                    start.copy(topSupp.clone().add(dir.clone().multiplyScalar(tStart)));
+                    
+                    // Extrapolate end coordinate along the slope
+                    const tEnd = (y2 - topSupp.y) / dir.y;
+                    end.copy(topSupp.clone().add(dir.clone().multiplyScalar(tEnd)));
+                } else {
+                    // Fallback to straight line if direction is invalid
+                    start.set(topSupp.x, y1 - contactOffset, topSupp.z);
+                    end.set(botSupp.x, y2, botSupp.z);
+                }
+            } else if (suppCoords.length === 1) {
+                const caissonSuppPos = suppCoords[0].pos;
+                start.set(caissonSuppPos.x, y1 - contactOffset, caissonSuppPos.z);
+                end.set(caissonSuppPos.x, y2, caissonSuppPos.z);
+            } else {
+                // 0 supports found, fallback to standard leg/node positioning
+                if (sNodePos) {
+                    start.set(sNodePos.x, sNodePos.y - contactOffset, sNodePos.z);
+                } else if (sLegName && md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== "") {
+                    const coords1 = getLegCoordsAtElv(sLegName, y1);
+                    start.set(coords1.x, y1 - contactOffset, coords1.z);
+                } else {
+                    start.set(0, y1 - contactOffset, 0);
+                }
+
+                if (fNodePos) {
+                    end.set(fNodePos.x, y2, fNodePos.z);
+                } else if (fLegName && md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "") {
+                    const coords2 = getLegCoordsAtElv(fLegName, y2);
+                    end.set(coords2.x, y2, coords2.z);
+                } else {
+                    end.set(start.x, y2, start.z);
+                }
+            }
+
+            if (end.y >= start.y) {
+                if (md.elv_2 !== undefined && md.elv_2 !== null && md.elv_2 !== "") {
+                    const checkY2 = sanitizeElevation(md.elv_2);
+                    if (checkY2 < start.y) end.setY(checkY2);
+                    else end.setY(start.y - 2.0);
+                } else {
+                    end.setY(seabedY < start.y ? seabedY : start.y - 2.0);
+                }
+            }
+
+            intermediateLayouts.set(c.id, { component: c, start, end, thickness });
+        });
+
         const spanMap = new Map<string, typeof pendingSpanAccessories>();
         pendingSpanAccessories.forEach((item) => {
             const key = `${item.sNode.x.toFixed(3)},${item.sNode.y.toFixed(3)},${item.sNode.z.toFixed(3)}|${item.fNode.x.toFixed(3)},${item.fNode.y.toFixed(3)},${item.fNode.z.toFixed(3)}`;
@@ -1589,7 +1767,12 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 let start = new THREE.Vector3();
                 let end = new THREE.Vector3();
 
-                if (isAnode) {
+                const isSupportWeld = itemCode === "WP" || itemCode === "CL" || itemQId.includes("SUPP") || itemQId.includes("CLP");
+                const suppMidpoint = isSupportWeld ? resolveSupportWeldPosition(item.component) : null;
+
+                if (suppMidpoint) {
+                    start.copy(suppMidpoint);
+                } else if (isAnode) {
                     // For anodes on member spans, default to equal gap distribution (1 anode = middle t=0.5)
                     const t = (idx + 1) / (count + 1);
                     start.copy(sNode).lerp(fNode, t);
@@ -1736,21 +1919,25 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 let start = new THREE.Vector3();
                 let end = new THREE.Vector3();
 
-                const targetY = sanitizeElevation(md.elv_1 || -parseFloat(md.depth) / 10);
-                const topRef = isParentCaisson ? caissonTop : pStart;
-                if (Math.abs(pEnd.y - topRef.y) > 0.001) {
-                    const t = (targetY - topRef.y) / (pEnd.y - topRef.y);
-                    const clampedT = Math.max(0, Math.min(1, t));
-                    start.copy(topRef).lerp(pEnd, clampedT);
-                } else {
-                    start.copy(topRef).add(pEnd).multiplyScalar(0.5);
-                    start.setY(targetY);
-                }
-
                 const cCode = (c.code || "").toUpperCase();
                 const cQId = (c.q_id || "").toUpperCase();
                 const isChildCaissonSupport = cCode === "WP" || cCode === "CL" || cQId.includes("SUPP") || cQId.includes("CLP");
+                const suppMidpoint = isChildCaissonSupport ? resolveSupportWeldPosition(c) : null;
 
+                if (suppMidpoint) {
+                    start.copy(suppMidpoint);
+                } else {
+                    const targetY = sanitizeElevation(md.elv_1 || -parseFloat(md.depth) / 10);
+                    const topRef = isParentCaisson ? caissonTop : pStart;
+                    if (Math.abs(pEnd.y - topRef.y) > 0.001) {
+                        const t = (targetY - topRef.y) / (pEnd.y - topRef.y);
+                        const clampedT = Math.max(0, Math.min(1, t));
+                        start.copy(topRef).lerp(pEnd, clampedT);
+                    } else {
+                        start.copy(topRef).add(pEnd).multiplyScalar(0.5);
+                        start.setY(targetY);
+                    }
+                }
                 if (isChildCaissonSupport && isParentCaisson) {
                     end.copy(start).add(direction.clone().multiplyScalar(0.001));
                 } else if (direction.lengthSq() > 0.1) {
@@ -1929,7 +2116,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         component: c,
                         start: [startMid.midpoint.x, startMid.elv, startMid.midpoint.z],
                         end: [endMid.midpoint.x, endMid.elv, endMid.midpoint.z],
-                        thickness: 0.10,
+                        thickness: 0.35,
                     });
                 }
                 // Append bottom extension segment if target botElv is lower than the last guide frame
@@ -1940,7 +2127,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         component: c,
                         start: [lastFrame.midpoint.x, lastFrame.elv, lastFrame.midpoint.z],
                         end: [lastFrame.midpoint.x, botElv, lastFrame.midpoint.z],
-                        thickness: 0.10,
+                        thickness: 0.35,
                     });
                 }
                 // Prepend top extension segment if target topElv is higher than the first guide frame
@@ -1951,7 +2138,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         component: c,
                         start: [firstFrame.midpoint.x, topElv, firstFrame.midpoint.z],
                         end: [firstFrame.midpoint.x, firstFrame.elv, firstFrame.midpoint.z],
-                        thickness: 0.10,
+                        thickness: 0.35,
                     });
                 }
             } else {
@@ -1963,7 +2150,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                         component: c,
                         start: [startNode.x, topElv, startNode.z],
                         end: [startNode.x, botElv, startNode.z],
-                        thickness: 0.10,
+                        thickness: 0.35,
                     });
                 }
             }

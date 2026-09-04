@@ -89,7 +89,14 @@ export const GET = withAuth(
     let foundationMembers: any[] = [];
     let elvMarkers: any[] = [];
 
-    const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RB", "SD", "FA"];
+    const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+    const webapp3dMap = new Map<number, any>();
+    if (webapp3d) {
+      webapp3d.forEach((w: any) => {
+        const cid = w.comp_id || w.structure_components?.id;
+        if (cid) webapp3dMap.set(Number(cid), w);
+      });
+    }
     const filteredRawComponents = (rawComponents || [])
       .filter((c: any) => {
         const code = (c.code || "").trim().toUpperCase();
@@ -101,14 +108,22 @@ export const GET = withAuth(
           const md = c.metadata || c;
           const sNode = (md.s_node || "").toString().trim().toUpperCase();
           const fNode = (md.f_node || "").toString().trim().toUpperCase();
-          if (sNode && fNode && sNode !== fNode) return false;
+          const hasAssociation = !!(md.associated_comp_id || md.associated_member || md.associated_comp || md.parent_id);
+          if (sNode && fNode && sNode !== fNode && !hasAssociation) return false;
         }
 
         if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) return false;
         if (qIdUpper.endsWith("TERM")) return false;
         return true;
       })
-      .map((c: any) => ({ ...c.metadata, ...c }));
+      .map((c: any) => {
+        const w3d = webapp3dMap.get(Number(c.id));
+        const _webapp3d = w3d ? {
+          start_x: w3d.start_x, start_y: w3d.start_y, start_z: w3d.start_z,
+          end_x: w3d.end_x, end_y: w3d.end_y, end_z: w3d.end_z
+        } : null;
+        return { ...c.metadata, ...c, _webapp3d };
+      });
 
     // Compute foundation & elevation markers from math
     const mathResult = generatePlatform3DCoordinates(
@@ -179,7 +194,9 @@ export const GET = withAuth(
           let eY = mathLayout?.end?.y ?? mathLayout?.end?.[1] ?? (item.end_y || sY);
           let eZ = mathLayout?.end?.z ?? mathLayout?.end?.[2] ?? (item.end_z || sZ);
 
-          if (sY === eY) {
+          const isSingleNodePoint = (sX === eX && sY === eY && sZ === eZ);
+
+          if (isSingleNodePoint) {
             eY = sY - 2.0;
           }
 
@@ -191,6 +208,7 @@ export const GET = withAuth(
             end_x: eX,
             end_y: eY,
             end_z: eZ,
+            is_single_node: isSingleNodePoint,
             pos_x: (sX + eX) / 2,
             pos_y: (sY + eY) / 2,
             pos_z: (sZ + eZ) / 2,
@@ -204,7 +222,10 @@ export const GET = withAuth(
                        (item.start_z === 0 || item.start_z === "0" || !item.start_z)) ||
                        (item.start_x === item.end_x && item.start_y === item.end_y && item.start_z === item.end_z);
 
-        if (isZeroOrPoint && mathLayout) {
+        const isSupportWeld = code === "WP" || code === "CL" || (typeof qid === "string" && (qid.includes("SUPP") || qid.includes("CLP")));
+        const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS") || (typeof qid === "string" && qid.startsWith("CS-"));
+
+        if ((isZeroOrPoint || isSupportWeld || isCaisson) && mathLayout) {
           const sX = mathLayout.start?.x ?? mathLayout.start?.[0] ?? 0;
           const sY = mathLayout.start?.y ?? mathLayout.start?.[1] ?? 0;
           const sZ = mathLayout.start?.z ?? mathLayout.start?.[2] ?? 0;
@@ -316,7 +337,8 @@ export const GET = withAuth(
           color_hex: m.color || "#64748b",
           visibility_flag: true,
           has_geometry_issue: false,
-          structure_components: c
+          structure_components: c,
+          metadata: m.component?.metadata || m.metadata
         };
       });
 

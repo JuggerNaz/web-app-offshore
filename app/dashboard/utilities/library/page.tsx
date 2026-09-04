@@ -544,7 +544,8 @@ function CreateItemDialog({ open, onOpenChange, master, onSuccess }: { open: boo
                 setColorName("");
                 setLogoUrl(null);
             } else {
-                toast.error("Failed to create item");
+                const errData = await res.json().catch(() => ({}));
+                toast.error(errData.error || errData.message || "Failed to create item");
             }
         } catch (error) {
             toast.error("Error creating item");
@@ -573,8 +574,8 @@ function CreateItemDialog({ open, onOpenChange, master, onSuccess }: { open: boo
                     ) : (
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2 col-span-2 md:col-span-1">
-                                <Label htmlFor="lib_val" className="text-xs font-bold uppercase text-slate-500">Value/Code</Label>
-                                <Input id="lib_val" name="lib_val" required placeholder="e.g. DRILL" className="rounded-xl font-mono" />
+                                <Label htmlFor="lib_val" className="text-xs font-bold uppercase text-slate-500">Value/Code (Max 12 chars)</Label>
+                                <Input id="lib_val" name="lib_val" required maxLength={12} placeholder="e.g. DRILL" className="rounded-xl font-mono" />
                             </div>
                             <div className="space-y-2 col-span-2 md:col-span-1">
                                 <Label htmlFor="lib_desc" className="text-xs font-bold uppercase text-slate-500">Description</Label>

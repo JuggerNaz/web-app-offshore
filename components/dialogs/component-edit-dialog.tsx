@@ -930,7 +930,7 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         mutate(`/api/structure-components/${structureId}`);
       }
 
-      toast("Component updated successfully");
+      toast("Component updated successfully", { position: "bottom-right" });
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to update component", error);
@@ -1112,9 +1112,8 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           Start Leg
                         </Label>
                         <Select
-                          value={formData.s_leg}
+                          value={formData.s_leg || ""}
                           onValueChange={(val) => handleChange("s_leg", val)}
-                          disabled={legOptions.length === 0}
                         >
                           <SelectTrigger
                             id="edit-sLeg"
@@ -1123,11 +1122,17 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                             <SelectValue placeholder="Select start leg" />
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
-                            {legOptions.map((opt: any) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
+                            {(() => {
+                              const opts = [...legOptions];
+                              if (formData.s_leg && !opts.some((o: any) => o.value === formData.s_leg)) {
+                                opts.unshift({ value: formData.s_leg, label: formData.s_leg });
+                              }
+                              return opts.map((opt: any) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ));
+                            })()}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1139,9 +1144,8 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           End Leg
                         </Label>
                         <Select
-                          value={formData.f_leg}
+                          value={formData.f_leg || ""}
                           onValueChange={(val) => handleChange("f_leg", val)}
-                          disabled={legOptions.length === 0}
                         >
                           <SelectTrigger
                             id="edit-eLeg"
@@ -1150,11 +1154,17 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                             <SelectValue placeholder="Select end leg" />
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
-                            {legOptions.map((opt: any) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
+                            {(() => {
+                              const opts = [...legOptions];
+                              if (formData.f_leg && !opts.some((o: any) => o.value === formData.f_leg)) {
+                                opts.unshift({ value: formData.f_leg, label: formData.f_leg });
+                              }
+                              return opts.map((opt: any) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ));
+                            })()}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1392,6 +1402,61 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                           </div>
                         </PopoverContent>
                       </Popover>
+                    </div>
+
+                    {/* Platform Row: Part, Structural Group (Identity) */}
+                    <div className="col-span-6 space-y-2">
+                      <Label
+                        htmlFor="edit-part"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Part
+                      </Label>
+                      <Select
+                        value={formData.top_und}
+                        onValueChange={(val) => handleChange("top_und", val)}
+                      >
+                        <SelectTrigger
+                          id="edit-part"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select part" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl z-[9999]">
+                          <SelectItem value="TOPSIDE">TOPSIDE</SelectItem>
+                          <SelectItem value="SUBSEA">SUBSEA</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="col-span-6 space-y-2">
+                      <Label
+                        htmlFor="edit-group"
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1"
+                      >
+                        Structural Group
+                      </Label>
+                      <Select
+                        value={formData.comp_group}
+                        onValueChange={(val) => handleChange("comp_group", val)}
+                      >
+                        <SelectTrigger
+                          id="edit-group"
+                          className="rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold"
+                        >
+                          <SelectValue placeholder="Select structural group" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl z-[9999]">
+                          {Array.from(new Map(compGroupLib?.data
+                            ?.filter((x: any) => x.lib_code === "COMPGRP")
+                            .map((x: any) => [x.lib_id, x]) || []).values())
+                            .map((x: any) => (
+                              <SelectItem key={x.lib_id} value={String(x.lib_id)}>
+                                {x.lib_desc}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </>
                 ) : (

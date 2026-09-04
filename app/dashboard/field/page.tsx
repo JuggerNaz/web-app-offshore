@@ -5,6 +5,7 @@ import { fetcher } from "@/utils/utils";
 import { Compass, Activity, Building2, Layers, Waves, Search, LayoutGrid, List, ChevronRight, ArrowUp, ArrowDown, Plus, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import {
     Table,
@@ -38,6 +39,7 @@ export default function FieldPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
     const [sortConfig, setSortConfig] = useState<{ key: keyof FieldWithStats | null, direction: 'asc' | 'desc' }>({ key: 'lib_id', direction: 'asc' });
+    const router = useRouter();
 
     // Add Field Modal State
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -241,9 +243,9 @@ export default function FieldPage() {
                     {viewMode === "grid" ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                             {filteredFields.map((field) => (
-                                <Link
+                                <div
                                     key={field.lib_id}
-                                    href={`/dashboard/field/structures?field=${field.lib_id}`}
+                                    onClick={() => router.push(`/dashboard/field/structures?field=${field.lib_id}`)}
                                     className="group"
                                 >
                                     <div className="relative h-[22rem] flex flex-col rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/50 dark:shadow-black/20 hover:shadow-2xl hover:scale-[1.02] transition-all duration-500 cursor-pointer">
@@ -268,7 +270,8 @@ export default function FieldPage() {
                                                 <button
                                                     onClick={(e) => {
                                                         e.preventDefault();
-                                                        window.location.href = `/dashboard/field/platform?field=${field.lib_id}`;
+                                                        e.stopPropagation();
+                                                        router.push(`/dashboard/field/platform?field=${field.lib_id}`);
                                                     }}
                                                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100/50 dark:border-blue-800/50 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all group/btn shadow-sm"
                                                 >
@@ -280,7 +283,8 @@ export default function FieldPage() {
                                                 <button
                                                     onClick={(e) => {
                                                         e.preventDefault();
-                                                        window.location.href = `/dashboard/field/pipeline?field=${field.lib_id}`;
+                                                        e.stopPropagation();
+                                                        router.push(`/dashboard/field/pipeline?field=${field.lib_id}`);
                                                     }}
                                                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 border border-teal-100/50 dark:border-teal-800/50 hover:bg-teal-600 hover:text-white hover:border-teal-600 transition-all group/btn shadow-sm"
                                                 >
@@ -297,7 +301,7 @@ export default function FieldPage() {
                                             </div>
                                         </div>
                                     </div>
-                                </Link>
+                                </div>
                             ))}
                         </div>
                     ) : (

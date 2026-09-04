@@ -56,7 +56,7 @@ function checkComponentOnFace(layout: any, faceName: string, faces: any[] = []):
 
     const { sLeg, fLeg, compFace, compObj } = getLegEndpoints(layout);
     const code = (layout.code || compObj.code || "").toUpperCase().trim();
-    const labelUpper = (layout.q_id || layout.label || layout.id || "").toString().toUpperCase();
+    const labelUpper = String(layout.q_id || compObj.q_id || layout.label || layout.id || "").toUpperCase();
 
     // 0. Purge Risers, Conductors, J-Tubes, Internal Appurtenances & Anodes
     const isInternalAppurtenance =
@@ -67,112 +67,90 @@ function checkComponentOnFace(layout: any, faceName: string, faces: any[] = []):
         return false;
     }
 
-    // 1. Explicit Component Specifications FACE Field Check
+    // 1. Explicit Component Specifications FACE Field Check (if specified)
     if (compFace) {
-        const cleanCompFace = compFace.replace(/^ROW\s*|^FACE\s*/i, "").trim();
-        const isDirectMatch =
-            compFace === fUpper ||
-            cleanCompFace === cleanFace ||
-            compFace.includes(cleanFace) ||
-            fUpper.includes(cleanCompFace);
+        if (compFace === "N/A" || compFace === "NA" || compFace === "NONE") {
+            return fUpper === compFace;
+        }
 
-        if (isDirectMatch) return true;
+        const compFacesArray = compFace.split(',').map((f: string) => f.trim()).filter(Boolean);
+        
+        const isMatch = compFacesArray.some((cf: string) => {
+            const cleanCompFace = cf.replace(/^ROW\s*|^FACE\s*/i, "").trim();
+            return cf === fUpper || cleanCompFace === cleanFace || cf.includes(cleanFace) || fUpper.includes(cleanCompFace);
+        });
+
+        if (isMatch) {
+            return true;
+        } else {
+            // Explicitly assigned to a different face -> hide component
+            return false;
+        }
     }
 
-    // Determine if searching for a Column Number (e.g. ROW 2, FACE 2, 2) or Row Letter (e.g. ROW A, FACE A, A)
-    const isColNumberSearch = /^(?:ROW|FACE)\s*\d+$/i.test(fUpper) || /^\d+$/i.test(fUpper);
+    // 2. Strict Row Letter match (e.g. "ROW A", "FACE A", "A") for unassigned components
+    const rowMatch = fUpper.match(/^(?:ROW|FACE)\s*([A-Z]+)$/i) || fUpper.match(/^([A-Z]+)$/i);
+    if (rowMatch) {
+        const rowLetter = rowMatch[1].toUpperCase();
 
-    if (isColNumberSearch) {
-        const colNum = cleanFace;
-        // Matches if both legs belong to this column (e.g. A2 and B2 for ROW 2)
-        if (sLeg && fLeg && sLeg !== fLeg) {
-            if (sLeg.endsWith(colNum) && fLeg.endsWith(colNum)) return true;
-            const sEnds = (sLeg.match(/\d+$/) || [])[0];
-            const fEnds = (fLeg.match(/\d+$/) || [])[0];
-            if (sEnds === colNum && fEnds === colNum) return true;
-        } else if (sLeg || fLeg) {
-            const singleLeg = sLeg || fLeg;
-            if (singleLeg.endsWith(colNum) && !singleLeg.includes("-")) return true;
-            const ends = (singleLeg.match(/\d+$/) || [])[0];
-            if (ends === colNum) return true;
-        }
-
-        if (
-            labelUpper.includes(`-${colNum}`) ||
-            labelUpper.includes(`${colNum}-`) ||
-            labelUpper.includes(`LEG-${colNum}`) ||
-            labelUpper.includes(`ROW ${colNum}`) ||
-            labelUpper.includes(`FACE ${colNum}`) ||
-            labelUpper.includes(`A${colNum}`) ||
-            labelUpper.includes(`B${colNum}`) ||
-            labelUpper.includes(`C${colNum}`) ||
-            labelUpper.includes(`D${colNum}`)
-        ) {
-            const legMatches = labelUpper.match(/[A-Z]+\d+/g);
-            if (legMatches && legMatches.length >= 2) {
-                if (legMatches.every((m: string) => m.endsWith(colNum))) return true;
-            } else if (legMatches && legMatches.length === 1) {
-                if (legMatches[0].endsWith(colNum)) return true;
-            } else {
-                return true;
-            }
-        }
-    } else {
-        const rowLetter = cleanFace;
-        // Matches if both legs belong to this row letter (e.g. B1 and B2 for ROW B)
         if (sLeg && fLeg && sLeg !== fLeg) {
             if (sLeg.startsWith(rowLetter) && fLeg.startsWith(rowLetter)) return true;
+            if (sLeg.startsWith(rowLetter) || fLeg.startsWith(rowLetter)) return false;
         } else if (sLeg || fLeg) {
             const singleLeg = sLeg || fLeg;
-            if (singleLeg.startsWith(rowLetter) && !singleLeg.includes("-")) return true;
+            if (singleLeg.startsWith(rowLetter)) return true;
         }
+    }
 
-        if (
-            labelUpper.includes(`LEG-${rowLetter}`) ||
-            labelUpper.includes(`ROW ${rowLetter}`) ||
-            labelUpper.includes(`FACE ${rowLetter}`) ||
-            labelUpper.includes(`${rowLetter}1`) ||
-            labelUpper.includes(`${rowLetter}2`) ||
-            labelUpper.includes(`${rowLetter}3`) ||
-            labelUpper.includes(`${rowLetter}4`)
-        ) {
-            const legMatches = labelUpper.match(/[A-Z]+\d+/g);
-            if (legMatches && legMatches.length >= 2) {
-                if (legMatches.every((m: string) => m.startsWith(rowLetter))) return true;
-            } else if (legMatches && legMatches.length === 1) {
-                if (legMatches[0].startsWith(rowLetter)) return true;
+    // 3. Strict Column Number match (e.g. "ROW 1", "FACE 1", "1") for unassigned components
+    const colMatch = fUpper.match(/^(?:ROW|FACE)\s*(\d+)$/i) || fUpper.match(/^(\d+)$/i);
+    if (colMatch) {
+        const colNum = colMatch[1].toUpperCase();
+
+        if (sLeg && fLeg && sLeg !== fLeg) {
+            if (sLeg.endsWith(colNum) && fLeg.endsWith(colNum)) return true;
+            if (sLeg.endsWith(colNum) || fLeg.endsWith(colNum)) return false;
+        } else if (sLeg || fLeg) {
+            const singleLeg = sLeg || fLeg;
+            if (singleLeg.endsWith(colNum)) return true;
+        }
+    }
+
+    // 4. Check str_faces object definition from DB
+    const faceObj = faces.find(
+        (f) => (f.face || "").toUpperCase().trim() === fUpper || (f.face || "").toUpperCase().trim() === cleanFace
+    );
+    if (faceObj) {
+        const fromLeg = (faceObj.face_from || "").toUpperCase().trim();
+        const toLeg = (faceObj.face_to || "").toUpperCase().trim();
+
+        if (fromLeg && toLeg) {
+            const sMatch = sLeg === fromLeg || sLeg === toLeg;
+            const fMatch = fLeg === fromLeg || fLeg === toLeg;
+
+            if (sLeg && fLeg && sLeg !== fLeg) {
+                if (sMatch && fMatch) return true;
             } else {
-                return true;
+                if (sMatch || fMatch) return true;
             }
         }
     }
 
-    // Check Node Welds attached to target legs
-    if (code === "WN" || code === "WP" || labelUpper.includes("WN")) {
-        if (isColNumberSearch) {
-            if ((sLeg && sLeg.endsWith(cleanFace)) || (fLeg && fLeg.endsWith(cleanFace))) return true;
-            if (labelUpper.includes(`A${cleanFace}`) || labelUpper.includes(`B${cleanFace}`) || labelUpper.includes(`C${cleanFace}`)) return true;
+    // 5. Composite leg pair face (e.g., "A1A3", "A1-A3", "A2B2")
+    const pairTokens = fUpper.split(/[\s\-]/).filter(Boolean);
+    if (pairTokens.length >= 2) {
+        if (sLeg && fLeg && sLeg !== fLeg) {
+            if (pairTokens.includes(sLeg) && pairTokens.includes(fLeg)) return true;
         } else {
-            if ((sLeg && sLeg.startsWith(cleanFace)) || (fLeg && fLeg.startsWith(cleanFace))) return true;
-            if (labelUpper.includes(`${cleanFace}1`) || labelUpper.includes(`${cleanFace}2`) || labelUpper.includes(`${cleanFace}3`)) return true;
+            if (pairTokens.includes(sLeg) || pairTokens.includes(fLeg)) return true;
         }
     }
 
-    // Check str_faces object definition from DB
-    if (Array.isArray(faces)) {
-        const faceObj = faces.find(
-            (f) => (f.face || "").toUpperCase().trim() === fUpper || (f.face || "").toUpperCase().trim() === cleanFace
-        );
-        if (faceObj) {
-            const fromLeg = (faceObj.face_from || "").toUpperCase().trim();
-            const toLeg = (faceObj.face_to || "").toUpperCase().trim();
-
-            if (fromLeg && toLeg) {
-                if ((sLeg === fromLeg && fLeg === toLeg) || (sLeg === toLeg && fLeg === fromLeg)) {
-                    return true;
-                }
-            }
-        }
+    // 6. Foundation member label check (e.g. leg-A1, face-ROW A-0)
+    if (labelUpper.startsWith("LEG-")) {
+        const legName = labelUpper.replace("LEG-", "");
+        if (rowMatch && legName.startsWith(rowMatch[1].toUpperCase())) return true;
+        if (colMatch && legName.endsWith(colMatch[1].toUpperCase())) return true;
     }
 
     return false;
@@ -190,21 +168,37 @@ export function generate2DFaceSketchSVG({
     const cleanFace = fUpper.replace(/^ROW\s*|^FACE\s*/i, "").trim();
 
     const getVector3D = (item: any, isEnd: boolean = false): number[] => {
+        const parseVector = (v: any) => {
+            if (Array.isArray(v) && v.length >= 3) return [Number(v[0]), Number(v[1]), Number(v[2])];
+            if (v && v.x !== undefined && v.y !== undefined && v.z !== undefined) {
+                return [Number(v.x), Number(v.y), Number(v.z)];
+            }
+            return null;
+        };
+
         if (isEnd) {
-            if (Array.isArray(item.end) && item.end.length >= 3) return item.end;
+            const end = parseVector(item.end);
+            if (end) return end;
+            
             if (item.end_x !== undefined && item.end_y !== undefined && item.end_z !== undefined) {
                 return [Number(item.end_x), Number(item.end_y), Number(item.end_z)];
             }
-            if (Array.isArray(item.endVec) && item.endVec.length >= 3) return item.endVec;
+            const endVec = parseVector(item.endVec);
+            if (endVec) return endVec;
         } else {
-            if (Array.isArray(item.start) && item.start.length >= 3) return item.start;
+            const start = parseVector(item.start);
+            if (start) return start;
+            
             if (item.start_x !== undefined && item.start_y !== undefined && item.start_z !== undefined) {
                 return [Number(item.start_x), Number(item.start_y), Number(item.start_z)];
             }
-            if (Array.isArray(item.startVec) && item.startVec.length >= 3) return item.startVec;
+            const startVec = parseVector(item.startVec);
+            if (startVec) return startVec;
         }
 
-        if (Array.isArray(item.position) && item.position.length >= 3) return item.position;
+        const pos = parseVector(item.position);
+        if (pos) return pos;
+        
         if (item.pos_x !== undefined && item.pos_y !== undefined && item.pos_z !== undefined) {
             return [Number(item.pos_x), Number(item.pos_y), Number(item.pos_z)];
         }
@@ -214,18 +208,7 @@ export function generate2DFaceSketchSVG({
     // 1. Identify Foundation Leg Members for the Selected Face
     const isColNumberSearch = /^(?:ROW|FACE)\s*\d+$/i.test(fUpper) || /^\d+$/i.test(fUpper);
 
-    let faceFoundation = foundationMembers.filter((m) => {
-        const labelUpper = (m.label || m.id || "").toString().toUpperCase();
-        if (isColNumberSearch) {
-            return labelUpper.endsWith(cleanFace) || labelUpper.includes(`-${cleanFace}`);
-        } else {
-            return labelUpper.startsWith(`LEG-${cleanFace}`) || labelUpper.includes(`ROW ${cleanFace}`) || labelUpper.includes(`FACE ${cleanFace}`);
-        }
-    });
-
-    if (faceFoundation.length === 0) {
-        faceFoundation = foundationMembers;
-    }
+    const faceFoundation = foundationMembers.filter((m) => checkComponentOnFace(m, faceName, faces));
 
     // 2. Determine Principal Face Plane 3D Geometry
     const foundationCoords = faceFoundation.flatMap((item) => [
@@ -251,29 +234,7 @@ export function generate2DFaceSketchSVG({
 
     // 3. Filter Components That Belong To This Face
     const isComponentOnFacePlane = (item: any) => {
-        const code = (item.code || item.component?.code || "").toUpperCase().trim();
-        const labelUpper = (item.q_id || item.label || item.id || "").toString().toUpperCase();
-
-        // Purge Risers, Conductors, J-Tubes, Internal Appurtenances & Anodes
-        if (
-            code === "RS" || code === "CO" || code === "JT" || code === "AN" || code === "APP" ||
-            labelUpper.includes("RISER") || labelUpper.includes("CONDUCTOR") || labelUpper.includes("JTUBE") || labelUpper.includes("ANODE")
-        ) {
-            return false;
-        }
-
-        // Check if explicitly matching face endpoints / labels
-        if (checkComponentOnFace(item, faceName, faces)) {
-            return true;
-        }
-
-        // Fallback: 3D physical distance check
-        const s = getVector3D(item, false);
-        const e = getVector3D(item, true);
-        const midPos = runsAlongX ? (s[2] + e[2]) / 2 : (s[0] + e[0]) / 2;
-
-        const dist = Math.abs(midPos - facePlanePos);
-        return dist <= 4.0;
+        return checkComponentOnFace(item, faceName, faces);
     };
 
     const faceLayouts = layouts.filter(isComponentOnFacePlane);
@@ -343,7 +304,10 @@ export function generate2DFaceSketchSVG({
     faceLayouts.forEach((l) => {
         const s = getVector3D(l, false);
         const e = getVector3D(l, true);
-        addLine(s, e, l.q_id || l.code || "", l.code || "", l.thickness || 0.3, false, l);
+        const compObj = l.component || l.originalComp || l.structure_components || {};
+        const qId = l.q_id || compObj.q_id || l.label || "";
+        const code = l.code || compObj.code || "";
+        addLine(s, e, qId, code, l.thickness || 0.3, false, l);
     });
 
     if (!isFinite(minX)) { minX = -15; maxX = 15; }
@@ -424,16 +388,30 @@ export function generate2DFaceSketchSVG({
     const parseNodeNumber = (labelStr: string) => {
         if (!labelStr) return "";
         const clean = labelStr.trim();
-        // Extract numeric part (e.g. WN N27 -> 27, BEP-A WN N27 -> 27, N27 -> 27, WN27 -> 27)
-        const m = clean.match(/(?:WN\s*|N)?(\d+)/i);
-        if (m) return m[1];
-        return clean.replace(/^[^\d]+/, "");
+        const m = clean.match(/WN\s*(.+)/i) || clean.match(/WP\s*(.+)/i) || clean.match(/^N\s*(.+)/i);
+        if (m) return m[1].trim();
+        return clean.replace(/^(?:WN|WP|N)-?/, "").trim();
     };
 
     const registerNode = (x: number, y: number, nodeLabel?: string) => {
-        const key = `${x.toFixed(1)}_${y.toFixed(1)}`;
         const cleanTag = parseNodeNumber(nodeLabel || "");
 
+        // 1. Semantic clustering: if a node with this ID already exists nearby, merge it!
+        // This prevents duplicate labels (like two "144"s) when multiple weld components are placed close together.
+        if (cleanTag) {
+            for (const existingNode of Array.from(nodeMap.values())) {
+                if (existingNode.idNum === cleanTag) {
+                    const dist = Math.hypot(existingNode.x - x, existingNode.y - y);
+                    if (dist < 1.5) { // 1.5 meter tolerance for same node ID
+                        existingNode.count += 1;
+                        return existingNode;
+                    }
+                }
+            }
+        }
+
+        // 2. Spatial clustering: fallback for unlabelled nodes (like member endpoints)
+        const key = `${x.toFixed(1)}_${y.toFixed(1)}`;
         if (nodeMap.has(key)) {
             const existing = nodeMap.get(key)!;
             existing.count += 1;
@@ -517,7 +495,7 @@ export function generate2DFaceSketchSVG({
         }
     });
 
-    // 7. Render Node Welds & Joints (Always displaying extracted number inside black circle badge)
+    // 7. Render Node Welds & Joints (Draw indicator and place offset labels outside)
     nodeMap.forEach((node) => {
         if (node.count < 2 && !node.idNum) return;
 
@@ -525,17 +503,66 @@ export function generate2DFaceSketchSVG({
         const ny = mapY(node.y);
         const numStr = node.idNum ? parseNodeNumber(node.idNum) : "";
 
-        if (numStr) {
-            const r = numStr.length >= 3 ? 10 : 8.5;
+        // Always draw the small node joint dot indicator
+        svgContent += `
+            <!-- Node Joint Indicator -->
+            <circle cx="${nx}" cy="${ny}" r="4.5" fill="#000000" stroke="#ffffff" stroke-width="0.75" />
+        `;
+
+        if (numStr && numStr !== "LEG" && numStr !== "HM") {
+            let offsetX = 0;
+            let offsetY = 0;
+            let anchor = "middle";
+
+            const getXonLine = (y: number, x1: number, y1: number, x2: number, y2: number) => {
+                if (Math.abs(y1 - y2) < 0.001) return (x1 + x2) / 2;
+                return x1 + ((y - y1) / (y2 - y1)) * (x2 - x1);
+            };
+
+            let isLeftLeg = false;
+            let isRightLeg = false;
+            const midX_Boundary = (minX + maxX) / 2;
+
+            if (legs.length > 0) {
+                legs.forEach(leg => {
+                    // Check if node is vertically within the leg's span (with some tolerance)
+                    const minY_leg = Math.min(leg.y1, leg.y2);
+                    const maxY_leg = Math.max(leg.y1, leg.y2);
+                    if (node.y >= minY_leg - 5 && node.y <= maxY_leg + 5) {
+                        const legX = getXonLine(node.y, leg.x1, leg.y1, leg.x2, leg.y2);
+                        if (Math.abs(node.x - legX) < 2.0) { // 2 meter tolerance
+                            if (legX < midX_Boundary) isLeftLeg = true;
+                            else isRightLeg = true;
+                        }
+                    }
+                });
+            } else {
+                const threshold = Math.max((maxX - minX) * 0.15, 2);
+                if (node.x - minX <= threshold) isLeftLeg = true;
+                else if (maxX - node.x <= threshold) isRightLeg = true;
+            }
+
+            if (isLeftLeg) {
+                // On the left leg, position label to the left
+                offsetX = -40;
+                anchor = "end";
+            } else if (isRightLeg) {
+                // On the right leg, position label to the right
+                offsetX = 40;
+                anchor = "start";
+            } else {
+                // In the middle, position label above or below
+                // If it is closer to the bottom (higher Y in svg space or lower Y in world space), place below
+                if (node.y - minY <= (maxY - minY) * 0.15) {
+                    offsetY = 25; // Place below
+                } else {
+                    offsetY = -25; // Place above
+                }
+            }
+
             svgContent += `
-                <!-- Node Weld Black Circle Badge with White Centered Number -->
-                <circle cx="${nx}" cy="${ny}" r="${r}" fill="#000000" stroke="#ffffff" stroke-width="1" />
-                <text x="${nx}" y="${ny}" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="${numStr.length >= 3 ? 8 : 9.5}" font-weight="bold" fill="#ffffff">${numStr}</text>
-            `;
-        } else {
-            svgContent += `
-                <!-- Node Joint Dark Circle Indicator -->
-                <circle cx="${nx}" cy="${ny}" r="4.5" fill="#000000" stroke="#ffffff" stroke-width="0.75" />
+                <!-- Node Number Offset Label (Adjust font-size and fill color here) -->
+                <text x="${nx + offsetX}" y="${ny + offsetY}" text-anchor="${anchor}" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="bold" fill="#000000" style="paint-order: stroke fill; stroke: #ffffff; stroke-width: 3px; stroke-linecap: round; stroke-linejoin: round;">${numStr}</text>
             `;
         }
     });
@@ -593,9 +620,7 @@ export function generate2DFaceSketchSVG({
         <circle cx="${topLegB_X}" cy="${circleY}" r="16" fill="#ffffff" stroke="#000000" stroke-width="2" />
         <text x="${topLegB_X}" y="${circleY + 6}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="bold" fill="#000000">${rightLabel}</text>
     `;
-
-    // 9. Bottom Title (ELEVATION ROW A-B)
-    const titleText = `ELEVATION ${fUpper.includes("ROW") || fUpper.includes("FACE") ? fUpper : `ROW ${fUpper}`}`;
+           const titleText = `ELEVATION ${fUpper.includes("ROW") || fUpper.includes("FACE") ? fUpper : `ROW ${fUpper}`}`;
 
     return `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgWidth} ${svgHeight}" width="100%" height="100%" style="background-color: #ffffff;">

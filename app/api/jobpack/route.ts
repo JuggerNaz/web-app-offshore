@@ -17,8 +17,15 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
   }
 
   const hasInspection = url.searchParams.get("has_inspection") === "true";
-  const structureIdParam = url.searchParams.get("structure_id");
+  let structureIdParam: string | null = url.searchParams.get("structure_id");
+  if (structureIdParam === "undefined" || structureIdParam === "null" || !structureIdParam) {
+    structureIdParam = null;
+  }
   const singleIdParam = url.searchParams.get("id");
+  let structureTitleParam: string | null = url.searchParams.get("structure_title");
+  if (structureTitleParam === "undefined" || structureTitleParam === "null" || !structureTitleParam) {
+    structureTitleParam = null;
+  }
 
   // Helper to sort jobpacks by start date in memory
   const sortByDate = (items: any[]) => {
@@ -38,6 +45,58 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
       .single();
     if (error) return handleSupabaseError(error, "Failed to fetch jobpack");
     return NextResponse.json({ data });
+  }
+
+  // --- Jobpacks with inspection data (checked BEFORE the structure path so
+  // has_inspection=true&structure_id=… keeps the inspection-filtered semantics) ---
+  if (hasInspection) {
+    const [diveRes, rovRes, recRes] = await Promise.all([
+      (supabase as any).from("insp_dive_jobs").select("jobpack_id").not("jobpack_id", "is", null),
+      (supabase as any).from("insp_rov_jobs").select("jobpack_id").not("jobpack_id", "is", null),
+      (supabase as any).from("insp_records").select("jobpack_id").not("jobpack_id", "is", null),
+    ]);
+
+    let allIds = new Set<number>();
+    (diveRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
+    (rovRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
+    (recRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
+
+    if (structureIdParam || structureTitleParam) {
+      let sowQuery = (supabase as any)
+        .from("u_sow")
+        .select("jobpack_id")
+        .not("jobpack_id", "is", null);
+
+      if (structureIdParam && structureTitleParam) {
+        sowQuery = sowQuery.or(`structure_id.eq.${structureIdParam},structure_title.eq."${structureTitleParam}"`);
+      } else if (structureIdParam) {
+        sowQuery = sowQuery.eq("structure_id", structureIdParam);
+      } else if (structureTitleParam) {
+        sowQuery = sowQuery.eq("structure_title", structureTitleParam);
+      }
+
+      const { data: sowData } = await sowQuery;
+
+      const sowIds = new Set<number>();
+      (sowData || []).forEach((r: any) => r.jobpack_id && sowIds.add(Number(r.jobpack_id)));
+      
+      allIds = new Set(Array.from(allIds).filter(x => sowIds.has(x)));
+    }
+
+    if (allIds.size === 0) {
+      return apiPaginated([], createPaginationMeta(paginationParams, 0));
+    }
+
+    // Small set — metadata is fine
+    const { data, error } = await (supabase as any)
+      .from("jobpack")
+      .select("*")
+      .in("id", Array.from(allIds))
+      .order("id", { ascending: false });
+
+    if (error) return handleSupabaseError(error, "Failed to fetch jobpack");
+    const sorted = sortByDate(data || []);
+    return apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length));
   }
 
   // --- Jobpacks for a specific structure (uses relational tables only — NO metadata scan) ---
@@ -101,35 +160,6 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
       .from("jobpack")
       .select("*")
       .in("id", Array.from(matchedJpIds))
-      .order("id", { ascending: false });
-
-    if (error) return handleSupabaseError(error, "Failed to fetch jobpack");
-    const sorted = sortByDate(data || []);
-    return apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length));
-  }
-
-  // --- Jobpacks with inspection data ---
-  if (hasInspection) {
-    const [diveRes, rovRes, recRes] = await Promise.all([
-      (supabase as any).from("insp_dive_jobs").select("jobpack_id").not("jobpack_id", "is", null),
-      (supabase as any).from("insp_rov_jobs").select("jobpack_id").not("jobpack_id", "is", null),
-      (supabase as any).from("insp_records").select("jobpack_id").not("jobpack_id", "is", null),
-    ]);
-
-    const allIds = new Set<number>();
-    (diveRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
-    (rovRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
-    (recRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
-
-    if (allIds.size === 0) {
-      return apiPaginated([], createPaginationMeta(paginationParams, 0));
-    }
-
-    // Small set — metadata is fine
-    const { data, error } = await (supabase as any)
-      .from("jobpack")
-      .select("*")
-      .in("id", Array.from(allIds))
       .order("id", { ascending: false });
 
     if (error) return handleSupabaseError(error, "Failed to fetch jobpack");
