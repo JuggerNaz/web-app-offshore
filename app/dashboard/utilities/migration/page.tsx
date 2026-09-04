@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import useSWR from "swr";
+import { fetcher } from "@/utils/utils";
 import MigrationReportPreview, { getTableMappingNames } from "@/components/migration/migration-report-preview";
 import { createClient } from "@/utils/supabase/client";
 import specUiConfig from "@/utils/spec-ui-config.json";
@@ -51,17 +54,34 @@ export default function MigrationDashboard() {
   const [jobpacks, setJobpacks] = useState<any[]>([]);
   const [isLoadingJobpacks, setIsLoadingJobpacks] = useState(false);
   const [selectedJobpack, setSelectedJobpack] = useState<any | null>(null);
+  const [selectedJobpacks, setSelectedJobpacks] = useState<any[]>([]);
   const [componentsOnly, setComponentsOnly] = useState(false);
+  const [updateStructureSpecs, setUpdateStructureSpecs] = useState(false);
+  const [updateComponentSpecs, setUpdateComponentSpecs] = useState(false);
+  const [insertNewComponents, setInsertNewComponents] = useState(true);
+  const [migrateAttachments, setMigrateAttachments] = useState(true);
   const [inspectionSummary, setInspectionSummary] = useState<any | null>(null);
   const [isLoadingInspectionSummary, setIsLoadingInspectionSummary] = useState(false);
   const [oracleCompany, setOracleCompany] = useState<any | null>(null);
   const [oraclePreference, setOraclePreference] = useState<any | null>(null);
   const [dbComponents, setDbComponents] = useState<Record<string, string>>({});
+  const [compTypeMeta, setCompTypeMeta] = useState<Record<string, { plat?: number; pipe?: number; sbm?: number; tank?: number }>>({});
 
   const [activeTab, setActiveTab] = useState("connection");
   const [mappingStructureType, setMappingStructureType] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
   
   const [oracleColumnsCache, setOracleColumnsCache] = useState<Record<string, string[]>>({});
+
+  const [reMigrationConfirmOpen, setReMigrationConfirmOpen] = useState(false);
+  const [overlappingJobpacks, setOverlappingJobpacks] = useState<any[]>([]);
+  const [pendingInspNos, setPendingInspNos] = useState<string[]>([]);
+
+  // Fetch already migrated jobpacks in destination database for the selected structure
+  const { data: existingDestJobpacksData, mutate: mutateExistingDestJobpacks } = useSWR(
+    selectedStructureId ? `/api/jobpack?structure_id=${selectedStructureId}` : null,
+    fetcher
+  );
+  const existingDestJobpacks: any[] = existingDestJobpacksData?.data || [];
 
   const [missingModalData, setMissingModalData] = useState<{
     tableName: string;
@@ -144,9 +164,25 @@ export default function MigrationDashboard() {
 
   // Mapping State
   const [selectedMappingEntity, setSelectedMappingEntity] = useState<string>("STRUCTURE");
-  const activeMappingKey = selectedMappingEntity === "STRUCTURE" 
-    ? `STRUCTURE_${mappingStructureType}` 
-    : selectedMappingEntity;
+
+  const getActiveMappingKey = (entity: string, structType: "PLATFORM" | "PIPELINE") => {
+    if (entity === "STRUCTURE") {
+      return `STRUCTURE_${structType}`;
+    }
+    if (entity.toUpperCase() === "AN") {
+      return `AN_${structType}`;
+    }
+    return entity;
+  };
+
+  const activeMappingKey = getActiveMappingKey(selectedMappingEntity, mappingStructureType);
+
+  const handleSwitchStructureType = (type: "PLATFORM" | "PIPELINE") => {
+    setMappingStructureType(type);
+    if (type === "PIPELINE" && ["STR_ELV", "STR_LEVEL", "STR_FACES"].includes(selectedMappingEntity)) {
+      setSelectedMappingEntity("STRUCTURE");
+    }
+  };
 
   const [mappings, setMappings] = useState<Record<string, { oracleCol: string; pgCol: string }[]>>({
     "STRUCTURE_PLATFORM": [
@@ -219,22 +255,31 @@ export default function MigrationDashboard() {
       { oracleCol: "PTYPE", pgCol: "ptype" },
       { oracleCol: "INST_DATE", pgCol: "inst_date" },
       { oracleCol: "DESG_LIFE", pgCol: "desg_life" },
-      { oracleCol: "ST_NORTH", pgCol: "st_north" },
-      { oracleCol: "ST_EAST", pgCol: "st_east" },
+      { oracleCol: "ST_LOC", pgCol: "st_loc" },
+      { oracleCol: "END_LOC", pgCol: "end_loc" },
+      { oracleCol: "ST_X", pgCol: "st_x" },
+      { oracleCol: "ST_Y", pgCol: "st_y" },
+      { oracleCol: "END_X", pgCol: "end_x" },
+      { oracleCol: "END_Y", pgCol: "end_y" },
       { oracleCol: "DEPTH", pgCol: "depth" },
       { oracleCol: "AN_QTY", pgCol: "an_qty" },
       { oracleCol: "AN_TYPE", pgCol: "an_type" },
       { oracleCol: "INST_CTR", pgCol: "inst_ctr" },
+      { oracleCol: "DESG_PRESS", pgCol: "desg_press" },
+      { oracleCol: "OPER_PRESS", pgCol: "oper_press" },
       { oracleCol: "WALL_THK", pgCol: "wall_thk" },
+      { oracleCol: "ST_FP", pgCol: "st_fp" },
+      { oracleCol: "END_FP", pgCol: "end_fp" },
+      { oracleCol: "MATERIAL", pgCol: "material" },
       { oracleCol: "PROCESS", pgCol: "process" },
-      { oracleCol: "PLEGS", pgCol: "plegs" },
+      { oracleCol: "CONC_CTG", pgCol: "conc_ctg" },
+      { oracleCol: "CP_SYSTEM", pgCol: "cp_system" },
+      { oracleCol: "SPAN_OPER", pgCol: "span_oper" },
       { oracleCol: "CR_USER", pgCol: "cr_user" },
       { oracleCol: "CR_DATE", pgCol: "cr_date" },
       { oracleCol: "LINE_DIAM", pgCol: "line_diam" },
       { oracleCol: "PLENGTH", pgCol: "plength" },
-      { oracleCol: "BURIAL", pgCol: "burial" },
-      { oracleCol: "CONC_CTG", pgCol: "conc_ctg" },
-      { oracleCol: "OPER_PRESS", pgCol: "oper_press" }
+      { oracleCol: "BURIAL", pgCol: "burial" }
     ],
     "STR_ELV": [
       { oracleCol: "PLAT_ID", pgCol: "plat_id" },
@@ -355,13 +400,22 @@ export default function MigrationDashboard() {
     async function loadDbComponents() {
       try {
         const supabase = createClient();
-        const { data, error } = await supabase.from('components').select('code, name');
+        const { data, error } = await supabase.from('components').select('code, name, descrip, plat, pipe, sbm, tank');
         if (!error && data) {
           const mapping: Record<string, string> = {};
+          const metaMap: Record<string, any> = {};
           data.forEach((c: any) => {
-            mapping[c.code.toUpperCase()] = c.name;
+            const codeUpper = String(c.code).toUpperCase().trim();
+            mapping[codeUpper] = c.descrip || c.name || codeUpper;
+            metaMap[codeUpper] = {
+              plat: c.plat !== null && c.plat !== undefined ? Number(c.plat) : 1,
+              pipe: c.pipe !== null && c.pipe !== undefined ? Number(c.pipe) : 0,
+              sbm: c.sbm !== null && c.sbm !== undefined ? Number(c.sbm) : 0,
+              tank: c.tank !== null && c.tank !== undefined ? Number(c.tank) : 0
+            };
           });
           setDbComponents(mapping);
+          setCompTypeMeta(metaMap);
         }
       } catch (err) {
         console.error("Failed to load components from database:", err);
@@ -377,13 +431,35 @@ export default function MigrationDashboard() {
     }
   }, [config]);
 
+  // Filter components list dynamically based on structure type (pipe = 1 vs plat = 1)
+  const filteredSummary = useMemo(() => {
+    return summary.filter((s: any) => {
+      const codeUpper = String(s.CODE || "").toUpperCase().trim();
+      const meta = compTypeMeta[codeUpper];
+      if (mappingStructureType === "PIPELINE") {
+        if (meta && meta.pipe !== undefined) {
+          return meta.pipe === 1;
+        }
+        return s.PIPE === undefined || Number(s.PIPE) === 1;
+      } else {
+        if (meta && meta.plat !== undefined) {
+          return meta.plat === 1;
+        }
+        return s.PLAT === undefined || Number(s.PLAT) === 1;
+      }
+    });
+  }, [summary, compTypeMeta, mappingStructureType]);
+
   // Copy mappings to clipboard and state
   const handleSelectInspectionMapping = async (type: "ROV" | "DIVING", code: string, tableName: string) => {
     const key = `INSP_${type}_${code}`;
     setSelectedMappingEntity(key);
     
+    const isPipe = mappingStructureType === "PIPELINE";
+    const resolvedTable = (type === "ROV" && isPipe) ? "NAVIG" : tableName;
+
     // Fetch columns for the table (non-blocking for UI)
-    fetchOracleColumns(tableName);
+    fetchOracleColumns(resolvedTable);
 
     setMappings(prev => {
       if (prev[key] && prev[key].length > 0) return prev;
@@ -395,8 +471,8 @@ export default function MigrationDashboard() {
         { oracleCol: "INSPNO", pgCol: "jobpack_id" },
         { oracleCol: "TAPE_NO", pgCol: "tape_id" },
         { oracleCol: "DIVE_NO", pgCol: type === "ROV" ? "rov_job_id" : "dive_job_id" },
-        { oracleCol: "INSP_DATE", pgCol: "inspection_date" },
-        { oracleCol: "INSP_TIME", pgCol: "inspection_time" }
+        { oracleCol: isPipe ? "I_DATE" : "INSP_DATE", pgCol: "inspection_date" },
+        { oracleCol: isPipe ? "I_TIME" : "INSP_TIME", pgCol: "inspection_time" }
       ];
       
       return { ...prev, [key]: defaults };
@@ -501,16 +577,26 @@ export default function MigrationDashboard() {
     );
 
     if (compConfig) {
-      specTableName = `${entity}_COMP`.toUpperCase();
-      if (entity.toLowerCase() === "an") {
-        specTableName = mappingStructureType === "PLATFORM" ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+      const codeUpper = entity.toUpperCase();
+      if (mappingStructureType === "PIPELINE") {
+        if (codeUpper === "AN") specTableName = "AN_COMP_PIPE";
+        else if (codeUpper === "PC") specTableName = "PC_COMP_PIPE";
+        else if (codeUpper === "RC") specTableName = "RC_COMP_PIPE";
+        else specTableName = `${codeUpper}_COMP`;
+      } else {
+        if (codeUpper === "AN") specTableName = "AN_COMP_PLAT";
+        else if (codeUpper === "RC") specTableName = "RC_COMP_PLAT";
+        else if (codeUpper === "IT") specTableName = "IT_COMP_PLAT";
+        else specTableName = `${codeUpper}_COMP`;
       }
       fields = compConfig.fields.map((f: any) => f.name);
     } else if (entity.startsWith("INSP_ROV_") || entity.startsWith("INSP_DIV_")) {
-      const typeCode = entity.startsWith("INSP_ROV_") 
-        ? entity.replace("INSP_ROV_", "") 
-        : entity.replace("INSP_DIV_", "");
-      specTableName = typeCode.toUpperCase();
+      if (entity.startsWith("INSP_ROV_")) {
+        specTableName = mappingStructureType === "PIPELINE" ? "NAVIG" : "PLATGI";
+      } else {
+        const typeCode = entity.replace("INSP_DIV_", "");
+        specTableName = typeCode.toUpperCase();
+      }
     } else {
       toast.error("Auto Mapping is only supported for Component specifications and Inspection tables.");
       return;
@@ -709,11 +795,40 @@ export default function MigrationDashboard() {
 
   const handleExecuteMigration = async () => {
     if (!selectedStructureId) return;
-    if (!componentsOnly && !selectedJobpack) {
-      toast.error("Please select an Active Job Pack from the sidebar or select the 'Migrate Components Only' option.");
+    
+    const selectedInspNos = componentsOnly 
+      ? [] 
+      : (selectedJobpacks.length > 0 
+          ? selectedJobpacks.map(jp => jp.INSPNO || jp.inspno).filter(Boolean)
+          : (selectedJobpack ? [selectedJobpack.INSPNO || selectedJobpack.inspno].filter(Boolean) : []));
+
+    if (!componentsOnly && selectedInspNos.length === 0) {
+      toast.error("Please select at least one Active Job Pack from the sidebar or choose 'Migrate Components Only'.");
       return;
     }
-    
+
+    // Check if any of the selected job packs have already been migrated in Supabase
+    if (!componentsOnly && selectedInspNos.length > 0) {
+      const selectedInspSet = new Set(selectedInspNos.map((s: any) => String(s).trim().toUpperCase()));
+      const overlapping = existingDestJobpacks.filter((ejp: any) => {
+        const oNo = String(ejp.oracle_insp_no || "").trim().toUpperCase();
+        const n = String(ejp.name || "").trim().toUpperCase();
+        const mNo = String(ejp.metadata?.oracle_insp_no || ejp.metadata?.inspno || "").trim().toUpperCase();
+        return (oNo && selectedInspSet.has(oNo)) || (n && selectedInspSet.has(n)) || (mNo && selectedInspSet.has(mNo));
+      });
+
+      if (overlapping.length > 0) {
+        setOverlappingJobpacks(overlapping);
+        setPendingInspNos(selectedInspNos);
+        setReMigrationConfirmOpen(true);
+        return;
+      }
+    }
+
+    await executeMigrationStream(selectedInspNos);
+  };
+
+  const executeMigrationStream = async (selectedInspNos: string[]) => {
     setMigrationReport(null);
     setMigrationLogs(["Starting migration process..."]);
     setMigrationProgress({
@@ -738,10 +853,16 @@ export default function MigrationDashboard() {
         body: JSON.stringify({
           config,
           structureId: selectedStructureId,
+          structureType: mappingStructureType,
           mappings: payloadMappings,
-          selectedInspNo: componentsOnly ? undefined : (selectedJobpack?.INSPNO || selectedJobpack?.inspno),
+          selectedInspNo: selectedInspNos[0],
+          selectedInspNos: selectedInspNos,
           legacyAttachmentPath: config.legacyAttachmentPath,
-          componentsOnly
+          componentsOnly,
+          updateStructureSpecs,
+          updateComponentSpecs,
+          insertNewComponents,
+          migrateAttachments,
         })
       });
 
@@ -800,6 +921,7 @@ export default function MigrationDashboard() {
                 });
                 toast.success(event.message || "Migration completed!");
                 setMigrationReport(event.report);
+                mutateExistingDestJobpacks();
               } else if (event.type === "error") {
                 toast.error(event.message || "Migration failed");
               }
@@ -815,6 +937,7 @@ export default function MigrationDashboard() {
       setMigrationLogs(prev => [...prev, `ERROR: ${err.message}`]);
     } finally {
       setIsMigrating(false);
+      mutateExistingDestJobpacks();
     }
   };
 
@@ -913,6 +1036,21 @@ export default function MigrationDashboard() {
     setOraclePreference(null);
 
     setSelectedStructureId(strId);
+
+    // Auto-detect structure type (PIPELINE vs PLATFORM)
+    const selectedStrObj = structures.find(s => String(s.STR_ID || s.str_id) === String(strId));
+    const isPipe = selectedStrObj?.PTYPE === "PIPE" || 
+      selectedStrObj?.PTYPE === "PIPELINE" || 
+      selectedStrObj?.ptype === "PIPE" ||
+      selectedStrObj?.STR_TYPE === "PIPE" ||
+      selectedStrObj?.STR_TYPE === "PIPELINE" ||
+      selectedStrObj?.str_type === "PIPE" ||
+      selectedStrObj?.type === "pipeline";
+    if (isPipe) {
+      setMappingStructureType("PIPELINE");
+    } else {
+      setMappingStructureType("PLATFORM");
+    }
     
     // Fetch summary
     try {
@@ -974,9 +1112,15 @@ export default function MigrationDashboard() {
   const handleJobpackSelect = async (jp: any) => {
     setSelectedJobpack(jp);
     setInspectionSummary(null);
+    setMigrationReport(null);
+    setMigrationLogs([]);
+    setMigrationProgress(null);
     
     const inspNoVal = jp.INSPNO || jp.inspno;
     if (!selectedStructureId || !inspNoVal) return;
+
+    const currentStr = structures.find(s => String(s.STR_ID || s.str_id) === String(selectedStructureId));
+    const isPipe = mappingStructureType === "PIPELINE" || currentStr?.PTYPE === "PIPE" || currentStr?.PTYPE === "PIPELINE";
 
     try {
       setIsLoadingInspectionSummary(true);
@@ -987,7 +1131,7 @@ export default function MigrationDashboard() {
           config,
           str_id: selectedStructureId,
           inspno: inspNoVal,
-          structureType: mappingStructureType
+          structureType: isPipe ? "PIPELINE" : "PLATFORM"
         })
       });
       const data = await safeParseJson(res);
@@ -1012,6 +1156,48 @@ export default function MigrationDashboard() {
     } finally {
       setIsLoadingInspectionSummary(false);
     }
+  };
+
+  const handleToggleJobpack = (jp: any) => {
+    setMigrationReport(null);
+    setMigrationLogs([]);
+    setMigrationProgress(null);
+    const inspNo = jp.INSPNO || jp.inspno;
+    setSelectedJobpacks(prev => {
+      const exists = prev.some(p => (p.INSPNO || p.inspno) === inspNo);
+      let updated: any[];
+      if (exists) {
+        updated = prev.filter(p => (p.INSPNO || p.inspno) !== inspNo);
+      } else {
+        updated = [...prev, jp];
+      }
+      if (updated.length > 0) {
+        handleJobpackSelect(updated[updated.length - 1]);
+      } else {
+        setSelectedJobpack(null);
+        setInspectionSummary(null);
+      }
+      return updated;
+    });
+  };
+
+  const handleSelectAllJobpacks = () => {
+    setMigrationReport(null);
+    setMigrationLogs([]);
+    setMigrationProgress(null);
+    setSelectedJobpacks(jobpacks);
+    if (jobpacks.length > 0) {
+      handleJobpackSelect(jobpacks[0]);
+    }
+  };
+
+  const handleClearJobpacks = () => {
+    setMigrationReport(null);
+    setMigrationLogs([]);
+    setMigrationProgress(null);
+    setSelectedJobpacks([]);
+    setSelectedJobpack(null);
+    setInspectionSummary(null);
   };
 
   return (
@@ -1334,11 +1520,27 @@ export default function MigrationDashboard() {
                             <div className="flex items-center justify-between">
                               <Label className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                                 <Database className="w-3.5 h-3.5 text-indigo-500" />
-                                Active Job Packs
+                                Active Job Packs ({selectedJobpacks.length}/{jobpacks.length})
                               </Label>
-                              <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/30 px-1.5 py-0.5 rounded-md uppercase">
-                                With Inspection Data
-                              </span>
+                              {jobpacks.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={handleSelectAllJobpacks}
+                                    className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline px-1 py-0.5"
+                                  >
+                                    All
+                                  </button>
+                                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                                  <button
+                                    type="button"
+                                    onClick={handleClearJobpacks}
+                                    className="text-[9px] font-bold text-slate-500 hover:underline px-1 py-0.5"
+                                  >
+                                    None
+                                  </button>
+                                </div>
+                              )}
                             </div>
 
                             {isLoadingJobpacks ? (
@@ -1347,7 +1549,7 @@ export default function MigrationDashboard() {
                                 Loading associated job packs...
                               </div>
                             ) : jobpacks.length > 0 ? (
-                              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                                 {jobpacks.map((jp: any, index: number) => {
                                   const jobName = jp.JOBNAME || jp.jobname || jp.JOB_NAME || jp.job_name || "Unnamed Job Pack";
                                   const startDateVal = jp.START_DATE || jp.start_date || jp.ISTART || jp.istart;
@@ -1358,25 +1560,55 @@ export default function MigrationDashboard() {
                                   const hasRov = jp.HAS_ROV || jp.has_rov || jp.hasRov || false;
                                   const hasDiving = jp.HAS_DIVING || jp.has_diving || jp.hasDiving || false;
                                   
-                                  const isSelected = selectedJobpack && (selectedJobpack.INSPNO === jp.INSPNO || selectedJobpack.inspno === jp.INSPNO || selectedJobpack.INSPNO === jp.inspno);
+                                  const inspNo = jp.INSPNO || jp.inspno;
+                                  const isChecked = selectedJobpacks.some(p => (p.INSPNO || p.inspno) === inspNo);
+                                  const isCurrentActive = selectedJobpack && (selectedJobpack.INSPNO === inspNo || selectedJobpack.inspno === inspNo);
                                   
+                                  const isAlreadyMigrated = existingDestJobpacks.some((ejp: any) => {
+                                    const oNo = String(ejp.oracle_insp_no || "").trim().toUpperCase();
+                                    const n = String(ejp.name || "").trim().toUpperCase();
+                                    const mNo = String(ejp.metadata?.oracle_insp_no || ejp.metadata?.inspno || "").trim().toUpperCase();
+                                    const targetNo = String(inspNo || "").trim().toUpperCase();
+                                    const targetName = String(jobName || "").trim().toUpperCase();
+                                    return (oNo && oNo === targetNo) || (n && (n === targetNo || n === targetName)) || (mNo && mNo === targetNo);
+                                  });
+
                                   return (
                                     <div 
                                       key={`${jobName}-${index}`} 
-                                      onClick={() => handleJobpackSelect(jp)}
+                                      onClick={() => handleToggleJobpack(jp)}
                                       className={`flex items-center justify-between gap-2 p-2 rounded-lg transition-all duration-200 shadow-sm group cursor-pointer border ${
-                                        isSelected 
-                                          ? "border-indigo-500 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20" 
+                                        isChecked 
+                                          ? "border-indigo-500 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 ring-1 ring-indigo-500/30" 
                                           : "bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-slate-100 dark:border-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700/60"
                                       }`}
                                     >
                                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                                        <div className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100/50 dark:border-indigo-900/35 flex items-center justify-center text-indigo-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleJobpack(jp);
+                                          }}
+                                          className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 shrink-0"
+                                        />
+                                        <div className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100/50 dark:border-indigo-900/35 flex items-center justify-center text-indigo-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors shrink-0">
                                           <FileText className="w-3 h-3" />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                          <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                            {jobName}
+                                          <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
+                                            <span>{jobName}</span>
+                                            {isCurrentActive && (
+                                              <span className="text-[8px] font-black uppercase text-indigo-600 bg-indigo-100 dark:bg-indigo-900/50 px-1 py-0.2 rounded">
+                                                Active Preview
+                                              </span>
+                                            )}
+                                            {isAlreadyMigrated && (
+                                              <span className="text-[8px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-300/50 dark:border-amber-800/40 px-1.5 py-0.2 rounded shrink-0">
+                                                Already Migrated
+                                              </span>
+                                            )}
                                           </div>
                                           <div className="text-[9px] font-medium text-slate-400 uppercase flex flex-wrap items-center gap-1.5 mt-0.5">
                                             <span>Start: {formattedDate}</span>
@@ -1413,6 +1645,122 @@ export default function MigrationDashboard() {
                                 No job packs with inspection data found for this structure.
                               </div>
                             )}
+                          </div>
+
+                          {/* Phase 2: Incremental Migration & Preservation Settings */}
+                          <div className="p-4 bg-slate-50/70 dark:bg-slate-900/40 border border-slate-200/70 dark:border-slate-800/80 rounded-xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                                <Settings2 className="w-3.5 h-3.5 text-indigo-500" />
+                                Incremental Migration Rules
+                              </Label>
+                              <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 border border-indigo-200/40 dark:border-indigo-900/30">
+                                Preservation Safe
+                              </span>
+                            </div>
+
+                            <div className="space-y-2 pt-1">
+                              <label className="flex items-start gap-2.5 p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-slate-200 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={updateStructureSpecs}
+                                  onChange={(e) => setUpdateStructureSpecs(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <div className="text-[10px] leading-tight">
+                                  <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                                    Update Structure Master Specs
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    {updateStructureSpecs ? "Will overwrite structure specs from Oracle" : "Preserves existing clean structure specifications"}
+                                  </span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-indigo-200 dark:hover:border-indigo-900/50 cursor-pointer transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={updateComponentSpecs}
+                                  onChange={(e) => setUpdateComponentSpecs(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <div className="text-[10px] leading-tight flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                                      Overwrite / Update Component Data
+                                    </span>
+                                    <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${
+                                      updateComponentSpecs
+                                        ? "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/30"
+                                        : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30"
+                                    }`}>
+                                      {updateComponentSpecs ? "Overwrite Enabled" : "Preserve Good Data (Safe)"}
+                                    </span>
+                                  </div>
+                                  <span className="text-[9px] text-slate-400 block mt-0.5">
+                                    {updateComponentSpecs 
+                                      ? "⚠️ Will update and overwrite existing component specifications in Supabase with incoming Oracle data." 
+                                      : "🛡️ Preserves existing clean component specifications in Supabase. Mapped by Q_ID across databases without overwriting."}
+                                  </span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-indigo-200 dark:hover:border-indigo-900/50 cursor-pointer transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={insertNewComponents}
+                                  onChange={(e) => setInsertNewComponents(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <div className="text-[10px] leading-tight flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                                      Insert New Discovered Components
+                                    </span>
+                                    <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${
+                                      insertNewComponents
+                                        ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/30"
+                                        : "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700"
+                                    }`}>
+                                      {insertNewComponents ? "Auto-Insert Enabled" : "Skip New Components"}
+                                    </span>
+                                  </div>
+                                  <span className="text-[9px] text-slate-400 block mt-0.5">
+                                    {insertNewComponents 
+                                      ? "Automatically discovers and inserts any new components found in this jobpack/database." 
+                                      : "Skips inserting new component master records."}
+                                  </span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 hover:border-indigo-200 dark:hover:border-indigo-900/50 cursor-pointer transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={migrateAttachments}
+                                  onChange={(e) => setMigrateAttachments(e.target.checked)}
+                                  className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <div className="text-[10px] leading-tight flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                                      Migrate Attachments & Media
+                                    </span>
+                                    <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${
+                                      migrateAttachments
+                                        ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/30"
+                                        : "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30"
+                                    }`}>
+                                      {migrateAttachments ? "Enabled" : "Fast Mode (Skipped)"}
+                                    </span>
+                                  </div>
+                                  <span className="text-[9px] text-slate-400 block mt-0.5">
+                                    {migrateAttachments 
+                                      ? "Copies & uploads media files (photos, drawings, PDFs) to storage." 
+                                      : "⚡ Skips file uploads for super-fast data migration. You can re-run with this enabled later to sync media."}
+                                  </span>
+                                </div>
+                              </label>
+                            </div>
                           </div>
                         </div>
                       );
@@ -1590,16 +1938,43 @@ export default function MigrationDashboard() {
                         {/* Breakdown List grouped by Section */}
                         <div className="space-y-4">
                           {(() => {
+                            const selectedStructure = structures.find((s: any) => String(s.STR_ID || s.str_id || s.id) === String(selectedStructureId));
+                            const isPipeStruct = 
+                              mappingStructureType === "PIPELINE" ||
+                              selectedStructure?.PTYPE === "PIPE" ||
+                              selectedStructure?.PTYPE === "PIPELINE" ||
+                              selectedStructure?.STR_TYPE === "PIPE" ||
+                              selectedStructure?.STR_TYPE === "PIPELINE" ||
+                              selectedStructure?.type === "PIPELINE" ||
+                              selectedStructure?.type === "pipeline";
+                            const structType = isPipeStruct ? "PIPELINE" : "PLATFORM";
+
                             const libKeys = ["U_LIB_MAST", "U_LIB_LIST", "U_LIB_COMBO", "U_MGI_PROFILE"];
-                            const systemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
+                            const platformSystemKeys = ["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC"];
+                            const pipelineSystemKeys = ["STRUCTURE", "U_PIPEGEO", "PIPE_GEO", "U_ASSOC"];
+                            const systemKeys = isPipeStruct ? pipelineSystemKeys : platformSystemKeys;
+
                             const jobInspectionKeys = [
-                              "JOBPACK", "U_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", 
-                              "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT", "INSP_ATTACHMENT", "EXSUM"
+                              "JOBPACK", "U_SOW", "JOBPACK_SOW", "LOGS_JOBS", "LOGS_MOVEMENTS", "LOGS_ROV", "LOGS_DIVE",
+                              "VIDEO", "VIDEO_TAPES", "VIDEO_LOGS", "INSP_ROV", "INSP_DIVING", "ANOMALY", "ATTACHMENT",
+                              "INSP_ATTACHMENT", "EXSUM", "COMP_NOT_INSP"
                             ];
 
-                            const reportEntries = Object.entries(migrationReport);
-                            const isJobInspKey = (key: string) =>
-                              jobInspectionKeys.includes(key) || key.startsWith("INSP_ROV_") || key.startsWith("INSP_DIVING_");
+                            const rawReportEntries = Object.entries(migrationReport);
+                            // For pipeline, exclude platform-only tables (STR_ELV, STR_LEVEL, STR_FACES) from the report
+                            const reportEntries = isPipeStruct
+                              ? rawReportEntries.filter(([k]) => !["STR_ELV", "STR_LEVEL", "STR_FACES"].includes(k.toUpperCase()))
+                              : rawReportEntries;
+
+                            const isJobInspKey = (key: string) => {
+                              const upper = key.toUpperCase();
+                              return (
+                                jobInspectionKeys.includes(upper) ||
+                                upper.startsWith("INSP_") ||
+                                upper.startsWith("VIDEO_") ||
+                                upper.startsWith("LOGS_")
+                              );
+                            };
                             const libItems = reportEntries.filter(([key]) => libKeys.includes(key));
                             const systemItems = reportEntries.filter(([key]) => systemKeys.includes(key));
                             const jobInspItems = reportEntries.filter(([key]) => isJobInspKey(key));
@@ -1609,8 +1984,8 @@ export default function MigrationDashboard() {
 
                             const sections = [
                               { title: "1. Reference Libraries", items: libItems },
-                              { title: "2. Structural Framework & Levels", items: systemItems },
-                              { title: "3. Offshore Assets & Components", items: componentItems },
+                              { title: isPipeStruct ? "2. Pipeline Structure & Geodetics" : "2. Structural Framework & Levels", items: systemItems },
+                              { title: isPipeStruct ? "3. Pipeline Assets & Components" : "3. Offshore Assets & Components", items: componentItems },
                               { title: "4. Relational SOW, Jobs & Logs", items: jobInspItems }
                             ].filter(s => s.items.length > 0);
 
@@ -1624,7 +1999,7 @@ export default function MigrationDashboard() {
                                     <span className="w-14 text-right">Oracle</span>
                                     <span className="w-14 text-right">Postgres</span>
                                     <span className="w-24 text-right">Accuracy</span>
-<span className="w-16 text-right">Status</span>
+                                    <span className="w-16 text-right">Status</span>
                                   </div>
                                 </div>
                                 <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-60 overflow-y-auto">
@@ -1633,8 +2008,6 @@ export default function MigrationDashboard() {
                                     const rejectedRecords = item.oracleRows - item.migratedRows;
                                     const itemPercent = item.oracleRows === 0 ? 100 : Math.min(100, Math.round((item.migratedRows / item.oracleRows) * 100));
                                     
-                                    const selectedStructure = structures.find((s: any) => String(s.STR_ID) === selectedStructureId);
-                                    const structType = selectedStructure?.PTYPE === "PIPE" ? "PIPELINE" : "PLATFORM";
                                     const mapNames = getTableMappingNames(key, structType);
                                     
                                     return (
@@ -1651,7 +2024,7 @@ export default function MigrationDashboard() {
                                           <div className="flex flex-col gap-1.5">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                {(() => {
-                                                 const isComp = !["STRUCTURE", "STR_ELV", "STR_LEVEL", "STR_FACES", "U_ASSOC", "ATTACHMENT", "COMMENT", "JOBPACK", "LOGS_JOBS", "LOGS_MOVEMENTS", "VIDEO", "ANOMALY", "INSP_ATTACHMENT"].includes(key.toUpperCase());
+                                                 const isComp = !isJobInspKey(key) && !libKeys.includes(key) && !systemKeys.includes(key);
                                                  if (isComp) {
                                                    let colorClass = "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200/40 dark:border-indigo-900/30";
                                                    let label = "Component";
@@ -1879,20 +2252,53 @@ export default function MigrationDashboard() {
                         <CardTitle className="text-sm font-black uppercase text-slate-800 dark:text-slate-200">Component Summary</CardTitle>
                         <CardDescription className="text-[10px] uppercase font-bold text-slate-500 mt-0.5">FROM ORACLE allcompid VIEW</CardDescription>
                       </div>
-                      {summary.length > 0 && (
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center space-x-2">
+                      {(summary.length > 0 || framework.length > 0 || !!selectedStructureId) && (
+                        <div className="flex items-center flex-wrap gap-3">
+                          <div className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
                             <input
                               type="checkbox"
                               id="componentsOnly"
                               checked={componentsOnly}
                               onChange={e => setComponentsOnly(e.target.checked)}
-                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
                             />
-                            <Label htmlFor="componentsOnly" className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                              Migrate Components Only
+                            <Label htmlFor="componentsOnly" className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                              Components Only
                             </Label>
                           </div>
+
+                          <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700" title="When checked, updates existing component records in Supabase. When unchecked, preserves clean data and matches by Q_ID.">
+                            <input
+                              type="checkbox"
+                              id="hdrUpdateComp"
+                              checked={updateComponentSpecs}
+                              onChange={e => setUpdateComponentSpecs(e.target.checked)}
+                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                            />
+                            <Label htmlFor="hdrUpdateComp" className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer select-none flex items-center gap-1">
+                              Overwrite Existing
+                              <span className={`text-[7px] font-extrabold px-1 rounded ${updateComponentSpecs ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'}`}>
+                                {updateComponentSpecs ? 'ON' : 'OFF'}
+                              </span>
+                            </Label>
+                          </div>
+
+                          <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700" title="When checked, inserts any new components found in this jobpack into Supabase.">
+                            <input
+                              type="checkbox"
+                              id="hdrInsertComp"
+                              checked={insertNewComponents}
+                              onChange={e => setInsertNewComponents(e.target.checked)}
+                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                            />
+                            <Label htmlFor="hdrInsertComp" className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer select-none flex items-center gap-1">
+                              Insert New
+                              <span className={`text-[7px] font-extrabold px-1 rounded ${insertNewComponents ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400' : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                                {insertNewComponents ? 'ON' : 'OFF'}
+                              </span>
+                            </Label>
+                          </div>
+
                           <Button 
                             onClick={handleExecuteMigration}
                             disabled={isMigrating}
@@ -1918,7 +2324,7 @@ export default function MigrationDashboard() {
                           <RefreshCw className="w-6 h-6 animate-spin mb-2" />
                           <span className="text-xs font-bold uppercase tracking-widest">Loading Summary...</span>
                         </div>
-                      ) : summary.length > 0 ? (
+                      ) : (summary.length > 0 || framework.length > 0 || libraries.length > 0) ? (
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 p-6 bg-slate-50/30 dark:bg-slate-900/10">
                           
                           {/* 1. Reference Libraries Preflight */}
@@ -2024,9 +2430,9 @@ export default function MigrationDashboard() {
 
                           {/* 3. Mapped Component List Preflight */}
                           {(() => {
-                            const mappedRows = summary.filter((r: any) => !!mappings[r.CODE]);
-                            const totalOracleMappedCount = mappedRows.reduce((sum, r) => sum + Number(r.ROW_COUNT), 0);
-                            const totalPgMappedCount = mappedRows.reduce((sum, r) => sum + Number(r.PG_ROW_COUNT || 0), 0);
+                            const mappedRows = filteredSummary.filter((r: any) => !!mappings[r.CODE]);
+                            const totalOracleMappedCount = mappedRows.reduce((sum: number, r: any) => sum + Number(r.ROW_COUNT), 0);
+                            const totalPgMappedCount = mappedRows.reduce((sum: number, r: any) => sum + Number(r.PG_ROW_COUNT || 0), 0);
                             return (
                               <Card className="border-indigo-100 dark:border-indigo-900/40 shadow-sm bg-indigo-50/5 dark:bg-slate-950/20 col-span-1 overflow-hidden">
                                 <CardHeader className="bg-indigo-50/20 dark:bg-indigo-950/10 border-b border-indigo-100/50 dark:border-indigo-900/20 py-3 flex flex-row items-center justify-between">
@@ -2037,8 +2443,16 @@ export default function MigrationDashboard() {
                                 </CardHeader>
                                 <CardContent className="p-0">
                                   {mappedRows.length === 0 ? (
-                                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs italic">
-                                      No mapped components. Configure mappings in the tab above.
+                                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs space-y-2">
+                                      {mappingStructureType === "PIPELINE" ? (
+                                        <>
+                                          <CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto opacity-80" />
+                                          <p className="font-bold text-slate-700 dark:text-slate-300">Pipeline Asset Migration</p>
+                                          <p className="text-[10px]">No subsea components in ALLCOMPID for this pipeline. Main Structure (U_PIPELINE), Geodetics (PIPE_GEO), and ROV Survey records (NAVIG) will be migrated directly.</p>
+                                        </>
+                                      ) : (
+                                        <p className="italic">No mapped components. Configure mappings in the tab above.</p>
+                                      )}
                                     </div>
                                   ) : (
                                     <table className="w-full text-left border-collapse">
@@ -2051,7 +2465,7 @@ export default function MigrationDashboard() {
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
-                                        {mappedRows.map((row: any, idx) => {
+                                        {mappedRows.map((row: any, idx: number) => {
                                           const isSynced = row.ROW_COUNT === row.PG_ROW_COUNT;
                                           return (
                                             <tr key={idx} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
@@ -2157,8 +2571,8 @@ export default function MigrationDashboard() {
 
                           {/* Unmapped Component List Preflight */}
                           {(() => {
-                            const unmappedRows = summary.filter((r: any) => !mappings[r.CODE]);
-                            const totalUnmappedCount = unmappedRows.reduce((sum, r) => sum + Number(r.ROW_COUNT), 0);
+                            const unmappedRows = filteredSummary.filter((r: any) => !mappings[r.CODE]);
+                            const totalUnmappedCount = unmappedRows.reduce((sum: number, r: any) => sum + Number(r.ROW_COUNT), 0);
                             return (
                               <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50/5 col-span-1 xl:col-span-2 overflow-hidden">
                                 <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 py-3 flex flex-row items-center justify-between">
@@ -2185,7 +2599,7 @@ export default function MigrationDashboard() {
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
-                                        {unmappedRows.map((row: any, idx) => (
+                                        {unmappedRows.map((row: any, idx: number) => (
                                           <tr key={idx} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
                                             <td className="px-4 py-2.5 flex items-center gap-2">
                                               <span className="text-[10px] font-black border px-2 py-0.5 rounded-md uppercase tracking-wider bg-slate-50 dark:bg-slate-900/40 text-slate-550 dark:text-slate-400 border-slate-200 dark:border-slate-800 shrink-0">
@@ -2278,7 +2692,7 @@ export default function MigrationDashboard() {
                               <div className="flex items-center justify-between">
                                 <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                                   <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
-                                  ROV Platform Inspections
+                                  {mappingStructureType === "PIPELINE" ? "ROV Pipeline Surveys (NAVIG)" : "ROV Platform Inspections"}
                                 </h5>
                                 <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200/40 dark:border-cyan-800/20 px-2 py-0.5 rounded">
                                   {(inspectionSummary.rovInspections || []).length} Types
@@ -2298,7 +2712,7 @@ export default function MigrationDashboard() {
                                             {rov.name}
                                           </p>
                                           <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">
-                                            Oracle Table: {mappingStructureType === "PLATFORM" ? "PLATGI" : "allinspid"}
+                                            Oracle Table: {mappingStructureType === "PIPELINE" ? "NAVIG" : (mappingStructureType === "PLATFORM" ? "PLATGI" : "allinspid")}
                                           </p>
                                         </div>
                                       </div>
@@ -2381,14 +2795,18 @@ export default function MigrationDashboard() {
 
                               {/* ROV Video Logs Card */}
                               <div className="p-4 bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-2xl space-y-1 group hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
-                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">ROV Video (PLATG/PLATGI)</span>
+                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">
+                                  {mappingStructureType === "PIPELINE" ? "ROV Video Logs (NAVIG Table)" : "ROV Video (PLATG/PLATGI)"}
+                                </span>
                                 <div className="flex items-center justify-between">
                                   <span className="text-lg font-black text-cyan-600 dark:text-cyan-400">{inspectionSummary.platgVideoCount || 0}</span>
                                   <span className="text-[8px] px-1.5 py-0.5 bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 rounded uppercase font-bold border border-cyan-100/50 dark:border-cyan-900/20">
                                     ROV Video
                                   </span>
                                 </div>
-                                <p className="text-[8px] text-slate-400">ROV video logs are embedded directly in the PLATG/PLATGI tables.</p>
+                                <p className="text-[8px] text-slate-400">
+                                  {mappingStructureType === "PIPELINE" ? "ROV video logs and tape indices are extracted directly from the NAVIG table." : "ROV video logs are embedded directly in the PLATG/PLATGI tables."}
+                                </p>
                               </div>
 
                               {/* Diving Video Logs Card */}
@@ -2459,13 +2877,13 @@ export default function MigrationDashboard() {
                   </div>
                   <div className="flex bg-slate-200/50 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700">
                     <button
-                      onClick={() => setMappingStructureType("PLATFORM")}
+                      onClick={() => handleSwitchStructureType("PLATFORM")}
                       className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-md transition-all ${mappingStructureType === "PLATFORM" ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-700 dark:text-indigo-400" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"}`}
                     >
                       Platform View
                     </button>
                     <button
-                      onClick={() => setMappingStructureType("PIPELINE")}
+                      onClick={() => handleSwitchStructureType("PIPELINE")}
                       className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-md transition-all ${mappingStructureType === "PIPELINE" ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-700 dark:text-indigo-400" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"}`}
                     >
                       Pipeline View
@@ -2511,36 +2929,43 @@ export default function MigrationDashboard() {
                           </span>
                           <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["COMMENT"] || []).length}</span>
                         </button>
-                        <button
-                          onClick={() => setSelectedMappingEntity("STR_ELV")}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_ELV" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
-                        >
-                          <span className="flex flex-col items-start gap-0.5">
-                            <span>Str_Elv</span>
-                            <span className="text-[8px] opacity-75 font-mono lowercase">STR_ELV → str_elv</span>
-                          </span>
-                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_ELV"] || []).length}</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedMappingEntity("STR_LEVEL")}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_LEVEL" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
-                        >
-                          <span className="flex flex-col items-start gap-0.5">
-                            <span>Str_Level</span>
-                            <span className="text-[8px] opacity-75 font-mono lowercase">STR_LEVEL → str_level</span>
-                          </span>
-                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_LEVEL"] || []).length}</span>
-                        </button>
-                        <button
-                          onClick={() => setSelectedMappingEntity("STR_FACES")}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_FACES" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
-                        >
-                          <span className="flex flex-col items-start gap-0.5">
-                            <span>Str_Faces</span>
-                            <span className="text-[8px] opacity-75 font-mono lowercase">STR_FACES → str_faces</span>
-                          </span>
-                          <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_FACES"] || []).length}</span>
-                        </button>
+
+                        {/* Structural Child Tables: Only displayed for PLATFORM */}
+                        {mappingStructureType === "PLATFORM" && (
+                          <>
+                            <button
+                              onClick={() => setSelectedMappingEntity("STR_ELV")}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_ELV" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                            >
+                              <span className="flex flex-col items-start gap-0.5">
+                                <span>Str_Elv</span>
+                                <span className="text-[8px] opacity-75 font-mono lowercase">STR_ELV → str_elv</span>
+                              </span>
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_ELV"] || []).length}</span>
+                            </button>
+                            <button
+                              onClick={() => setSelectedMappingEntity("STR_LEVEL")}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_LEVEL" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                            >
+                              <span className="flex flex-col items-start gap-0.5">
+                                <span>Str_Level</span>
+                                <span className="text-[8px] opacity-75 font-mono lowercase">STR_LEVEL → str_level</span>
+                              </span>
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_LEVEL"] || []).length}</span>
+                            </button>
+                            <button
+                              onClick={() => setSelectedMappingEntity("STR_FACES")}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "STR_FACES" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
+                            >
+                              <span className="flex flex-col items-start gap-0.5">
+                                <span>Str_Faces</span>
+                                <span className="text-[8px] opacity-75 font-mono lowercase">STR_FACES → str_faces</span>
+                              </span>
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500">{(mappings["STR_FACES"] || []).length}</span>
+                            </button>
+                          </>
+                        )}
+
                         <button
                           onClick={() => setSelectedMappingEntity("JOBPACK_SOW")}
                           className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === "JOBPACK_SOW" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
@@ -2555,10 +2980,17 @@ export default function MigrationDashboard() {
                         <div className="pt-4 pb-1">
                           <Label className="text-[10px] font-black uppercase text-slate-400">Components</Label>
                         </div>
-                        {summary.map(s => {
-                          let resolvedCompSpec = `${s.CODE}_COMP`;
-                          if (s.CODE.toLowerCase() === 'an') {
-                            resolvedCompSpec = mappingStructureType === "PLATFORM" ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+                        {filteredSummary.map((s: any) => {
+                          const codeUpper = s.CODE.toUpperCase();
+                          let resolvedCompSpec = `${codeUpper}_COMP`;
+                          if (mappingStructureType === "PIPELINE") {
+                            if (codeUpper === 'AN') resolvedCompSpec = "AN_COMP_PIPE";
+                            else if (codeUpper === 'PC') resolvedCompSpec = "PC_COMP_PIPE";
+                            else if (codeUpper === 'RC') resolvedCompSpec = "RC_COMP_PIPE";
+                          } else {
+                            if (codeUpper === 'AN') resolvedCompSpec = "AN_COMP_PLAT";
+                            else if (codeUpper === 'RC') resolvedCompSpec = "RC_COMP_PLAT";
+                            else if (codeUpper === 'IT') resolvedCompSpec = "IT_COMP_PLAT";
                           }
                           return (
                             <button
@@ -2582,16 +3014,18 @@ export default function MigrationDashboard() {
                         </div>
                         {inspectionSummary && (inspectionSummary.rovInspections || []).map((rov: any) => {
                           const key = `INSP_ROV_${rov.code}`;
+                          const isPipe = mappingStructureType === "PIPELINE";
+                          const oracleSrc = isPipe ? "NAVIG" : "PLATGI";
                           return (
                             <button
                               key={key}
-                              onClick={() => handleSelectInspectionMapping("ROV", rov.code, "PLATGI")}
+                              onClick={() => handleSelectInspectionMapping("ROV", rov.code, oracleSrc)}
                               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase rounded-md transition-colors ${selectedMappingEntity === key ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"}`}
                             >
                               <span className="flex flex-col items-start gap-0.5 max-w-[210px] overflow-hidden">
                                 <span className="truncate w-full text-left">ROV: {rov.code} {rov.name ? `- ${rov.name}` : ""}</span>
                                 <span className="text-[8px] opacity-75 font-mono lowercase truncate w-full text-left">
-                                  PLATGI (SCODE='{rov.code}') → inspection_data
+                                  {isPipe ? `NAVIG → inspection_data` : `PLATGI (SCODE='${rov.code}') → inspection_data`}
                                 </span>
                               </span>
                               <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 shrink-0">{(mappings[key] || []).length}</span>
@@ -2654,6 +3088,7 @@ export default function MigrationDashboard() {
                       {/* Dynamic Schema Banner */}
                       {(() => {
                         const isPlat = mappingStructureType === "PLATFORM";
+                        const isPipe = mappingStructureType === "PIPELINE";
                         let oracleTable = "";
                         let oracleDesc = "";
                         let pgTable = "";
@@ -2714,9 +3149,9 @@ export default function MigrationDashboard() {
                             break;
                           default:
                             if (selectedMappingEntity.startsWith("INSP_ROV_")) {
-                              oracleTable = "PLATGI";
+                              oracleTable = isPipe ? "NAVIG" : "PLATGI";
                               const scode = selectedMappingEntity.replace("INSP_ROV_", "");
-                              oracleDesc = `Legacy ROV Inspection Type: ${scode}`;
+                              oracleDesc = isPipe ? `Pipeline ROV Survey (NAVIG Table)` : `Legacy ROV Inspection Type: ${scode}`;
                               pgTable = "insp_records";
                               pgDesc = "Normalized inspection records (inspection_data JSONB)";
                               pkCol = "INSP_ID";
@@ -2728,9 +3163,16 @@ export default function MigrationDashboard() {
                               pgDesc = "Normalized inspection records (inspection_data JSONB)";
                               pkCol = "INSP_ID";
                             } else {
-                              let specTable = `${selectedMappingEntity}_COMP`;
-                              if (selectedMappingEntity.toLowerCase() === 'an') {
-                                specTable = isPlat ? "AN_COMP_PLAT" : "AN_COMP_PIPE";
+                              const codeUpper = selectedMappingEntity.toUpperCase();
+                              let specTable = `${codeUpper}_COMP`;
+                              if (!isPlat) {
+                                if (codeUpper === 'AN') specTable = "AN_COMP_PIPE";
+                                else if (codeUpper === 'PC') specTable = "PC_COMP_PIPE";
+                                else if (codeUpper === 'RC') specTable = "RC_COMP_PIPE";
+                              } else {
+                                if (codeUpper === 'AN') specTable = "AN_COMP_PLAT";
+                                else if (codeUpper === 'RC') specTable = "RC_COMP_PLAT";
+                                else if (codeUpper === 'IT') specTable = "IT_COMP_PLAT";
                               }
                               oracleTable = `ALLCOMPID + ${specTable}`;
                               oracleDesc = `Legacy detailed spec view joined with ${specTable}`;
@@ -2814,8 +3256,11 @@ export default function MigrationDashboard() {
                                 );
                               }
                               let tableKey = "";
-                              if (selectedMappingEntity.startsWith("INSP_ROV_")) tableKey = "PLATGI";
-                              else if (selectedMappingEntity.startsWith("INSP_DIV_")) tableKey = selectedMappingEntity.replace("INSP_DIV_", "");
+                              if (selectedMappingEntity.startsWith("INSP_ROV_")) {
+                                tableKey = mappingStructureType === "PIPELINE" ? "NAVIG" : "PLATGI";
+                              } else if (selectedMappingEntity.startsWith("INSP_DIV_")) {
+                                tableKey = selectedMappingEntity.replace("INSP_DIV_", "");
+                              }
                               
                               return tableKey && oracleColumnsCache[tableKey] && oracleColumnsCache[tableKey].length > 0 ? (
                                 <datalist id="oracle-columns-list">
@@ -2965,6 +3410,67 @@ export default function MigrationDashboard() {
             </DialogContent>
           </Dialog>
         )}
+
+        {/* Re-Migration & Overwrite Confirmation Dialog */}
+        <Dialog open={reMigrationConfirmOpen} onOpenChange={setReMigrationConfirmOpen}>
+          <DialogContent className="max-w-lg bg-slate-950 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl p-6">
+            <DialogHeader className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg font-black uppercase text-white tracking-tight">
+                    Re-Migration & Overwrite Warning
+                  </DialogTitle>
+                  <p className="text-xs text-slate-400 font-medium">
+                    Job Pack(s) already exist in Supabase for this structure
+                  </p>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="py-4 space-y-3 text-xs text-slate-300">
+              <p>
+                The following Job Pack(s) were previously migrated to this structure in the destination database:
+              </p>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-1.5 font-mono text-[11px] max-h-36 overflow-y-auto">
+                {overlappingJobpacks.map((jp, i) => (
+                  <div key={i} className="flex items-center justify-between text-amber-400">
+                    <span className="font-bold">• {jp.name || jp.oracle_insp_no || "Job Pack"}</span>
+                    {jp.oracle_insp_no && (
+                      <span className="text-[10px] text-slate-400">({jp.oracle_insp_no})</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-800/40 text-rose-300 text-[11px] leading-relaxed">
+                <strong className="text-rose-200">⚠️ Critical Action:</strong> Continuing will completely <span className="underline font-bold">DELETE</span> all existing inspection records, anomalies, video logs, dive/ROV jobs, SOW items, and attachments associated with these Job Pack(s) before importing fresh data from Oracle.
+              </div>
+            </div>
+
+            <DialogFooter className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReMigrationConfirmOpen(false)}
+                className="rounded-xl border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setReMigrationConfirmOpen(false);
+                  executeMigrationStream(pendingInspNos);
+                }}
+                className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-lg shadow-amber-600/20"
+              >
+                Proceed & Overwrite Inspection Data
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <MigrationReportPreview
           isOpen={isReportOpen}

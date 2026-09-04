@@ -50,6 +50,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   // Custom sort for POSITION to match 1-12 O' CLOCK order
   if (decodedFilter === "POSITION" && visibleData) {
+    // Inject .5 clock positions
+    const halfPositions = [
+      "1.5 O' CLOCK", "2.5 O' CLOCK", "3.5 O' CLOCK", "4.5 O' CLOCK", "5.5 O' CLOCK",
+      "6.5 O' CLOCK", "7.5 O' CLOCK", "8.5 O' CLOCK", "9.5 O' CLOCK", "10.5 O' CLOCK",
+      "11.5 O' CLOCK", "12.5 O' CLOCK"
+    ];
+    
+    const existingIds = new Set(visibleData.map((item: any) => typeof item.lib_id === 'string' ? item.lib_id.toUpperCase().replace("O'CLOCK", "O' CLOCK").trim() : item.lib_id));
+    
+    halfPositions.forEach(pos => {
+      if (!existingIds.has(pos.toUpperCase())) {
+        visibleData.push({
+          lib_code: "POSITION",
+          lib_id: pos,
+          lib_desc: pos,
+          lib_name: pos,
+          hidden_item: 'N'
+        } as any);
+      }
+    });
+
     // Map items to have a space after O' (e.g. "O' CLOCK") and strip "POSITION " prefix
     visibleData = visibleData.map((item: any) => {
       const formatStr = (s: any) => {
@@ -77,17 +98,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const positionOrder = [
       "N/A",
       "1 O' CLOCK",
+      "1.5 O' CLOCK",
       "2 O' CLOCK",
+      "2.5 O' CLOCK",
       "3 O' CLOCK",
+      "3.5 O' CLOCK",
       "4 O' CLOCK",
+      "4.5 O' CLOCK",
       "5 O' CLOCK",
+      "5.5 O' CLOCK",
       "6 O' CLOCK",
+      "6.5 O' CLOCK",
       "7 O' CLOCK",
+      "7.5 O' CLOCK",
       "8 O' CLOCK",
+      "8.5 O' CLOCK",
       "9 O' CLOCK",
+      "9.5 O' CLOCK",
       "10 O' CLOCK",
+      "10.5 O' CLOCK",
       "11 O' CLOCK",
-      "12 O' CLOCK"
+      "11.5 O' CLOCK",
+      "12 O' CLOCK",
+      "12.5 O' CLOCK"
     ];
     
     visibleData = visibleData.sort((a: any, b: any) => {
@@ -121,6 +154,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   // Check if an item with the same category (lib_code) and ID/Value (lib_id) already exists (including soft-deleted)
   if (libId) {
+    if (String(libId).length > 12) {
+      return NextResponse.json({ error: "Value/Code cannot exceed 12 characters." }, { status: 400 });
+    }
+
     const { data: existing } = await supabase
       .from("u_lib_list")
       .select("*")

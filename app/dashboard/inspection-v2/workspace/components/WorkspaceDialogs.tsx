@@ -2372,7 +2372,9 @@ export function WorkspaceDialogs({
                     pipelineLengthKm={headerData?.lineLength ? parseFloat(headerData.lineLength) : (selectedComp?.length ? parseFloat(selectedComp.length) : 10.0)}
                     events={(currentRecords || []).map((r: any) => {
                         const data = r.inspection_data || {};
-                        const kpNum = parseFloat(r.kp || data.kp || data.fp_kp || "0");
+                        const kpNum = parseFloat(r.fp_kp || r.kp || data.fp_kp || data.kp || "0");
+                        const isAnom = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0) || r.finding_type === "Anomaly" || data.finding_type === "Anomaly";
+                        const anomCode = r.insp_anomalies?.[0]?.anomaly_ref_no || r.insp_anomalies?.[0]?.defect_type_code || data.anomaly_code || r.anomaly_code || "";
                         return {
                             id: r.insp_id || r.id,
                             event_name: data.event_name || r.event_name || r.inspection_type_code || "Event",
@@ -2383,15 +2385,15 @@ export function WorkspaceDialogs({
                             end_kp: data.end_kp ? parseFloat(data.end_kp) : undefined,
                             northing: data.northing || r.northing || "",
                             easting: data.easting || r.easting || "",
-                            depth: data.depth || data.verification_depth || r.depth || "",
+                            depth: data.depth || data.verification_depth || r.depth || r.elevation || "",
                             cp_fg_rdg: data.cp_fg_rdg || data.cp_fg || r.cp_fg_rdg || "",
                             rov_heading: data.rov_heading || data.heading || r.rov_heading || "",
                             inspection_date: r.inspection_date || data.inspection_date || "",
                             inspection_time: r.inspection_time || data.inspection_time || "",
                             tape_count_no: r.tape_count_no || data.tape_count_no || "",
-                            finding_type: r.finding_type || data.finding_type || "Complete",
+                            finding_type: isAnom ? "Anomaly" : (r.finding_type || data.finding_type || "Complete"),
                             findings: data.findings || r.findings || "",
-                            anomaly_code: data.anomaly_code || r.anomaly_code || "",
+                            anomaly_code: anomCode,
                             span_height: data.span_height ? parseFloat(data.span_height) : (data.gap_under_pipe ? parseFloat(data.gap_under_pipe) : undefined),
                             burial_depth: data.burial_depth ? parseFloat(data.burial_depth) : (data.depth_of_burial ? parseFloat(data.depth_of_burial) : undefined),
                         };

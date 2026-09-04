@@ -19,6 +19,7 @@ import { ComponentEditDialog, EditableComponent } from "@/components/dialogs/com
 import { InspectionSummaryModal } from "@/components/dialogs/inspection-summary-modal";
 import { AnomalySummaryModal } from "@/components/dialogs/anomaly-summary-modal";
 import { ComponentIntegrityModal, getMissingIntegrityFields } from "@/components/dialogs/component-integrity-modal";
+import { AttachmentSummaryModal } from "@/components/dialogs/attachment-summary-modal";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { useSearchParams } from "next/navigation";
@@ -78,7 +79,7 @@ export default function ComponentContent() {
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const searchParams = useSearchParams();
 
-  // Modal states for Inspections, Anomalies, and Component Integrity
+  // Modal states for Inspections, Anomalies, Attachments, and Component Integrity
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
   const [selectedInspections, setSelectedInspections] = useState<any[]>([]);
   
@@ -86,6 +87,9 @@ export default function ComponentContent() {
   const [selectedAnomalies, setSelectedAnomalies] = useState<any[]>([]);
   const [anomalyDetailOpen, setAnomalyDetailOpen] = useState(false);
   const [selectedAnomalyForDetail, setSelectedAnomalyForDetail] = useState<any>(null);
+
+  const [attachmentModalOpen, setAttachmentModalOpen] = useState(false);
+  const [selectedComponentForAttachment, setSelectedComponentForAttachment] = useState<Component | null>(null);
 
   const [integrityModalOpen, setIntegrityModalOpen] = useState(false);
 
@@ -187,8 +191,9 @@ export default function ComponentContent() {
   };
 
   const incompleteComponentsCount = useMemo(() => {
-    return components.filter((comp: Component) => getMissingIntegrityFields(comp).length > 0).length;
-  }, [components]);
+    const isPipe = pageType === "pipeline";
+    return components.filter((comp: Component) => getMissingIntegrityFields(comp, isPipe).length > 0).length;
+  }, [components, pageType]);
 
   // Filter components by search query and type relevancy
   const filteredComponents = components.filter((comp: Component) => {
@@ -528,9 +533,18 @@ export default function ComponentContent() {
                       <td className="px-4 py-4 align-middle">
                         <div className="flex items-center gap-3">
                           {comp.has_attachment ? (
-                            <div className="h-8 w-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-500 transition-colors" title="Has Attachments">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedComponentForAttachment(comp);
+                                setAttachmentModalOpen(true);
+                              }}
+                              className="h-8 w-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 flex items-center justify-center text-emerald-500 hover:text-emerald-400 transition-all cursor-pointer shadow-sm border border-emerald-500/30"
+                              title="View Component & Inspection Attachments"
+                            >
                               <Paperclip className="h-4 w-4" />
-                            </div>
+                            </button>
                           ) : (
                             <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:text-blue-500 transition-colors">
                               <Hash className="h-4 w-4" />
@@ -820,6 +834,8 @@ export default function ComponentContent() {
         open={integrityModalOpen}
         onOpenChange={setIntegrityModalOpen}
         components={components}
+        isPipeline={pageType === "pipeline"}
+        structureType={pageType}
         onEditComponent={(comp) => {
           handleEditComponent(comp as Component);
         }}
@@ -846,6 +862,8 @@ export default function ComponentContent() {
         onOpenChange={setInspectionModalOpen}
         inspections={selectedInspections}
         structureId={structureId}
+        isPipeline={pageType === "pipeline"}
+        structureType={pageType}
       />
       
       <AnomalySummaryModal
@@ -868,6 +886,13 @@ export default function ComponentContent() {
           // Close summary modal if it was open (optional, but probably better to keep it open or update it)
           // setAnomalyModalOpen(false);
         }}
+      />
+
+      <AttachmentSummaryModal
+        open={attachmentModalOpen}
+        onOpenChange={setAttachmentModalOpen}
+        component={selectedComponentForAttachment}
+        structureId={structureId}
       />
     </div>
   );

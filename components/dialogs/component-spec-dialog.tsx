@@ -1369,7 +1369,7 @@ export function ComponentSpecDialog({
         mutate(`/api/structure-components/${structureId}`);
       }
 
-      toast("Component updated successfully");
+      toast("Component updated successfully", { position: "bottom-right" });
       setIsEditing(false);
       
       if (onSuccess && updatedComp) {
@@ -1739,25 +1739,32 @@ export function ComponentSpecDialog({
                           Start Leg
                         </Label>
                         <Select
-                          value={(isCreateMode ? formData.s_leg : (component?.metadata?.s_leg ?? "")) || ""}
+                          value={(isCreateMode || isEditMode ? formData.s_leg : (component?.metadata?.s_leg ?? "")) || ""}
                           onValueChange={(val) => handleInputChange("s_leg", val)}
-                          disabled={!isCreateMode || legOptions.length === 0}
+                          disabled={!(isCreateMode || isEditMode)}
                         >
                           <SelectTrigger
                             id="sLeg"
                             className={cn(
                               "rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold",
-                              (isCreateMode ? formData.s_leg : (component?.metadata?.s_leg ?? "")) ? "dark:text-white" : "dark:text-slate-500"
+                              (isCreateMode || isEditMode ? formData.s_leg : (component?.metadata?.s_leg ?? "")) ? "dark:text-white" : "dark:text-slate-500"
                             )}
                           >
                             <SelectValue placeholder="Select start leg" />
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
-                            {legOptions.map((opt: any) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
+                            {(() => {
+                              const opts = [...legOptions];
+                              const curVal = isCreateMode || isEditMode ? formData.s_leg : component?.metadata?.s_leg;
+                              if (curVal && !opts.some((o: any) => o.value === curVal)) {
+                                opts.unshift({ value: curVal, label: curVal });
+                              }
+                              return opts.map((opt: any) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ));
+                            })()}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1769,25 +1776,32 @@ export function ComponentSpecDialog({
                           End Leg
                         </Label>
                         <Select
-                          value={(isCreateMode ? formData.f_leg : (component?.metadata?.f_leg ?? "")) || ""}
+                          value={(isCreateMode || isEditMode ? formData.f_leg : (component?.metadata?.f_leg ?? "")) || ""}
                           onValueChange={(val) => handleInputChange("f_leg", val)}
-                          disabled={!isCreateMode || legOptions.length === 0}
+                          disabled={!(isCreateMode || isEditMode)}
                         >
                           <SelectTrigger
                             id="eLeg"
                             className={cn(
                               "rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-11 font-bold",
-                              (isCreateMode ? formData.f_leg : (component?.metadata?.f_leg ?? "")) ? "dark:text-white" : "dark:text-slate-500"
+                              (isCreateMode || isEditMode ? formData.f_leg : (component?.metadata?.f_leg ?? "")) ? "dark:text-white" : "dark:text-slate-500"
                             )}
                           >
                             <SelectValue placeholder="Select end leg" />
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
-                            {legOptions.map((opt: any) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
+                            {(() => {
+                              const opts = [...legOptions];
+                              const curVal = isCreateMode || isEditMode ? formData.f_leg : component?.metadata?.f_leg;
+                              if (curVal && !opts.some((o: any) => o.value === curVal)) {
+                                opts.unshift({ value: curVal, label: curVal });
+                              }
+                              return opts.map((opt: any) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ));
+                            })()}
                           </SelectContent>
                         </Select>
                       </div>

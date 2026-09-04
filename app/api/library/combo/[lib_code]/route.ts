@@ -28,11 +28,12 @@ export async function GET(
 
         console.log("Fetching combo items for:", lib_code);
 
-        // Fetch combo items - table uses lib_com for comments
+        // Fetch combo items (excluding deleted items)
         const { data: comboItems, error } = await supabase
             .from("u_lib_combo")
             .select("lib_code, code_1, code_2, lib_com, lib_delete")
             .eq("lib_code", lib_code)
+            .or("lib_delete.is.null,lib_delete.eq.0")
             .order("code_1, code_2");
 
         if (error) {

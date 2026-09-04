@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { apiSuccess, apiCreated, apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
-import { withAuth } from "@/utils/with-auth";
+import { withAuth, withOptionalAuth } from "@/utils/with-auth";
 import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
 
 /**
@@ -10,7 +10,7 @@ import { getPaginationParams, createPaginationMeta, applyPagination } from "@/ut
  * Fetch all pipelines with pagination and optional field filtering
  * Query params: ?page=1&pageSize=50&field=fieldId
  */
-export const GET = withAuth(async (request: NextRequest, { user }) => {
+export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
   const { searchParams } = new URL(request.url);

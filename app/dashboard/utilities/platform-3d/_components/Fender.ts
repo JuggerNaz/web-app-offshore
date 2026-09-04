@@ -32,7 +32,7 @@ export class Fender extends THREE.Group {
     // Default color is the same color as the members, unless hovered or selected
     let baseColorHex = options.color ?? '#cbd5e1';
     if (options.isSelected) {
-      baseColorHex = '#2563eb';
+      baseColorHex = '#f97316';
     } else if (options.isHovered) {
       baseColorHex = '#60a5fa';
     }
@@ -41,7 +41,7 @@ export class Fender extends THREE.Group {
       color: new THREE.Color(baseColorHex),
       metalness: 0.7,
       roughness: 0.3,
-      emissive: options.isSelected ? new THREE.Color('#1d4ed8') : new THREE.Color('#000000'),
+      emissive: options.isSelected ? new THREE.Color('#ea580c') : new THREE.Color('#000000'),
       emissiveIntensity: options.isSelected ? 0.7 : options.isHovered ? 0.1 : 0,
     });
 

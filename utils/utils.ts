@@ -7,8 +7,19 @@ import { redirect } from "next/navigation";
  * @param {string} message - The message to be encoded and added as a query parameter.
  * @returns {never} This function doesn't return as it triggers a redirect.
  */
-export function encodedRedirect(type: "error" | "success", path: string, message: string) {
-  return redirect(`${path}?${type}=${encodeURIComponent(message)}`);
+export function encodedRedirect(type: "error" | "success", path: string, message: any) {
+  let msgString = "";
+  if (typeof message === "string") {
+    msgString = message;
+  } else if (message && typeof message === "object") {
+    msgString = message.message || message.error || JSON.stringify(message);
+  } else {
+    msgString = String(message || "");
+  }
+  if (!msgString || msgString === "{}" || msgString === "[object Object]") {
+    msgString = type === "error" ? "Invalid email or password. Please try again." : "Success";
+  }
+  return redirect(`${path}?${type}=${encodeURIComponent(msgString)}`);
 }
 
 type FetcherArgs = Parameters<typeof fetch>;

@@ -16,7 +16,10 @@ import {
     RefreshCw,
     X,
     AlertTriangle,
-    Printer
+    Printer,
+    LayoutGrid,
+    List,
+    Boxes
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +42,9 @@ const Structural3DViewer = dynamic(
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { WincairsFallbackDialog } from "@/components/dialogs/wincairs-fallback-dialog";
 import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
+import { PlatformSpecsDialog } from "@/components/dialogs/platform-specs-dialog";
+import { InspectionStatusDialog } from "@/components/dialogs/inspection-status-dialog";
+import { ExternalLink } from "lucide-react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 
@@ -68,11 +74,36 @@ export default function Platform3DPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
     const [isSpecOpen, setIsSpecOpen] = useState(false);
+    const [isPlatformSpecsOpen, setIsPlatformSpecsOpen] = useState(false);
+
+    // View Mode State (Icon / Card view vs Listing / Table view)
+    const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+
+    useEffect(() => {
+        const savedViewMode = localStorage.getItem("platform_3d_view_mode");
+        if (savedViewMode === "grid" || savedViewMode === "list") {
+            setViewMode(savedViewMode);
+        }
+    }, []);
+
+    const handleViewModeChange = (mode: "grid" | "list") => {
+        setViewMode(mode);
+        try {
+            localStorage.setItem("platform_3d_view_mode", mode);
+        } catch (e) {
+            console.error("Failed to save view mode to localStorage", e);
+        }
+    };
 
     // Component Search state for Top Header
     const [componentSearchQuery, setComponentSearchQuery] = useState("");
     const [showComponentSearchDropdown, setShowComponentSearchDropdown] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
+
+    // Inspection Status state
+    const [isInspectionDialogOpen, setIsInspectionDialogOpen] = useState(false);
+    const [inspectionJobpackId, setInspectionJobpackId] = useState<number | null>(null);
+    const [inspectionFilters, setInspectionFilters] = useState<string[]>(["Completed", "Incomplete", "Pending"]);
 
     // WINCAIRS Mode state & Fallback Dialog state
     const [useWincairsMode, setUseWincairsMode] = useState(false);
@@ -80,6 +111,8 @@ export default function Platform3DPage() {
     const [isFallbackDialogOpen, setIsFallbackDialogOpen] = useState(false);
     const [isPrintFaceDialogOpen, setIsPrintFaceDialogOpen] = useState(false);
     const [isResyncing3D, setIsResyncing3D] = useState(false);
+    const [isRestructuring3D, setIsRestructuring3D] = useState(false);
+    const [sceneVersion, setSceneVersion] = useState(0);
     const [useWebapp3dConnection, setUseWebapp3dConnection] = useState(true);
 
     const [, setGlobalUrlId] = useAtom(urlId);
@@ -126,16 +159,37 @@ export default function Platform3DPage() {
         try {
             const res = await fetch(`/api/platform/webapp-3d/${selectedPlatform.plat_id}?resync=true`, { method: "POST" });
             if (res.ok) {
-                toast.success("3D cache resynchronized successfully!");
+                toast.success("3D cache resynchronized successfully!", { position: "bottom-right" });
                 await mutateComponents();
                 if (mutateWebapp3d) await mutateWebapp3d();
             } else {
-                toast.error("Failed to resynchronize 3D cache.");
+                toast.error("Failed to resynchronize 3D cache.", { position: "bottom-right" });
             }
         } catch (e) {
-            toast.error("Error resynchronizing 3D cache.");
+            toast.error("Error resynchronizing 3D cache.", { position: "bottom-right" });
         } finally {
             setIsResyncing3D(false);
+        }
+    };
+
+    const handleRestructure3D = async () => {
+        if (!selectedPlatform) return;
+        setIsRestructuring3D(true);
+        try {
+            const res = await fetch(`/api/platform/webapp-3d/${selectedPlatform.plat_id}?resync=true`, { method: "POST" });
+            if (!res.ok) {
+                toast.error("Failed to resynchronize server 3D cache.", { position: "bottom-right" });
+            }
+            await mutateComponents();
+            if (mutateWebapp3d) await mutateWebapp3d();
+
+            setSceneVersion(prev => prev + 1);
+
+            toast.success("Platform 3D structure rebuilt & remounted successfully!", { position: "bottom-right" });
+        } catch (e) {
+            toast.error("Error restructuring 3D model.", { position: "bottom-right" });
+        } finally {
+            setIsRestructuring3D(false);
         }
     };
     const components: Component[] = useMemo(() => {
@@ -160,7 +214,8 @@ export default function Platform3DPage() {
                     const md = c.metadata || c;
                     const sNode = (md.s_node || "").toString().trim().toUpperCase();
                     const fNode = (md.f_node || "").toString().trim().toUpperCase();
-                    if (sNode && fNode && sNode !== fNode) return false;
+                    const hasAssociation = !!(md.associated_comp_id || md.associated_member || md.associated_comp || md.parent_id);
+                    if (sNode && fNode && sNode !== fNode && !hasAssociation) return false;
                 }
 
                 // Exclude fender/boatlanding support components like FEND 1-SUPP-A2 / BL 1-SUPP-A2
@@ -266,9 +321,19 @@ export default function Platform3DPage() {
                                 <div className="h-1 w-1 rounded-full bg-slate-300" />
                                 <span>{selectedPlatform.ptype || "PLATFORM"}</span>
                             </div>
-                            <h1 className="text-xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none">
-                                {selectedPlatform.title}
-                            </h1>
+                            <button
+                                type="button"
+                                onClick={() => setIsPlatformSpecsOpen(true)}
+                                className="group flex items-center gap-2 text-left cursor-pointer transition-all focus:outline-none"
+                                title="Click to view Platform Specifications"
+                            >
+                                <h1 className="text-xl font-black tracking-tighter text-slate-900 dark:text-white uppercase leading-none group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                    {selectedPlatform.title}
+                                </h1>
+                                <span className="p-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/60 opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                </span>
+                            </button>
                         </div>
                     </div>
 
@@ -339,16 +404,30 @@ export default function Platform3DPage() {
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
-                        {/* Print Face Button */}
-                        <Button
+                        {/* 1. Re-sync 3D Cache Button */}
+                        <Button 
                             variant="outline"
                             size="sm"
-                            onClick={() => setIsPrintFaceDialogOpen(true)}
-                            className="h-9 px-3 gap-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)] transition-all"
-                            title="Print 2D CAD Structural Elevation Sketch for Selected Platform Face"
+                            onClick={handleResync3DCache}
+                            disabled={isResyncing3D || isRestructuring3D}
+                            className="h-9 px-3 gap-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all shadow-xs"
+                            title="Re-sync 3D positioning cache for all platform components"
                         >
-                            <Printer className="h-3.5 w-3.5" />
-                            <span>Print Face</span>
+                            <RefreshCw className={cn("h-3.5 w-3.5", isResyncing3D && "animate-spin")} />
+                            <span>{isResyncing3D ? "Resynchronizing..." : "Re-sync 3D Cache"}</span>
+                        </Button>
+
+                        {/* 2. Restructure 3D Button */}
+                        <Button 
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRestructure3D}
+                            disabled={isResyncing3D || isRestructuring3D}
+                            className="h-9 px-3 gap-2 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-xs font-bold text-indigo-700 dark:text-indigo-300 transition-all shadow-xs"
+                            title="Re-render and restructure all 3D components in their updated positions"
+                        >
+                            <Boxes className={cn("h-3.5 w-3.5", isRestructuring3D && "animate-spin")} />
+                            <span>{isRestructuring3D ? "Restructuring..." : "Restructure 3D"}</span>
                         </Button>
 
                         {/* Fallback Warning Badge */}
@@ -365,27 +444,38 @@ export default function Platform3DPage() {
                             </Button>
                         )}
 
-                        <Button 
+                        {/* 3. Print Face Button */}
+                        <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => mutateComponents()}
-                            disabled={isComponentsValidating}
-                            className="h-9 px-3 gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+                            onClick={() => setIsPrintFaceDialogOpen(true)}
+                            className="h-9 px-3 gap-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-[0_0_15px_rgba(37,99,235,0.25)] transition-all"
+                            title="Print 2D CAD Structural Elevation Sketch for Selected Platform Face"
                         >
-                            <RefreshCw className={cn("h-3.5 w-3.5", isComponentsValidating && "animate-spin")} />
-                            <span>Sync</span>
+                            <Printer className="h-3.5 w-3.5" />
+                            <span>Print Face</span>
                         </Button>
 
-                        <Button 
+                        {/* 4. Inspection Status Button */}
+                        <Button
                             variant="outline"
                             size="sm"
-                            onClick={handleResync3DCache}
-                            disabled={isResyncing3D}
-                            className="h-9 px-3 gap-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all shadow-xs"
-                            title="Re-sync 3D positioning cache for all platform components"
+                            onClick={() => setIsInspectionDialogOpen(true)}
+                            className={cn(
+                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all relative overflow-hidden",
+                                inspectionJobpackId
+                                    ? "bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:border-purple-800/50 dark:text-purple-300"
+                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300"
+                            )}
+                            title="View and filter platform structural anomalies by Inspection Jobpack"
                         >
-                            <RefreshCw className={cn("h-3.5 w-3.5", isResyncing3D && "animate-spin")} />
-                            <span>{isResyncing3D ? "Resynchronizing..." : "Re-sync 3D Cache"}</span>
+                            <Activity className={cn("h-3.5 w-3.5", inspectionJobpackId ? "text-purple-500" : "")} />
+                            <span>Inspection Status</span>
+                            
+                            {/* Active Filter Badge */}
+                            {inspectionJobpackId !== null && (
+                                <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-purple-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
+                            )}
                         </Button>
                     </div>
                 </div>
@@ -401,18 +491,19 @@ export default function Platform3DPage() {
                         ) : null}
                         
                         <Structural3DViewer 
+                            key={`scene-v-${sceneVersion}`}
                             components={components} 
                             platformDetails={platformDetails}
                             elevations={elevations}
                             faces={faces}
                             selectedCompId={selectedComponent?.id}
                             onSelectComponent={handleSelectComponent}
-                            onSync={mutateComponents}
-                            isSyncing={isComponentsValidating}
                             useWincairsMode={useWincairsMode}
                             wincairsParams={wincairsParams}
                             onFallbackComponentsChange={setFallbackComponents}
                             webapp3dData={useWebapp3dConnection ? webapp3dData : null}
+                            isInspectionMode={inspectionJobpackId !== null && inspectionFilters.length > 0}
+                            selectedInspectionFilters={inspectionFilters}
                         />
                     </div>
 
@@ -437,6 +528,7 @@ export default function Platform3DPage() {
                                     onSuccess={(updatedComponent) => {
                                         mutateComponents();
                                         setSelectedComponent(updatedComponent);
+                                        handleResync3DCache();
                                     }}
                                 />
                             </div>
@@ -463,6 +555,26 @@ export default function Platform3DPage() {
                     foundationMembers={webapp3dData?.foundationMembers || []}
                     elevations={elevations}
                 />
+
+                {/* Inspection Status Dialog */}
+                <InspectionStatusDialog
+                    isOpen={isInspectionDialogOpen}
+                    onClose={() => setIsInspectionDialogOpen(false)}
+                    platformId={selectedPlatform.plat_id}
+                    platformTitle={selectedPlatform.title}
+                    selectedFilters={inspectionFilters}
+                    onFiltersChange={setInspectionFilters}
+                    selectedJobpackId={inspectionJobpackId}
+                    onJobpackChange={setInspectionJobpackId}
+                />
+
+                {/* Platform Specifications View-Only Popup Modal */}
+                <PlatformSpecsDialog
+                    open={isPlatformSpecsOpen}
+                    onOpenChange={setIsPlatformSpecsOpen}
+                    platformDetails={platformDetails}
+                    isLoading={isPlatformDetailLoading}
+                />
             </div>
         );
     }
@@ -486,24 +598,58 @@ export default function Platform3DPage() {
                         </div>
                     </div>
 
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                        <Input
-                            placeholder="Find platform by name or ID..."
-                            className="pl-10 h-12 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-2xl font-medium shadow-sm ring-0 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1 max-w-xl justify-end">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Input
+                                placeholder="Find platform by name or ID..."
+                                className="pl-10 h-12 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-2xl font-medium shadow-sm ring-0 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+
+                        {/* View Mode Toggle: ICON vs LISTING */}
+                        <div className="flex items-center bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => handleViewModeChange("grid")}
+                                className={cn(
+                                    "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200",
+                                    viewMode === "grid"
+                                        ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                                )}
+                                title="Icon View Mode"
+                            >
+                                <LayoutGrid className="h-4 w-4" />
+                                <span>ICON</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleViewModeChange("list")}
+                                className={cn(
+                                    "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200",
+                                    viewMode === "list"
+                                        ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                                )}
+                                title="List View Mode"
+                            >
+                                <List className="h-4 w-4" />
+                                <span>LIST</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                {/* Grid Section */}
+                {/* Main View Section (Grid / Icon vs Listing) */}
                 {isPlatformsLoading ? (
                     <div className="flex-1 flex flex-col items-center justify-center p-20 space-y-4">
                         <div className="w-16 h-16 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
                         <p className="text-xs font-black uppercase tracking-widest text-slate-400">Loading Fleet Library...</p>
                     </div>
-                ) : (
+                ) : viewMode === "grid" ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
                         {filteredPlatforms.map((p) => (
                             <button
@@ -551,6 +697,63 @@ export default function Platform3DPage() {
                                 </div>
                             </button>
                         ))}
+                    </div>
+                ) : (
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] overflow-hidden shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                                        <th className="py-4 px-6">ID</th>
+                                        <th className="py-4 px-6">Platform Name</th>
+                                        <th className="py-4 px-6">Field</th>
+                                        <th className="py-4 px-6">Structure Type</th>
+                                        <th className="py-4 px-6 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs font-bold">
+                                    {filteredPlatforms.map((p) => (
+                                        <tr
+                                            key={p.plat_id}
+                                            onClick={() => setSelectedPlatform(p)}
+                                            className="group hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors cursor-pointer"
+                                        >
+                                            <td className="py-4 px-6">
+                                                <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] font-black">
+                                                    #{p.plat_id}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 px-6 font-black text-slate-900 dark:text-white uppercase group-hover:text-blue-600 transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-9 w-9 rounded-xl bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                                                        <Layers className="h-4 w-4" />
+                                                    </div>
+                                                    <span>{p.title}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-4 px-6 text-slate-500 dark:text-slate-400 uppercase">
+                                                {p.pfield || "—"}
+                                            </td>
+                                            <td className="py-4 px-6">
+                                                <span className="px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-wider border border-blue-100 dark:border-blue-800/50">
+                                                    {p.ptype || "Structure"}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 px-6 text-right">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/50 font-black text-xs uppercase gap-1"
+                                                >
+                                                    <span>View 3D Model</span>
+                                                    <ChevronRight className="h-4 w-4" />
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
 

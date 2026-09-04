@@ -23,6 +23,7 @@ import {
   Search,
   AlertTriangle,
   MoreVertical,
+  Compass,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,23 +41,54 @@ export type ComponentIntegrityItem = {
   f_leg?: any;
   elv_1?: any;
   elv_2?: any;
+  kp?: any;
+  fp_kp?: any;
+  start_kp?: any;
+  end_kp?: any;
   is_deleted?: boolean | null;
   [key: string]: any;
 };
 
 export type MissingFieldInfo = {
-  key: "start_node" | "end_node" | "start_leg" | "end_leg" | "elv_1" | "elv_2";
+  key: "start_node" | "end_node" | "start_leg" | "end_leg" | "elv_1" | "elv_2" | "kp_fp";
   label: string;
-  category: "nodes" | "legs" | "elevations";
+  category: "nodes" | "legs" | "elevations" | "location";
 };
 
-export function getMissingIntegrityFields(comp: ComponentIntegrityItem): MissingFieldInfo[] {
+export function getMissingIntegrityFields(
+  comp: ComponentIntegrityItem,
+  isPipeline?: boolean
+): MissingFieldInfo[] {
   const meta = comp.metadata || {};
   const missing: MissingFieldInfo[] = [];
 
   const isEmpty = (val: any) =>
     val === undefined || val === null || String(val).trim() === "";
 
+  if (isPipeline) {
+    // For Pipeline structure type:
+    // Pipeline components do NOT have Start/End Node, Elevation 1/2, or Start/End Leg.
+    // Instead, audit for missing KP / FP location data.
+    const code = String(comp.code || "").toUpperCase();
+    if (code === "PP") {
+      const startKp = meta.start_kp ?? meta.kp_start ?? meta.s_kp ?? comp.start_kp;
+      const endKp = meta.end_kp ?? meta.kp_end ?? meta.f_kp ?? comp.end_kp;
+      if (isEmpty(startKp) && isEmpty(endKp)) {
+        const kp = meta.kp ?? meta.fp_kp ?? meta.fp ?? comp.kp;
+        if (isEmpty(kp)) {
+          missing.push({ key: "kp_fp", label: "KP / FP Location", category: "location" });
+        }
+      }
+    } else {
+      const kp = meta.kp ?? meta.fp_kp ?? meta.fp ?? meta.start_kp ?? comp.kp ?? comp.fp_kp;
+      if (isEmpty(kp)) {
+        missing.push({ key: "kp_fp", label: "KP / FP Location", category: "location" });
+      }
+    }
+    return missing;
+  }
+
+  // Standard Platform structure audit
   const sNode = meta.s_node ?? meta.start_node ?? comp.s_node;
   if (isEmpty(sNode)) {
     missing.push({ key: "start_node", label: "Start Node", category: "nodes" });
@@ -94,6 +126,8 @@ interface ComponentIntegrityModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   components: ComponentIntegrityItem[];
+  isPipeline?: boolean;
+  structureType?: string;
   onEditComponent?: (component: ComponentIntegrityItem) => void;
   onDuplicateComponent?: (component: ComponentIntegrityItem) => void;
   onArchiveComponent?: (component: ComponentIntegrityItem) => void;
@@ -103,24 +137,27 @@ export function ComponentIntegrityModal({
   open,
   onOpenChange,
   components,
+  isPipeline = false,
+  structureType,
   onEditComponent,
   onDuplicateComponent,
   onArchiveComponent,
 }: ComponentIntegrityModalProps) {
+  const isPipe = isPipeline || structureType?.toLowerCase() === "pipeline";
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<"ALL" | "nodes" | "legs" | "elevations">("ALL");
+  const [activeCategory, setActiveCategory] = useState<"ALL" | "nodes" | "legs" | "elevations" | "location">("ALL");
 
   // Calculate audit results for all components
   const auditResults = useMemo(() => {
-    return components.map((comp) => {
-      const missing = getMissingIntegrityFields(comp);
+    return (components || []).map((comp) => {
+      const missing = getMissingIntegrityFields(comp, isPipe);
       return {
         component: comp,
         missing,
         hasMissing: missing.length > 0,
       };
     });
-  }, [components]);
+  }, [components, isPipe]);
 
   const incompleteComponents = useMemo(() => {
     return auditResults.filter((res) => res.hasMissing);
@@ -159,6 +196,10 @@ export function ComponentIntegrityModal({
     () => incompleteComponents.filter((i) => i.missing.some((m) => m.category === "elevations")).length,
     [incompleteComponents]
   );
+  const locationMissingCount = useMemo(
+    () => incompleteComponents.filter((i) => i.missing.some((m) => m.category === "location")).length,
+    [incompleteComponents]
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -172,9 +213,16 @@ export function ComponentIntegrityModal({
             <div>
               <DialogTitle className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
                 Component Integrity
+                {isPipe && (
+                  <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-950/80 border border-cyan-800 px-2 py-0.5 rounded-full uppercase">
+                    Pipeline Mode
+                  </span>
+                )}
               </DialogTitle>
               <p className="text-xs text-slate-400 font-medium mt-0.5">
-                Review components missing required nodes, legs, or elevation data
+                {isPipe
+                  ? "Review pipeline components missing required KP / FP location data"
+                  : "Review components missing required nodes, legs, or elevation data"}
               </p>
             </div>
           </div>
@@ -221,39 +269,56 @@ export function ComponentIntegrityModal({
             >
               All ({incompleteComponents.length})
             </button>
-            <button
-              onClick={() => setActiveCategory("nodes")}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap",
-                activeCategory === "nodes"
-                  ? "bg-amber-600 text-white shadow-md shadow-amber-500/20"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
-              )}
-            >
-              Nodes ({nodesMissingCount})
-            </button>
-            <button
-              onClick={() => setActiveCategory("legs")}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap",
-                activeCategory === "legs"
-                  ? "bg-orange-600 text-white shadow-md shadow-orange-500/20"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
-              )}
-            >
-              Legs ({legsMissingCount})
-            </button>
-            <button
-              onClick={() => setActiveCategory("elevations")}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap",
-                activeCategory === "elevations"
-                  ? "bg-rose-600 text-white shadow-md shadow-rose-500/20"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
-              )}
-            >
-              Elevations ({elevationsMissingCount})
-            </button>
+
+            {isPipe ? (
+              <button
+                onClick={() => setActiveCategory("location")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap",
+                  activeCategory === "location"
+                    ? "bg-cyan-600 text-white shadow-md shadow-cyan-500/20"
+                    : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
+                )}
+              >
+                KP / FP ({locationMissingCount})
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setActiveCategory("nodes")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap",
+                    activeCategory === "nodes"
+                      ? "bg-amber-600 text-white shadow-md shadow-amber-500/20"
+                      : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
+                  )}
+                >
+                  Nodes ({nodesMissingCount})
+                </button>
+                <button
+                  onClick={() => setActiveCategory("legs")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap",
+                    activeCategory === "legs"
+                      ? "bg-orange-600 text-white shadow-md shadow-orange-500/20"
+                      : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
+                  )}
+                >
+                  Legs ({legsMissingCount})
+                </button>
+                <button
+                  onClick={() => setActiveCategory("elevations")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap",
+                    activeCategory === "elevations"
+                      ? "bg-rose-600 text-white shadow-md shadow-rose-500/20"
+                      : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
+                  )}
+                >
+                  Elevations ({elevationsMissingCount})
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -270,7 +335,9 @@ export function ComponentIntegrityModal({
                     100% Component Integrity Verified
                   </h3>
                   <p className="text-xs text-slate-400 max-w-sm mt-1">
-                    All components have complete Start Node, End Node, Start Leg, End Leg, Elevation 1, and Elevation 2 values.
+                    {isPipe
+                      ? "All pipeline components have complete and valid KP / FP location data registered."
+                      : "All components have complete Start Node, End Node, Start Leg, End Leg, Elevation 1, and Elevation 2 values."}
                   </p>
                 </>
               ) : (
@@ -331,6 +398,8 @@ export function ComponentIntegrityModal({
                               key={f.key}
                               className={cn(
                                 "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border",
+                                f.category === "location" &&
+                                  "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
                                 f.category === "nodes" &&
                                   "bg-amber-500/10 text-amber-400 border-amber-500/30",
                                 f.category === "legs" &&
@@ -339,7 +408,11 @@ export function ComponentIntegrityModal({
                                   "bg-rose-500/10 text-rose-400 border-rose-500/30"
                               )}
                             >
-                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                              {f.category === "location" ? (
+                                <Compass className="h-3 w-3 shrink-0 text-cyan-400" />
+                              ) : (
+                                <AlertTriangle className="h-3 w-3 shrink-0" />
+                              )}
                               {f.label}
                             </span>
                           ))}
@@ -406,3 +479,4 @@ export function ComponentIntegrityModal({
     </Dialog>
   );
 }
+

@@ -92,25 +92,63 @@ export const GET = withAuth(
       .in("source_id", componentIds)
       .in("source_type", ["component", "COMPONENT", "structure_component"]);
 
-    // Fetch ALL inspection records for this structure (by structure_id so records
-    // without component_id — e.g. legacy migrated data — can still be matched by QID)
-    const { data: inspRecords } = await supabase
-      .from("insp_records")
-      .select(
+    // Fetch ALL inspection records for this structure (paginated loop to guarantee >1000 records are fetched)
+    let inspRecords: any[] = [];
+    let inspPage = 0;
+    const inspPageSize = 1000;
+    let hasMoreInsp = true;
+
+    while (hasMoreInsp) {
+      const { data: pRecs, error: pErr } = await supabase
+        .from("insp_records")
+        .select(
+          `
+          insp_id, component_id, has_anomaly, status, inspection_date, inspection_time, inspection_type_code, description, sow_report_no, fp_kp, elevation, inspection_data,
+          jobpack:jobpack_id(id, name)
         `
-        insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description, sow_report_no, inspection_data,
-        jobpack:jobpack_id(id, name)
-      `
-      )
-      .eq("structure_id", structureIdNumber);
+        )
+        .eq("structure_id", structureIdNumber)
+        .order("insp_id", { ascending: true })
+        .range(inspPage * inspPageSize, (inspPage + 1) * inspPageSize - 1);
+
+      if (pErr || !pRecs || pRecs.length === 0) {
+        hasMoreInsp = false;
+      } else {
+        inspRecords = inspRecords.concat(pRecs);
+        if (pRecs.length < inspPageSize) {
+          hasMoreInsp = false;
+        } else {
+          inspPage++;
+        }
+      }
+    }
 
     // Fetch ALL anomalies for this structure via the view
-    const { data: componentAnomalies } = await (supabase as any)
-      .from("v_anomaly_details")
-      .select(
-        "anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name"
-      )
-      .eq("structure_id", structureIdNumber);
+    let componentAnomalies: any[] = [];
+    let anomPage = 0;
+    const anomPageSize = 1000;
+    let hasMoreAnom = true;
+
+    while (hasMoreAnom) {
+      const { data: aRecs, error: aErr } = await (supabase as any)
+        .from("v_anomaly_details")
+        .select(
+          "anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name"
+        )
+        .eq("structure_id", structureIdNumber)
+        .range(anomPage * anomPageSize, (anomPage + 1) * anomPageSize - 1);
+
+      if (aErr || !aRecs || aRecs.length === 0) {
+        hasMoreAnom = false;
+      } else {
+        componentAnomalies = componentAnomalies.concat(aRecs);
+        if (aRecs.length < anomPageSize) {
+          hasMoreAnom = false;
+        } else {
+          anomPage++;
+        }
+      }
+    }
 
     let inspAtts: any[] = [];
     if (inspRecords && inspRecords.length > 0) {
@@ -123,32 +161,42 @@ export const GET = withAuth(
       inspAtts = iAtts || [];
     }
 
-    const compsWithAtts = new Set();
-
-    if (directAtts) {
-      directAtts.forEach((att: any) => compsWithAtts.add(att.source_id));
+    // Query direct anomaly attachments
+    const anomIds = (componentAnomalies || []).map((a: any) => a.anomaly_id).filter(Boolean);
+    let anomAtts: any[] = [];
+    if (anomIds.length > 0) {
+      const { data: aAtts } = await supabase
+        .from("attachment")
+        .select("source_id")
+        .in("source_id", anomIds)
+        .in("source_type", ["anomaly", "ANOMALY", "defect", "DEFECT"]);
+      anomAtts = aAtts || [];
     }
 
-    if (inspRecords && inspAtts) {
-      const inspAttsSet = new Set(inspAtts.map((a: any) => a.source_id));
-      inspRecords.forEach((r: any) => {
-        if (inspAttsSet.has(r.insp_id)) {
-          if (r.component_id) {
-            compsWithAtts.add(r.component_id);
-          }
-        }
-      });
-    }
+    // Query structure-level anomaly attachments
+    const { data: strAtts } = await supabase
+      .from("attachment")
+      .select("id, name, meta")
+      .in("source_type", ["structure", "STRUCTURE", "pipeline", "PIPELINE", "platform", "PLATFORM"])
+      .eq("source_id", structureIdNumber);
+
+    const hasStrAnomalyFiles = (strAtts || []).some((att: any) => {
+      const n = String(att.name || "").toUpperCase();
+      const t = String(att.meta?.title || "").toUpperCase();
+      return n.startsWith("ANOMALY ") || t.startsWith("ANOMALY ") || n.includes("ANOMALY") || n.includes("A-");
+    });
+
+    const directAttsSet = new Set((directAtts || []).map((a: any) => a.source_id));
+    const inspAttsSet = new Set((inspAtts || []).map((a: any) => a.source_id));
+    const anomAttsSet = new Set(anomAtts.map((a: any) => a.source_id));
 
     // Apply has_attachment flag and enrich with inspections/anomalies
     // (matching by component_id OR component QID so legacy records link correctly)
     data.forEach((item: any) => {
-      item.has_attachment = compsWithAtts.has(item.id);
-
       const qidUpper = item.q_id ? item.q_id.toUpperCase() : "";
 
       item.inspections = (inspRecords || []).filter((r: any) => {
-        if (r.component_id && r.component_id === item.id) return true;
+        if (r.component_id && (r.component_id === item.id || (item.comp_id && r.component_id === item.comp_id))) return true;
         if (qidUpper) {
           if (r.component_qid && String(r.component_qid).toUpperCase() === qidUpper) return true;
           if (r.inspection_data?.component && String(r.inspection_data.component).toUpperCase() === qidUpper) return true;
@@ -158,14 +206,29 @@ export const GET = withAuth(
         return false;
       }) || [];
 
+      const seenAnomKeys = new Set<string>();
       item.anomalies = (componentAnomalies || []).filter((a: any) => {
-        if (a.component_id && a.component_id === item.id) return true;
-        if (qidUpper) {
+        let isMatch = false;
+        if (a.component_id && a.component_id === item.id) isMatch = true;
+        else if (qidUpper) {
           if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) return true;
           if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) return true;
         }
+
+        if (isMatch) {
+          const anomKey = a.anomaly_id ? String(a.anomaly_id) : `${a.display_ref_no || ''}_${a.description || ''}`;
+          if (seenAnomKeys.has(anomKey)) return false;
+          seenAnomKeys.add(anomKey);
+          return true;
+        }
         return false;
       }) || [];
+
+      // Component has attachment if it has direct attachment, inspection attachment, or anomaly attachment
+      const hasDirect = directAttsSet.has(item.id) || (item.comp_id && directAttsSet.has(item.comp_id));
+      const hasInspAtt = item.inspections.some((r: any) => inspAttsSet.has(r.insp_id));
+      const hasAnomAtt = item.anomalies.some((a: any) => anomAttsSet.has(a.anomaly_id)) || (item.anomalies.length > 0 && hasStrAnomalyFiles);
+      item.has_attachment = Boolean(hasDirect || hasInspAtt || hasAnomAtt);
 
       const hasAnom =
         item.anomalies.length > 0 ||

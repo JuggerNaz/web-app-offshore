@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth } from "@/utils/with-auth";
+import { closeOraclePool, closeAllOraclePools, OracleConnectionConfig } from "@/utils/oracle-db";
 
 /**
  * POST /api/migration/disconnect
@@ -7,7 +8,20 @@ import { withAuth } from "@/utils/with-auth";
  */
 export const POST = withAuth(async (request: NextRequest, { user }: any) => {
   try {
-    console.log(`[Oracle Disconnect] Disconnected from Oracle by user ${user?.email || "unknown"}`);
+    let config: OracleConnectionConfig | undefined;
+    try {
+      config = await request.json();
+    } catch (_) {
+      // Body may be empty on beacon / auto-disconnect
+    }
+
+    if (config && (config.connectString || (config.host && config.serviceName))) {
+      await closeOraclePool(config);
+    } else {
+      await closeAllOraclePools();
+    }
+
+    console.log(`[Oracle Disconnect] Disconnected and released Oracle pools for user ${user?.email || "unknown"}`);
     return NextResponse.json({
       success: true,
       message: "Successfully disconnected from Oracle legacy database."

@@ -27,16 +27,16 @@ export class RiserGuard extends THREE.Group {
     // Highlight colors on hover or selection
     let baseColorHex = options.color ?? '#cbd5e1';
     if (options.isSelected) {
-      baseColorHex = '#2563eb';
+      baseColorHex = '#f97316';
     } else if (options.isHovered) {
       baseColorHex = '#60a5fa';
     }
 
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(baseColorHex),
-      metalness: 0.7,
-      roughness: 0.3,
-      emissive: options.isSelected ? new THREE.Color('#1d4ed8') : new THREE.Color('#000000'),
+      metalness: 0.6,
+      roughness: 0.4,
+      emissive: options.isSelected ? new THREE.Color('#ea580c') : new THREE.Color('#000000'),
       emissiveIntensity: options.isSelected ? 0.7 : options.isHovered ? 0.1 : 0,
     });
 

@@ -77,9 +77,13 @@ export async function POST(request: NextRequest) {
       console.error("Backup execution failed:", err);
       await sendEvent("error", err.message || "An unexpected error occurred during backup extraction.");
     } finally {
-      await writer.close();
+      try {
+        await writer.close();
+      } catch (_) {}
     }
-  })();
+  })().catch(err => {
+    console.error("[Backup Execute Process Guard]:", err);
+  });
 
   return new NextResponse(stream.readable, {
     headers: {

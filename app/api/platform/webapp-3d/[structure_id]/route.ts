@@ -80,7 +80,7 @@ export const GET = withAuth(
       .select(`
         *,
         structure_components (
-          id, q_id, code, name, is_deleted
+          *
         )
       `)
       .eq("structure_id", structureIdNum);
@@ -90,25 +90,40 @@ export const GET = withAuth(
     let elvMarkers: any[] = [];
 
     const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
+    const webapp3dMap = new Map<number, any>();
+    if (webapp3d) {
+      webapp3d.forEach((w: any) => {
+        const cid = w.comp_id || w.structure_components?.id;
+        if (cid) webapp3dMap.set(Number(cid), w);
+      });
+    }
     const filteredRawComponents = (rawComponents || [])
       .filter((c: any) => {
         const code = (c.code || "").trim().toUpperCase();
         const qIdUpper = (c.q_id || "").toUpperCase();
-        const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
+        const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM");
         if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) return false;
         if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) return false;
         if (code === "WN") {
           const md = c.metadata || c;
           const sNode = (md.s_node || "").toString().trim().toUpperCase();
           const fNode = (md.f_node || "").toString().trim().toUpperCase();
-          if (sNode && fNode && sNode !== fNode) return false;
+          const hasAssociation = !!(md.associated_comp_id || md.associated_member || md.associated_comp || md.parent_id);
+          if (sNode && fNode && sNode !== fNode && !hasAssociation) return false;
         }
 
         if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) return false;
         if (qIdUpper.endsWith("TERM")) return false;
         return true;
       })
-      .map((c: any) => ({ ...c.metadata, ...c }));
+      .map((c: any) => {
+        const w3d = webapp3dMap.get(Number(c.id));
+        const _webapp3d = w3d ? {
+          start_x: w3d.start_x, start_y: w3d.start_y, start_z: w3d.start_z,
+          end_x: w3d.end_x, end_y: w3d.end_y, end_z: w3d.end_z
+        } : null;
+        return { ...c.metadata, ...c, _webapp3d };
+      });
 
     // Compute foundation & elevation markers from math
     const mathResult = generatePlatform3DCoordinates(
@@ -149,15 +164,26 @@ export const GET = withAuth(
         if (comp.q_id) mathLayoutsByQId.set(comp.q_id.toUpperCase().trim(), m);
       });
 
-      // Repair stored rows if their 3D coordinates are (0,0,0) or missing
+      // Repair stored rows if their 3D coordinates are (0,0,0) or missing and merge real database component specifications
       componentsToEnrich = componentsToEnrich.map((item: any) => {
+        const sc = item.structure_components || {};
         const cid1 = Number(item.comp_id);
-        const cid2 = Number(item.structure_components?.id);
-        const qid = (item.q_id || item.structure_components?.q_id || "").toUpperCase().trim();
+        const cid2 = Number(sc.id);
+        const realQId = sc.q_id || (item.q_id && !item.q_id.startsWith("COMP-") ? item.q_id : null) || sc.name || item.q_id;
+        const qid = String(realQId || "").toUpperCase().trim();
         const mathLayout = mathLayoutsByCompId.get(cid1) || mathLayoutsByCompId.get(cid2) || mathLayoutsByQId.get(qid);
 
-        const code = (item.code || item.structure_components?.code || "").toUpperCase();
+        const code = (sc.code || item.code || "").toUpperCase();
         const isPile = code === "PL" || code === "PILE" || qid.includes("PILE");
+
+        let updatedItem = {
+          ...item,
+          ...sc,
+          id: sc.id || item.comp_id || item.id,
+          q_id: realQId,
+          code: code || item.code,
+          structure_components: sc
+        };
 
         if (isPile) {
           const sX = mathLayout?.start?.x ?? mathLayout?.start?.[0] ?? (item.start_x || 0);
@@ -168,23 +194,27 @@ export const GET = withAuth(
           let eY = mathLayout?.end?.y ?? mathLayout?.end?.[1] ?? (item.end_y || sY);
           let eZ = mathLayout?.end?.z ?? mathLayout?.end?.[2] ?? (item.end_z || sZ);
 
-          if (sY === eY) {
+          const isSingleNodePoint = (sX === eX && sY === eY && sZ === eZ);
+
+          if (isSingleNodePoint) {
             eY = sY - 2.0;
           }
 
-          return {
-            ...item,
+          updatedItem = {
+            ...updatedItem,
             start_x: sX,
             start_y: sY,
             start_z: sZ,
             end_x: eX,
             end_y: eY,
             end_z: eZ,
+            is_single_node: isSingleNodePoint,
             pos_x: (sX + eX) / 2,
             pos_y: (sY + eY) / 2,
             pos_z: (sZ + eZ) / 2,
             thickness: mathLayout?.thickness || 0.2,
           };
+          return updatedItem;
         }
 
         const isZeroOrPoint = ((item.start_x === 0 || item.start_x === "0" || !item.start_x) &&
@@ -192,15 +222,18 @@ export const GET = withAuth(
                        (item.start_z === 0 || item.start_z === "0" || !item.start_z)) ||
                        (item.start_x === item.end_x && item.start_y === item.end_y && item.start_z === item.end_z);
 
-        if (isZeroOrPoint && mathLayout) {
+        const isSupportWeld = code === "WP" || code === "CL" || (typeof qid === "string" && (qid.includes("SUPP") || qid.includes("CLP")));
+        const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS") || (typeof qid === "string" && qid.startsWith("CS-"));
+
+        if ((isZeroOrPoint || isSupportWeld || isCaisson) && mathLayout) {
           const sX = mathLayout.start?.x ?? mathLayout.start?.[0] ?? 0;
           const sY = mathLayout.start?.y ?? mathLayout.start?.[1] ?? 0;
           const sZ = mathLayout.start?.z ?? mathLayout.start?.[2] ?? 0;
           const eX = mathLayout.end?.x ?? mathLayout.end?.[0] ?? sX;
           const eY = mathLayout.end?.y ?? mathLayout.end?.[1] ?? sY;
           const eZ = mathLayout.end?.z ?? mathLayout.end?.[2] ?? sZ;
-          return {
-            ...item,
+          updatedItem = {
+            ...updatedItem,
             start_x: sX,
             start_y: sY,
             start_z: sZ,
@@ -212,8 +245,9 @@ export const GET = withAuth(
             pos_z: (sZ + eZ) / 2,
             thickness: mathLayout.thickness || item.thickness || 0.2,
           };
+          return updatedItem;
         }
-        return item;
+        return updatedItem;
       });
 
       // Also append any dynamic math layouts missing from webapp3d entirely
@@ -266,19 +300,28 @@ export const GET = withAuth(
       }
       // Fallback: Generate 3D component coordinates dynamically on the fly
       componentsToEnrich = (mathResult.componentLayouts || []).map((m: any) => {
-        const start = m.start || [0, 0, 0];
-        const end = m.end || [0, 0, 0];
-        const posX = (start[0] + end[0]) / 2;
-        const posY = (start[1] + end[1]) / 2;
-        const posZ = (start[2] + end[2]) / 2;
+        const c = m.component || m;
+        const sX = m.start?.x ?? m.start?.[0] ?? 0;
+        const sY = m.start?.y ?? m.start?.[1] ?? 0;
+        const sZ = m.start?.z ?? m.start?.[2] ?? 0;
+        const eX = m.end?.x ?? m.end?.[0] ?? sX;
+        const eY = m.end?.y ?? m.end?.[1] ?? sY;
+        const eZ = m.end?.z ?? m.end?.[2] ?? sZ;
+        const posX = (sX + eX) / 2;
+        const posY = (sY + eY) / 2;
+        const posZ = (sZ + eZ) / 2;
+        const compIdVal = c.id ? String(c.id) : (m.id ? String(m.id) : `${c.q_id || "COMP"}-${Math.random()}`);
         return {
-          component_id: m.id?.toString() || `${m.q_id || "COMP"}-${Math.random()}`,
-          start_x: start[0],
-          start_y: start[1],
-          start_z: start[2],
-          end_x: end[0],
-          end_y: end[1],
-          end_z: end[2],
+          component_id: compIdVal,
+          comp_id: c.id || c.comp_id || m.id,
+          q_id: c.q_id || m.q_id,
+          code: c.code || m.code,
+          start_x: sX,
+          start_y: sY,
+          start_z: sZ,
+          end_x: eX,
+          end_y: eY,
+          end_z: eZ,
           pos_x: posX,
           pos_y: posY,
           pos_z: posZ,
@@ -288,11 +331,14 @@ export const GET = withAuth(
           scale_x: m.scale?.[0] || 1,
           scale_y: m.scale?.[1] || 1,
           scale_z: m.scale?.[2] || 1,
-          shape_type: m.shape || "cylinder",
-          dimensions: { length: m.length, radius: m.thickness, offset: m.offsetDistance },
+          shape_type: m.shape || m.shape_type || c.shape_type || "cylinder",
+          dimensions: { length: m.length, radius: m.thickness || 0.3, offset: m.offsetDistance },
+          thickness: m.thickness || 0.3,
           color_hex: m.color || "#64748b",
           visibility_flag: true,
-          has_geometry_issue: false
+          has_geometry_issue: false,
+          structure_components: c,
+          metadata: m.component?.metadata || m.metadata
         };
       });
 
@@ -303,6 +349,9 @@ export const GET = withAuth(
             const insertData = componentsToEnrich.map((item: any) => ({
               structure_id: structureIdNum,
               component_id: item.component_id,
+              comp_id: item.comp_id ? Number(item.comp_id) : null,
+              q_id: item.q_id || null,
+              code: item.code || null,
               start_x: item.start_x,
               start_y: item.start_y,
               start_z: item.start_z,
@@ -320,6 +369,7 @@ export const GET = withAuth(
               scale_z: item.scale_z,
               shape_type: item.shape_type,
               dimensions: item.dimensions,
+              thickness: item.thickness,
               color_hex: item.color_hex,
               material_type: "steel",
               opacity: 1.0,
@@ -335,7 +385,9 @@ export const GET = withAuth(
           } catch (syncErr) {
             console.error("[webapp-3d] Auto-population background sync failed:", syncErr);
           }
-        })();
+        })().catch(err => {
+          console.error("[webapp-3d] Auto-population background error caught:", err);
+        });
       }
     }
 

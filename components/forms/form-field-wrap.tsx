@@ -227,27 +227,27 @@ export function FormItemSmall({
 }
 
 export function FormCheckbox({ label, field }: { label: string; field: any }) {
+  const isChecked =
+    typeof field.value === "string"
+      ? ["YES", "Y", "1", "TRUE"].includes(field.value.toUpperCase().trim())
+      : typeof field.value === "boolean"
+      ? field.value
+      : Boolean(field.value && field.value !== 0);
+
+  const handleChange = (checked: boolean) => {
+    if (typeof field.value === "number") {
+      field.onChange(checked ? 1 : 0);
+    } else if (typeof field.value === "boolean") {
+      field.onChange(checked);
+    } else {
+      field.onChange(checked ? "YES" : "NO");
+    }
+  };
+
   return (
-    <FormItem
-      //key={item.id}
-      className="flex flex-row items-start space-x-0 space-y-0 my-4"
-    >
+    <FormItem className="flex flex-row items-start space-x-0 space-y-0 my-4">
       <FormControl>
-        {typeof field.value === "string" && field.value === "YES" ? (
-          <Checkbox
-            checked={field.value === "NO" ? false : true}
-            onCheckedChange={(checked) => {
-              return field.onChange(checked ? "YES" : "NO");
-            }}
-          />
-        ) : (
-          <Checkbox
-            checked={field.value === 0 ? false : true}
-            onCheckedChange={(checked) => {
-              return field.onChange(checked ? 1 : 0);
-            }}
-          />
-        )}
+        <Checkbox checked={isChecked} onCheckedChange={handleChange} />
       </FormControl>
       <FormLabel className="text-sm font-normal">{label}</FormLabel>
     </FormItem>

@@ -83,6 +83,17 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useUserProfile } from "@/components/user-profile-provider";
 
 function formatCounter(seconds: number | string): string {
+  if (seconds === undefined || seconds === null || seconds === "") return "00:00:00";
+  const str = String(seconds).trim();
+  if (str.includes(":")) {
+    const parts = str.split(":").map((p) => p.trim());
+    if (parts.length === 3) {
+      return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}:${parts[2].padStart(2, "0")}`;
+    }
+    if (parts.length === 2) {
+      return `00:${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+    }
+  }
   const totalSeconds = typeof seconds === "string" ? parseFloat(seconds) : seconds;
   if (isNaN(totalSeconds)) return "00:00:00";
   const h = Math.floor(totalSeconds / 3600);
@@ -110,7 +121,11 @@ import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report
 import { generateROVCasnReport } from "@/utils/report-generators/rov-rcasn-report";
 import { generateROVCasnSketchReport } from "@/utils/report-generators/rov-rcasn-sketch-report";
 import { generateROVCondReport } from "@/utils/report-generators/rov-rcond-report";
-import { Inspection3DViewer } from "./_components/Inspection3DViewer";
+import dynamic from "next/dynamic";
+const Inspection3DViewer = dynamic(
+  () => import("./_components/Inspection3DViewer").then((mod) => mod.Inspection3DViewer),
+  { ssr: false }
+);
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
@@ -194,7 +209,7 @@ import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { WorkspaceResources } from "./components/WorkspaceResources";
 import { useROVConnection } from "@/components/rov-connection-provider";
-import { Layout, Model, TabNode, IJsonModel } from "flexlayout-react";
+import { Layout, Model, TabNode, TabSetNode, Actions, DockLocation, IJsonModel } from "flexlayout-react";
 import "flexlayout-react/style/dark.css";
 import { DiverLogPanel } from "./_components/panels/DiverLogPanel";
 import { DiverLogPanelPipeline } from "./_components/panels/DiverLogPanelPipeline";
@@ -242,6 +257,34 @@ function V10PreviewLayout() {
   const initialMode = searchParams.get("mode") as "DIVING" | "ROV" | null;
   const hasAutoDisconnectedRef = useRef(false);
   const hasAutoEditedRef = useRef(false);
+  const lastResolvedParamsRef = useRef<string>("");
+  const lastHeaderFetchedKeyRef = useRef<string>("");
+
+  const jpParam = searchParams.get("jpName");
+  const strParam = searchParams.get("structName");
+  const sowParam = searchParams.get("sowReport");
+  const jtParam = searchParams.get("jobType");
+
+  // Header Data
+  const [headerData, setHeaderData] = useState<{
+    jobpackName: string;
+    platformName: string;
+    sowReportNo: string;
+    jobType: string;
+    structureType: "platform" | "pipeline";
+    waterDepth: number;
+    vessel: string;
+    kp?: string;
+    structureName?: string;
+  }>({
+    jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
+    platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
+    sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
+    jobType: jtParam || "",
+    structureType: "platform" as "platform" | "pipeline",
+    waterDepth: 0,
+    vessel: "N/A",
+  });
 
   // Jotai State Sync for Dialog
   const [, setGlobalUrlId] = useAtom(urlId);
@@ -398,7 +441,15 @@ function V10PreviewLayout() {
 
   // --- DOCKABLE LAYOUT STATE ---
   const [layoutModel, setLayoutModel] = useState<Model | null>(null);
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const [videoLogExpanded, setVideoLogExpanded] = useState(false);
+
+  const isPipe = Boolean(
+    isPipeline ||
+    headerData?.structureType === "pipeline" ||
+    (typeof pathname === "string" && pathname.includes("pipeline")) ||
+    searchParams.get("structure")?.toUpperCase().includes("PIPELINE")
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -420,14 +471,15 @@ function V10PreviewLayout() {
       return node;
     };
 
-    const savedLayout = localStorage.getItem("inspection-workspace-layout-v2");
+    const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
+    const savedLayout = localStorage.getItem(storageKey) || (!isPipe ? localStorage.getItem("inspection-workspace-layout-v2") : null);
     if (savedLayout && savedLayout !== "[object Object]" && savedLayout.startsWith("{")) {
       try {
         let parsed = JSON.parse(savedLayout);
-        if (typeof parsed === 'string') {
+        if (typeof parsed === "string") {
           parsed = JSON.parse(parsed);
         }
-        if (!isPipeline && parsed && parsed.layout) {
+        if (!isPipe && parsed && parsed.layout) {
           parsed.layout = stripPipelinePanelsFromLayout(parsed.layout);
           if (Array.isArray(parsed.borders)) {
             parsed.borders = parsed.borders.map(stripPipelinePanelsFromLayout).filter(Boolean);
@@ -480,7 +532,7 @@ function V10PreviewLayout() {
                 type: "tabset",
                 weight: 35,
                 children: [
-                  { type: "tab", name: "Diver Log", component: "opsLog" },
+                  { type: "tab", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log", component: "opsLog" },
                 ],
               },
               {
@@ -527,10 +579,10 @@ function V10PreviewLayout() {
                 type: "tabset",
                 weight: 30,
                 children: [
-                  { type: "tab", name: isPipeline ? "Event Menu" : "Component List", component: "components" },
+                  { type: "tab", name: isPipe ? "Event Menu" : "Component List", component: "components" },
                 ],
               },
-              ...(isPipeline ? [
+              ...(isPipe ? [
                 {
                   type: "tabset" as const,
                   weight: 22,
@@ -553,21 +605,27 @@ function V10PreviewLayout() {
       },
     };
     setLayoutModel(Model.fromJson(defaultModel));
-  }, []);
+  }, [isPipe, inspMethod]);
 
   const onLayoutChange = useCallback((model: Model) => {
-    localStorage.setItem("inspection-workspace-layout-v2", JSON.stringify(model.toJson()));
+    const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(model.toJson()));
+    } catch (e) {}
     setLayoutModel(model);
-  }, []);
+    setLayoutVersion((v) => v + 1);
+  }, [isPipe]);
 
   const handleResetLayout = useCallback(() => {
     if (confirm("Are you sure you want to reset the cockpit layout to default? All panel positions will be restored.")) {
+      const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
+      localStorage.removeItem(storageKey);
       localStorage.removeItem("inspection-workspace-layout-v2");
       window.location.reload();
     }
-  }, []);
+  }, [isPipe]);
 
-  // Track closed floating panels so user can reopen individually
+  // Track closed floating/docked panels so user can reopen individually from Dock Settings
   const allWorkspacePanels = useMemo(() => {
     const list = [
       { id: "opsLog", name: inspMethod === "DIVING" ? "Diver Log" : "ROV Log" },
@@ -575,69 +633,151 @@ function V10PreviewLayout() {
       { id: "videoPreview", name: "Photo / Video Grab" },
       { id: "form", name: "Inspection Form" },
       { id: "events", name: "Captured Events" },
-      { id: "components", name: isPipeline ? "Event Menu" : "Component List" },
+      { id: "components", name: isPipe ? "Event Menu" : "Component List" },
       { id: "history", name: "History Data" },
     ];
-    if (isPipeline) {
+    if (isPipe) {
       list.push({ id: "inspectionInfo", name: "Inspection Info" });
       list.push({ id: "quickShortcuts", name: "Quick Log" });
     }
     return list;
-  }, [inspMethod, isPipeline]);
+  }, [inspMethod, isPipe]);
 
   const closedPanels = useMemo(() => {
     if (!layoutModel) return [];
     const openComponents = new Set<string>();
-    const visitNode = (node: any) => {
-      if (node.component) {
-        openComponents.add(node.component);
-      }
-      if (node.children) {
-        node.children.forEach(visitNode);
-      }
-    };
+
+    try {
+      layoutModel.visitNodes((node) => {
+        if (node.getType() === "tab") {
+          const comp = (node as TabNode).getComponent();
+          if (comp) {
+            openComponents.add(comp);
+          }
+        }
+      });
+    } catch (e) {
+      console.error("Error visiting layout nodes", e);
+    }
+
     try {
       const json = layoutModel.toJson();
-      visitNode(json.layout);
-      if (json.borders) {
-        json.borders.forEach(visitNode);
+      const visitJsonNode = (node: any) => {
+        if (!node) return;
+        if (node.component) {
+          openComponents.add(node.component);
+        }
+        if (Array.isArray(node.children)) {
+          node.children.forEach(visitJsonNode);
+        }
+      };
+      if (json.layout) visitJsonNode(json.layout);
+      if (json.borders && Array.isArray(json.borders)) {
+        json.borders.forEach(visitJsonNode);
       }
     } catch (e) {
-      console.error("Error inspecting layout nodes", e);
+      console.error("Error inspecting layout json", e);
     }
+
     return allWorkspacePanels.filter((p) => !openComponents.has(p.id));
-  }, [layoutModel, allWorkspacePanels]);
+  }, [layoutModel, layoutVersion, allWorkspacePanels]);
 
   const handleRestorePanel = useCallback((panelId: string) => {
     if (!layoutModel) return;
     try {
-      const json = layoutModel.toJson();
       const panelInfo = allWorkspacePanels.find((p) => p.id === panelId);
       const tabName = panelInfo?.name || panelId;
-      
-      const newTab = { type: "tab", name: tabName, component: panelId };
+      const newTabJson = { type: "tab", name: tabName, component: panelId, enableClose: true };
 
-      // Find first row or tabset to insert tab into
-      const layoutObj = json.layout as any;
-      if (layoutObj && layoutObj.children && layoutObj.children.length > 0) {
-        const firstRow = layoutObj.children[0];
-        if (firstRow && firstRow.children && firstRow.children.length > 0) {
-          const firstTabset = firstRow.children[0];
-          if (firstTabset && firstTabset.children) {
-            firstTabset.children.push(newTab);
+      // Preferred sibling associations for natural docking locations
+      const leftPanels = ["opsLog", "videoLog", "videoPreview"];
+      const rightPanels = ["events", "components", "history", "inspectionInfo", "quickShortcuts"];
+      const targetSiblings = leftPanels.includes(panelId)
+        ? leftPanels.filter((id) => id !== panelId)
+        : rightPanels.includes(panelId)
+        ? rightPanels.filter((id) => id !== panelId)
+        : ["form"];
+
+      let targetTabSetId: string | null = null;
+
+      // 1. Search for a tabset containing a sibling panel
+      layoutModel.visitNodes((node) => {
+        if (!targetTabSetId && node.getType() === "tabset") {
+          const tabsetNode = node as TabSetNode;
+          const children = tabsetNode.getChildren();
+          const hasSibling = children.some((child) => {
+            if (child.getType() === "tab") {
+              const comp = (child as TabNode).getComponent();
+              return comp && targetSiblings.includes(comp);
+            }
+            return false;
+          });
+          if (hasSibling) {
+            targetTabSetId = tabsetNode.getId();
+          }
+        }
+      });
+
+      // 2. If no sibling tabset found, find active tabset or first tabset
+      if (!targetTabSetId) {
+        const activeTabset = layoutModel.getActiveTabset();
+        if (activeTabset) {
+          targetTabSetId = activeTabset.getId();
+        } else {
+          const firstTabset = layoutModel.getFirstTabSet();
+          if (firstTabset) {
+            targetTabSetId = firstTabset.getId();
           }
         }
       }
-      const updatedModel = Model.fromJson(json);
-      onLayoutChange(updatedModel);
-      toast.success(`Reopened ${tabName} window`);
+
+      // 3. If any tabset node found, add the tab directly via FlexLayout Actions
+      if (targetTabSetId) {
+        layoutModel.doAction(Actions.addNode(newTabJson, targetTabSetId, DockLocation.CENTER, -1, true));
+      } else {
+        // 4. If no tabsets exist (all were closed), add to root row
+        const rootRow = layoutModel.getRootRow();
+        if (rootRow) {
+          layoutModel.doAction(Actions.addNode(newTabJson, rootRow.getId(), DockLocation.CENTER, -1, true));
+        } else {
+          // 5. Fallback json construction
+          const json = layoutModel.toJson();
+          if (!json.layout) {
+            json.layout = { type: "row", weight: 100, children: [] };
+          }
+          if (!Array.isArray(json.layout.children)) {
+            json.layout.children = [];
+          }
+          json.layout.children.push({
+            type: "tabset",
+            weight: 50,
+            children: [newTabJson],
+          });
+          const restoredModel = Model.fromJson(json);
+          setLayoutModel(restoredModel);
+        }
+      }
+
+      const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(layoutModel.toJson()));
+      } catch (e) {}
+
+      setLayoutModel(layoutModel);
+      setLayoutVersion((v) => v + 1);
+      toast.success(`Restored ${tabName} to dock panel`);
     } catch (err) {
       console.error("Failed to restore panel", err);
-      // Fallback reset
-      localStorage.removeItem("inspection-workspace-layout-v2");
-      window.location.reload();
+      toast.error("Could not restore panel. Resetting layout may be required.");
     }
-  }, [layoutModel, allWorkspacePanels, onLayoutChange]);
+  }, [layoutModel, allWorkspacePanels, isPipe]);
+
+  const handleRestoreAllPanels = useCallback(() => {
+    if (!layoutModel || closedPanels.length === 0) return;
+    closedPanels.forEach((p) => {
+      handleRestorePanel(p.id);
+    });
+  }, [layoutModel, closedPanels, handleRestorePanel]);
 
 
   // Fetch Global Unit Preference
@@ -760,48 +900,170 @@ function V10PreviewLayout() {
     const rawQuery = recordSearchQuery.trim();
     if (!rawQuery) return sortedRecords;
 
-    // Helper to extract all searchable data from a record
+    // Filter out calibration/test records from the full database records set
+    const excludedCodes = ["RCPCLB", "RUTCLB", "CPCLB", "UTCLB"];
+    const baseSource = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+      ? allWorkspaceRecords
+      : currentRecords;
+
+    const sourceRecords = baseSource.filter((r: any) => {
+      const code = r.inspection_type_code || r.inspection_type?.code;
+      return !excludedCodes.includes(code);
+    });
+
+    // Helper to extract all searchable data from a record across every table column
     const getSearchableText = (r: any) => {
       const texts: string[] = [];
+      const d = r.inspection_data || {};
       
-      // 1. Basic Info
-      texts.push(r.inspection_type?.name || "");
-      texts.push(r.inspection_type_code || r.inspection_type?.code || "");
-      texts.push(r.structure_components?.q_id || r.component_name || "");
-      texts.push((r.elevation ?? "").toString());
-      texts.push((r.kp ?? "").toString());
-      texts.push(r.has_anomaly ? "anomaly" : r.status === "COMPLETED" ? "complete" : "incomplete");
-      texts.push(r.description || "");
-      texts.push(r.observation || "");
-      
-      // 2. Anomaly Info
+      // 1. Column: Status & Anomalies
+      texts.push(r.status || "");
+      const isAnom = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toLowerCase().includes("anom") || String(r.status || "").toLowerCase().includes("defect");
+      if (isAnom) {
+        texts.push("anomaly defect anom");
+      } else if (r.status === "COMPLETED") {
+        texts.push("complete completed");
+      } else {
+        texts.push("incomplete draft pending");
+      }
+
+      // Anomaly details (Ref, Defect Code, Category, Priority, Description)
       if (r.insp_anomalies && r.insp_anomalies.length > 0) {
+        texts.push("anomaly defect anom");
         r.insp_anomalies.forEach((anom: any) => {
           texts.push(anom.anomaly_ref_no || "");
           texts.push(anom.defect_description || "");
-          texts.push(anom.defect_code || "");
+          texts.push(anom.defect_type_code || anom.defect_code || "");
+          texts.push(anom.defect_category_code || "");
+          texts.push(anom.record_category || "");
           texts.push(anom.priority || "");
           texts.push(anom.priority_code || "");
           texts.push(anom.priority_name || "");
-          if (anom.priority_code) texts.push(`priority ${anom.priority_code}`);
+          if (anom.priority_code) {
+            texts.push(`priority ${anom.priority_code}`);
+            texts.push(`p${anom.priority_code}`);
+          }
+          if (anom.follow_up_notes) texts.push(anom.follow_up_notes);
         });
       }
 
-      // 3. Dive & Tape Info
-      texts.push(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "");
-      texts.push(r.insp_video_tapes?.tape_no || "");
-      texts.push((r.tape_count_no ?? "").toString());
-
-      // 4. Date Info
+      // 2. Column: Date & Time (in multiple formats: DD MMM YYYY, YYYY-MM-DD, month names, times)
       if (r.inspection_date) {
         texts.push(r.inspection_date);
-        const d = new Date(r.inspection_date);
-        texts.push(d.toLocaleDateString());
+        const dStr = String(r.inspection_date).trim().split('T')[0];
+        const match = dStr.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        if (match) {
+          const year = match[1];
+          const monthIdx = parseInt(match[2], 10) - 1;
+          const day = match[3].padStart(2, '0');
+          const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+          const shortMonthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const fullMonth = monthNames[monthIdx] || "";
+          const shortMonth = shortMonthNames[monthIdx] || "";
+          texts.push(`${day} ${shortMonth} ${year}`);
+          texts.push(`${day} ${fullMonth} ${year}`);
+          texts.push(`${shortMonth} ${year}`);
+          texts.push(`${fullMonth} ${year}`);
+          texts.push(year);
+        }
+        const dateObj = new Date(r.inspection_date);
+        if (!isNaN(dateObj.getTime())) {
+          texts.push(dateObj.toLocaleDateString());
+        }
       }
-      if (r.inspection_time) texts.push(r.inspection_time);
+      if (r.inspection_time) {
+        texts.push(r.inspection_time);
+        texts.push(r.inspection_time.slice(0, 5));
+      }
 
-      // 5. Deep Inspection Data Scan (Values only)
-      if (r.inspection_data && typeof r.inspection_data === 'object') {
+      // 3. Column: Event Name (Pipeline & General)
+      const eventName = d.event_name || d.actionName || d.event || d.name || d.raw_event || "";
+      if (eventName) texts.push(eventName);
+
+      // 4. Column: Event Type
+      const eventType = d.event_type || d.raw_type || d.type || "";
+      if (eventType) texts.push(eventType);
+
+      // 5. Column: Event Position
+      const eventPos = d.event_position || d.eventCategory || d.position || d.clock_position || d.side || d.raw_pos || "";
+      if (eventPos) texts.push(eventPos);
+
+      // 6. Column: Event Description / Findings / Comments / Description
+      const eventDesc = d.event_description || r.description || d.findings || r.observation || d.comments || d.raw_descr || "";
+      if (eventDesc) texts.push(eventDesc);
+      if (r.description) texts.push(r.description);
+      if (r.observation) texts.push(r.observation);
+
+      // 7. Column: Type (Inspection Type Name & Code)
+      texts.push(r.inspection_type?.name || "");
+      texts.push(r.inspection_type_code || r.inspection_type?.code || "");
+
+      // 8. Column: Component (QID, Code, Name, Type, Leg, Face, Level, Drawing No)
+      texts.push(r.structure_components?.q_id || "");
+      texts.push(r.structure_components?.code || "");
+      texts.push(r.structure_components?.name || "");
+      texts.push(r.component_name || "");
+      texts.push(r.component_type || r.structure_components?.type || "");
+
+      // Component metadata (e.g. Leg, Face, Level, Drawing, Notes)
+      const cMeta = r.structure_components?.metadata || {};
+      if (typeof cMeta === 'object') {
+        if (cMeta.face) texts.push(`face ${cMeta.face} ${cMeta.face}`);
+        if (cMeta.level || cMeta.level_name) texts.push(`level ${cMeta.level || cMeta.level_name}`);
+        if (cMeta.leg || cMeta.leg_name) texts.push(`leg ${cMeta.leg || cMeta.leg_name}`);
+        if (cMeta.elv_1) texts.push(cMeta.elv_1.toString(), `${cMeta.elv_1}m`);
+        if (cMeta.elv_2) texts.push(cMeta.elv_2.toString(), `${cMeta.elv_2}m`);
+        if (cMeta.drawing_no) texts.push(cMeta.drawing_no);
+        if (cMeta.group || cMeta.comp_group) texts.push(cMeta.group || cMeta.comp_group);
+      }
+
+      // 9. Column: Elevation & KP (Platform elevations e.g. (+)15m, (-)30m, EL 12.5)
+      if (r.elevation !== undefined && r.elevation !== null && r.elevation !== "") {
+        const elvStr = r.elevation.toString();
+        texts.push(elvStr);
+        texts.push(`${elvStr}m`);
+        texts.push(`el ${elvStr}`);
+        texts.push(`elv ${elvStr}`);
+        const numElv = parseFloat(elvStr);
+        if (!isNaN(numElv)) {
+          if (numElv < 0) texts.push(`(-) ${Math.abs(numElv)}m`, `(-)${Math.abs(numElv)}`);
+          else texts.push(`(+) ${numElv}m`, `(+)${numElv}`);
+        }
+      }
+      if (r.kp !== undefined && r.kp !== null && r.kp !== "") {
+        texts.push(r.kp.toString());
+        texts.push(`${r.kp}km`);
+      }
+      if (r.fp_kp !== undefined && r.fp_kp !== null && r.fp_kp !== "") {
+        texts.push(r.fp_kp.toString());
+      }
+      if (d.kp) texts.push(d.kp.toString());
+      if (d.fp_kp) texts.push(d.fp_kp.toString());
+      if (d.elevation) texts.push(d.elevation.toString());
+
+      // 10. Column: CP Reading
+      const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp_reading ?? d.cp ?? d.cp_fg_rdg;
+      if (cpVal !== undefined && cpVal !== null && cpVal !== "") {
+        texts.push(cpVal.toString());
+        texts.push(`${cpVal}mv`);
+      }
+
+      // 11. Column: Dive / ROV Job No & Operator
+      texts.push(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "");
+      texts.push(r.insp_dive_jobs?.name || r.insp_rov_jobs?.name || "");
+      texts.push(r.insp_dive_jobs?.diver_name || r.insp_rov_jobs?.rov_operator || "");
+
+      // 12. Column: Tape No & Counter / Timecode
+      texts.push(r.insp_video_tapes?.tape_no || "");
+      if (r.tape_count_no) texts.push(r.tape_count_no.toString());
+      const timecode = d._meta_timecode || d.counter_no || d.counter || d.timecode;
+      if (timecode) texts.push(timecode.toString());
+
+      // 13. SOW Report Number
+      if (r.sow_report_no) texts.push(r.sow_report_no);
+
+      // 14. Deep scan all remaining nested values in inspection_data (MGI, UTWT, RFMD, CP, MPI, ACFMC, etc.)
+      if (d && typeof d === 'object') {
         const extractValues = (obj: any) => {
           Object.values(obj).forEach(val => {
             if (val === null || val === undefined) return;
@@ -809,7 +1071,7 @@ function V10PreviewLayout() {
             else texts.push(val.toString());
           });
         };
-        extractValues(r.inspection_data);
+        extractValues(d);
       }
 
       return texts.map(t => String(t).toLowerCase()).join(" ");
@@ -832,25 +1094,229 @@ function V10PreviewLayout() {
       ? rawQuery.split(",").map((s) => s.trim()).filter(Boolean)
       : rawQuery.split(/\s+/).map((s) => s.trim()).filter(Boolean);
 
-    if (conditions.length === 0) return sortedRecords;
-
-    if (searchMode === "EXACT") {
-      return sortedRecords.filter((r) => matchesTerm(getSearchableText(r), rawQuery));
-    }
-
-    if (searchMode === "ANY") {
-      return sortedRecords.filter((r) => {
+    let filtered: any[] = [];
+    if (conditions.length === 0) {
+      filtered = sourceRecords;
+    } else if (searchMode === "EXACT") {
+      filtered = sourceRecords.filter((r) => matchesTerm(getSearchableText(r), rawQuery));
+    } else if (searchMode === "ANY") {
+      filtered = sourceRecords.filter((r) => {
         const fullText = getSearchableText(r);
         return conditions.some((cond) => matchesTerm(fullText, cond));
       });
+    } else {
+      // Default "ALL" - Multi-condition AND search
+      filtered = sourceRecords.filter((r) => {
+        const fullText = getSearchableText(r);
+        return conditions.every((cond) => matchesTerm(fullText, cond));
+      });
     }
 
-    // Default "ALL" - Multi-condition AND search
-    return sortedRecords.filter((r) => {
-      const fullText = getSearchableText(r);
-      return conditions.every((cond) => matchesTerm(fullText, cond));
+    // Sort matching records according to active sortConfig
+    const sortableRecords = [...filtered];
+    sortableRecords.sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+
+      switch (sortConfig.key) {
+        case "inspection_date": {
+          const aDateTime = new Date(`${a.inspection_date || "1970-01-01"}T${a.inspection_time || "00:00:00"}`).getTime();
+          const bDateTime = new Date(`${b.inspection_date || "1970-01-01"}T${b.inspection_time || "00:00:00"}`).getTime();
+          aVal = aDateTime;
+          bVal = bDateTime;
+          break;
+        }
+        case "type":
+          aVal = (a.inspection_type?.name || "").toLowerCase();
+          bVal = (b.inspection_type?.name || "").toLowerCase();
+          break;
+        case "component":
+          aVal = (a.structure_components?.q_id || "").toLowerCase();
+          bVal = (b.structure_components?.q_id || "").toLowerCase();
+          break;
+        case "elev":
+          const aE = parseFloat(a.elevation);
+          const bE = parseFloat(b.elevation);
+          aVal = isNaN(aE) ? a.fp_kp || "" : aE;
+          bVal = isNaN(bE) ? b.fp_kp || "" : bE;
+          break;
+        case "status": {
+          const getStatusWeight = (r: any) => {
+            if (r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0)) return 3;
+            if (r.status === "INCOMPLETE") return 2;
+            if (r.status === "COMPLETED") return 1;
+            return 0;
+          };
+          aVal = getStatusWeight(a);
+          bVal = getStatusWeight(b);
+          break;
+        }
+        case "anomaly_ref":
+          aVal = (a.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
+          bVal = (b.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
+          break;
+        case "cp_reading": {
+          const aCp = parseFloat(
+            a.inspection_data?.cp_rdg ??
+              a.inspection_data?.cp_reading_mv ??
+              a.inspection_data?.cp ??
+              ""
+          );
+          const bCp = parseFloat(
+            b.inspection_data?.cp_rdg ??
+              b.inspection_data?.cp_reading_mv ??
+              b.inspection_data?.cp ??
+              ""
+          );
+          aVal = isNaN(aCp) ? -Infinity : aCp;
+          bVal = isNaN(bCp) ? -Infinity : bCp;
+          break;
+        }
+        case "dive_no":
+          aVal = (a.insp_dive_jobs?.job_no || a.insp_rov_jobs?.job_no || "").toLowerCase();
+          bVal = (b.insp_dive_jobs?.job_no || b.insp_rov_jobs?.job_no || "").toLowerCase();
+          break;
+        case "tape_no":
+          aVal = (a.insp_video_tapes?.tape_no || "").toLowerCase();
+          bVal = (b.insp_video_tapes?.tape_no || "").toLowerCase();
+          break;
+        default:
+          aVal = a[sortConfig.key];
+          bVal = b[sortConfig.key];
+      }
+
+      if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
     });
-  }, [sortedRecords, recordSearchQuery, searchMode]);
+
+    return sortableRecords;
+  }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig]);
+
+  const [isSearchingWorkspace, setIsSearchingWorkspace] = useState(false);
+
+  const fetchFullWorkspaceRecords = useCallback(async () => {
+    if (!jobPackId || isNaN(Number(jobPackId))) return;
+    try {
+      setIsSearchingWorkspace(true);
+      const rawStructureId = structureId?.includes("-") ? structureId.split("-")[1] : structureId;
+      const numStrId = rawStructureId && !isNaN(Number(rawStructureId)) ? Number(rawStructureId) : null;
+      const numJpId = parseInt(jobPackId);
+
+      const selectFields = `
+        *,
+        inspection_type:inspection_type_id!left(id, code, name),
+        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+        insp_video_tapes:tape_id!left(tape_no)
+      `;
+
+      // 1. Get exact total count for parallel batching
+      let countQuery = supabase
+        .from("insp_records")
+        .select("insp_id", { count: "exact", head: true })
+        .eq("jobpack_id", numJpId);
+
+      if (numStrId) {
+        countQuery = countQuery.eq("structure_id", numStrId);
+      }
+
+      const { count: totalCount } = await countQuery;
+      const total = totalCount || 0;
+      const batchSize = 1000;
+      const numBatches = Math.max(1, Math.ceil(total / batchSize));
+
+      // 2. Fetch all pages in parallel to avoid Supabase 1000-row cap
+      const batchPromises = [];
+      for (let i = 0; i < numBatches; i++) {
+        const offset = i * batchSize;
+        let query = supabase
+          .from("insp_records")
+          .select(selectFields)
+          .eq("jobpack_id", numJpId)
+          .order("inspection_date", { ascending: false })
+          .order("inspection_time", { ascending: false })
+          .range(offset, offset + batchSize - 1);
+
+        if (numStrId) {
+          query = query.eq("structure_id", numStrId);
+        }
+        batchPromises.push(query);
+      }
+
+      const batchResults = await Promise.all(batchPromises);
+      const allData: any[] = [];
+      for (const res of batchResults) {
+        if (res.data && res.data.length > 0) {
+          allData.push(...res.data);
+        }
+      }
+
+      if (allData.length === 0) return;
+
+      // 3. Fetch anomalies for all retrieved records
+      const allInspIds = allData.map((r: any) => r.insp_id).filter(Boolean);
+      let anomData: any[] = [];
+      if (allInspIds.length > 0) {
+        const chunkSize = 500;
+        for (let i = 0; i < allInspIds.length; i += chunkSize) {
+          const chunk = allInspIds.slice(i, i + chunkSize);
+          const { data: anoms } = await supabase
+            .from("insp_anomalies")
+            .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description, follow_up_notes, is_rectified, inspection_id")
+            .in("inspection_id", chunk);
+          if (anoms && anoms.length > 0) {
+            anomData.push(...anoms);
+          }
+        }
+      }
+
+      const anomMap = new Map<number, any[]>();
+      anomData.forEach((a: any) => {
+        if (a.inspection_id) {
+          if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
+          anomMap.get(a.inspection_id)!.push(a);
+        }
+      });
+
+      const mappedAll = allData.map((r: any) => {
+        const matchedAnoms = anomMap.get(r.insp_id) || r.insp_anomalies || [];
+        const isAnomaly = matchedAnoms.length > 0 || r.has_anomaly || String(r.status || "").toLowerCase().includes("anomaly") || String(r.status || "").toLowerCase().includes("defect");
+        return {
+          ...r,
+          insp_anomalies: matchedAnoms,
+          has_anomaly: isAnomaly,
+          status: isAnomaly && (!r.status || r.status === "COMPLETED" || r.status === "INSPECTION") ? "ANOMALY" : r.status,
+          inspection_type: r.inspection_type
+            ? {
+                ...r.inspection_type,
+                name: formatInspectionTypeName(r.inspection_type.name),
+              }
+            : null,
+        };
+      });
+      setAllWorkspaceRecords(mappedAll);
+    } catch (err) {
+      console.error("[Search] fetchFullWorkspaceRecords error:", err);
+    } finally {
+      setIsSearchingWorkspace(false);
+    }
+  }, [jobPackId, structureId, supabase]);
+
+  // Pre-load all workspace records in the background so search is instant & complete
+  useEffect(() => {
+    if (jobPackId && structureId) {
+      fetchFullWorkspaceRecords();
+    }
+  }, [jobPackId, structureId, fetchFullWorkspaceRecords]);
+
+  // If user searches while not yet loaded, trigger fetch
+  useEffect(() => {
+    if (recordSearchQuery.trim() !== "" && allWorkspaceRecords.length === 0 && !isSearchingWorkspace) {
+      fetchFullWorkspaceRecords();
+    }
+  }, [recordSearchQuery, allWorkspaceRecords.length, isSearchingWorkspace, fetchFullWorkspaceRecords]);
+
   const [isFetchingDeps, setIsFetchingDeps] = useState(true);
   const [isDeploymentValid, setIsDeploymentValid] = useState(true);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -1563,44 +2029,148 @@ function V10PreviewLayout() {
   }, [anomalyData.defectCode, defectCodes, allDefectTypes, supabase]);
 
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
-  const jpParam = searchParams.get("jpName");
-  const strParam = searchParams.get("structName");
-  const sowParam = searchParams.get("sowReport");
-  const jtParam = searchParams.get("jobType");
 
-  // Header Data
-  const [headerData, setHeaderData] = useState<{
-    jobpackName: string;
-    platformName: string;
-    sowReportNo: string;
-    jobType: string;
-    structureType: "platform" | "pipeline";
-    waterDepth: number;
-    vessel: string;
-    kp?: string;
-    structureName?: string;
-  }>({
-    jobpackName: jpParam || (jobPackId ? `JP-${jobPackId}` : "N/A"),
-    platformName: strParam || (structureId ? `Struct ${structureId}` : "N/A"),
-    sowReportNo: sowParam || (sowId ? `SOW-${sowId}` : "N/A"),
-    jobType: jtParam || "",
-    structureType: "platform" as "platform" | "pipeline",
-    waterDepth: 0,
-    vessel: "N/A",
-  });
+  // Resolve or Auto-Create Pipeline Component based on KP / FP location
+  const resolvePipelineComponent = useCallback(
+    async (targetKp?: number | string | null) => {
+      const parsedKp = targetKp !== undefined && targetKp !== null && targetKp !== "" ? parseFloat(String(targetKp)) : null;
+      const parsedStructId = parseInt(structureId || "0");
+      if (!parsedStructId) return null;
+
+      // 1. Check loaded SOW and non-SOW components first
+      const candidateComps = [...(componentsSow || []), ...(componentsNonSow || [])];
+
+      if (parsedKp !== null && !isNaN(parsedKp) && candidateComps.length > 0) {
+        // A. Match KP range: start_kp <= parsedKp <= end_kp
+        const matchedRange = candidateComps.find((c: any) => {
+          const raw = c.raw || c;
+          const startKp = parseFloat(raw.start_kp ?? raw.metadata?.start_kp ?? raw.metadata?.kp_from ?? raw.kp_from ?? -1);
+          const endKp = parseFloat(raw.end_kp ?? raw.metadata?.end_kp ?? raw.metadata?.kp_to ?? raw.kp_to ?? -1);
+          if (startKp >= 0 && endKp >= startKp) {
+            return parsedKp >= startKp && parsedKp <= endKp;
+          }
+          return false;
+        });
+        if (matchedRange) {
+          return matchedRange;
+        }
+
+        // B. Match exact KP or QID containing KP range pattern (e.g. "KP 0.0 - 2.5")
+        const matchedExact = candidateComps.find((c: any) => {
+          const raw = c.raw || c;
+          const compKp = parseFloat(raw.kp ?? raw.metadata?.kp ?? raw.fp_kp ?? raw.metadata?.fp_kp ?? -1);
+          if (compKp >= 0 && Math.abs(compKp - parsedKp) < 0.050) {
+            return true;
+          }
+          const qIdStr = String(c.q_id || c.name || "").toUpperCase();
+          if (qIdStr.includes("KP") || qIdStr.includes("-")) {
+            const rangeMatch = qIdStr.match(/(\d+\.?\d*)\s*[-–toTO]+\s*(\d+\.?\d*)/);
+            if (rangeMatch) {
+              const s = parseFloat(rangeMatch[1]);
+              const e = parseFloat(rangeMatch[2]);
+              if (!isNaN(s) && !isNaN(e) && parsedKp >= Math.min(s, e) && parsedKp <= Math.max(s, e)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        });
+        if (matchedExact) {
+          return matchedExact;
+        }
+      }
+
+      // 2. If user already selected a valid component, return it
+      if (selectedComp && selectedComp.id && selectedComp.id !== 999999) {
+        return selectedComp;
+      }
+
+      // 3. Query existing structure_components from database
+      try {
+        const { data: dbComps } = await supabase
+          .from("structure_components")
+          .select("id, q_id, name, type, metadata")
+          .eq("structure_id", parsedStructId);
+
+        if (dbComps && dbComps.length > 0) {
+          // Try matching by KP range on db components
+          if (parsedKp !== null && !isNaN(parsedKp)) {
+            const dbMatch = dbComps.find((c: any) => {
+              const startKp = parseFloat(c.metadata?.start_kp ?? c.metadata?.kp_from ?? -1);
+              const endKp = parseFloat(c.metadata?.end_kp ?? c.metadata?.kp_to ?? -1);
+              if (startKp >= 0 && endKp >= startKp) {
+                return parsedKp >= startKp && parsedKp <= endKp;
+              }
+              return false;
+            });
+            if (dbMatch) {
+              return {
+                id: dbMatch.id,
+                q_id: dbMatch.q_id,
+                name: dbMatch.name,
+                type: dbMatch.type || "PIPELINE",
+                raw: dbMatch,
+              };
+            }
+          }
+
+          // Use first component in database
+          return {
+            id: dbComps[0].id,
+            q_id: dbComps[0].q_id || headerData.structureName || "PIPELINE-01",
+            name: dbComps[0].name || headerData.structureName || "Pipeline Main Line",
+            type: dbComps[0].type || "PIPELINE",
+            raw: dbComps[0],
+          };
+        }
+
+        // 4. Auto-create default pipeline component in structure_components if none exist
+        const defaultQid = (headerData && headerData.platformName !== "N/A" && headerData.platformName) ? headerData.platformName : "PIPELINE-01";
+        const defaultName = (headerData && headerData.platformName !== "N/A" && headerData.platformName) ? headerData.platformName : "Pipeline Main Line";
+        const totalLen = parseFloat((headerData as any)?.totalLength || (headerData as any)?.length_km || "10.000") || 10.000;
+
+        const { data: createdComp, error: createErr } = await supabase
+          .from("structure_components")
+          .insert({
+            structure_id: parsedStructId,
+            q_id: defaultQid,
+            name: defaultName,
+            type: "PIPELINE",
+            metadata: {
+              start_kp: 0.000,
+              end_kp: totalLen,
+              length_km: totalLen,
+              auto_created: true,
+            },
+          })
+          .select("id, q_id, name, type, metadata")
+          .single();
+
+        if (!createErr && createdComp) {
+          queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+          return {
+            id: createdComp.id,
+            q_id: createdComp.q_id,
+            name: createdComp.name,
+            type: createdComp.type || "PIPELINE",
+            raw: createdComp,
+          };
+        }
+      } catch (err) {
+        console.warn("[resolvePipelineComponent] Auto-resolving component warning:", err);
+      }
+
+      return null;
+    },
+    [structureId, componentsSow, componentsNonSow, selectedComp, supabase, headerData, queryClient]
+  );
 
   // Auto-initialize Pipeline component and NAVIG inspection spec when in pipeline workspace mode
   useEffect(() => {
-    if ((isPipeline || headerData?.structureType === "pipeline") && !selectedComp) {
-      const defaultComp = (componentsSow && componentsSow.length > 0)
-        ? componentsSow[0]
-        : {
-            id: 999999,
-            q_id: (headerData && headerData.platformName !== "N/A") ? headerData.platformName : "PIPELINE-01",
-            name: (headerData && headerData.platformName !== "N/A") ? headerData.platformName : "Pipeline Main Line",
-            type: "PIPELINE",
-          };
-      setSelectedComp(defaultComp);
+    if ((isPipeline || headerData?.structureType === "pipeline") && (!selectedComp || selectedComp.id === 999999)) {
+      resolvePipelineComponent(headerData?.kp || "0.000").then((comp) => {
+        if (comp) setSelectedComp(comp);
+      });
       if (!activeSpec) {
         const navigSpec = allInspectionTypes.find(
           (t: any) => t.code === "NAVIG" || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
@@ -1608,7 +2178,7 @@ function V10PreviewLayout() {
         setActiveSpec(navigSpec ? navigSpec.code : "NAVIG");
       }
     }
-  }, [isPipeline, headerData, selectedComp, componentsSow, allInspectionTypes, activeSpec]);
+  }, [isPipeline, headerData, selectedComp, resolvePipelineComponent, allInspectionTypes, activeSpec]);
 
   // AUTO-GENERATE ANOMALY / FINDING REFERENCE NO WHEN TYPE CHANGES OR WHEN MISSING
   useEffect(() => {
@@ -2251,6 +2821,10 @@ function V10PreviewLayout() {
       // If both are already numbers, no need to resolve
       if (!isJpNaN && !isStrNaN) return;
 
+      const resolveKey = `${jobPackId}_${structureId}_${sowIdFull}_${targetReportNumber}`;
+      if (lastResolvedParamsRef.current === resolveKey) return;
+      lastResolvedParamsRef.current = resolveKey;
+
       let resolvedJobPackId = jobPackId;
       let resolvedStructureId = structureId;
       let resolvedSowId = sowIdFull;
@@ -2357,7 +2931,12 @@ function V10PreviewLayout() {
       if (!jobPackId || !structureId) return;
       if (isNaN(Number(jobPackId)) || isNaN(Number(structureId))) return;
 
+      const headerKey = `${jobPackId}_${structureId}_${sowId || ""}_${jpParam || ""}_${strParam || ""}_${sowParam || ""}_${jtParam || ""}`;
+      if (lastHeaderFetchedKeyRef.current === headerKey) return;
+      lastHeaderFetchedKeyRef.current = headerKey;
+
       const currentParams = new URLSearchParams(window.location.search);
+      let urlNeedsUpdate = false;
       let jobpackName = jpParam || `JP-${jobPackId}`;
       let platformName = strParam || "Unknown Structure";
       let sowReportNo = sowParam || "Unknown Report";
@@ -2393,7 +2972,7 @@ function V10PreviewLayout() {
           jobpackName = jpResult.data.name;
           if (!currentParams.get("jpName")) {
             currentParams.set("jpName", jpResult.data.name);
-            router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+            urlNeedsUpdate = true;
           }
         }
 
@@ -2417,7 +2996,7 @@ function V10PreviewLayout() {
             }));
             if (!strParam && platData.title && !currentParams.get("structName")) {
               currentParams.set("structName", platData.title);
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+              urlNeedsUpdate = true;
             }
             if (!strParam && platData.title) platformName = platData.title;
             if (platData.depth) waterDepth = Number(platData.depth);
@@ -2432,7 +3011,7 @@ function V10PreviewLayout() {
             }));
             if (!strParam && pipeData.title && !currentParams.get("structName")) {
               currentParams.set("structName", pipeData.title);
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+              urlNeedsUpdate = true;
             }
             if (!strParam && pipeData.title) platformName = pipeData.title;
             if (pipeData.depth) waterDepth = Number(pipeData.depth);
@@ -2461,9 +3040,7 @@ function V10PreviewLayout() {
             // Patch the URL so the workspace knows the sow going forward
             if (!currentParams.get("sow")) {
               currentParams.set("sow", String(resolvedSow.id));
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, {
-                scroll: false,
-              });
+              urlNeedsUpdate = true;
             }
           } else if (sowParam) {
             // Create it if sowParam is provided but no record exists yet
@@ -2489,9 +3066,7 @@ function V10PreviewLayout() {
 
             if (newSow) {
               currentParams.set("sow", String(newSow.id));
-              router.replace(`${window.location.pathname}?${currentParams.toString()}`, {
-                scroll: false,
-              });
+              urlNeedsUpdate = true;
             }
           }
         } else if (!sowParam && sowId) {
@@ -2535,6 +3110,10 @@ function V10PreviewLayout() {
           vessel,
         });
         setGlobalUrlType(detectedStructureType);
+
+        if (urlNeedsUpdate) {
+          router.replace(`${window.location.pathname}?${currentParams.toString()}`, { scroll: false });
+        }
 
       } catch (err) {
         console.error("fetchHeaderInfo error", err);
@@ -2641,21 +3220,109 @@ function V10PreviewLayout() {
     return win;
   };
 
-  const handlePopoutCapturedEvents = async () => {
-    if (capturedEventsPipWindow) {
-      capturedEventsPipWindow.close();
-      setCapturedEventsPipWindow(null);
+  const [poppedOutWindows, setPoppedOutWindows] = useState<Record<string, Window | null>>({});
+
+  const handleTogglePanelPopout = useCallback(async (panelId: string, panelName?: string) => {
+    let title = panelName || panelId;
+    if (panelId === "opsLog") title = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
+    if (panelId === "videoLog") title = "Video Log";
+    if (panelId === "videoPreview") title = "Photo / Video Grab";
+    if (panelId === "form") title = "Inspection Form";
+    if (panelId === "events") title = "Captured Events";
+    if (panelId === "components") title = isPipe ? "Event Menu" : "Component List";
+    if (panelId === "history") title = "History Data";
+    if (panelId === "inspectionInfo") title = "Inspection Info";
+    if (panelId === "quickShortcuts") title = "Quick Log";
+
+    if (poppedOutWindows[panelId]) {
+      try {
+        poppedOutWindows[panelId]?.close();
+      } catch (e) {}
+      setPoppedOutWindows((prev) => {
+        const next = { ...prev };
+        delete next[panelId];
+        return next;
+      });
+      if (panelId === "videoPreview") setPipWindow(null);
+      if (panelId === "events") setCapturedEventsPipWindow(null);
       return;
     }
 
-    const win = await openFloatingWindow("Captured Events", 1100, 650);
+    let width = 1000;
+    let height = 650;
+    if (panelId === "form") { width = 1100; height = 750; }
+    if (panelId === "events") { width = 1200; height = 700; }
+    if (panelId === "components") { width = 950; height = 700; }
+    if (panelId === "videoPreview") { width = 960; height = 600; }
+    if (panelId === "videoLog") { width = 900; height = 650; }
+    if (panelId === "inspectionInfo") { width = 800; height = 550; }
+    if (panelId === "quickShortcuts") { width = 850; height = 600; }
+
+    const win = await openFloatingWindow(title, width, height);
     if (!win) return;
 
-    setCapturedEventsPipWindow(win);
+    if (panelId === "videoPreview") {
+      win.document.body.style.background = "#000";
+      setPipWindow(win);
+    }
+    if (panelId === "events") {
+      setCapturedEventsPipWindow(win);
+    }
 
-    const cleanup = () => setCapturedEventsPipWindow(null);
+    setPoppedOutWindows((prev) => ({
+      ...prev,
+      [panelId]: win,
+    }));
+
+    const cleanup = () => {
+      setPoppedOutWindows((prev) => {
+        const next = { ...prev };
+        delete next[panelId];
+        return next;
+      });
+      if (panelId === "videoPreview") setPipWindow(null);
+      if (panelId === "events") setCapturedEventsPipWindow(null);
+    };
+
     win.addEventListener("pagehide", cleanup);
     win.addEventListener("beforeunload", cleanup);
+  }, [inspMethod, isPipeline, headerData, poppedOutWindows]);
+
+  const renderPanelWithPopout = useCallback((
+    panelId: string,
+    panelName: string,
+    panelJSX: React.ReactNode
+  ) => {
+    const popoutWin = poppedOutWindows[panelId];
+    if (popoutWin) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full bg-slate-900/90 text-slate-300 p-6 text-center border border-slate-800 rounded-lg">
+          <div className="p-3 rounded-full bg-blue-500/10 border border-blue-500/20 mb-3 text-blue-400">
+            <ExternalLink className="w-6 h-6 animate-pulse" />
+          </div>
+          <h4 className="text-xs font-black uppercase tracking-widest text-white mb-1">
+            {panelName} Popped Out
+          </h4>
+          <p className="text-[10px] text-slate-400 max-w-xs mb-4">
+            This panel is active in an extended floating window. Move it to your secondary monitor for multi-screen inspection.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-[10px] font-bold uppercase tracking-wider text-blue-400 border-blue-800 hover:bg-blue-900/30 gap-1.5"
+            onClick={() => handleTogglePanelPopout(panelId, panelName)}
+          >
+            <Minimize2 className="w-3.5 h-3.5" /> Restore to Dock
+          </Button>
+          {(createPortal(panelJSX, popoutWin.document.body) as any)}
+        </div>
+      );
+    }
+    return panelJSX;
+  }, [poppedOutWindows, handleTogglePanelPopout]);
+
+  const handlePopoutCapturedEvents = async () => {
+    handleTogglePanelPopout("events", "Captured Events");
   };
 
   const handleDeleteTape = async (tapeIdToDelete: number) => {
@@ -3336,21 +4003,7 @@ function V10PreviewLayout() {
   };
 
   const handlePopOutStream = async () => {
-    if (pipWindow) {
-      pipWindow.close();
-      setPipWindow(null);
-      return;
-    }
-
-    const win = await openFloatingWindow("Photo / Video Grab", 960, 600);
-    if (!win) return;
-
-    win.document.body.style.background = "#000";
-    setPipWindow(win);
-
-    const cleanup = () => setPipWindow(null);
-    win.addEventListener("pagehide", cleanup);
-    win.addEventListener("beforeunload", cleanup);
+    handleTogglePanelPopout("videoPreview", "Photo / Video Grab");
   };
 
   const handleLinkToRecord = (file: (typeof recordedFiles)[0]) => {
@@ -3525,25 +4178,17 @@ function V10PreviewLayout() {
 
       // Construct inspsQuery first so we can fetch it in parallel
       const inspCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+      const selectFields = `
+        *,
+        inspection_type:inspection_type_id!left(id, code, name),
+        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+        insp_video_tapes:tape_id!left(tape_no)
+      `;
+
       let inspsQuery = supabase
         .from("insp_records")
-        .select(
-          `
-                *,
-                inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (
-                    id,
-                    q_id, 
-                    code,
-                    metadata
-                ),
-                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
-                insp_video_tapes:tape_id!left(tape_no),
-                insp_anomalies(*)
-            `,
-          { count: "exact" }
-        )
+        .select(selectFields, { count: "exact" })
         .eq("jobpack_id", parseInt(jobPackId || "0"))
         .not(inspCol, "is", null)
         .order("inspection_date", { ascending: false })
@@ -3551,34 +4196,13 @@ function V10PreviewLayout() {
 
       let allInspsQuery = supabase
         .from("insp_records")
-        .select(
-          `
-                *,
-                inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left (
-                    id,
-                    q_id, 
-                    code,
-                    metadata
-                ),
-                insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                insp_dive_jobs:dive_job_id!left(id:dive_job_id, job_no:dive_no, name:diver_name),
-                insp_video_tapes:tape_id!left(tape_no),
-                insp_anomalies(*)
-            `
-        )
+        .select(selectFields)
         .eq("jobpack_id", parseInt(jobPackId || "0"))
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
-      if (recordSearchQuery) {
-        // When searching, we bypass pagination to allow the client-side Smart Filter 
-        // to scan a much larger set of records (up to 3000) globally.
-        inspsQuery = inspsQuery.limit(3000);
-      } else {
-        // Standard browsing uses pagination for performance
-        inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
-      }
+      // Standard browsing uses pagination for performance
+      inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
 
       if (structureId && !isNaN(Number(structureId))) {
         inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
@@ -3594,18 +4218,56 @@ function V10PreviewLayout() {
         allInspsQuery = allInspsQuery.or(sowOrFilter);
       }
 
-      // Fetch Movements, Tapes, and Inspection Records in PARALLEL
+      // Fetch matching job IDs scoped strictly to current structure, jobpack, and SOW report
+      const jobTable = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
+      const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+
+      let scopedJobsQuery = supabase
+        .from(jobTable)
+        .select(jobCol);
+
+      if (structureId && !isNaN(Number(structureId))) {
+        scopedJobsQuery = scopedJobsQuery.eq("structure_id", Number(structureId));
+      }
+      if (jobPackId && !isNaN(Number(jobPackId))) {
+        scopedJobsQuery = scopedJobsQuery.eq("jobpack_id", Number(jobPackId));
+      }
+      if (
+        headerData.sowReportNo &&
+        headerData.sowReportNo !== "N/A" &&
+        headerData.sowReportNo !== "Unknown Report"
+      ) {
+        scopedJobsQuery = scopedJobsQuery.or(`sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`);
+      }
+
+      const { data: scopedJobs } = await scopedJobsQuery;
+      const validJobIds: number[] = (scopedJobs || []).map((j: any) => Number(j[jobCol])).filter(Boolean);
+      if (depId && !validJobIds.includes(Number(depId))) {
+        validJobIds.push(Number(depId));
+      }
+
+      // Fetch Movements, Scoped Tapes, Anomalies, and Inspection Records in PARALLEL
       const movementsPromise = supabase
         .from(movTable)
         .select("*")
         .eq(movCol, depId)
         .order("movement_time", { ascending: true });
 
-      const tapesPromise = supabase
-        .from("insp_video_tapes")
-        .select("*")
-        .eq(movCol, depId)
-        .order("tape_id", { ascending: false });
+      const tapesPromise = validJobIds.length > 0
+        ? supabase
+            .from("insp_video_tapes")
+            .select("*")
+            .in(jobCol, validJobIds)
+            .order("tape_id", { ascending: false })
+        : supabase
+            .from("insp_video_tapes")
+            .select("*")
+            .eq(jobCol, depId)
+            .order("tape_id", { ascending: false });
+
+      const anomPromise = supabase
+        .from("insp_anomalies")
+        .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id");
 
       let [movsRes, tapesRes, inspsRes] = await Promise.all([
         movementsPromise,
@@ -3614,7 +4276,17 @@ function V10PreviewLayout() {
       ]);
 
       const movs = movsRes.data;
-      let tapes = tapesRes.data;
+      let rawTapes = tapesRes.data || [];
+
+      // Sort tapes so that tapes matching current deployment come first, followed by other tapes in natural numerical order
+      let tapes = [...rawTapes].sort((a, b) => {
+        const aMatches = (inspMethod === "DIVING" ? a.dive_job_id === depId : a.rov_job_id === depId) ? 1 : 0;
+        const bMatches = (inspMethod === "DIVING" ? b.dive_job_id === depId : b.rov_job_id === depId) ? 1 : 0;
+        if (aMatches !== bMatches) return bMatches - aMatches;
+        const nameA = a.tape_no || "";
+        const nameB = b.tape_no || "";
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+      });
 
       if (movsRes.error) {
         console.error("[Sync] Movement fetch error:", movsRes.error.message, movsRes.error.details, movsRes.error.hint);
@@ -3842,65 +4514,81 @@ function V10PreviewLayout() {
               chapterNo,
               diveNo,
               structure,
+              remarks: l.remarks || "",
             };
           })
         );
       }
 
       if (inspsRes.error) {
-        console.error("[Sync] Inspection fetch error:", inspsRes.error);
-      } else if (insps) {
-        // Fetch attachment counts manually for 'attachment' table
-        const { data: allAtts } = await supabase
-          .from("attachment")
-          .select("source_id")
-          .in("source_type", ["inspection", "INSPECTION"])
-          .in(
-            "source_id",
-            insps.map((r) => r.insp_id)
-          );
+        console.error("[Sync] Inspection fetch error:", inspsRes.error.message || inspsRes.error, inspsRes.error.details, inspsRes.error.hint);
+        try {
+          const fallbackRes = await supabase
+            .from("insp_records")
+            .select("*", { count: "exact" })
+            .eq("jobpack_id", parseInt(jobPackId || "0"))
+            .not(inspCol, "is", null)
+            .order("inspection_date", { ascending: false })
+            .order("inspection_time", { ascending: false });
+          if (fallbackRes.data) {
+            inspsRes = fallbackRes;
+          }
+        } catch (e) {
+          console.error("[Sync] Fallback inspection query failed:", e);
+        }
+      }
 
-        const countMap = (allAtts || []).reduce((acc: Record<number, number>, curr) => {
+      const finalInsps = inspsRes.data || insps;
+      if (finalInsps) {
+        const pageInspIds = finalInsps.map((r: any) => r.insp_id).filter(Boolean);
+
+        // Fetch attachment counts and anomalies in parallel strictly scoped to current page inspection IDs
+        const [attsRes, anomsRes] = await Promise.all([
+          pageInspIds.length > 0
+            ? supabase
+                .from("attachment")
+                .select("source_id")
+                .in("source_type", ["inspection", "INSPECTION"])
+                .in("source_id", pageInspIds)
+            : Promise.resolve({ data: [] }),
+          pageInspIds.length > 0
+            ? supabase
+                .from("insp_anomalies")
+                .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id")
+                .in("inspection_id", pageInspIds)
+            : Promise.resolve({ data: [] }),
+        ]);
+
+        const countMap = (attsRes.data || []).reduce((acc: Record<number, number>, curr: any) => {
           acc[curr.source_id] = (acc[curr.source_id] || 0) + 1;
           return acc;
         }, {});
 
-        const inspsWithCounts = insps.map((r) => ({
-          ...r,
-          inspection_type: r.inspection_type
-            ? {
-                ...r.inspection_type,
-                name: formatInspectionTypeName(r.inspection_type.name),
-              }
-            : null,
-          attachment_count: countMap[r.insp_id] || 0,
-        }));
+        const anomMap = new Map<number, any[]>();
+        (anomsRes.data || []).forEach((a: any) => {
+          if (a.inspection_id) {
+            if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
+            anomMap.get(a.inspection_id)!.push(a);
+          }
+        });
+
+        const inspsWithCounts = finalInsps.map((r: any) => {
+          const matchedAnoms = anomMap.get(r.insp_id) || [];
+          return {
+            ...r,
+            insp_anomalies: matchedAnoms,
+            has_anomaly: matchedAnoms.length > 0 ? true : r.has_anomaly,
+            inspection_type: r.inspection_type
+              ? {
+                  ...r.inspection_type,
+                  name: formatInspectionTypeName(r.inspection_type.name),
+                }
+              : null,
+            attachment_count: countMap[r.insp_id] || 0,
+          };
+        });
 
         setCurrentRecords(inspsWithCounts);
-
-        // Fetch all workspace records asynchronously in the background so it doesn't block the main UI loading
-        const fetchAllWorkspaceRecords = async () => {
-          try {
-            const { data: allInspsData } = await allInspsQuery;
-            if (allInspsData) {
-              const mappedAll = allInspsData.map((r: any) => ({
-                ...r,
-                inspection_type: r.inspection_type
-                  ? {
-                      ...r.inspection_type,
-                      name: formatInspectionTypeName(r.inspection_type.name),
-                    }
-                  : null,
-              }));
-              setAllWorkspaceRecords(mappedAll);
-            } else {
-              setAllWorkspaceRecords([]);
-            }
-          } catch (err) {
-            console.error("[Sync] Background allInsps fetch error:", err);
-          }
-        };
-        fetchAllWorkspaceRecords();
 
         // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
         const logInspectionIds = new Set(allEv.map((ev) => ev.inspectionId).filter(Boolean));
@@ -3959,7 +4647,6 @@ function V10PreviewLayout() {
     parseDbDate,
     structureId,
     headerData.sowReportNo,
-    recordSearchQuery,
     recordsOffset,
     recordsLimit,
     jobPackId,
@@ -3971,30 +4658,30 @@ function V10PreviewLayout() {
   }, [syncDeploymentState]);
 
   const fetchHistory = useCallback(async () => {
-    if (!selectedComp || !structureId || isNaN(Number(structureId))) return;
+    if (!selectedComp || !selectedComp.id || isNaN(Number(selectedComp.id)) || !structureId || isNaN(Number(structureId))) {
+      setCurrentCompRecords([]);
+      setHistoricalRecords([]);
+      return;
+    }
 
     try {
       setHistoryLoading(true);
-      let query = supabase
+      const query = supabase
         .from("insp_records")
-        .select("*")
-        .eq("component_id", selectedComp.id)
+        .select(
+          "insp_id, dive_job_id, rov_job_id, tape_id, inspection_type_id, inspection_type_code, jobpack_id, sow_report_no, inspection_date, inspection_time, has_anomaly, status, description, inspection_data, cr_date"
+        )
+        .eq("component_id", Number(selectedComp.id))
         .eq("structure_id", Number(structureId));
 
-      if (
-        headerData.sowReportNo &&
-        headerData.sowReportNo !== "N/A" &&
-        headerData.sowReportNo !== "Unknown Report"
-      ) {
-        query = query.or(
-          `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`
-        );
-      }
-
-      const { data, error } = await query.order("cr_date", { ascending: false });
+      const { data, error } = await query
+        .order("inspection_date", { ascending: false })
+        .limit(200);
 
       if (error || !data) {
-        console.error("Error fetching component history:", error);
+        console.error("Error fetching component history:", error?.message || error);
+        setCurrentCompRecords([]);
+        setHistoricalRecords([]);
         return;
       }
 
@@ -4039,56 +4726,41 @@ function V10PreviewLayout() {
       const tapeNoMap: Record<string, string> = {};
       const inspTypeMap: Record<string, { name: string; code: string }> = {};
 
-      // Fetch dive_no for all dive_job_ids
-      if (diveJobIds.length > 0) {
-        const { data: diveData } = await supabase
-          .from("insp_dive_jobs")
-          .select("dive_job_id, dive_no")
-          .in("dive_job_id", diveJobIds);
-        if (diveData) {
-          diveData.forEach((d: any) => {
-            diveNoMap[String(d.dive_job_id)] = d.dive_no;
-          });
-        }
-      }
+      // Fetch lookups in PARALLEL
+      const [diveRes, rovRes, tapeRes, itRes] = await Promise.all([
+        diveJobIds.length > 0
+          ? supabase.from("insp_dive_jobs").select("dive_job_id, dive_no").in("dive_job_id", diveJobIds)
+          : Promise.resolve({ data: null }),
+        rovJobIds.length > 0
+          ? supabase.from("insp_rov_jobs").select("rov_job_id, deployment_no").in("rov_job_id", rovJobIds)
+          : Promise.resolve({ data: null }),
+        tapeIds.length > 0
+          ? supabase.from("insp_video_tapes").select("tape_id, tape_no").in("tape_id", tapeIds)
+          : Promise.resolve({ data: null }),
+        inspTypeIds.length > 0
+          ? supabase.from("inspection_type").select("id, name, code").in("id", inspTypeIds)
+          : Promise.resolve({ data: null }),
+      ]);
 
-      // Fetch deployment_no for all rov_job_ids
-      if (rovJobIds.length > 0) {
-        const { data: rovData } = await supabase
-          .from("insp_rov_jobs")
-          .select("rov_job_id, deployment_no")
-          .in("rov_job_id", rovJobIds);
-        if (rovData) {
-          rovData.forEach((d: any) => {
-            rovNoMap[String(d.rov_job_id)] = d.deployment_no;
-          });
-        }
+      if (diveRes.data) {
+        diveRes.data.forEach((d: any) => {
+          diveNoMap[String(d.dive_job_id)] = d.dive_no;
+        });
       }
-
-      // Fetch tape_no for all tape_ids
-      if (tapeIds.length > 0) {
-        const { data: tapeData } = await supabase
-          .from("insp_video_tapes")
-          .select("tape_id, tape_no")
-          .in("tape_id", tapeIds);
-        if (tapeData) {
-          tapeData.forEach((t: any) => {
-            tapeNoMap[String(t.tape_id)] = t.tape_no;
-          });
-        }
+      if (rovRes.data) {
+        rovRes.data.forEach((d: any) => {
+          rovNoMap[String(d.rov_job_id)] = d.deployment_no;
+        });
       }
-
-      // Fetch inspection type names
-      if (inspTypeIds.length > 0) {
-        const { data: itData } = await supabase
-          .from("inspection_type")
-          .select("id, name, code")
-          .in("id", inspTypeIds);
-        if (itData) {
-          itData.forEach((it: any) => {
-            inspTypeMap[String(it.id)] = { name: it.name, code: it.code };
-          });
-        }
+      if (tapeRes.data) {
+        tapeRes.data.forEach((t: any) => {
+          tapeNoMap[String(t.tape_id)] = t.tape_no;
+        });
+      }
+      if (itRes.data) {
+        itRes.data.forEach((it: any) => {
+          inspTypeMap[String(it.id)] = { name: it.name, code: it.code };
+        });
       }
 
       // 3. Build the current deployment IDs set (for matching records without jobpack_id)
@@ -4799,7 +5471,7 @@ function V10PreviewLayout() {
       while (hasMore) {
         const { data: pageData, error: pageErr } = await supabase
           .from("structure_components")
-          .select("*")
+          .select("id, structure_id, q_id, name, code, metadata, is_deleted, water_depth, type")
           .eq("structure_id", parseInt(structureId))
           .not("is_deleted", "eq", true)
           .range(offset, offset + pageSize - 1);
@@ -5022,7 +5694,7 @@ function V10PreviewLayout() {
       const combined = [...assigned, ...unassigned];
       return { assigned, unassigned, all: combined };
     },
-    staleTime: 0, // Always refetch when structure/sow changes
+    staleTime: 60000, // 1 minute cache
     refetchOnWindowFocus: false,
   });
 
@@ -6566,9 +7238,13 @@ function V10PreviewLayout() {
       );
       setActiveSpec(navigSpec?.code || "NAVIG");
     } else {
+      const recCompId = String(fullRecord.component_id || "");
+      const recCompName = String(fullRecord.component_name || "").toUpperCase();
+
       const comp =
-        componentsSow.find((c) => c.id === fullRecord.component_id) ||
-        componentsNonSow.find((c) => c.id === fullRecord.component_id);
+        componentsSow.find((c) => String(c.id) === recCompId || (c.q_id && String(c.q_id).toUpperCase() === recCompName)) ||
+        componentsNonSow.find((c) => String(c.id) === recCompId || (c.q_id && String(c.q_id).toUpperCase() === recCompName));
+
       if (comp) {
         setSelectedComp(comp);
       } else {
@@ -6578,6 +7254,7 @@ function V10PreviewLayout() {
 
         setSelectedComp({
           id: fullRecord.component_id,
+          q_id: jc?.q_id || fullRecord.component_name || `Component ${fullRecord.component_id}`,
           name: jc?.q_id || fullRecord.component_name || `Component ${fullRecord.component_id}`,
           type: jc?.code || fullRecord.component_type,
           depth: md.water_depth || jc?.water_depth || "-",
@@ -6608,6 +7285,8 @@ function V10PreviewLayout() {
           fullRecord.inspection_type?.name
       );
     }
+    setShowTaskSelector(false);
+    setShowCompSelector(false);
     setEditingRecordId(fullRecord.insp_id || fullRecord.id);
     setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
 
@@ -7241,33 +7920,13 @@ function V10PreviewLayout() {
     const specId = (navigSpec?.id && navigSpec.id !== 1) ? navigSpec.id : 30;
     setActiveSpec(specCode);
 
-    let targetComp = selectedComp;
-    if (!targetComp) {
-      targetComp = (componentsSow && componentsSow.length > 0) ? componentsSow[0] : null;
-    }
+    const parsedEventKp = evtData.kp !== undefined && evtData.kp !== null && evtData.kp !== ""
+      ? parseFloat(String(evtData.kp))
+      : (headerData.kp ? parseFloat(String(headerData.kp)) : 0);
 
-    if (!targetComp && (isPipeline || headerData.structureType === "pipeline") && structureId) {
-      try {
-        const parsedStructId = parseInt(structureId);
-        const { data: existingComps } = await supabase
-          .from("structure_components")
-          .select("id, q_id, name, type")
-          .eq("structure_id", parsedStructId)
-          .limit(1);
-
-        if (existingComps && existingComps.length > 0) {
-          targetComp = { id: existingComps[0].id, q_id: existingComps[0].q_id || headerData.structureName || "PIPELINE-01", name: existingComps[0].name || headerData.structureName || "Pipeline Main Line", type: existingComps[0].type || "PIPELINE" };
-          setSelectedComp(targetComp);
-        } else {
-          const { data: createdComp, error: createErr } = await supabase
-            .from("structure_components")
-            .insert({ structure_id: parsedStructId, q_id: headerData.structureName || "PIPELINE-01", name: headerData.structureName || "Pipeline Main Line", type: "PIPELINE" })
-            .select("id, q_id, name, type").single();
-          if (!createErr && createdComp) { targetComp = createdComp; setSelectedComp(targetComp); }
-        }
-      } catch (compErr) {
-        console.warn("[handlePipelineEventSelect] Auto-creating Pipeline component warning:", compErr);
-      }
+    let targetComp = await resolvePipelineComponent(parsedEventKp);
+    if (targetComp) {
+      setSelectedComp(targetComp);
     }
 
     if (!targetComp?.id || targetComp.id === 999999) {
@@ -7351,7 +8010,7 @@ function V10PreviewLayout() {
     }
   }, [
     manualOverride, activeDep, tapeId, tapeNo, vidState, vidTimer, formatTime,
-    allInspectionTypes, selectedComp, componentsSow, isPipeline, headerData, structureId,
+    allInspectionTypes, resolvePipelineComponent, isPipeline, headerData, structureId,
     supabase, inspectionDirection, inspectionLocation, activeCompanyId, inspMethod,
     jobPackId, setDynamicProps, setActiveSpec, setSelectedComp, setEditingRecordId,
     syncDeploymentState, queryClient,
@@ -7360,54 +8019,60 @@ function V10PreviewLayout() {
 
   const layoutFactory = useCallback((node: TabNode) => {
     const component = node.getComponent();
-    const name = node.getName();
-    console.log("[DEBUG] layoutFactory rendering component:", component, "with name:", name);
+    let name = node.getName();
+    if (component === "opsLog") name = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
+    if (component === "videoPreview") name = "Photo / Video Grab";
+    if (component === "components") name = isPipe ? "Event Menu" : "Component List";
+    if (component === "form") name = "Inspection Form";
+    if (component === "events") name = "Captured Events";
+    if (component === "history") name = "History Data";
+
+    let panelContent: React.ReactNode = null;
 
     switch (component) {
       case "opsLog":
-        return (
-          isPipeline ? (
-            <DiverLogPanelPipeline
-              inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
-              activeDep={activeDep}
-              timeInWater={timeInWater}
-              currentMovement={currentMovement}
-              diveStartTime={diveStartTime}
-              diveEndTime={diveEndTime}
-              setIsDiveSetupForNew={setIsDiveSetupForNew}
-              setIsDiveSetupOpen={setIsDiveSetupOpen}
-              setIsMovementLogOpen={setIsMovementLogOpen}
-              handleMovementPrev={handleMovementPrev}
-              handleMovementNext={handleMovementNext}
-              handleMovementLog={handleMovementLog}
-              handlePrevDep={handlePrevDep}
-              handleNextDep={handleNextDep}
-              diveActionsList={diveActionsList}
-              ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
-            />
-          ) : (
-            <DiverLogPanel
-              inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
-              activeDep={activeDep}
-              timeInWater={timeInWater}
-              currentMovement={currentMovement}
-              diveStartTime={diveStartTime}
-              diveEndTime={diveEndTime}
-              setIsDiveSetupForNew={setIsDiveSetupForNew}
-              setIsDiveSetupOpen={setIsDiveSetupOpen}
-              setIsMovementLogOpen={setIsMovementLogOpen}
-              handleMovementPrev={handleMovementPrev}
-              handleMovementNext={handleMovementNext}
-              handleMovementLog={handleMovementLog}
-              handlePrevDep={handlePrevDep}
-              handleNextDep={handleNextDep}
-              diveActionsList={diveActionsList}
-              ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
-            />
-          )
+        panelContent = isPipeline ? (
+          <DiverLogPanelPipeline
+            inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
+            activeDep={activeDep}
+            timeInWater={timeInWater}
+            currentMovement={currentMovement}
+            diveStartTime={diveStartTime}
+            diveEndTime={diveEndTime}
+            setIsDiveSetupForNew={setIsDiveSetupForNew}
+            setIsDiveSetupOpen={setIsDiveSetupOpen}
+            setIsMovementLogOpen={setIsMovementLogOpen}
+            handleMovementPrev={handleMovementPrev}
+            handleMovementNext={handleMovementNext}
+            handleMovementLog={handleMovementLog}
+            handlePrevDep={handlePrevDep}
+            handleNextDep={handleNextDep}
+            diveActionsList={diveActionsList}
+            ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+          />
+        ) : (
+          <DiverLogPanel
+            inspMethod={inspMethod === "DIVING" ? "DIVING" : "ROV"}
+            activeDep={activeDep}
+            timeInWater={timeInWater}
+            currentMovement={currentMovement}
+            diveStartTime={diveStartTime}
+            diveEndTime={diveEndTime}
+            setIsDiveSetupForNew={setIsDiveSetupForNew}
+            setIsDiveSetupOpen={setIsDiveSetupOpen}
+            setIsMovementLogOpen={setIsMovementLogOpen}
+            handleMovementPrev={handleMovementPrev}
+            handleMovementNext={handleMovementNext}
+            handleMovementLog={handleMovementLog}
+            handlePrevDep={handlePrevDep}
+            handleNextDep={handleNextDep}
+            diveActionsList={diveActionsList}
+            ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+          />
         );
-       case "videoLog":
-        return (
+        break;
+      case "videoLog":
+        panelContent = (
           <div className="flex flex-col h-full w-full bg-white dark:bg-[#090d16] overflow-y-auto custom-scrollbar min-w-0">
             {isPipeline ? (
               <TapeManagementCardPipeline
@@ -7465,8 +8130,9 @@ function V10PreviewLayout() {
             </Dialog>
           </div>
         );
+        break;
       case "videoPreview":
-        return (
+        panelContent = (
           <VideoInterface
             videoRef={videoRef}
             canvasRef={canvasRef}
@@ -7502,8 +8168,9 @@ function V10PreviewLayout() {
             overlayManager={overlayManager}
           />
         );
+        break;
       case "form":
-        return (
+        panelContent = (
           <InspectionFormPanel
             inspMethod={inspMethod}
             selectedComp={selectedComp}
@@ -7561,10 +8228,66 @@ function V10PreviewLayout() {
             handleDeleteTaskFromScope={handleDeleteTaskFromScope}
             validateAnomalyRef={validateAnomalyRef}
             setPrevRefNo={setPrevRefNo}
+            criteriaRules={criteriaRules}
+            onVoiceActionCommand={(actionIntent: any) => {
+              if (!actionIntent) return;
+              if (actionIntent.target_component_id || actionIntent.action === "SWITCH_COMPONENT") {
+                const target = actionIntent.target_component_id;
+                if (target && componentsSow && componentsSow.length > 0) {
+                  const cleanTarget = String(target).toLowerCase().replace(/[^a-z0-9]/g, "");
+                  const matched = componentsSow.find((c: any) => {
+                    const cName = String(c.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                    const cQid = String(c.q_id || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                    const cCode = String(c.raw?.code || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                    return cName.includes(cleanTarget) || cQid.includes(cleanTarget) || cCode.includes(cleanTarget);
+                  });
+                  if (matched) {
+                    setSelectedComp(matched);
+                    toast.success(`🎯 Voice Command: Switched component to ${matched.name || matched.q_id}`);
+                  }
+                }
+              }
+              if (actionIntent.action === "NEXT_COMPONENT" || actionIntent.action === "PREV_COMPONENT") {
+                if (componentsSow && componentsSow.length > 0) {
+                  const currentIdx = componentsSow.findIndex((c: any) => c.id === selectedComp?.id || c.name === selectedComp?.name);
+                  if (actionIntent.action === "NEXT_COMPONENT") {
+                    const nextIdx = currentIdx >= 0 && currentIdx < componentsSow.length - 1 ? currentIdx + 1 : 0;
+                    setSelectedComp(componentsSow[nextIdx]);
+                    toast.info(`Next component selected: ${componentsSow[nextIdx].name}`);
+                  } else {
+                    const prevIdx = currentIdx > 0 ? currentIdx - 1 : componentsSow.length - 1;
+                    setSelectedComp(componentsSow[prevIdx]);
+                    toast.info(`Previous component selected: ${componentsSow[prevIdx].name}`);
+                  }
+                }
+              }
+              if (actionIntent.action === "SWITCH_DIVING") {
+                setInspMethod("DIVING");
+                setHeaderData((prev: any) => ({ ...prev, mode: "DIVING", inspMethod: "DIVING" }));
+                toast.success("Switched inspection mode to DIVING");
+              } else if (actionIntent.action === "SWITCH_ROV") {
+                setInspMethod("ROV");
+                setHeaderData((prev: any) => ({ ...prev, mode: "ROV", inspMethod: "ROV" }));
+                toast.success("Switched inspection mode to ROV");
+              }
+              if (actionIntent.target_inspection_type && allInspectionTypes && allInspectionTypes.length > 0) {
+                const cleanType = String(actionIntent.target_inspection_type).toLowerCase();
+                const matchedType = allInspectionTypes.find((t: any) => {
+                  const tName = String(t.name || "").toLowerCase();
+                  const tCode = String(t.code || "").toLowerCase();
+                  return tName.includes(cleanType) || cleanType.includes(tName) || tCode === cleanType;
+                });
+                if (matchedType) {
+                  setActiveSpec(matchedType.code);
+                  toast.info(`Active spec set to: ${matchedType.name || matchedType.code}`);
+                }
+              }
+            }}
           />
         );
+        break;
       case "events":
-        return (
+        panelContent = (
           <EventsTablePanel
             syncLoading={syncLoading}
             recordSearchQuery={recordSearchQuery}
@@ -7592,11 +8315,13 @@ function V10PreviewLayout() {
             setRecordsLimit={setRecordsLimit}
             totalRecords={totalRecords}
             editingRecordId={editingRecordId}
+            isPipe={isPipe}
           />
         );
+        break;
       case "components":
         if (isPipeline || headerData.structureType === "pipeline") {
-          return (
+          panelContent = (
             <PipelineEventMenuPanel
               currentKp={headerData.kp || "0.000"}
               inspMethod={inspMethod}
@@ -7608,215 +8333,79 @@ function V10PreviewLayout() {
               structureId={structureId || undefined}
               sowReportNo={headerData.sowReportNo}
               jobPackId={jobPackId || undefined}
-              onSelectEvent={async (evtData) => {
-                if (!manualOverride) {
-                  if (!activeDep?.id || activeDep?.id === "AWAITING") {
-                    toast.error("Cannot capture event: Active Dive No. / ROV Job is required in Live Mode. Please select or start a deployment first.");
-                    return;
-                  }
-                  if (!tapeId || !tapeNo || vidState !== "RECORDING") {
-                    toast.error("Cannot capture event: Active Video Tape and active Video Log recording are required in Live Mode. Please start the video log first.");
-                    return;
-                  }
+              onSelectEvent={handlePipelineEventSelect}
+            />
+          );
+        } else {
+          panelContent = (
+            <ComponentListPanel
+              compView={compView}
+              setCompView={setCompView}
+              compSearchTerm={compSearchTerm}
+              setCompSearchTerm={setCompSearchTerm}
+              componentsSow={componentsSow}
+              componentsNonSow={componentsNonSow}
+              selectedComp={selectedComp}
+              handleComponentSelection={handleComponentSelection}
+              setCompSpecDialogOpen={setCompSpecDialogOpen}
+              currentRecords={currentRecords}
+              currentCompRecords={currentCompRecords}
+              historicalRecords={historicalRecords}
+              historyLoading={historyLoading}
+              inspMethod={inspMethod}
+              supabase={supabase}
+              structureId={structureId ? Number(structureId) : 0}
+              onRefreshComponents={() => { queryClient.invalidateQueries({ queryKey: ["sow-data"] }); }}
+              allInspectionTypes={allInspectionTypes}
+              structureType={(headerData.structureType as string) === "pipeline" ? "pipeline" : "platform"}
+              unitSystem={unitSystem}
+              handleEditRecord={handleEditRecord}
+              handleTaskChange={handleTaskChange}
+              setShowTaskSelector={setShowTaskSelector}
+              isFormDirty={Boolean(
+                (dynamicProps && Object.keys(dynamicProps).length > 0) ||
+                (recordNotes && recordNotes.trim().length > 0) ||
+                (anomalyData && (anomalyData.defectCode || anomalyData.priority || anomalyData.description)) ||
+                editingRecordId !== null
+              )}
+              handleCommitRecord={handleCommitRecord}
+              resetForm={resetForm}
+              onDirectSelectTask={(comp: any, taskCode: string) => {
+                const currentTasks = comp.taskStatuses || comp.tasks || [];
+                const taskExists = currentTasks.some((t: any) => (t.code || t) === taskCode);
+                if (!taskExists) {
+                  const updatedTasks = [...currentTasks, { code: taskCode, status: "INCOMPLETE" }];
+                  comp.taskStatuses = updatedTasks;
+                  comp.tasks = updatedTasks;
                 }
 
-                const currentCounter = formatTime(vidTimer);
-
-                const navigSpec = allInspectionTypes.find(
-                  (t: any) => t.id === 30 || (t.code && (t.code === "NAVIG" || t.code === "RNAVIG")) || (t.name && t.name.toLowerCase().includes("pipeline navigation"))
-                );
-                const specCode = navigSpec?.code || "NAVIG";
-                const specId = (navigSpec?.id && navigSpec.id !== 1) ? navigSpec.id : 30;
-                setActiveSpec(specCode);
-
-                let targetComp = selectedComp;
-                if (!targetComp) {
-                  targetComp = (componentsSow && componentsSow.length > 0)
-                    ? componentsSow[0]
-                    : null;
-                }
-
-                // Auto-create or resolve a default Pipeline component in structure_components if not present
-                if (!targetComp && (isPipeline || headerData.structureType === "pipeline") && structureId) {
-                  try {
-                    const parsedStructId = parseInt(structureId);
-                    // Query if a Pipeline component already exists for this structure
-                    const { data: existingComps } = await supabase
-                      .from("structure_components")
-                      .select("id, q_id, name, type")
-                      .eq("structure_id", parsedStructId)
-                      .limit(1);
-
-                    if (existingComps && existingComps.length > 0) {
-                      targetComp = {
-                        id: existingComps[0].id,
-                        q_id: existingComps[0].q_id || headerData.structureName || "PIPELINE-01",
-                        name: existingComps[0].name || headerData.structureName || "Pipeline Main Line",
-                        type: existingComps[0].type || "PIPELINE",
-                      };
-                      setSelectedComp(targetComp);
-                    } else {
-                      // Create default Pipeline component in structure_components
-                      const { data: createdComp, error: createErr } = await supabase
-                        .from("structure_components")
-                        .insert({
-                          structure_id: parsedStructId,
-                          q_id: headerData.structureName || "PIPELINE-01",
-                          name: headerData.structureName || "Pipeline Main Line",
-                          type: "PIPELINE",
-                        })
-                        .select("id, q_id, name, type")
-                        .single();
-
-                      if (!createErr && createdComp) {
-                        targetComp = createdComp;
-                        setSelectedComp(targetComp);
-                      }
-                    }
-                  } catch (compErr) {
-                    console.warn("[onSelectEvent] Auto-creating Pipeline component warning:", compErr);
-                  }
-                }
-
-                // Strict Validation: Component ID MUST be present and valid before allowing inspection data creation
-                if (!targetComp?.id || targetComp.id === 999999) {
-                  toast.error("Cannot save inspection event: A registered Component is required. Please select or register a Component first.");
-                  return;
-                }
-
-                const validCompId = targetComp.id;
-                const validCompType = (isPipeline || headerData.structureType === "pipeline")
-                  ? "PP"
-                  : (targetComp?.raw?.code || targetComp?.raw?.metadata?.comp_type || targetComp?.type || "PP");
-
-                const now = new Date();
-                const formattedDate = now.toISOString().split("T")[0];
-                const formattedTime = now.toTimeString().split(" ")[0];
-
-                const eventProps = {
-                  event_name: evtData.eventName,
-                  event_type: evtData.eventType,
-                  event_position: evtData.eventPosition || evtData.actionName || evtData.eventCategory,
-                  event_description: evtData.eventDescription || evtData.description,
-                  findings: evtData.findings || "",
-                  inspection_date: formattedDate,
-                  inspection_time: formattedTime,
-                  flow_direction: inspectionDirection,
-                  insp_mode: inspectionLocation,
-                  inspection_direction: inspectionDirection,
-                  inspection_location: inspectionLocation,
-                  kp: evtData.kp || headerData.kp || "0.0000",
-                  fp_kp: evtData.kp || headerData.kp || "0.0000",
-                  northing: evtData.northing || "",
-                  easting: evtData.easting || "",
-                  depth: evtData.depth || "",
-                  verification_depth: evtData.depth || "",
-                  cp_fg_rdg: evtData.cp_fg_rdg || evtData.cp_fg || "",
-                  cp_fg: evtData.cp_fg_rdg || evtData.cp_fg || "",
-                  rov_heading: evtData.rov_heading || evtData.heading || "",
-                  heading: evtData.rov_heading || evtData.heading || "",
-                  tape_count_no: currentCounter,
-                  counter: currentCounter,
-                  _meta_timecode: currentCounter,
-                };
-
-                setDynamicProps((prev: any) => ({
-                  ...prev,
-                  ...eventProps,
-                }));
-
-                // DIRECT RECORD INSERTION INTO `insp_records` TABLE
-                try {
-                  const userRes = await supabase.auth.getUser();
-                  const user = userRes?.data?.user;
-                  const evAny = evtData as any;
-                  const isAnomaly = Boolean(evAny?.isAnomaly || evAny?.hasAnomaly || String(evAny?.status || "").toUpperCase() === "ANOMALY");
-
-                  const recordPayload: Record<string, any> = {
-                    company_id: activeCompanyId,
-                    [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep?.id ? Number(activeDep.id) : null,
-                    structure_id: structureId ? parseInt(structureId) : null,
-                    component_id: validCompId,
-                    component_type: validCompType,
-                    jobpack_id: jobPackId ? parseInt(jobPackId) : null,
-                    sow_report_no: headerData.sowReportNo || null,
-                    inspection_type_id: specId,
-                    inspection_type_code: specCode,
-                    inspection_date: formattedDate,
-                    inspection_time: formattedTime,
-                    status: isAnomaly ? "Anomaly" : "COMPLETED",
-                    has_anomaly: isAnomaly,
-                    tape_id: tapeId || null,
-                    tape_count_no: vidTimer,
-                    elevation: eventProps.depth || null,
-                    fp_kp: parseFloat(String(eventProps.kp)) || 0,
-                    cr_user: user?.id || "system",
-                    cr_date: now.toISOString(),
-                    inspection_data: eventProps,
-                  };
-
-                  const { data: newRecord, error: insErr } = await supabase
-                    .from("insp_records")
-                    .insert(recordPayload)
-                    .select("insp_id")
-                    .single();
-
-                  if (insErr) {
-                    console.error("[onSelectEvent] Error inserting insp_records row:", insErr);
-                    toast.error(`Event captured, but database insert failed: ${insErr.message}`);
-                  } else if (newRecord) {
-                    setEditingRecordId(newRecord.insp_id);
-                    syncDeploymentState();
-                    queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
-                    queryClient.invalidateQueries({ queryKey: ["sow-data"] });
-                    toast.success(`Event captured & record #${newRecord.insp_id} created: ${evtData.eventName} > ${evtData.eventType}`);
-                  }
-                } catch (err: any) {
-                  console.error("[onSelectEvent] Unexpected error inserting insp_records:", err);
-                  toast.error(`Event captured locally: ${evtData.eventName}`);
-                }
+                resetForm();
+                setSelectedComp({ ...comp });
+                setActiveSpec(taskCode);
+                setShowTaskSelector(false);
+                setShowCompSelector(false);
+                setEditingRecordId(null);
               }}
             />
           );
         }
-        return (
-          <ComponentListPanel
-            compView={compView}
-            setCompView={setCompView}
-            compSearchTerm={compSearchTerm}
-            setCompSearchTerm={setCompSearchTerm}
-            componentsSow={componentsSow}
-            componentsNonSow={componentsNonSow}
-            selectedComp={selectedComp}
-            handleComponentSelection={handleComponentSelection}
-            setCompSpecDialogOpen={setCompSpecDialogOpen}
-            currentRecords={currentRecords}
-            currentCompRecords={currentCompRecords}
-            historicalRecords={historicalRecords}
-            historyLoading={historyLoading}
-            inspMethod={inspMethod}
-            supabase={supabase}
-            structureId={structureId ? Number(structureId) : 0}
-            onRefreshComponents={() => { queryClient.invalidateQueries({ queryKey: ["sow-data"] }); }}
-            allInspectionTypes={allInspectionTypes}
-            structureType={(headerData.structureType as string) === "pipeline" ? "pipeline" : "platform"}
-            unitSystem={unitSystem}
-            handleEditRecord={handleEditRecord}
-            handleTaskChange={handleTaskChange}
-            setShowTaskSelector={setShowTaskSelector}
-          />
-        );
+        break;
       case "history":
-        return (
+        panelContent = (
           <HistoryDataPanel
+            selectedComp={selectedComp}
             historicalRecords={historicalRecords}
             historyLoading={historyLoading}
             handleEditRecord={handleEditRecord}
+            allInspectionTypes={allInspectionTypes}
+            jobPackId={jobPackId}
+            structureId={structureId}
           />
         );
+        break;
       case "inspectionInfo":
         if (!isPipeline) return null;
-        return (
+        panelContent = (
           <PipelineInspectionInfoPanel
             currentKp={headerData?.kp || "0.000"}
             inspectionDirection={inspectionDirection}
@@ -7825,128 +8414,54 @@ function V10PreviewLayout() {
             unitSystem={unitSystem}
           />
         );
+        break;
       case "quickShortcuts":
         if (!isPipeline) return null;
-        return (
+        panelContent = (
           <QuickShortcutsPanel
             onSelectEvent={handlePipelineEventSelect}
             currentKp={headerData?.kp || "0.000"}
             inspMethod={inspMethod}
           />
         );
+        break;
       default:
-        return <div className="p-4 text-slate-500">Panel {name} under construction</div>;
+        panelContent = <div className="p-4 text-slate-500">Panel {name} under construction</div>;
     }
+
+    if (!panelContent) return null;
+    return renderPanelWithPopout(component || "", name || "", panelContent);
   }, [
-    activeDep,
-    inspMethod,
-    vidState,
-    tapeId,
-    selectedComp,
-    currentRecords,
-    displayRecords,
-    dynamicProps,
-    findingType,
-    compView,
-    compSearchTerm,
-    componentsSow,
-    componentsNonSow,
-    currentCompRecords,
-    historicalRecords,
-    historyLoading,
-    timeInWater,
-    currentMovement,
-    diveStartTime,
-    diveEndTime,
-    setIsDiveSetupForNew,
-    setIsDiveSetupOpen,
-    setIsMovementLogOpen,
-    videoRef,
-    canvasRef,
-    streamActive,
-    setStreamActive,
-    vidTimer,
-    tapeNo,
-    videoVisible,
-    setVideoVisible,
-    isStreamRecording,
-    isStreamPaused,
-    previewStream,
-    handleStartStreamRecording,
-    handlePauseStreamRecording,
-    handleResumeStreamRecording,
-    handleStopStreamRecording,
-    handleGrabPhoto,
-    handleToggleStreamRecording,
-    handlePopOutStream,
-    pipWindow,
-    formatTime,
-    showDrawingTools,
-    setShowDrawingTools,
-    videoEvents,
-    supabase,
-    setVideoEvents,
-    setEditingEvent,
-    handleDeleteEvent,
-    activeSpec,
-    setFindingType,
-    editingRecordId,
-    resetForm,
-    FORM_AREA_ID,
-    setIsAddInspOpen,
-    allInspectionTypes,
-    activeFormProps,
-    renderInspectionField,
-    handleDynamicPropChange,
-    anomalyData,
-    setAnomalyData,
-    defectCodes,
-    allDefectTypes,
-    availableDefectTypes,
-    priorities,
-    headerData,
-    manualOverride,
-    setManualOverride,
-    setLastAutoMatchedRuleId,
-    handleCommitRecord,
-    isCommitting,
-    setCompSpecDialogOpen,
-    incompleteReason,
-    setIncompleteReason,
-    recordNotes,
-    setRecordNotes,
-    pendingAttachments,
-    setPendingAttachments,
-    deletedAttachmentIds,
-    setDeletedAttachmentIds,
-    setEditingAttachment,
-    setIsAttachmentManagerOpen,
-    recordedFiles,
-    setShowTaskSelector,
-    setShowCompSelector,
-    libOptionsMap,
-    handleDeleteRecord,
-    handlePrintAnomaly,
-    syncLoading,
-    recordSearchQuery,
-    setRecordSearchQuery,
-    sortedRecords,
-    capturedEventsPipWindow,
-    handlePopoutCapturedEvents,
-    activeTableColumns,
-    columnSettings,
-    handleMoveColumn,
-    toggleColumnVisibility,
-    handleSort,
-    sortConfig,
-    handleEditRecord,
-    setViewingRecordAttachments,
-    handleComponentSelection,
-    structureId,
-    unitSystem,
-    inspectionDirection,
-    inspectionLocation,
-    selectedComp,
+    inspMethod, isPipeline, headerData, renderPanelWithPopout,
+    activeDep, timeInWater, currentMovement, diveStartTime, diveEndTime,
+    setIsDiveSetupForNew, setIsDiveSetupOpen, setIsMovementLogOpen, handleMovementPrev,
+    handleMovementNext, handleMovementLog, handlePrevDep, handleNextDep, diveActionsList,
+    vidState, vidTimer, tapeId, tapeNo, activeChapter, jobTapes, handleLogEvent,
+    setTapeId, setTapeNo, setActiveChapter, setIsNewTapeOpen, handleOpenEditTape,
+    formatTime, videoLogExpanded, setVideoLogExpanded, videoEvents, handleDeleteEvent,
+    setEditingEvent, videoRef, canvasRef, streamActive, setStreamActive, videoVisible,
+    setVideoVisible, isStreamRecording, isStreamPaused, previewStream, handleStartStreamRecording,
+    handlePauseStreamRecording, handleResumeStreamRecording, handleStopStreamRecording, handleGrabPhoto,
+    handleToggleStreamRecording, handlePopOutStream, pipWindow, showDrawingTools, setShowDrawingTools,
+    currentTool, setCurrentTool, currentColor, setCurrentColor, lineWidth, setLineWidth, overlayManager,
+    selectedComp, editingRecordId, activeSpec, resetForm, FORM_AREA_ID, setIsAddInspOpen,
+    activeMGIProfile, allInspectionTypes, activeFormProps, findingType, setFindingType,
+    renderInspectionField, dynamicProps, handleDynamicPropChange, anomalyData, setAnomalyData,
+    defectCodes, allDefectTypes, availableDefectTypes, priorities, manualOverride, setManualOverride,
+    setLastAutoMatchedRuleId, handleCommitRecord, isCommitting, setCompSpecDialogOpen,
+    incompleteReason, setIncompleteReason, recordNotes, setRecordNotes, pendingAttachments,
+    setPendingAttachments, deletedAttachmentIds, setDeletedAttachmentIds, setEditingAttachment,
+    setIsAttachmentManagerOpen, recordedFiles, setShowTaskSelector, setShowCompSelector,
+    libOptionsMap, handleDeleteRecord, currentRecords, handlePrintAnomaly, handleTaskChange,
+    handleDeleteTaskFromScope, validateAnomalyRef, setPrevRefNo, syncLoading, recordSearchQuery,
+    setRecordSearchQuery, searchMode, setSearchMode, displayRecords, sortedRecords,
+    capturedEventsPipWindow, handlePopoutCapturedEvents, activeTableColumns, columnSettings,
+    handleMoveColumn, toggleColumnVisibility, handleSort, sortConfig, setViewingRecordAttachments,
+    supabase, recordsOffset, setRecordsOffset, recordsLimit, setRecordsLimit, totalRecords,
+    dataAcqConnected, unitSystem, inspectionDirection, inspectionLocation, structureId, jobPackId,
+    setActiveSpec, componentsSow, setSelectedComp, activeCompanyId, syncDeploymentState, queryClient,
+    compView, setCompView, compSearchTerm, setCompSearchTerm, componentsNonSow, currentCompRecords,
+    historicalRecords, historyLoading, handleEditRecord, handlePipelineEventSelect,
   ]);
 
   // --- AUTO-EDIT FROM URL PARAMETERS ---
@@ -8042,6 +8557,107 @@ function V10PreviewLayout() {
         onResetLayout={handleResetLayout}
         closedPanels={closedPanels}
         onRestorePanel={handleRestorePanel}
+        onRestoreAllPanels={handleRestoreAllPanels}
+        onGlobalVoiceCommand={(parsed: any) => {
+          if (!parsed) return;
+          const actionIntent = parsed.action_intent || {};
+          const extractedFields = parsed.extracted_fields || {};
+          const rawTranscript = parsed.raw_transcript || "";
+
+          let targetComp: any = null;
+
+          if (actionIntent.target_component_id || actionIntent.action === "SWITCH_COMPONENT") {
+            const target = actionIntent.target_component_id;
+            if (target && componentsSow && componentsSow.length > 0) {
+              const cleanTarget = String(target).toLowerCase().replace(/[^a-z0-9]/g, "");
+              const matched = componentsSow.find((c: any) => {
+                const cName = String(c.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const cQid = String(c.q_id || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const cCode = String(c.raw?.code || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                return cName.includes(cleanTarget) || cQid.includes(cleanTarget) || cCode.includes(cleanTarget);
+              });
+              if (matched) {
+                targetComp = matched;
+                setSelectedComp(matched);
+                toast.success(`🎯 Voice Command: Selected component ${matched.name || matched.q_id}`);
+              }
+            }
+          }
+
+          if (!targetComp) {
+            targetComp = selectedComp;
+          }
+
+          if (actionIntent.target_inspection_type && allInspectionTypes && allInspectionTypes.length > 0) {
+            const cleanType = String(actionIntent.target_inspection_type).toLowerCase();
+            const matchedType = allInspectionTypes.find((t: any) => {
+              const tName = String(t.name || "").toLowerCase();
+              const tCode = String(t.code || "").toLowerCase();
+              return tName.includes(cleanType) || cleanType.includes(tName) || tCode === cleanType;
+            });
+            if (matchedType) {
+              setActiveSpec(matchedType.code);
+              toast.info(`Active spec set to: ${matchedType.name || matchedType.code}`);
+            }
+          }
+
+          if (Object.keys(extractedFields).length > 0) {
+            setDynamicProps((prev: any) => ({
+              ...prev,
+              raw_voice_transcript: rawTranscript,
+              ...extractedFields,
+            }));
+          }
+
+          if (parsed.findings_summary) {
+            setRecordNotes(parsed.findings_summary);
+          }
+
+          if (parsed.finding_type) {
+            setFindingType(parsed.finding_type);
+            if (parsed.finding_type === 'Anomaly' || parsed.finding_type === 'Finding') {
+              setManualOverride(true);
+            }
+          }
+
+          if (parsed.defect_code || parsed.recommendations || parsed.priority || parsed.defect_type) {
+            setAnomalyData((prev: any) => ({
+              ...prev,
+              defectCode: parsed.defect_code || prev.defectCode,
+              defectType: parsed.defect_type || prev.defectType,
+              priority: parsed.priority || prev.priority || 'Medium',
+              recommendedAction: parsed.recommendations || prev.recommendedAction,
+            }));
+          }
+
+          if (actionIntent.action === "REGISTER_EVENT" || actionIntent.action === "SAVE_RECORD") {
+            toast.success("✨ Voice Command: Auto-Registering Event...", {
+              description: `Component: ${targetComp?.name || selectedComp?.name || 'Active Component'}`,
+            });
+            setTimeout(() => {
+              handleCommitRecord();
+            }, 400);
+          } else if (actionIntent.action === "NEXT_COMPONENT" || actionIntent.action === "PREV_COMPONENT") {
+            if (componentsSow && componentsSow.length > 0) {
+              const currentIdx = componentsSow.findIndex((c: any) => c.id === selectedComp?.id || c.name === selectedComp?.name);
+              if (actionIntent.action === "NEXT_COMPONENT") {
+                const nextIdx = currentIdx >= 0 && currentIdx < componentsSow.length - 1 ? currentIdx + 1 : 0;
+                setSelectedComp(componentsSow[nextIdx]);
+              } else {
+                const prevIdx = currentIdx > 0 ? currentIdx - 1 : componentsSow.length - 1;
+                setSelectedComp(componentsSow[prevIdx]);
+              }
+            }
+          } else if (actionIntent.action === "SWITCH_DIVING") {
+            setInspMethod("DIVING");
+            setHeaderData((prev: any) => ({ ...prev, mode: "DIVING", inspMethod: "DIVING" }));
+          } else if (actionIntent.action === "SWITCH_ROV") {
+            setInspMethod("ROV");
+            setHeaderData((prev: any) => ({ ...prev, mode: "ROV", inspMethod: "ROV" }));
+          } else if (actionIntent.action === "OPEN_SUMMARY") {
+            setIsSummaryOpen(true);
+          }
+        }}
       />
 
       {/* -- GEODETIC PARAMETERS DIALOG -------------------------------------- */}
@@ -8483,15 +9099,35 @@ function V10PreviewLayout() {
             factory={layoutFactory} 
             onModelChange={onLayoutChange} 
             onRenderTab={(node: TabNode, renderValues: any) => {
-              if (node.getComponent() === "videoPreview") {
+              const componentId = node.getComponent() || "";
+              if (componentId === "videoPreview") {
                 renderValues.content = "Photo / Video Grab";
               }
-              if (node.getComponent() === "opsLog") {
+              if (componentId === "opsLog") {
                 renderValues.content = inspMethod === "DIVING" ? "Diver Log" : "ROV Log";
               }
-              if (node.getComponent() === "components") {
-                renderValues.content = (isPipeline || headerData.structureType === "pipeline") ? "Event Menu" : "Component List";
+              if (componentId === "components") {
+                renderValues.content = isPipe ? "Event Menu" : "Component List";
               }
+
+              const isPopped = !!poppedOutWindows[componentId];
+              renderValues.buttons.push(
+                <button
+                  key="popout-btn"
+                  title={isPopped ? "Restore panel to dock layout" : "Pop out panel to extended screen"}
+                  className={`flex items-center justify-center w-4 h-4 ml-1 rounded transition-all ${
+                    isPopped 
+                      ? "text-amber-400 bg-amber-500/20 hover:bg-amber-500/30" 
+                      : "text-slate-400 hover:text-blue-400 hover:bg-slate-700/50"
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTogglePanelPopout(componentId, node.getName() || "");
+                  }}
+                >
+                  {isPopped ? <Minimize2 className="w-3 h-3" /> : <ExternalLink className="w-3 h-3" />}
+                </button>
+              );
             }}
           />
         )}

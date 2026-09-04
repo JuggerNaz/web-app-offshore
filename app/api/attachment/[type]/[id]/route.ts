@@ -47,16 +47,62 @@ export async function GET(
           is_insp_media: true,
         },
         cr_date: m.captured_at,
+        created_at: m.captured_at || new Date().toISOString(),
       }));
       data = [...data, ...normalizedMedia];
     }
   }
 
-  if (type === "component") {
-    const { data: inspRecords } = await (supabase as any)
-      .from("insp_records")
-      .select("insp_id, jobpack_id, structure_id")
-      .eq("component_id", Number(id));
+  if (type.toLowerCase() === "component" || type.toLowerCase() === "structure_component") {
+    // 1. Fetch component details
+    const { data: comp } = await supabase
+      .from("structure_components")
+      .select("id, comp_id, q_id, structure_id")
+      .eq("id", Number(id))
+      .maybeSingle();
+
+    const compIds = [Number(id)];
+    if (comp?.comp_id && !isNaN(Number(comp.comp_id)) && Number(comp.comp_id) !== Number(id)) {
+      compIds.push(Number(comp.comp_id));
+    }
+
+    // Direct component attachments from attachment table
+    const { data: compAtts } = await supabase
+      .from("attachment")
+      .select("*")
+      .in("source_id", compIds)
+      .in("source_type", ["component", "COMPONENT", "structure_component", "STRUCTURE_COMPONENT"]);
+
+    if (compAtts && compAtts.length > 0) {
+      data = [...data, ...compAtts];
+    }
+
+    // 2. Fetch all inspection records linked to this component (by component_id OR QID)
+    let inspRecords: any[] = [];
+    if (comp?.structure_id) {
+      const { data: allInsps } = await (supabase as any)
+        .from("insp_records")
+        .select("insp_id, jobpack_id, structure_id, component_id, component_qid, inspection_data")
+        .eq("structure_id", comp.structure_id);
+
+      const qidUpper = comp?.q_id ? comp.q_id.toUpperCase() : "";
+      inspRecords = (allInsps || []).filter((r: any) => {
+        if (r.component_id && compIds.includes(Number(r.component_id))) return true;
+        if (qidUpper) {
+          if (r.component_qid && String(r.component_qid).toUpperCase() === qidUpper) return true;
+          if (r.inspection_data?.component && String(r.inspection_data.component).toUpperCase() === qidUpper) return true;
+          if (r.inspection_data?.component_qid && String(r.inspection_data.component_qid).toUpperCase() === qidUpper) return true;
+          if (r.inspection_data?.qid && String(r.inspection_data.qid).toUpperCase() === qidUpper) return true;
+        }
+        return false;
+      });
+    } else {
+      const { data: directInsps } = await (supabase as any)
+        .from("insp_records")
+        .select("insp_id, jobpack_id, structure_id, component_id")
+        .in("component_id", compIds);
+      inspRecords = directInsps || [];
+    }
 
     if (inspRecords && inspRecords.length > 0) {
       const inspIds = inspRecords.map((r: any) => r.insp_id);
@@ -88,11 +134,12 @@ export async function GET(
             is_insp_media: true,
           },
           cr_date: m.captured_at,
+          created_at: m.captured_at || new Date().toISOString(),
         })),
       ];
 
       if (allInspAttachments.length > 0) {
-        // Fetch Jobpacks and Platforms for enrichment
+        // Fetch Jobpacks, Platforms, and Pipelines for enrichment
         const jobpackIds = Array.from(
           new Set(inspRecords.map((r: any) => r.jobpack_id).filter(Boolean) as number[])
         );
@@ -109,13 +156,19 @@ export async function GET(
           (jobpacks || []).forEach((jp: any) => jobpackMap.set(jp.id, jp.name));
         }
 
-        const platformMap = new Map();
+        const structureMap = new Map();
         if (structureIds.length > 0) {
           const { data: platforms } = await (supabase as any)
             .from("platform")
             .select("plat_id, title")
             .in("plat_id", structureIds);
-          (platforms || []).forEach((p: any) => platformMap.set(p.plat_id, p.title));
+          (platforms || []).forEach((p: any) => structureMap.set(p.plat_id, p.title));
+
+          const { data: pipelines } = await (supabase as any)
+            .from("pipeline")
+            .select("pipe_id, title")
+            .in("pipe_id", structureIds);
+          (pipelines || []).forEach((p: any) => structureMap.set(p.pipe_id, p.title));
         }
 
         const inspMap = new Map();
@@ -127,17 +180,18 @@ export async function GET(
           let sourceName = "Inspection";
           if (insp) {
             const jpName = jobpackMap.get(insp.jobpack_id);
-            const platName = platformMap.get(insp.structure_id);
-            if (jpName && platName) {
-              sourceName = `${jpName} | ${platName}`;
+            const strName = structureMap.get(insp.structure_id);
+            if (jpName && strName) {
+              sourceName = `${jpName} | ${strName}`;
             } else if (jpName) {
               sourceName = `JP: ${jpName}`;
-            } else if (platName) {
-              sourceName = `Plat: ${platName}`;
+            } else if (strName) {
+              sourceName = strName;
             }
           }
           return {
             ...att,
+            created_at: att.created_at || att.cr_date || new Date().toISOString(),
             source_name: sourceName,
             source_type: "Inspection",
           };
@@ -146,14 +200,96 @@ export async function GET(
         data = [...data, ...enrichedInspAttachments];
       }
     }
+
+    // 3. Fetch all anomaly attachments linked to this component or its structure
+    if (comp?.structure_id) {
+      const { data: compAnomalies } = await (supabase as any)
+        .from("v_anomaly_details")
+        .select("anomaly_id, component_id, component_qid, display_ref_no, structure_id, jobpack_name")
+        .eq("structure_id", comp.structure_id);
+
+      const qidUpper = comp?.q_id ? comp.q_id.toUpperCase() : "";
+      const matchedAnomalies = (compAnomalies || []).filter((a: any) => {
+        if (a.component_id && compIds.includes(Number(a.component_id))) return true;
+        if (qidUpper) {
+          if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) return true;
+        }
+        return false;
+      });
+
+      const anomalyIds = matchedAnomalies.map((a: any) => a.anomaly_id).filter(Boolean);
+      const displayRefNos = matchedAnomalies.map((a: any) => String(a.display_ref_no || "").trim()).filter(Boolean);
+
+      let anomAttachments: any[] = [];
+      if (anomalyIds.length > 0) {
+        const { data: directAnomAtts } = await supabase
+          .from("attachment")
+          .select("*")
+          .in("source_type", ["anomaly", "ANOMALY", "defect", "DEFECT"])
+          .in("source_id", anomalyIds);
+        if (directAnomAtts) anomAttachments.push(...directAnomAtts);
+      }
+
+      // Structure-level attachments matching anomaly title/ref or prefix "Anomaly"
+      const { data: strAtts } = await supabase
+        .from("attachment")
+        .select("*")
+        .in("source_type", ["structure", "STRUCTURE", "pipeline", "PIPELINE", "platform", "PLATFORM"])
+        .eq("source_id", comp.structure_id);
+
+      (strAtts || []).forEach((att: any) => {
+        const attName = String(att.name || "").toUpperCase();
+        const attTitle = String(att.meta?.title || "").toUpperCase();
+        const attDesc = String(att.meta?.description || "").toUpperCase();
+        const attFile = String(att.meta?.original_file_name || "").toUpperCase();
+
+        const matchesRef = displayRefNos.some((ref: string) => {
+          const rUpper = ref.toUpperCase();
+          const suffix = rUpper.split("/").pop() || "";
+          return (
+            attName.includes(rUpper) ||
+            attTitle.includes(rUpper) ||
+            attDesc.includes(rUpper) ||
+            attFile.includes(rUpper) ||
+            (suffix && (attName.includes(suffix) || attTitle.includes(suffix)))
+          );
+        });
+
+        const isAnomalyNamed = attName.startsWith("ANOMALY ") || attTitle.startsWith("ANOMALY ") || attName.includes("ANOMALY");
+
+        if (matchesRef || (isAnomalyNamed && matchedAnomalies.length > 0)) {
+          anomAttachments.push({
+            ...att,
+            source_name: att.name || "Anomaly Attachment",
+            source_type: "Anomaly",
+          });
+        }
+      });
+
+      if (anomAttachments.length > 0) {
+        data = [...data, ...anomAttachments];
+      }
+    }
   }
 
-  // Set source names for direct component attachments
+  // Set source names for direct component attachments and normalize created_at
   data = data.map((att) => {
-    if (att.source_type?.toLowerCase() === "component") {
-      return { ...att, source_name: "Direct Component", source_type: "Component" };
-    }
-    return att;
+    const isComp = ["component", "structure_component"].includes(String(att.source_type || "").toLowerCase());
+    return {
+      ...att,
+      created_at: att.created_at || att.cr_date || new Date().toISOString(),
+      source_name: isComp ? "Direct Component" : (att.source_name || att.source_type || "Attachment"),
+      source_type: isComp ? "Component" : (att.source_type || "Attachment"),
+    };
+  });
+
+  // Deduplicate attachments by id or path
+  const seenIds = new Set<string>();
+  data = data.filter((att) => {
+    const key = String(att.id || att.path || "");
+    if (!key || seenIds.has(key)) return false;
+    seenIds.add(key);
+    return true;
   });
 
   // Enrich data with user information
@@ -178,7 +314,7 @@ export async function GET(
       ...attachment,
       user_name: attachment.user_id
         ? userMap.get(attachment.user_id) || attachment.user_id
-        : "Unknown",
+        : "System",
     }));
 
     return NextResponse.json({ data: enrichedData });

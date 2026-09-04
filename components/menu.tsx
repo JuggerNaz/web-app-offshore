@@ -24,6 +24,7 @@ import {
   Box,
   Building2,
   Laptop,
+  User as UserIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -88,6 +89,13 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
             />
           </RoleGate>
 
+          <MenuLink
+            href="/dashboard/user-data"
+            isCollapsed={isCollapsed}
+            label="User Data"
+            icon={<UserIcon className="h-[18px] w-[18px]" />}
+            text="User Data"
+          />
         </div>
 
         {/* Assets Section */}

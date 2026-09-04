@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 export interface CompanySettings {
@@ -32,6 +32,7 @@ export interface PipelineEventItem {
     id: any;
     kp: number;
     kpDisplay: string;
+    kpNumStr: string;
     eventName: string;
     eventType: string;
     position: string;
@@ -47,8 +48,8 @@ export interface PipelineEventItem {
 
 /**
  * Landscape Pipeline Event List Sketch Report Generator
- * Renders pipeline graphics with KP axis, span/burial profiles, stabilizer/crossing graphics,
- * non-overlapping event flag markers, geodetic parameters header, and matching event list tables per page.
+ * Renders pipeline graphics with KP axis, CAD-style pipe sketch, span/burial profiles,
+ * non-overlapping event markers, geodetic parameters header, and compact event detail boxes.
  */
 export const generatePipelineEventSketchReport = async (
     jobPack: any,
@@ -68,27 +69,27 @@ export const generatePipelineEventSketchReport = async (
 
     const colors = {
         navy: [31, 55, 93] as [number, number, number],
-        teal: [20, 184, 166] as [number, number, number],
+        headerBg: [226, 232, 240] as [number, number, number],
+        border: [100, 116, 139] as [number, number, number],
+        darkBorder: [15, 23, 42] as [number, number, number],
         lightGray: [248, 250, 252] as [number, number, number],
-        border: [203, 213, 225] as [number, number, number],
-        darkBorder: [100, 116, 139] as [number, number, number],
-        text: [30, 41, 59] as [number, number, number],
+        text: [15, 23, 42] as [number, number, number],
         muted: [100, 116, 139] as [number, number, number],
 
         // Event Categories Colors
-        span: [239, 68, 68] as [number, number, number],         // Red
-        burial: [145, 123, 76] as [number, number, number],      // Olive / Brown
-        stabilizer: [107, 114, 128] as [number, number, number], // Gray Slate
-        crossing: [168, 85, 247] as [number, number, number],    // Purple
-        cp: [14, 165, 233] as [number, number, number],          // Cyan / Sky Blue
-        anode: [34, 197, 94] as [number, number, number],        // Green
-        debris: [245, 158, 11] as [number, number, number],      // Amber / Orange
-        fitting: [99, 102, 241] as [number, number, number],     // Indigo
-        defect: [225, 29, 72] as [number, number, number],       // Rose Red
-        general: [71, 85, 105] as [number, number, number],      // Slate
+        span: [234, 88, 12] as [number, number, number],          // Orange for span
+        burial: [145, 123, 76] as [number, number, number],       // Olive / Brown
+        stabilizer: [107, 114, 128] as [number, number, number],  // Gray Slate
+        crossing: [168, 85, 247] as [number, number, number],     // Purple
+        cp: [14, 165, 233] as [number, number, number],           // Cyan / Sky Blue
+        anode: [217, 70, 239] as [number, number, number],        // Magenta / Purple (Pic 1 style)
+        debris: [245, 158, 11] as [number, number, number],       // Amber / Orange
+        fitting: [99, 102, 241] as [number, number, number],      // Indigo
+        defect: [225, 29, 72] as [number, number, number],        // Rose Red
+        general: [217, 70, 239] as [number, number, number],      // Magenta
     };
 
-    // ── 1. Fetch & Normalize Records ─────────────────────────────────────────
+    // ── 1. Fetch & Normalize Records (FILTER OUT VIDEO LOGS) ──────────────────
     let rawRecords: any[] = [];
     if (recordsOverride && recordsOverride.length > 0) {
         rawRecords = recordsOverride;
@@ -112,7 +113,6 @@ export const generatePipelineEventSketchReport = async (
             if (data && data.length > 0) {
                 rawRecords = data;
             } else if (sId > 0) {
-                // Fallback query by structure_id alone if jobpack_id filter yielded no records
                 const { data: fallbackData } = await supabase
                     .from("insp_records")
                     .select("*, structure_components:component_id(q_id, name, code)")
@@ -125,9 +125,9 @@ export const generatePipelineEventSketchReport = async (
         }
     }
 
-    // Process & Classify Events
-    const events: PipelineEventItem[] = rawRecords
-        .map((r: any) => {
+    // Process & Classify Events (Filtering Video Log records)
+    const events: PipelineEventItem[] = (rawRecords || [])
+        .map((r: any): PipelineEventItem | null => {
             let idraw = r.inspection_data || r.inspection_dat || {};
             if (typeof idraw === "string") {
                 try { idraw = JSON.parse(idraw); } catch (e) { idraw = {}; }
@@ -138,7 +138,29 @@ export const generatePipelineEventSketchReport = async (
             const compCode = String(r.structure_components?.code || r.structure_components?.q_id || "").toUpperCase();
             const nameUpper = String(idraw.eventName || idraw.event_name || idraw.event_id || idraw.name || r.inspection_type_name || r.inspection_type_code || compCode || r.description || "").toUpperCase();
             const typeUpper = String(idraw.eventType || idraw.event_type || idraw.category || idraw.type || r.inspection_type_code || "").toUpperCase();
-            const descRaw = idraw.eventDescription || idraw.event_description || idraw.findings || idraw.observations || r.description || r.remarks || "";
+            const descRaw = String(idraw.eventDescription || idraw.event_description || idraw.findings || idraw.observations || r.description || r.remarks || "");
+
+            // 1. FILTER OUT VIDEO LOG EVENT DATA
+            const isVideoLog =
+                nameUpper.includes("VIDEO LOG") ||
+                typeUpper.includes("VIDEO LOG") ||
+                nameUpper.includes("VIDEO_LOG") ||
+                typeUpper.includes("VIDEO_LOG") ||
+                nameUpper.includes("TAPE RECORDING") ||
+                nameUpper.includes("TAPE INTRODUCTION") ||
+                nameUpper.includes("TAPE STOP") ||
+                typeUpper.includes("TAPE") ||
+                String(r.inspection_type_code || "").toUpperCase().includes("VIDEO") ||
+                String(r.inspection_type_code || "").toUpperCase() === "VID" ||
+                String(r.inspection_type_name || "").toUpperCase().includes("VIDEO") ||
+                descRaw.toUpperCase().startsWith("TAPE RECORDING") ||
+                descRaw.toUpperCase().startsWith("TAPE INTRODUCTION") ||
+                descRaw.toUpperCase().startsWith("TAPE STOP") ||
+                descRaw.toUpperCase().startsWith("CHECK VIDEO");
+
+            if (isVideoLog) {
+                return null;
+            }
 
             let category: PipelineEventItem["category"] = "GENERAL";
             if (typeUpper.includes("SPAN") || nameUpper.includes("SPAN") || descRaw.toUpperCase().includes("SPAN")) {
@@ -155,35 +177,61 @@ export const generatePipelineEventSketchReport = async (
                 category = "ANODE";
             } else if (typeUpper.includes("DEBRIS") || nameUpper.includes("DEBRIS")) {
                 category = "DEBRIS";
-            } else if (typeUpper.includes("FLANGE") || typeUpper.includes("VALVE") || typeUpper.includes("FITTING") || nameUpper.includes("VALVE") || nameUpper.includes("TEE")) {
+            } else if (typeUpper.includes("FLANGE") || typeUpper.includes("VALVE") || typeUpper.includes("FITTING") || nameUpper.includes("VALVE") || nameUpper.includes("TEE") || nameUpper.includes("J-TUBE") || nameUpper.includes("LINE TURN") || nameUpper.includes("FIELD JOINT")) {
                 category = "FITTING";
             } else if (typeUpper.includes("DEFECT") || typeUpper.includes("DAMAGE") || typeUpper.includes("ANOMALY") || r.has_anomaly) {
                 category = "DEFECT";
             }
 
-            const kpLabel = isNaN(kpNum) ? String(rawKp) : `KP ${kpNum.toFixed(3)}`;
-            const displayEvtName = idraw.eventName || idraw.event_name || (nameUpper.length > 0 && nameUpper.length < 35 ? nameUpper : `EVENT ${r.insp_id || ''}`);
+            const kpNumStr = isNaN(kpNum) ? "0.000" : kpNum.toFixed(3);
+            const kpLabel = `KP ${kpNumStr}`;
+            let displayEvtName = idraw.eventName || idraw.event_name || (nameUpper.length > 0 && nameUpper.length < 35 ? nameUpper : `EVENT ${r.insp_id || ''}`);
+            displayEvtName = displayEvtName.replace(/^EVENT\s*\d+\s*[-:]\s*/i, "").trim();
+
+            const posVal = idraw.eventPosition || idraw.event_position || idraw.eventPos || idraw.event_pos || idraw.position || idraw.event_pos_val || idraw.pos || idraw.clock_pos || idraw.clock_position || r.clock_pos || r.structure_components?.q_id || "";
+            const typeVal = idraw.eventType || idraw.event_type || idraw.type || idraw.category || r.inspection_type_name || r.inspection_type_code || (category !== "GENERAL" ? category : "");
+            const spanLen = parseFloat(idraw.span_length || idraw.spanLength || idraw.length || "0");
+            const spanH = parseFloat(idraw.span_height || idraw.spanHeight || idraw.gap_height || "0");
+            const burialD = parseFloat(idraw.burial_depth || idraw.burialDepth || idraw.depth_of_burial || "0");
+
+            // Format description with dimensions if span / burial exists and not already mentioned
+            let finalDesc = descRaw;
+            if (spanLen > 0 || spanH > 0) {
+                const dimStr = `LENGTH:${spanLen.toFixed(2)}m/${(spanLen * 3.28084).toFixed(2)}ft${spanH > 0 ? ` HEIGHT:${(spanH * 1000).toFixed(1)}mm/${(spanH * 39.3701).toFixed(2)}in` : ""}`;
+                if (!finalDesc || finalDesc === "-") {
+                    finalDesc = dimStr;
+                } else if (!finalDesc.toUpperCase().includes("LENGTH:")) {
+                    finalDesc = `${finalDesc} ${dimStr}`.trim();
+                }
+            } else if (burialD > 0) {
+                const burStr = `BURIAL DEPTH:${burialD.toFixed(2)}m/${(burialD * 3.28084).toFixed(2)}ft`;
+                if (!finalDesc || finalDesc === "-") {
+                    finalDesc = burStr;
+                }
+            }
 
             return {
                 id: r.insp_id || Math.random(),
                 kp: isNaN(kpNum) ? 0 : kpNum,
                 kpDisplay: kpLabel,
+                kpNumStr: kpNumStr,
                 eventName: displayEvtName,
-                eventType: idraw.eventType || idraw.event_type || category,
-                position: idraw.eventPosition || idraw.event_position || idraw.position || r.structure_components?.q_id || "-",
-                description: descRaw || "-",
-                spanLength: parseFloat(idraw.span_length || idraw.spanLength || idraw.length || "0"),
-                spanHeight: parseFloat(idraw.span_height || idraw.spanHeight || idraw.gap_height || "0"),
-                burialDepth: parseFloat(idraw.burial_depth || idraw.burialDepth || idraw.depth_of_burial || "0"),
+                eventType: String(typeVal === "-" ? "" : typeVal),
+                position: String(posVal === "-" ? "" : posVal),
+                description: finalDesc === "-" ? "" : finalDesc,
+                spanLength: spanLen,
+                spanHeight: spanH,
+                burialDepth: burialD,
                 northing: idraw.northing || idraw.n_coord || "-",
                 easting: idraw.easting || idraw.e_coord || "-",
                 cpReading: idraw.cp_reading || idraw.cp_rdg || idraw.cp || "",
                 category
             };
         })
+        .filter((e): e is PipelineEventItem => e !== null)
         .sort((a, b) => a.kp - b.kp);
 
-    // Fallback: If no inspection records are logged yet for this pipeline structure, fetch components or construct demo events
+    // Fallback: If no inspection records are logged yet for this pipeline structure, fetch components or construct clean demo events
     if (events.length === 0 && !config.printBlankReport) {
         let componentEvents: PipelineEventItem[] = [];
         try {
@@ -199,7 +247,7 @@ export const generatePipelineEventSketchReport = async (
                     componentEvents = comps.map((c: any, idx: number) => {
                         const compCode = String(c.code || c.q_id || "").toUpperCase();
                         const compName = c.name || c.q_id || `COMPONENT #${c.id}`;
-                        const kpVal = parseFloat(c.metadata?.kp || c.kp || String(idx * 0.2)) || (idx * 0.2);
+                        const kpVal = parseFloat(c.metadata?.kp || c.kp || String(idx * 0.005)) || (idx * 0.005);
                         
                         let category: PipelineEventItem["category"] = "GENERAL";
                         if (compCode.includes("SPAN")) category = "SPAN";
@@ -208,18 +256,19 @@ export const generatePipelineEventSketchReport = async (
                         else if (compCode.includes("CROSS")) category = "CROSSING";
                         else if (compCode.includes("AN")) category = "ANODE";
                         else if (compCode.includes("CP")) category = "CP";
-                        else if (compCode.includes("VALVE") || compCode.includes("TEE") || compCode.includes("FLG")) category = "FITTING";
+                        else if (compCode.includes("VALVE") || compCode.includes("TEE") || compCode.includes("FLG") || compCode.includes("JTUBE")) category = "FITTING";
 
                         return {
                             id: c.id,
                             kp: kpVal,
                             kpDisplay: `KP ${kpVal.toFixed(3)}`,
+                            kpNumStr: kpVal.toFixed(3),
                             eventName: compName,
                             eventType: c.code || category,
-                            position: c.q_id || `POS ${idx + 1}`,
-                            description: c.metadata?.description || c.description || `Pipeline component ${compName}`,
-                            spanLength: category === "SPAN" ? 15 : 0,
-                            spanHeight: category === "SPAN" ? 0.5 : 0,
+                            position: c.q_id || "",
+                            description: c.metadata?.description || c.description || "",
+                            spanLength: category === "SPAN" ? 4.0 : 0,
+                            spanHeight: category === "SPAN" ? 0.4 : 0,
                             burialDepth: category === "BURIAL" ? 1.2 : 0,
                             northing: c.metadata?.northing || "-",
                             easting: c.metadata?.easting || "-",
@@ -239,81 +288,85 @@ export const generatePipelineEventSketchReport = async (
                     id: 101,
                     kp: 0.000,
                     kpDisplay: "KP 0.000",
-                    eventName: "Riser Connection / KP Start",
-                    eventType: "Riser / Flange",
-                    position: "Pipeline Start",
-                    description: "Riser spool flange connection at platform base.",
+                    kpNumStr: "0.000",
+                    eventName: "J-TUBE",
+                    eventType: "Clamps & Supports",
+                    position: "RISER BEND",
+                    description: "Riser bend suspended from the seabed approx. 400mm",
                     spanLength: 0,
                     spanHeight: 0,
                     burialDepth: 0,
-                    northing: "450123.50",
-                    easting: "112450.20",
-                    cpReading: "-1020 mV",
                     category: "FITTING"
                 },
                 {
                     id: 102,
-                    kp: 0.180,
-                    kpDisplay: "KP 0.180",
-                    eventName: "Pipeline Free Span #01",
-                    eventType: "Free Span",
-                    position: "Under Pipe",
-                    description: "Unsupported pipeline span over seabed depression. Length: 12.5m, Max Gap: 0.45m.",
-                    spanLength: 12.5,
-                    spanHeight: 0.45,
+                    kp: 0.000,
+                    kpDisplay: "KP 0.000",
+                    kpNumStr: "0.000",
+                    eventName: "SPAN STARTS",
+                    eventType: "Seabed Profile (Span)",
+                    position: "STARTS",
+                    description: "Pipeline free span start detected",
+                    spanLength: 4.0,
+                    spanHeight: 0.4,
                     burialDepth: 0,
-                    northing: "450280.10",
-                    easting: "112590.80",
-                    cpReading: "",
                     category: "SPAN"
                 },
                 {
                     id: 103,
-                    kp: 0.420,
-                    kpDisplay: "KP 0.420",
-                    eventName: "Concrete Mattress Stabilizer",
-                    eventType: "Stabilizer",
-                    position: "Over Pipe",
-                    description: "Concrete mattress installed over pipeline for stabilization.",
-                    spanLength: 0,
-                    spanHeight: 0,
+                    kp: 0.004,
+                    kpDisplay: "KP 0.004",
+                    kpNumStr: "0.004",
+                    eventName: "SPAN ENDS",
+                    eventType: "Seabed Profile (Span)",
+                    position: "ENDS",
+                    description: "LENGTH:4.00m/13.12ft HEIGHT:400.0mm/15.75in",
+                    spanLength: 4.0,
+                    spanHeight: 0.4,
                     burialDepth: 0,
-                    northing: "450490.30",
-                    easting: "112810.40",
-                    cpReading: "",
-                    category: "STABILIZER"
+                    category: "SPAN"
                 },
                 {
                     id: 104,
-                    kp: 0.650,
-                    kpDisplay: "KP 0.650",
-                    eventName: "Buried Section #01",
-                    eventType: "Burial",
-                    position: "In Seabed",
-                    description: "Pipeline covered under natural seabed sediment. Depth of burial: 1.15m.",
-                    spanLength: 0,
-                    spanHeight: 0,
-                    burialDepth: 1.15,
-                    northing: "450710.60",
-                    easting: "113020.90",
-                    cpReading: "",
-                    category: "BURIAL"
-                },
-                {
-                    id: 105,
-                    kp: 0.890,
-                    kpDisplay: "KP 0.890",
-                    eventName: "Bracelet Anode AN-04",
-                    eventType: "Anode",
-                    position: "Pipeline Body",
-                    description: "Half-shell bracelet zinc anode attached. 15% estimated depletion.",
+                    kp: 0.004,
+                    kpDisplay: "KP 0.004",
+                    kpNumStr: "0.004",
+                    eventName: "LINE TURN",
+                    eventType: "Routing / Alignment",
+                    position: "PIPE BODY",
+                    description: "TOWARDS PORT SIDE",
                     spanLength: 0,
                     spanHeight: 0,
                     burialDepth: 0,
-                    northing: "450940.20",
-                    easting: "113240.10",
-                    cpReading: "-1045 mV",
+                    category: "GENERAL"
+                },
+                {
+                    id: 105,
+                    kp: 0.026,
+                    kpDisplay: "KP 0.026",
+                    kpNumStr: "0.026",
+                    eventName: "ANODE",
+                    eventType: "Cathodic Protection",
+                    position: "TOP OF PIPE",
+                    description: "Bracelet zinc anode attached. 10% depletion.",
+                    spanLength: 0,
+                    spanHeight: 0,
+                    burialDepth: 0,
                     category: "ANODE"
+                },
+                {
+                    id: 106,
+                    kp: 0.033,
+                    kpDisplay: "KP 0.033",
+                    kpNumStr: "0.033",
+                    eventName: "FIELD JOINT",
+                    eventType: "Joint / Wrap",
+                    position: "CIRCUMFERENTIAL",
+                    description: "TAPE WRAP IN GOOD CONDITION",
+                    spanLength: 0,
+                    spanHeight: 0,
+                    burialDepth: 0,
+                    category: "FITTING"
                 }
             ];
             events.push(...demoEvents);
@@ -365,9 +418,9 @@ export const generatePipelineEventSketchReport = async (
         try { contractorLogo = await loadLogoWithTransparency(logoUrl); } catch (_) {}
     }
 
-    // ── 4. Drawing Components ────────────────────────────────────────────────
+    // ── 4. Drawing Header Components ─────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const headerH = 20;
+        const headerH = 18;
         if (isPrintFriendly) {
             d.setDrawColor(...colors.navy); d.setLineWidth(0.3); d.rect(margin, margin, contentWidth, headerH, "S");
             d.setTextColor(...colors.navy);
@@ -376,20 +429,20 @@ export const generatePipelineEventSketchReport = async (
             d.setTextColor(255, 255, 255);
         }
 
-        if (clientLogo) drawLogo(d, clientLogo, 16, 15, pageWidth - margin - 18, margin + 2.5, "right", "center");
-        if (contractorLogo) drawLogo(d, contractorLogo, 16, 15, margin + 2, margin + 2.5, "left", "center");
+        if (clientLogo) drawLogo(d, clientLogo, 16, 14, pageWidth - margin - 18, margin + 2, "right", "center");
+        if (contractorLogo) drawLogo(d, contractorLogo, 16, 14, margin + 2, margin + 2, "left", "center");
+
+        d.setFontSize(10.5); d.setFont("helvetica", "bold");
+        d.text((companySettings.company_name || "OFFSHORE INSPECTION DIVISION").toUpperCase(), margin + (contentWidth / 2), margin + 4.5, { align: "center" });
+        d.setFontSize(7.5); d.setFont("helvetica", "normal");
+        d.text(companySettings.department_name || companySettings.departmentName || "Inspection Department", margin + (contentWidth / 2), margin + 9, { align: "center" });
 
         d.setFontSize(11); d.setFont("helvetica", "bold");
-        d.text((companySettings.company_name || "OFFSHORE INSPECTION DIVISION").toUpperCase(), margin + (contentWidth / 2), margin + 5, { align: "center" });
-        d.setFontSize(8); d.setFont("helvetica", "normal");
-        d.text(companySettings.department_name || companySettings.departmentName || "Engineering & Technical Division", margin + (contentWidth / 2), margin + 10, { align: "center" });
-
-        d.setFontSize(12); d.setFont("helvetica", "bold");
-        d.text("PIPELINE NAVIGATION EVENT SKETCH REPORT", margin + (contentWidth / 2), margin + 16, { align: "center" });
+        d.text("PIPELINE NAVIGATION EVENT SKETCH REPORT", margin + (contentWidth / 2), margin + 14.5, { align: "center" });
     };
 
     const drawSubHeader = (d: jsPDF, startY: number): number => {
-        const rowH = 5.5;
+        const rowH = 5;
         const hData = config.headerData || {};
 
         const structName = structure?.str_name || structure?.name || hData.platformName || "N/A";
@@ -422,10 +475,10 @@ export const generatePipelineEventSketchReport = async (
             d.setDrawColor(...colors.border); d.setLineWidth(0.1);
             if (!isPrintFriendly) d.setFillColor(...colors.lightGray);
             d.rect(x, startY, colW, rowH, isPrintFriendly ? "S" : "FD");
-            d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
-            d.text(f.label, x + 2, startY + 3.8);
+            d.setTextColor(...colors.text); d.setFontSize(7); d.setFont("helvetica", "bold");
+            d.text(f.label, x + 2, startY + 3.4);
             d.setFont("helvetica", "normal");
-            d.text(String(f.value), x + 38, startY + 3.8);
+            d.text(String(f.value), x + 36, startY + 3.4);
         });
 
         // Row 2
@@ -435,13 +488,13 @@ export const generatePipelineEventSketchReport = async (
             d.setDrawColor(...colors.border); d.setLineWidth(0.1);
             if (!isPrintFriendly) d.setFillColor(...colors.lightGray);
             d.rect(x, y, colW, rowH, isPrintFriendly ? "S" : "FD");
-            d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
-            d.text(f.label, x + 2, y + 3.8);
+            d.setTextColor(...colors.text); d.setFontSize(7); d.setFont("helvetica", "bold");
+            d.text(f.label, x + 2, y + 3.4);
             d.setFont("helvetica", "normal");
-            d.text(String(f.value), x + 38, y + 3.8);
+            d.text(String(f.value), x + 36, y + 3.4);
         });
 
-        return startY + rowH * 2 + 1.5;
+        return startY + rowH * 2 + 1.2;
     };
 
     const drawGeodeticBlock = (d: jsPDF, startY: number): number => {
@@ -465,7 +518,7 @@ export const generatePipelineEventSketchReport = async (
             margin: { left: margin, right: margin },
             head: [
                 [
-                    { content: "GEODETIC PARAMETERS & NAVIGATION REFERENCE", colSpan: 6, styles: { fillColor: isPrintFriendly ? [230, 230, 230] : [31, 55, 93], textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontStyle: "bold", halign: "center", fontSize: 7.5 } }
+                    { content: "GEODETIC PARAMETERS & NAVIGATION REFERENCE", colSpan: 6, styles: { fillColor: isPrintFriendly ? [230, 230, 230] : [31, 55, 93], textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontStyle: "bold", halign: "center", fontSize: 7 } }
                 ]
             ],
             body: [
@@ -486,46 +539,45 @@ export const generatePipelineEventSketchReport = async (
                 ]
             ] as any,
             theme: "grid",
-            styles: { fontSize: 7, cellPadding: 1.2, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [30, 41, 59] }
+            styles: { fontSize: 6.5, cellPadding: 1, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [30, 41, 59] }
         });
 
-        return (d as any).lastAutoTable.finalY + 1.5;
+        return (d as any).lastAutoTable.finalY + 1.2;
     };
 
     const drawLegendBlock = (d: jsPDF, startY: number): number => {
-        const legendH = 8.5;
+        const legendH = 7.5;
         d.setDrawColor(...colors.border); d.setLineWidth(0.1);
         d.setFillColor(255, 255, 255);
         d.rect(margin, startY, contentWidth, legendH, "FD");
 
-        d.setFontSize(7.5); d.setFont("helvetica", "bold"); d.setTextColor(...colors.navy);
-        d.text("EVENT LEGENDS:", margin + 3, startY + 5.5);
+        d.setFontSize(7); d.setFont("helvetica", "bold"); d.setTextColor(...colors.navy);
+        d.text("EVENT LEGENDS:", margin + 2.5, startY + 4.8);
 
         const legends = [
-            { label: "Span (Under)", color: colors.span, sym: "🚩" },
-            { label: "Burial (Over)", color: colors.burial, sym: "⛰️" },
-            { label: "Stabilizer", color: colors.stabilizer, sym: "🧱" },
-            { label: "Crossing", color: colors.crossing, sym: "🔀" },
-            { label: "CP Reading", color: colors.cp, sym: "🔵" },
-            { label: "Anode", color: colors.anode, sym: "🟩" },
-            { label: "Debris", color: colors.debris, sym: "🟧" },
-            { label: "Fitting/Valve", color: colors.fitting, sym: "🟣" },
-            { label: "Anomaly/Defect", color: colors.defect, sym: "🔺" },
+            { label: "Span (Under)", color: colors.span },
+            { label: "Burial (Over)", color: colors.burial },
+            { label: "Stabilizer", color: colors.stabilizer },
+            { label: "Crossing", color: colors.crossing },
+            { label: "CP Reading", color: colors.cp },
+            { label: "Anode / Event", color: colors.anode },
+            { label: "Debris", color: colors.debris },
+            { label: "Fitting / Joint", color: colors.fitting },
         ];
 
-        let curX = margin + 32;
+        let curX = margin + 28;
         legends.forEach(item => {
             d.setFillColor(...item.color);
-            d.rect(curX, startY + 2.5, 3.5, 3.5, "F");
+            d.rect(curX, startY + 2.2, 3.2, 3.2, "F");
             d.setDrawColor(0, 0, 0); d.setLineWidth(0.1);
-            d.rect(curX, startY + 2.5, 3.5, 3.5, "S");
+            d.rect(curX, startY + 2.2, 3.2, 3.2, "S");
 
-            d.setFontSize(6.8); d.setFont("helvetica", "normal"); d.setTextColor(...colors.text);
-            d.text(item.label, curX + 4.5, startY + 5.2);
-            curX += 26.5;
+            d.setFontSize(6.5); d.setFont("helvetica", "normal"); d.setTextColor(...colors.text);
+            d.text(item.label, curX + 4.2, startY + 4.6);
+            curX += 30;
         });
 
-        return startY + legendH + 2;
+        return startY + legendH + 1.5;
     };
 
     // ── 5. Multi-Track Serpentine Ribbon Page Generation Loop ────────────────
@@ -538,7 +590,7 @@ export const generatePipelineEventSketchReport = async (
         if (pageIdx > 0) doc.addPage("a4", "l");
 
         drawHeader(doc);
-        let currentY = margin + 21.5;
+        let currentY = margin + 19.5;
         currentY = drawSubHeader(doc, currentY);
         if (pageIdx === 0 && geodeticData) {
             currentY = drawGeodeticBlock(doc, currentY);
@@ -553,17 +605,15 @@ export const generatePipelineEventSketchReport = async (
             if (trackEvents.length === 0) continue;
 
             const trackGlobalNum = pageIdx * tracksPerPage + trackIdx + 1;
-            const startGlobalIdx = pageIdx * eventsPerPage + trackIdx * eventsPerTrack + 1;
-
             const trackMinKp = Math.min(...trackEvents.map(e => e.kp));
             const trackMaxKp = Math.max(...trackEvents.map(e => e.kp));
-            const kpSpan = Math.max(0.02, trackMaxKp - trackMinKp);
+            const kpSpan = Math.max(0.005, trackMaxKp - trackMinKp);
 
             // Track Container Y Setup
             const trackStartY = currentY;
 
             // ── Track Header Banner ─────────────────────────────────────────
-            const bannerH = 4.2;
+            const bannerH = 3.8;
             if (isPrintFriendly) {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.2);
                 doc.rect(margin, trackStartY, contentWidth, bannerH, "S");
@@ -573,46 +623,51 @@ export const generatePipelineEventSketchReport = async (
                 doc.rect(margin, trackStartY, contentWidth, bannerH, "F");
                 doc.setTextColor(255, 255, 255);
             }
-            doc.setFontSize(7); doc.setFont("helvetica", "bold");
-            doc.text(`TRACK #${trackGlobalNum} — PIPELINE PROFILE & EVENTS (KP ${trackMinKp.toFixed(3)} TO KP ${trackMaxKp.toFixed(3)})`, margin + 3, trackStartY + 3);
-            doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
-            doc.text(`${trackEvents.length} Events in Segment`, margin + contentWidth - 3, trackStartY + 3, { align: "right" });
+            doc.setFontSize(6.8); doc.setFont("helvetica", "bold");
+            doc.text(`TRACK #${trackGlobalNum} — PIPELINE PROFILE & EVENTS (KP ${trackMinKp.toFixed(3)} TO KP ${trackMaxKp.toFixed(3)})`, margin + 2.5, trackStartY + 2.7);
+            doc.setFontSize(6.2); doc.setFont("helvetica", "normal");
+            doc.text(`${trackEvents.length} Events`, margin + contentWidth - 2.5, trackStartY + 2.7, { align: "right" });
 
-            // ── Track Pipe Canvas Graphic Section ────────────────────────────
+            // ── Track Pipe Canvas Graphic Section (Pic 1 Style) ──────────────
             const canvasY = trackStartY + bannerH;
-            const canvasH = 17;
+            const canvasH = 14;
 
             doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
-            doc.setFillColor(252, 253, 255);
+            doc.setFillColor(255, 255, 255);
             doc.rect(margin, canvasY, contentWidth, canvasH, "FD");
 
             // Pipe Line Axis Y (Centered inside canvas)
-            const pipeY = canvasY + 9;
-            const graphMarginX = 18;
+            const pipeY = canvasY + 6.5;
+            const graphMarginX = 14;
             const graphXStart = margin + graphMarginX;
             const graphXEnd = margin + contentWidth - graphMarginX;
             const graphW = graphXEnd - graphXStart;
 
-            // Draw Slate Metallic Pipe Body
-            doc.setFillColor(148, 163, 184);
-            doc.rect(graphXStart, pipeY - 1.5, graphW, 3, "F");
-            doc.setDrawColor(51, 65, 85); doc.setLineWidth(0.25);
-            doc.line(graphXStart, pipeY - 1.5, graphXEnd, pipeY - 1.5);
-            doc.line(graphXStart, pipeY + 1.5, graphXEnd, pipeY + 1.5);
+            // Draw Pipe Body (Metallic Gray fill with outline - Pic 1 Style)
+            doc.setFillColor(203, 213, 225); // Slate 300 fill
+            doc.rect(graphXStart, pipeY - 1.8, graphW, 3.6, "F");
+            doc.setDrawColor(30, 41, 59); doc.setLineWidth(0.3);
+            doc.line(graphXStart, pipeY - 1.8, graphXEnd, pipeY - 1.8);
+            doc.line(graphXStart, pipeY + 1.8, graphXEnd, pipeY + 1.8);
+
+            // Draw 3D Pipe End Cylinder opening on the left (Pic 1 Style)
+            doc.setFillColor(241, 245, 249);
+            doc.ellipse(graphXStart - 0.5, pipeY - 0.9, 1.2, 0.9, "FD");
+            doc.ellipse(graphXStart - 0.5, pipeY + 0.9, 1.2, 0.9, "FD");
 
             // KP Scale Line & Major Ticks
-            doc.setDrawColor(...colors.muted); doc.setLineWidth(0.15);
-            doc.line(graphXStart, pipeY + 4.5, graphXEnd, pipeY + 4.5);
-            dText(doc, `KP ${trackMinKp.toFixed(3)}`, graphXStart, pipeY + 7.5, "center");
-            dText(doc, `KP ${((trackMinKp + trackMaxKp) / 2).toFixed(3)}`, graphXStart + graphW / 2, pipeY + 7.5, "center");
-            dText(doc, `KP ${trackMaxKp.toFixed(3)}`, graphXEnd, pipeY + 7.5, "center");
+            doc.setDrawColor(...colors.muted); doc.setLineWidth(0.12);
+            doc.line(graphXStart, pipeY + 4.2, graphXEnd, pipeY + 4.2);
+            dText(doc, `KP ${trackMinKp.toFixed(3)}`, graphXStart, pipeY + 6.5, "center");
+            dText(doc, `KP ${((trackMinKp + trackMaxKp) / 2).toFixed(3)}`, graphXStart + graphW / 2, pipeY + 6.5, "center");
+            dText(doc, `KP ${trackMaxKp.toFixed(3)}`, graphXEnd, pipeY + 6.5, "center");
 
             [0, 0.25, 0.5, 0.75, 1].forEach(pct => {
                 const tx = graphXStart + pct * graphW;
-                doc.line(tx, pipeY + 3.8, tx, pipeY + 5.2);
+                doc.line(tx, pipeY + 3.6, tx, pipeY + 4.8);
             });
 
-            // ── Render Continuous Span Intervals on Track ─────────────────
+            // ── Render Span Intervals as Orange Dashed Bracket (Pic 1 Style) ──
             spanIntervals.forEach(spanInt => {
                 if (spanInt.startKp <= trackMaxKp && spanInt.endKp >= trackMinKp) {
                     const effStartKp = Math.max(spanInt.startKp, trackMinKp);
@@ -623,38 +678,24 @@ export const generatePipelineEventSketchReport = async (
 
                     const sx1 = graphXStart + pctStart * graphW;
                     const sx2 = graphXStart + pctEnd * graphW;
-                    const dropY = pipeY + 3.8;
+                    const dropY = pipeY + 3.5;
 
                     doc.setDrawColor(colors.span[0], colors.span[1], colors.span[2]);
-                    doc.setLineWidth(0.5);
+                    doc.setLineWidth(0.4);
+
+                    // Left vertical drop line
+                    doc.line(sx1, pipeY + 1.8, sx1, dropY);
+                    // Right vertical drop line
+                    doc.line(sx2, dropY, sx2, pipeY + 1.8);
+
+                    // Dashed horizontal span line underneath pipe (Pic 1 Style)
+                    doc.setLineDashPattern([1.5, 1], 0);
                     doc.line(sx1, dropY, sx2, dropY);
-
-                    // Left vertical cap (only if span actually starts in this track)
-                    const isStartInTrack = spanInt.startKp >= trackMinKp;
-                    if (isStartInTrack) {
-                        doc.line(sx1, pipeY + 1.5, sx1, dropY);
-                    } else {
-                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.span);
-                        doc.text("« CONT.", Math.max(margin + 2, sx1 - 10), dropY + 1);
-                    }
-
-                    // Right vertical cap (only if span actually ends in this track)
-                    const isEndInTrack = spanInt.endKp <= trackMaxKp;
-                    if (isEndInTrack) {
-                        doc.line(sx2, dropY, sx2, pipeY + 1.5);
-                    } else {
-                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.span);
-                        doc.text("CONT. »", Math.min(margin + contentWidth - 2, sx2 + 1), dropY + 1);
-                    }
-
-                    if (sx2 - sx1 > 10) {
-                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.span);
-                        doc.text(`SPAN (${spanInt.lengthM.toFixed(1)}m)`, (sx1 + sx2) / 2, dropY + 2.5, { align: "center" });
-                    }
+                    doc.setLineDashPattern([], 0); // Reset dash
                 }
             });
 
-            // ── Render Continuous Burial Cover Intervals on Track ──────────
+            // ── Render Burial Cover Intervals as Brown Dashed Line ────────────
             burialIntervals.forEach(burialInt => {
                 if (burialInt.startKp <= trackMaxKp && burialInt.endKp >= trackMinKp) {
                     const effStartKp = Math.max(burialInt.startKp, trackMinKp);
@@ -665,155 +706,209 @@ export const generatePipelineEventSketchReport = async (
 
                     const bx1 = graphXStart + pctStart * graphW;
                     const bx2 = graphXStart + pctEnd * graphW;
-                    const coverY = pipeY - 3.8;
+                    const coverY = pipeY - 3.5;
 
                     doc.setDrawColor(colors.burial[0], colors.burial[1], colors.burial[2]);
-                    doc.setLineWidth(0.5);
+                    doc.setLineWidth(0.4);
+
+                    doc.line(bx1, pipeY - 1.8, bx1, coverY);
+                    doc.line(bx2, coverY, bx2, pipeY - 1.8);
+
+                    doc.setLineDashPattern([1.5, 1], 0);
                     doc.line(bx1, coverY, bx2, coverY);
-
-                    // Left vertical cap (only if burial starts in this track)
-                    const isStartInTrack = burialInt.startKp >= trackMinKp;
-                    if (isStartInTrack) {
-                        doc.line(bx1, pipeY - 1.5, bx1, coverY);
-                    } else {
-                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.burial);
-                        doc.text("« CONT.", Math.max(margin + 2, bx1 - 10), coverY - 0.5);
-                    }
-
-                    // Right vertical cap (only if burial ends in this track)
-                    const isEndInTrack = burialInt.endKp <= trackMaxKp;
-                    if (isEndInTrack) {
-                        doc.line(bx2, coverY, bx2, pipeY - 1.5);
-                    } else {
-                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.burial);
-                        doc.text("CONT. »", Math.min(margin + contentWidth - 2, bx2 + 1), coverY - 0.5);
-                    }
-
-                    if (bx2 - bx1 > 10) {
-                        doc.setFontSize(4.8); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.burial);
-                        doc.text(`BURIAL (${burialInt.lengthM.toFixed(1)}m)`, (bx1 + bx2) / 2, coverY - 1.2, { align: "center" });
-                    }
+                    doc.setLineDashPattern([], 0);
                 }
             });
 
-            // Track placed flag badge X coordinates to prevent overlaps
-            const placedFlags: { x: number; level: number }[] = [];
-
-            // Render Events on Track Graphic
+            // ── Render Symbols on Pipe (Pic 1 Style: Magenta Crosshairs, Arrows, Brackets) ──
             trackEvents.forEach((evt, idx) => {
-                const globalMarkerIdx = startGlobalIdx + idx;
                 const pct = kpSpan === 0 ? (idx + 0.5) / trackEvents.length : Math.min(1, Math.max(0, (evt.kp - trackMinKp) / kpSpan));
                 const evtX = graphXStart + pct * graphW;
 
-                const categoryKey = (evt.category.toLowerCase() as keyof typeof colors);
-                const categoryColor: [number, number, number] = colors[categoryKey] || colors.general;
+                // Top tick leader line down to pipe
+                doc.setDrawColor(30, 41, 59); doc.setLineWidth(0.25);
+                doc.line(evtX, canvasY + 0.5, evtX, pipeY - 1.8);
 
-                // Stabilizer Concrete Block
-                if (evt.category === "STABILIZER") {
-                    doc.setFillColor(colors.stabilizer[0], colors.stabilizer[1], colors.stabilizer[2]);
-                    doc.rect(evtX - 4, pipeY + 1.8, 8, 2.2, "F");
+                if (evt.category === "SPAN") {
+                    // Span marker tick or bracket
+                    doc.setDrawColor(colors.span[0], colors.span[1], colors.span[2]); doc.setLineWidth(0.4);
+                    doc.line(evtX, pipeY + 1.8, evtX, pipeY + 3.5);
+                } else if (evt.category === "CROSSING" || evt.eventName.toUpperCase().includes("LINE TURN")) {
+                    // Double arrow symbol <-> on pipe
+                    doc.setDrawColor(168, 85, 247); doc.setLineWidth(0.4);
+                    doc.line(evtX - 2.5, pipeY, evtX + 2.5, pipeY);
+                    // Left arrow tip
+                    doc.line(evtX - 2.5, pipeY, evtX - 1.5, pipeY - 1);
+                    doc.line(evtX - 2.5, pipeY, evtX - 1.5, pipeY + 1);
+                    // Right arrow tip
+                    doc.line(evtX + 2.5, pipeY, evtX + 1.5, pipeY - 1);
+                    doc.line(evtX + 2.5, pipeY, evtX + 1.5, pipeY + 1);
+                } else if (evt.category === "STABILIZER") {
+                    // Stabilizer block on pipe
+                    doc.setFillColor(107, 114, 128);
+                    doc.rect(evtX - 3, pipeY - 2.5, 6, 5, "F");
+                } else if (evt.eventName.toUpperCase().includes("JOINT") || evt.category === "DEFECT") {
+                    // Joint / End Bracket ][ marker
+                    doc.setDrawColor(30, 41, 59); doc.setLineWidth(0.5);
+                    doc.line(evtX - 1.2, pipeY - 1.8, evtX - 1.2, pipeY + 1.8);
+                    doc.line(evtX + 1.2, pipeY - 1.8, evtX + 1.2, pipeY + 1.8);
+                    doc.line(evtX - 1.2, pipeY - 1.8, evtX - 0.4, pipeY - 1.8);
+                    doc.line(evtX - 1.2, pipeY + 1.8, evtX - 0.4, pipeY + 1.8);
+                    doc.line(evtX + 1.2, pipeY - 1.8, evtX + 0.4, pipeY - 1.8);
+                    doc.line(evtX + 1.2, pipeY + 1.8, evtX + 0.4, pipeY + 1.8);
+                } else {
+                    // Magenta Crosshair Circle (Pic 1 Style for Anodes / Point Events)
+                    doc.setDrawColor(217, 70, 239); doc.setLineWidth(0.35);
+                    doc.circle(evtX, pipeY, 1.8, "S");
+                    doc.line(evtX - 1.8, pipeY, evtX + 1.8, pipeY);
+                    doc.line(evtX, pipeY - 1.8, evtX, pipeY + 1.8);
                 }
+            });
 
-                // Pipeline Crossing Mark
-                if (evt.category === "CROSSING") {
-                    doc.setDrawColor(colors.crossing[0], colors.crossing[1], colors.crossing[2]); doc.setLineWidth(0.6);
-                    doc.line(evtX - 3, pipeY - 4, evtX + 3, pipeY + 4);
-                    doc.line(evtX - 3, pipeY + 4, evtX + 3, pipeY - 4);
-                }
+            // ── Track Attached Event Details (Pic 1 Style: Small Boxes / Cards in 4 Columns) ──
+            const boxesStartY = canvasY + canvasH;
+            const cols = 4;
+            const boxW = contentWidth / cols; // 69.25mm per box
+            const boxHeaderH = 4.2;
 
-                // Non-Overlapping Flag Pin Logic
-                let level = 1;
-                for (const prev of placedFlags) {
-                    if (Math.abs(prev.x - evtX) < 12) {
-                        level = prev.level === 1 ? 2 : 1;
+            // Render event boxes in rows of 4
+            const numRows = Math.ceil(trackEvents.length / cols);
+            let currentBoxRowY = boxesStartY;
+
+            for (let rIdx = 0; rIdx < numRows; rIdx++) {
+                const rowEvts = trackEvents.slice(rIdx * cols, (rIdx + 1) * cols);
+
+                // Sub-column widths
+                const kpColW = 11.5;
+                const evtColW = 28.5;
+                const descColW = boxW - kpColW - evtColW;
+
+                // Calculate required content height for this row of boxes
+                let maxContentLines = 2;
+                rowEvts.forEach(evt => {
+                    const nameLines = doc.splitTextToSize(evt.eventName.toUpperCase(), evtColW - 2.5);
+                    let evtLinesCount = nameLines.length;
+
+                    const typeText = evt.eventType && evt.eventType !== "-" && evt.eventType.toUpperCase() !== evt.eventName.toUpperCase()
+                        ? `Type: ${evt.eventType}`
+                        : "";
+                    if (typeText) {
+                        const typeLines = doc.splitTextToSize(typeText, evtColW - 2.5);
+                        evtLinesCount += typeLines.length;
                     }
-                }
-                placedFlags.push({ x: evtX, level });
 
-                const stemY = pipeY - (level === 1 ? 6.5 : 7.8);
-
-                doc.setDrawColor(categoryColor[0], categoryColor[1], categoryColor[2]); doc.setLineWidth(0.35);
-                doc.line(evtX, pipeY - 1.5, evtX, stemY);
-
-                // Circular Badge Pin with Event Global Index
-                doc.setFillColor(categoryColor[0], categoryColor[1], categoryColor[2]);
-                doc.circle(evtX, stemY, 2.2, "F");
-                doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.15);
-                doc.circle(evtX, stemY, 2.2, "S");
-
-                doc.setFontSize(5.2); doc.setFont("helvetica", "bold"); doc.setTextColor(255, 255, 255);
-                doc.text(String(globalMarkerIdx), evtX, stemY + 0.8, { align: "center" });
-            });
-
-            // ── Track Attached Event Details Table ───────────────────────────
-            const tableStartY = canvasY + canvasH;
-
-            const tableBody = trackEvents.map((evt, idx) => {
-                const globalMarkerIdx = startGlobalIdx + idx;
-                const posStr = evt.position && evt.position !== "-" ? evt.position : evt.northing !== "-" ? `N:${evt.northing}` : "-";
-                const typeStr = evt.eventType !== evt.eventName ? `${evt.eventType}` : evt.category;
-                return [
-                    `[${globalMarkerIdx}]`,
-                    evt.kpDisplay,
-                    `${evt.eventName} (${typeStr})`,
-                    posStr,
-                    evt.description
-                ];
-            });
-
-            autoTable(doc, {
-                startY: tableStartY,
-                margin: { left: margin, right: margin },
-                head: [
-                    [
-                        { content: "#", styles: { halign: "center" } },
-                        { content: "KP / FP", styles: { halign: "left" } },
-                        { content: "EVENT NAME & TYPE", styles: { halign: "left" } },
-                        { content: "POSITION / COORD", styles: { halign: "left" } },
-                        { content: "DESCRIPTION / FINDINGS & OBSERVATIONS", styles: { halign: "left" } }
-                    ]
-                ],
-                body: tableBody as any,
-                theme: "grid",
-                headStyles: {
-                    fillColor: isPrintFriendly ? [240, 240, 240] : [31, 55, 93],
-                    textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-                    fontSize: 6.5,
-                    fontStyle: "bold",
-                    cellPadding: 1,
-                    lineColor: [200, 200, 200],
-                    lineWidth: 0.1
-                },
-                styles: {
-                    fontSize: 6.2,
-                    cellPadding: 1,
-                    textColor: [30, 41, 59],
-                    lineColor: [215, 220, 230],
-                    lineWidth: 0.1,
-                    valign: "middle",
-                    minCellHeight: 3.5
-                },
-                columnStyles: {
-                    0: { cellWidth: 10, halign: "center", fontStyle: "bold" },
-                    1: { cellWidth: 20, fontStyle: "bold" },
-                    2: { cellWidth: 52 },
-                    3: { cellWidth: 32 },
-                    4: { cellWidth: "auto" }
-                },
-                didParseCell: (data) => {
-                    if (data.section === "body" && data.column.index === 0) {
-                        const rowIdx = data.row.index;
-                        const evt = trackEvents[rowIdx];
-                        if (evt) {
-                            const catKey = (evt.category.toLowerCase() as keyof typeof colors);
-                            const catCol = colors[catKey] || colors.navy;
-                            data.cell.styles.textColor = catCol as [number, number, number];
-                        }
+                    const posText = evt.position && evt.position !== "-"
+                        ? `Pos: ${evt.position}`
+                        : "";
+                    if (posText) {
+                        const posLines = doc.splitTextToSize(posText, evtColW - 2.5);
+                        evtLinesCount += posLines.length;
                     }
-                }
-            });
 
-            currentY = (doc as any).lastAutoTable.finalY + 3;
+                    const descText = evt.description && evt.description !== "-" ? evt.description : "-";
+                    const descLines = doc.splitTextToSize(descText.toUpperCase(), descColW - 2.5);
+
+                    maxContentLines = Math.max(maxContentLines, evtLinesCount, descLines.length);
+                });
+
+                const contentH = Math.max(8.5, Math.min(22, maxContentLines * 2.4 + 2.2));
+                const totalBoxH = boxHeaderH + contentH;
+
+                rowEvts.forEach((evt, cIdx) => {
+                    const boxX = margin + cIdx * boxW;
+
+                    // Box Border & Structure
+                    doc.setDrawColor(...colors.darkBorder);
+                    doc.setLineWidth(0.25);
+
+                    // 1. Box Header Bar (Gray fill `#d1d5db` with bold labels: KP | Event | Description)
+                    doc.setFillColor(209, 213, 219); // Crisp Light Slate Gray
+                    doc.rect(boxX, currentBoxRowY, boxW, boxHeaderH, "FD");
+
+                    doc.line(boxX + kpColW, currentBoxRowY, boxX + kpColW, currentBoxRowY + boxHeaderH);
+                    doc.line(boxX + kpColW + evtColW, currentBoxRowY, boxX + kpColW + evtColW, currentBoxRowY + boxHeaderH);
+
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFontSize(6.5);
+                    doc.setFont("helvetica", "bold");
+                    doc.text("KP", boxX + 1.5, currentBoxRowY + 3.0);
+                    doc.text("Event", boxX + kpColW + 1.5, currentBoxRowY + 3.0);
+                    doc.text("Description", boxX + kpColW + evtColW + 1.5, currentBoxRowY + 3.0);
+
+                    // 2. Box Data Area
+                    const dataY = currentBoxRowY + boxHeaderH;
+                    doc.setFillColor(255, 255, 255);
+                    doc.rect(boxX, dataY, boxW, contentH, "FD");
+
+                    // Sub-column data vertical dividers
+                    doc.line(boxX + kpColW, dataY, boxX + kpColW, dataY + contentH);
+                    doc.line(boxX + kpColW + evtColW, dataY, boxX + kpColW + evtColW, dataY + contentH);
+
+                    // Fill KP Value
+                    doc.setFontSize(5.8);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(evt.kpNumStr, boxX + 1.2, dataY + 3.2);
+
+                    // Fill Event Column (Event Name, Event Type, Event Pos)
+                    let curEvtY = dataY + 3.0;
+
+                    // Event Name
+                    doc.setFontSize(5.5);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(15, 23, 42);
+                    const nameWrapped = doc.splitTextToSize(evt.eventName.toUpperCase(), evtColW - 2.5);
+                    doc.text(nameWrapped, boxX + kpColW + 1.5, curEvtY);
+                    curEvtY += nameWrapped.length * 2.3;
+
+                    // Event Type
+                    const typeText = evt.eventType && evt.eventType !== "-" && evt.eventType.toUpperCase() !== evt.eventName.toUpperCase()
+                        ? `Type: ${evt.eventType}`
+                        : "";
+                    if (typeText) {
+                        doc.setFontSize(4.6);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(71, 85, 105);
+                        const typeWrapped = doc.splitTextToSize(typeText, evtColW - 2.5);
+                        doc.text(typeWrapped, boxX + kpColW + 1.5, curEvtY);
+                        curEvtY += typeWrapped.length * 2.1;
+                    }
+
+                    // Event Pos
+                    const posText = evt.position && evt.position !== "-"
+                        ? `Pos: ${evt.position}`
+                        : "";
+                    if (posText) {
+                        doc.setFontSize(4.6);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(71, 85, 105);
+                        const posWrapped = doc.splitTextToSize(posText, evtColW - 2.5);
+                        doc.text(posWrapped, boxX + kpColW + 1.5, curEvtY);
+                        curEvtY += posWrapped.length * 2.1;
+                    }
+
+                    // Fill Description Column
+                    doc.setFontSize(5.0);
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(30, 41, 59);
+
+                    const descLines: string[] = [];
+                    if (evt.description && evt.description !== "-") {
+                        const splitDesc = doc.splitTextToSize(evt.description.toUpperCase(), descColW - 2.5);
+                        descLines.push(...splitDesc);
+                    } else {
+                        descLines.push("-");
+                    }
+
+                    if (descLines.length > 0) {
+                        doc.text(descLines.slice(0, 6), boxX + kpColW + evtColW + 1.5, dataY + 3.0);
+                    }
+                });
+
+                currentBoxRowY += totalBoxH;
+            }
+
+            currentY = currentBoxRowY + 2.5;
         }
     }
 
@@ -828,7 +923,7 @@ export const generatePipelineEventSketchReport = async (
 };
 
 function dText(doc: jsPDF, txt: string, x: number, y: number, align: "left" | "center" | "right" = "left") {
-    doc.setFontSize(6); doc.setFont("helvetica", "normal"); doc.setTextColor(71, 85, 105);
+    doc.setFontSize(5.8); doc.setFont("helvetica", "normal"); doc.setTextColor(71, 85, 105);
     doc.text(txt, x, y, { align });
 }
 
@@ -906,3 +1001,4 @@ function extractFeatureIntervals(allEvents: PipelineEventItem[], categoryTarget:
 
     return intervals;
 }
+

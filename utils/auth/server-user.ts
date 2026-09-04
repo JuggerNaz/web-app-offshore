@@ -19,18 +19,27 @@ export interface AuthUser {
  */
 export async function getAuthUser(supabase: any): Promise<AuthUser | null> {
   try {
-    const { data, error } = await supabase.auth.getClaims();
-    if (error || !data) return null;
+    if (typeof supabase.auth?.getClaims === "function") {
+      const { data, error } = await supabase.auth.getClaims();
+      if (!error && data) {
+        const payload: any = (data as any).claims ?? data;
+        const id = payload?.sub ?? payload?.id;
+        if (id) {
+          return {
+            id,
+            email: payload?.email ?? null,
+          };
+        }
+      }
+    }
 
-    // Local verification returns { claims, header, signature };
-    // the HS256 fallback returns a full User object. Handle both shapes.
-    const payload: any = (data as any).claims ?? data;
-    const id = payload?.sub ?? payload?.id;
-    if (!id) return null;
+    // Fallback to standard getUser()
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return null;
 
     return {
-      id,
-      email: payload?.email ?? null,
+      id: user.id,
+      email: user.email ?? null,
     };
   } catch {
     return null;
