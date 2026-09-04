@@ -67,7 +67,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           lib_desc: pos,
           lib_name: pos,
           hidden_item: 'N'
-        });
+        } as any);
       }
     });
 
