@@ -2372,7 +2372,8 @@ export function WorkspaceDialogs({
                     pipelineLengthKm={headerData?.lineLength ? parseFloat(headerData.lineLength) : (selectedComp?.length ? parseFloat(selectedComp.length) : 10.0)}
                     events={(currentRecords || []).map((r: any) => {
                         const data = r.inspection_data || {};
-                        const kpNum = parseFloat(r.fp_kp || r.kp || data.fp_kp || data.kp || "0");
+                        // Strictly tuned KP/FP — do NOT use raw_fp or raw_kp
+                        const kpNum = parseFloat(r.fp_kp ?? r.kp ?? data.fp_kp ?? data.kp ?? "0");
                         const isAnom = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0) || r.finding_type === "Anomaly" || data.finding_type === "Anomaly";
                         const anomCode = r.insp_anomalies?.[0]?.anomaly_ref_no || r.insp_anomalies?.[0]?.defect_type_code || data.anomaly_code || r.anomaly_code || "";
                         return {
@@ -2383,9 +2384,10 @@ export function WorkspaceDialogs({
                             event_description: data.event_description || r.event_description || data.remarks || "",
                             kp: isNaN(kpNum) ? 0 : kpNum,
                             end_kp: data.end_kp ? parseFloat(data.end_kp) : undefined,
-                            northing: data.northing || r.northing || "",
-                            easting: data.easting || r.easting || "",
-                            depth: data.depth || data.verification_depth || r.depth || r.elevation || "",
+                            // Strictly tuned northing & easting — do NOT use raw_northing or raw_easting
+                            northing: r.northing || data.northing || data.utm_northing || "",
+                            easting: r.easting || data.easting || data.utm_easting || "",
+                            depth: data.depth || data.water_depth || data.verification_depth || r.depth || r.elevation || "",
                             cp_fg_rdg: data.cp_fg_rdg || data.cp_fg || r.cp_fg_rdg || "",
                             rov_heading: data.rov_heading || data.heading || r.rov_heading || "",
                             inspection_date: r.inspection_date || data.inspection_date || "",

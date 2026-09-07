@@ -30,17 +30,18 @@ export function CollapsibleSidebar() {
     const loadSettings = async () => {
       try {
         const response = await fetch("/api/company-settings");
-        if (response.ok) {
-          const { data } = await response.json();
-          if (data.logo_url) {
-            setCompanyLogo(data.logo_url);
-          }
-          if (data.company_name) {
-            setCompanyName(data.company_name);
-          }
-          if (data.department_name) {
-            setDepartmentName(data.department_name);
-          }
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const { data } = await response.json();
+        if (data.logo_url) {
+          setCompanyLogo(data.logo_url);
+        }
+        if (data.company_name) {
+          setCompanyName(data.company_name);
+        }
+        if (data.department_name) {
+          setDepartmentName(data.department_name);
         }
       } catch (error) {
         console.error("Error loading company settings:", error);

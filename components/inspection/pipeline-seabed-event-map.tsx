@@ -96,7 +96,21 @@ export function PipelineSeabedEventMap({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showAnomaliesOnly, setShowAnomaliesOnly] = useState<boolean>(false);
   const [showComparison, setShowComparison] = useState<boolean>(false);
-  const [showProfileGraph, setShowProfileGraph] = useState<boolean>(true);
+  const [showDepthGraph, setShowDepthGraph] = useState<boolean>(true);
+  const [showCoordinatesGraph, setShowCoordinatesGraph] = useState<boolean>(true);
+  const [showDepthTerrain, setShowDepthTerrain] = useState<boolean>(true);
+  const [showSpanBurialLines, setShowSpanBurialLines] = useState<boolean>(true);
+  const [showNorthingLine, setShowNorthingLine] = useState<boolean>(true);
+  const [showEastingLine, setShowEastingLine] = useState<boolean>(true);
+  const [hoverProfilePoint, setHoverProfilePoint] = useState<{
+    xPct: number;
+    kp: number;
+    depth?: number;
+    span?: number;
+    burial?: number;
+    easting?: number;
+    northing?: number;
+  } | null>(null);
 
   // Measure Tool State
   const [isMeasureMode, setIsMeasureMode] = useState<boolean>(false);
@@ -107,25 +121,6 @@ export function PipelineSeabedEventMap({
   const [activeEvent, setActiveEvent] = useState<PipelineEventItem | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Calculate actual total max KP from events if greater than default pipeline length
-  const maxCalculatedKp = useMemo(() => {
-    let maxKp = pipelineLengthKm || 1.0;
-    events.forEach((e) => {
-      if (e.kp && e.kp > maxKp) maxKp = e.kp;
-      if (e.end_kp && e.end_kp > maxKp) maxKp = e.end_kp;
-    });
-    return Math.max(maxKp, 0.5);
-  }, [events, pipelineLengthKm]);
-
-  // Sync initial viewEndKp with maxCalculatedKp when opened
-  useEffect(() => {
-    if (isOpen) {
-      setViewStartKp(0);
-      setViewEndKp(maxCalculatedKp);
-      setZoomLevel(1);
-    }
-  }, [isOpen, maxCalculatedKp]);
 
   // Helper to filter out VIDEO LOG and MARINE GROWTH
   const isExcludedEvent = (name?: string, type?: string) => {
@@ -185,6 +180,47 @@ export function PipelineSeabedEventMap({
       subTitle: posUpper,
       fullLabel: posUpper ? `${title} (${posUpper})` : title,
     };
+  };
+
+  // Calculate actual total max KP from events if greater than default pipeline length
+  const maxCalculatedKp = useMemo(() => {
+    let maxKp = pipelineLengthKm || 1.0;
+    events.forEach((e) => {
+      if (e.kp && e.kp > maxKp) maxKp = e.kp;
+      if (e.end_kp && e.end_kp > maxKp) maxKp = e.end_kp;
+    });
+    return Math.max(maxKp, 0.5);
+  }, [events, pipelineLengthKm]);
+
+  // Sync initial viewEndKp with maxCalculatedKp when opened
+  useEffect(() => {
+    if (isOpen) {
+      setViewStartKp(0);
+      setViewEndKp(maxCalculatedKp);
+      setZoomLevel(1);
+    }
+  }, [isOpen, maxCalculatedKp]);
+
+  // Surveyed events KP range
+  const surveyedRange = useMemo(() => {
+    const validKps = events
+      .filter((e) => typeof e.kp === "number" && !isNaN(e.kp) && !isExcludedEvent(e.event_name, e.event_type))
+      .map((e) => e.kp);
+    if (validKps.length === 0) return null;
+    const minKp = Math.min(...validKps);
+    const maxKp = Math.max(...validKps);
+    return { minKp, maxKp, span: maxKp - minKp };
+  }, [events]);
+
+  const handleFitSurveyRange = () => {
+    if (!surveyedRange) return;
+    const padding = Math.max(0.05, surveyedRange.span * 0.05);
+    const nStart = Math.max(0, surveyedRange.minKp - padding);
+    const nEnd = Math.min(maxCalculatedKp, surveyedRange.maxKp + padding);
+    setViewStartKp(nStart);
+    setViewEndKp(nEnd);
+    setZoomLevel(maxCalculatedKp / (nEnd - nStart));
+    toast.info(`Zoomed to active survey data range: KP ${nStart.toFixed(3)} - ${nEnd.toFixed(3)}`);
   };
 
   // Event Categories list (Excluding Video Log and Marine Growth, and splitting Seabed Profile)
@@ -523,6 +559,131 @@ export function PipelineSeabedEventMap({
     return closest;
   }, [filteredEvents, currentMidKp]);
 
+  // Compute Longitudinal Series Data (Continuous Trajectory Interpolation, Bathymetry Depth, Spans & Burials)
+  const profileData = useMemo(() => {
+    const validEvents = events
+      .filter((e) => typeof e.kp === "number" && !isNaN(e.kp))
+      .map((e) => {
+        const d = typeof e.depth === "number" ? e.depth : parseFloat(String(e.depth || ""));
+        const east = typeof e.easting === "number" ? e.easting : parseFloat(String(e.easting || ""));
+        const north = typeof e.northing === "number" ? e.northing : parseFloat(String(e.northing || ""));
+        const span = e.span_height ? (typeof e.span_height === "number" ? e.span_height : parseFloat(String(e.span_height))) : 0;
+        const burial = e.burial_depth ? (typeof e.burial_depth === "number" ? e.burial_depth : parseFloat(String(e.burial_depth))) : 0;
+
+        return {
+          event: e,
+          kp: e.kp,
+          depth: isNaN(d) ? undefined : d,
+          easting: isNaN(east) ? undefined : east,
+          northing: isNaN(north) ? undefined : north,
+          span: isNaN(span) ? 0 : span,
+          burial: isNaN(burial) ? 0 : burial,
+        };
+      })
+      .sort((a, b) => a.kp - b.kp);
+
+    // 1. Coordinates Trajectory Interpolation Model (Strictly within surveyed KP bounds)
+    const knownCoords = validEvents
+      .filter((e) => e.easting !== undefined && e.northing !== undefined)
+      .sort((a, b) => a.kp - b.kp);
+
+    const getInterpolatedCoords = (kp: number): { easting: number; northing: number } | null => {
+      if (knownCoords.length === 0) return null;
+      if (knownCoords.length === 1) {
+        return kp === knownCoords[0].kp ? { easting: knownCoords[0].easting!, northing: knownCoords[0].northing! } : null;
+      }
+      if (kp < knownCoords[0].kp || kp > knownCoords[knownCoords.length - 1].kp) {
+        return null; // Do not extrapolate beyond actual survey boundaries
+      }
+      for (let i = 0; i < knownCoords.length - 1; i++) {
+        const p0 = knownCoords[i];
+        const p1 = knownCoords[i + 1];
+        if (kp >= p0.kp && kp <= p1.kp) {
+          const ratio = (kp - p0.kp) / (p1.kp - p0.kp || 1);
+          return {
+            easting: p0.easting! + (p1.easting! - p0.easting!) * ratio,
+            northing: p0.northing! + (p1.northing! - p0.northing!) * ratio,
+          };
+        }
+      }
+      return null;
+    };
+
+    // 2. Depth Seabed Terrain Interpolation Model (Strictly within surveyed KP bounds)
+    const knownDepths = validEvents
+      .filter((e) => e.depth !== undefined)
+      .sort((a, b) => a.kp - b.kp);
+
+    const getInterpolatedDepth = (kp: number): number | null => {
+      if (knownDepths.length === 0) return null;
+      if (knownDepths.length === 1) {
+        return kp === knownDepths[0].kp ? knownDepths[0].depth! : null;
+      }
+      if (kp < knownDepths[0].kp || kp > knownDepths[knownDepths.length - 1].kp) {
+        return null; // Do not draw artificial flatline where no depth was measured
+      }
+      for (let i = 0; i < knownDepths.length - 1; i++) {
+        const p0 = knownDepths[i];
+        const p1 = knownDepths[i + 1];
+        if (kp >= p0.kp && kp <= p1.kp) {
+          const ratio = (kp - p0.kp) / (p1.kp - p0.kp || 1);
+          return p0.depth! + (p1.depth! - p0.depth!) * ratio;
+        }
+      }
+      return null;
+    };
+
+    // High-resolution sample points for the top zoomed viewport
+    const sampleCount = 60;
+    const vSpan = viewEndKp - viewStartKp;
+    const sampleKps = new Set<number>();
+    for (let i = 0; i <= sampleCount; i++) {
+      sampleKps.add(viewStartKp + (i / sampleCount) * vSpan);
+    }
+    validEvents.forEach((e) => {
+      if (e.kp >= viewStartKp && e.kp <= viewEndKp) sampleKps.add(e.kp);
+    });
+
+    const continuousPoints = Array.from(sampleKps)
+      .sort((a, b) => a - b)
+      .map((kp) => {
+        const coords = getInterpolatedCoords(kp);
+        const depth = getInterpolatedDepth(kp);
+        const matchEvt = validEvents.find((e) => Math.abs(e.kp - kp) < 0.005);
+        return {
+          kp,
+          depth: depth ?? undefined,
+          easting: coords?.easting,
+          northing: coords?.northing,
+          span: matchEvt?.span || 0,
+          burial: matchEvt?.burial || 0,
+          event: matchEvt?.event,
+        };
+      });
+
+    const allDepths = continuousPoints.map((e) => e.depth).filter((d): d is number => d !== undefined);
+    const minDepth = allDepths.length > 0 ? Math.min(...allDepths) : 20;
+    const maxDepth = allDepths.length > 0 ? Math.max(...allDepths) : 60;
+
+    const allEastings = continuousPoints.map((e) => e.easting).filter((v): v is number => v !== undefined);
+    const allNorthings = continuousPoints.map((e) => e.northing).filter((v): v is number => v !== undefined);
+    const minEasting = allEastings.length > 0 ? Math.min(...allEastings) : 0;
+    const maxEasting = allEastings.length > 0 ? Math.max(...allEastings) : 1000;
+    const minNorthing = allNorthings.length > 0 ? Math.min(...allNorthings) : 0;
+    const maxNorthing = allNorthings.length > 0 ? Math.max(...allNorthings) : 1000;
+
+    return {
+      points: continuousPoints,
+      rawEvents: validEvents,
+      minDepth,
+      maxDepth: maxDepth === minDepth ? minDepth + 10 : maxDepth,
+      minEasting,
+      maxEasting: maxEasting === minEasting ? minEasting + 100 : maxEasting,
+      minNorthing,
+      maxNorthing: maxNorthing === minNorthing ? minNorthing + 100 : maxNorthing,
+    };
+  }, [events, viewStartKp, viewEndKp]);
+
   // Rulers & Ticks Calculation
   const rulerTicks = useMemo(() => {
     const visibleSpan = viewEndKp - viewStartKp;
@@ -724,14 +885,24 @@ export function PipelineSeabedEventMap({
               <AlertTriangle className="w-3 h-3" /> Anomalies Only
             </label>
 
-            {/* Profile Graph Toggle */}
-            <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-slate-300 uppercase bg-slate-800/60 border border-slate-700 px-2 py-1 rounded">
+            {/* Depth & KP Graph Toggle */}
+            <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-slate-300 uppercase bg-slate-800/60 border border-slate-700 px-2 py-1 rounded hover:border-cyan-500/50 transition-colors">
               <Checkbox
-                checked={showProfileGraph}
-                onCheckedChange={(c) => setShowProfileGraph(!!c)}
-                className="border-slate-500"
+                checked={showDepthGraph}
+                onCheckedChange={(c) => setShowDepthGraph(!!c)}
+                className="border-cyan-500 data-[state=checked]:bg-cyan-600"
               />
-              <TrendingUp className="w-3 h-3 text-cyan-400" /> Span/Burial Profile Graph
+              <TrendingUp className="w-3 h-3 text-cyan-400" /> Depth & KP
+            </label>
+
+            {/* Coordinates Graph Toggle */}
+            <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-slate-300 uppercase bg-slate-800/60 border border-slate-700 px-2 py-1 rounded hover:border-amber-500/50 transition-colors">
+              <Checkbox
+                checked={showCoordinatesGraph}
+                onCheckedChange={(c) => setShowCoordinatesGraph(!!c)}
+                className="border-amber-500 data-[state=checked]:bg-amber-600"
+              />
+              <Compass className="w-3 h-3 text-amber-400" /> Coordinates (N/E)
             </label>
 
             {/* Search Input */}
@@ -748,6 +919,18 @@ export function PipelineSeabedEventMap({
 
             {/* Zoom Controls */}
             <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 p-0.5 rounded">
+              {surveyedRange && surveyedRange.span < maxCalculatedKp * 0.95 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleFitSurveyRange}
+                  className="h-6 px-2 text-[9px] font-bold text-cyan-300 border-cyan-800/80 bg-cyan-950/40 hover:bg-cyan-900/60 mr-0.5 shadow-sm"
+                  title={`Fit view to active survey KP range (${surveyedRange.minKp.toFixed(2)} - ${surveyedRange.maxKp.toFixed(2)} km)`}
+                >
+                  <Maximize2 className="w-3 h-3 mr-1 text-cyan-400" />
+                  Fit Survey Range ({surveyedRange.minKp.toFixed(1)}-{surveyedRange.maxKp.toFixed(1)}k)
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -774,7 +957,7 @@ export function PipelineSeabedEventMap({
                 size="icon"
                 onClick={handleResetZoom}
                 className="h-6 w-6 text-slate-400 hover:text-white"
-                title="Reset Zoom"
+                title="Reset Zoom (Full Pipeline Length)"
               >
                 <RotateCcw className="w-3 h-3" />
               </Button>
@@ -1163,56 +1346,534 @@ export function PipelineSeabedEventMap({
               </div>
             </div>
 
-            {/* PROFILE GRAPH (SPAN HEIGHT & BURIAL DEPTH LONGITUDINAL PROFILE) */}
-            {showProfileGraph && (
-              <div className="w-full h-24 bg-slate-900/60 border border-slate-800 rounded-lg p-2 mt-1 relative flex flex-col shrink-0">
-                <div className="flex items-center justify-between text-[9px] font-black uppercase text-cyan-400 border-b border-slate-800 pb-1 mb-1">
-                  <span className="flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3 text-cyan-400" /> Longitudinal Seabed & Pipe Profile (Span Height / Burial Depth)
-                  </span>
-                  <span className="text-slate-500 font-normal">Green = Free Span | Blue = Burial Depth</span>
+            {/* 1. DEPTH & KP PROFILE GRAPH (SEABED BATHYMETRY, SPAN & BURIAL PROFILES) */}
+            {showDepthGraph && (
+              <div className="w-full h-32 bg-slate-900/90 border border-slate-800 rounded-lg p-2 mt-2 relative flex flex-col shrink-0 select-none">
+                {/* Header with Interactive Channel Toggles */}
+                <div className="flex flex-wrap items-center justify-between text-[9px] font-black uppercase text-cyan-400 border-b border-slate-800 pb-1.5 mb-1 gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 text-slate-200">
+                      <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="text-cyan-400 font-bold">1. Seabed Depth & Pipe Profile</span>
+                      <span className="text-slate-500 font-normal">(Water Depth Bathymetry vs KP)</span>
+                    </span>
+                  </div>
+
+                  {/* Channel Badges / Toggles */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => setShowDepthTerrain(!showDepthTerrain)}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border transition-all ${
+                        showDepthTerrain
+                          ? "bg-cyan-950/80 border-cyan-500 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.4)]"
+                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-50"
+                      }`}
+                      title="Toggle Seabed Terrain / Water Depth Bathymetry profile"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                      Seabed Depth ({profileData.minDepth.toFixed(1)}m - {profileData.maxDepth.toFixed(1)}m)
+                    </button>
+
+                    <button
+                      onClick={() => setShowSpanBurialLines(!showSpanBurialLines)}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border transition-all ${
+                        showSpanBurialLines
+                          ? "bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-50"
+                      }`}
+                      title="Toggle Free Span & Burial Depth profiles"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      Free Span
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 ml-1" />
+                      Burial
+                    </button>
+                  </div>
                 </div>
 
-                {/* SVG Curve Canvas */}
-                <div className="flex-1 relative w-full h-full">
+                {/* SVG Curve Canvas with Interactive Crosshair */}
+                <div
+                  className="flex-1 relative w-full h-full cursor-crosshair overflow-hidden"
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                    const currentSpan = viewEndKp - viewStartKp;
+                    const hoverKp = viewStartKp + (xPct / 100) * currentSpan;
+
+                    // Find closest point in profile data
+                    let closest = profileData.points[0];
+                    let minDiff = 9999;
+                    profileData.points.forEach((pt) => {
+                      const diff = Math.abs(pt.kp - hoverKp);
+                      if (diff < minDiff) {
+                        minDiff = diff;
+                        closest = pt;
+                      }
+                    });
+
+                    setHoverProfilePoint({
+                      xPct,
+                      kp: hoverKp,
+                      depth: closest?.depth,
+                      span: closest?.span,
+                      burial: closest?.burial,
+                      easting: closest?.easting,
+                      northing: closest?.northing,
+                    });
+                  }}
+                  onMouseLeave={() => setHoverProfilePoint(null)}
+                >
                   <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                    {/* Seabed Reference Baseline */}
-                    <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#475569" strokeDasharray="3 3" strokeWidth="1" />
-                    <text x="5" y="45%" fill="#64748b" fontSize="8" fontFamily="monospace">Seabed Level (0m)</text>
+                    <defs>
+                      {/* Seabed Bathymetry Terrain Linear Gradient */}
+                      <linearGradient id="seabedTerrainGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
+                        <stop offset="40%" stopColor="#0284c7" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#082f49" stopOpacity="0.05" />
+                      </linearGradient>
 
-                    {/* Render Span Height Bars & Curve */}
-                    {filteredEvents.map((evt, idx) => {
-                      if (!evt.kp) return null;
-                      const pct = kpToPercent(evt.kp);
-                      if (pct < 0 || pct > 100) return null;
+                      {/* Span Height Glowing Area Gradient */}
+                      <linearGradient id="spanAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                      </linearGradient>
 
-                      const spanH = evt.span_height || 0;
-                      const burialD = evt.burial_depth || 0;
+                      {/* Burial Depth Glowing Area Gradient */}
+                      <linearGradient id="burialAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.0" />
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.45" />
+                      </linearGradient>
+                    </defs>
 
-                      if (spanH > 0) {
-                        const heightPx = Math.min(30, spanH * 15);
-                        return (
-                          <g key={`span-graph-${idx}`}>
-                            <line x1={`${pct}%`} y1="50%" x2={`${pct}%`} y2={`${50 - heightPx}%`} stroke="#10b981" strokeWidth="2" />
-                            <circle cx={`${pct}%`} cy={`${50 - heightPx}%`} r="3" fill="#10b981" />
-                            <text x={`${pct}%`} y={`${45 - heightPx}%`} fill="#10b981" fontSize="7" textAnchor="middle">{spanH.toFixed(2)}m</text>
-                          </g>
-                        );
+                    {/* Seabed Reference Grid Lines */}
+                    <line x1="0" y1="25%" x2="100%" y2="25%" stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
+                    <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#334155" strokeDasharray="3 3" strokeWidth="1.5" />
+                    <line x1="0" y1="75%" x2="100%" y2="75%" stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
+                    <text x="6" y="48%" fill="#64748b" fontSize="7.5" fontFamily="monospace" fontWeight="bold">Seabed Datum (0m)</text>
+                    <text x="6" y="18%" fill="#06b6d4" fontSize="7" fontFamily="monospace">Min: {profileData.minDepth.toFixed(1)}m</text>
+                    <text x="6" y="90%" fill="#06b6d4" fontSize="7" fontFamily="monospace">Max: {profileData.maxDepth.toFixed(1)}m</text>
+
+                    {/* 1. SEABED TERRAIN / WATER DEPTH BATHYMETRY SMOOTH MESH */}
+                    {showDepthTerrain && profileData.points.length >= 2 && (() => {
+                      const depthPoints = profileData.points.filter((pt) => pt.depth !== undefined);
+                      if (depthPoints.length < 2) return null;
+
+                      const dMin = profileData.minDepth;
+                      const dMax = profileData.maxDepth;
+                      const dRange = Math.max(dMax - dMin, 1);
+
+                      const pts = depthPoints.map((pt) => ({
+                        x: kpToPercent(pt.kp),
+                        y: 20 + (((pt.depth! - dMin) / dRange) * 55),
+                      }));
+
+                      // Smooth cubic curve path
+                      let pathD = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+                      for (let i = 0; i < pts.length - 1; i++) {
+                        const p0 = pts[i === 0 ? 0 : i - 1];
+                        const p1 = pts[i];
+                        const p2 = pts[i + 1];
+                        const p3 = pts[i + 2 >= pts.length ? pts.length - 1 : i + 2];
+
+                        const cp1x = p1.x + (p2.x - p0.x) / 6;
+                        const cp1y = p1.y + (p2.y - p0.y) / 6;
+                        const cp2x = p2.x - (p3.x - p1.x) / 6;
+                        const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+                        pathD += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
                       }
 
-                      if (burialD > 0) {
-                        const depthPx = Math.min(30, burialD * 15);
-                        return (
-                          <g key={`burial-graph-${idx}`}>
-                            <line x1={`${pct}%`} y1="50%" x2={`${pct}%`} y2={`${50 + depthPx}%`} stroke="#3b82f6" strokeWidth="2" />
-                            <circle cx={`${pct}%`} cy={`${50 + depthPx}%`} r="3" fill="#3b82f6" />
-                            <text x={`${pct}%`} y={`${62 + depthPx}%`} fill="#60a5fa" fontSize="7" textAnchor="middle">{burialD.toFixed(2)}m</text>
-                          </g>
-                        );
+                      const closedPolygonD = `${pathD} L ${pts[pts.length - 1].x.toFixed(2)} 100 L ${pts[0].x.toFixed(2)} 100 Z`;
+
+                      return (
+                        <g key="seabed-terrain-mesh">
+                          {/* Smooth Shaded Underwater Bathymetry Area */}
+                          <path d={closedPolygonD} fill="url(#seabedTerrainGrad)" />
+                          {/* Top Smooth Bathymetry Contour Line */}
+                          <path d={pathD} fill="none" stroke="#06b6d4" strokeWidth="2.5" />
+                          {/* Discrete Survey Sampling Points */}
+                          {depthPoints.map((pt, idx) => {
+                            const x = kpToPercent(pt.kp);
+                            if (x < 0 || x > 100) return null;
+                            const y = 20 + (((pt.depth! - dMin) / dRange) * 55);
+                            return (
+                              <circle
+                                key={`d-pt-${idx}`}
+                                cx={`${x}%`}
+                                cy={`${y}%`}
+                                r="2"
+                                fill="#06b6d4"
+                                opacity="0.9"
+                              />
+                            );
+                          })}
+                        </g>
+                      );
+                    })()}
+
+                    {/* FREE SPAN & BURIAL DEPTH SMOOTH PROFILES & BARS */}
+                    {showSpanBurialLines && (() => {
+                      const spanBurialPts = profileData.points;
+                      const hasSpans = spanBurialPts.some((p) => p.span > 0);
+                      const hasBurials = spanBurialPts.some((p) => p.burial > 0);
+
+                      // Build Span Curve & Shaded Envelope
+                      const spanCurvePts = spanBurialPts.map((p) => ({
+                        x: kpToPercent(p.kp),
+                        y: 50 - Math.min(32, (p.span || 0) * 16),
+                      }));
+
+                      const burialCurvePts = spanBurialPts.map((p) => ({
+                        x: kpToPercent(p.kp),
+                        y: 50 + Math.min(32, (p.burial || 0) * 16),
+                      }));
+
+                      let spanPath = `M ${spanCurvePts[0].x.toFixed(2)} ${spanCurvePts[0].y.toFixed(2)}`;
+                      for (let i = 0; i < spanCurvePts.length - 1; i++) {
+                        const p0 = spanCurvePts[i === 0 ? 0 : i - 1];
+                        const p1 = spanCurvePts[i];
+                        const p2 = spanCurvePts[i + 1];
+                        const p3 = spanCurvePts[i + 2 >= spanCurvePts.length ? spanCurvePts.length - 1 : i + 2];
+                        const cp1x = p1.x + (p2.x - p0.x) / 6;
+                        const cp1y = p1.y + (p2.y - p0.y) / 6;
+                        const cp2x = p2.x - (p3.x - p1.x) / 6;
+                        const cp2y = p2.y - (p3.y - p1.y) / 6;
+                        spanPath += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
                       }
-                      return null;
-                    })}
+
+                      let burialPath = `M ${burialCurvePts[0].x.toFixed(2)} ${burialCurvePts[0].y.toFixed(2)}`;
+                      for (let i = 0; i < burialCurvePts.length - 1; i++) {
+                        const p0 = burialCurvePts[i === 0 ? 0 : i - 1];
+                        const p1 = burialCurvePts[i];
+                        const p2 = burialCurvePts[i + 1];
+                        const p3 = burialCurvePts[i + 2 >= burialCurvePts.length ? burialCurvePts.length - 1 : i + 2];
+                        const cp1x = p1.x + (p2.x - p0.x) / 6;
+                        const cp1y = p1.y + (p2.y - p0.y) / 6;
+                        const cp2x = p2.x - (p3.x - p1.x) / 6;
+                        const cp2y = p2.y - (p3.y - p1.y) / 6;
+                        burialPath += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+                      }
+
+                      const closedSpanArea = `${spanPath} L ${spanCurvePts[spanCurvePts.length - 1].x.toFixed(2)} 50 L ${spanCurvePts[0].x.toFixed(2)} 50 Z`;
+                      const closedBurialArea = `${burialPath} L ${burialCurvePts[burialCurvePts.length - 1].x.toFixed(2)} 50 L ${burialCurvePts[0].x.toFixed(2)} 50 Z`;
+
+                      return (
+                        <g key="span-burial-curves">
+                          {/* Span Shaded Area & Smooth Emerald Curve */}
+                          {hasSpans && (
+                            <>
+                              <path d={closedSpanArea} fill="url(#spanAreaGrad)" />
+                              <path d={spanPath} fill="none" stroke="#10b981" strokeWidth="2.5" />
+                            </>
+                          )}
+
+                          {/* Burial Shaded Area & Smooth Blue Curve */}
+                          {hasBurials && (
+                            <>
+                              <path d={closedBurialArea} fill="url(#burialAreaGrad)" />
+                              <path d={burialPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" />
+                            </>
+                          )}
+
+                          {/* Discrete Peak / Valley Callout Markers */}
+                          {filteredEvents.map((evt, idx) => {
+                            if (!evt.kp) return null;
+                            const pct = kpToPercent(evt.kp);
+                            if (pct < 0 || pct > 100) return null;
+
+                            const spanH = evt.span_height || 0;
+                            const burialD = evt.burial_depth || 0;
+
+                            if (spanH > 0) {
+                              const heightPx = Math.min(30, spanH * 15);
+                              return (
+                                <g key={`span-marker-${idx}`}>
+                                  <line x1={`${pct}%`} y1="50%" x2={`${pct}%`} y2={`${50 - heightPx}%`} stroke="#10b981" strokeWidth="2" strokeDasharray="2 2" />
+                                  <circle cx={`${pct}%`} cy={`${50 - heightPx}%`} r="3.5" fill="#10b981" className="animate-pulse" />
+                                  <text x={`${pct}%`} y={`${42 - heightPx}%`} fill="#34d399" fontSize="7.5" fontWeight="bold" textAnchor="middle">
+                                    +{spanH.toFixed(2)}m
+                                  </text>
+                                </g>
+                              );
+                            }
+
+                            if (burialD > 0) {
+                              const depthPx = Math.min(30, burialD * 15);
+                              return (
+                                <g key={`burial-marker-${idx}`}>
+                                  <line x1={`${pct}%`} y1="50%" x2={`${pct}%`} y2={`${50 + depthPx}%`} stroke="#3b82f6" strokeWidth="2" strokeDasharray="2 2" />
+                                  <circle cx={`${pct}%`} cy={`${50 + depthPx}%`} r="3.5" fill="#3b82f6" />
+                                  <text x={`${pct}%`} y={`${62 + depthPx}%`} fill="#60a5fa" fontSize="7.5" fontWeight="bold" textAnchor="middle">
+                                    -{burialD.toFixed(2)}m
+                                  </text>
+                                </g>
+                              );
+                            }
+                            return null;
+                          })}
+                        </g>
+                      );
+                    })()}
+
+                    {/* HOVER SCANNING CROSSHAIR LINE */}
+                    {hoverProfilePoint && (
+                      <g key="hover-crosshair-depth">
+                        <line
+                          x1={`${hoverProfilePoint.xPct}%`}
+                          y1="0"
+                          x2={`${hoverProfilePoint.xPct}%`}
+                          y2="100%"
+                          stroke="#38bdf8"
+                          strokeWidth="1.5"
+                          strokeDasharray="2 2"
+                        />
+                        <circle cx={`${hoverProfilePoint.xPct}%`} cy="50%" r="3" fill="#38bdf8" />
+                      </g>
+                    )}
                   </svg>
+
+                  {/* Interactive Floating Hover Pill */}
+                  {hoverProfilePoint && (
+                    <div
+                      style={{
+                        left: `${Math.max(10, Math.min(90, hoverProfilePoint.xPct))}%`,
+                        top: "4px",
+                      }}
+                      className="absolute -translate-x-1/2 bg-slate-950/95 border border-cyan-500/70 text-slate-100 px-2 py-1 rounded shadow-xl pointer-events-none text-[8px] font-mono z-30 flex items-center gap-2 whitespace-nowrap backdrop-blur-sm"
+                    >
+                      <span className="text-blue-300 font-bold">KP {hoverProfilePoint.kp.toFixed(3)}</span>
+                      {hoverProfilePoint.depth !== undefined && (
+                        <span className="text-cyan-400 font-semibold">🌊 Depth: {hoverProfilePoint.depth.toFixed(1)}m</span>
+                      )}
+                      {hoverProfilePoint.span ? (
+                        <span className="text-emerald-400 font-semibold">Span: +{hoverProfilePoint.span.toFixed(2)}m</span>
+                      ) : null}
+                      {hoverProfilePoint.burial ? (
+                        <span className="text-blue-400 font-semibold">Burial: -{hoverProfilePoint.burial.toFixed(2)}m</span>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 2. COORDINATES PROFILE GRAPH (NORTHING & EASTING VS KP) */}
+            {showCoordinatesGraph && (
+              <div className="w-full h-32 bg-slate-900/90 border border-slate-800 rounded-lg p-2 mt-2 relative flex flex-col shrink-0 select-none">
+                {/* Header with Interactive Channel Toggles */}
+                <div className="flex flex-wrap items-center justify-between text-[9px] font-black uppercase text-amber-400 border-b border-slate-800 pb-1.5 mb-1 gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 text-slate-200">
+                      <Compass className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-amber-400 font-bold">2. Coordinates Profile</span>
+                      <span className="text-slate-500 font-normal">(Northing & Easting Grid vs KP)</span>
+                    </span>
+                  </div>
+
+                  {/* Channel Badges / Toggles */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => setShowNorthingLine(!showNorthingLine)}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border transition-all ${
+                        showNorthingLine
+                          ? "bg-amber-950/80 border-amber-500 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.4)]"
+                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-50"
+                      }`}
+                      title="Toggle Northing (Y) Trajectory curve"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      Northing (Y): {profileData.minNorthing.toFixed(0)}m - {profileData.maxNorthing.toFixed(0)}m
+                    </button>
+
+                    <button
+                      onClick={() => setShowEastingLine(!showEastingLine)}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border transition-all ${
+                        showEastingLine
+                          ? "bg-purple-950/80 border-purple-500 text-purple-300 shadow-[0_0_8px_rgba(192,132,252,0.4)]"
+                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-50"
+                      }`}
+                      title="Toggle Easting (X) Trajectory curve"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                      Easting (X): {profileData.minEasting.toFixed(0)}m - {profileData.maxEasting.toFixed(0)}m
+                    </button>
+                  </div>
+                </div>
+
+                {/* SVG Curve Canvas with Interactive Crosshair */}
+                <div
+                  className="flex-1 relative w-full h-full cursor-crosshair overflow-hidden"
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                    const currentSpan = viewEndKp - viewStartKp;
+                    const hoverKp = viewStartKp + (xPct / 100) * currentSpan;
+
+                    let closest = profileData.points[0];
+                    let minDiff = 9999;
+                    profileData.points.forEach((pt) => {
+                      const diff = Math.abs(pt.kp - hoverKp);
+                      if (diff < minDiff) {
+                        minDiff = diff;
+                      }
+                    });
+
+                    setHoverProfilePoint({
+                      xPct,
+                      kp: hoverKp,
+                      depth: closest?.depth,
+                      span: closest?.span,
+                      burial: closest?.burial,
+                      easting: closest?.easting,
+                      northing: closest?.northing,
+                    });
+                  }}
+                  onMouseLeave={() => setHoverProfilePoint(null)}
+                >
+                  <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                    {/* Coordinate Reference Grid Lines */}
+                    <line x1="0" y1="20%" x2="100%" y2="20%" stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
+                    <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#334155" strokeDasharray="3 3" strokeWidth="1.5" />
+                    <line x1="0" y1="80%" x2="100%" y2="80%" stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
+                    
+                    {/* Axis Bounds Labels */}
+                    <text x="6" y="16%" fill="#f59e0b" fontSize="7.5" fontFamily="monospace" fontWeight="bold">N-Max: {profileData.maxNorthing.toFixed(0)}m</text>
+                    <text x="6" y="88%" fill="#f59e0b" fontSize="7.5" fontFamily="monospace" fontWeight="bold">N-Min: {profileData.minNorthing.toFixed(0)}m</text>
+                    
+                    <text x="98%" y="16%" fill="#c084fc" fontSize="7.5" fontFamily="monospace" fontWeight="bold" textAnchor="end">E-Max: {profileData.maxEasting.toFixed(0)}m</text>
+                    <text x="98%" y="88%" fill="#c084fc" fontSize="7.5" fontFamily="monospace" fontWeight="bold" textAnchor="end">E-Min: {profileData.minEasting.toFixed(0)}m</text>
+
+                    {/* FULL-LENGTH COORDINATE TRAJECTORY CURVES (NORTHING & EASTING) */}
+                    {profileData.points.length >= 2 && (() => {
+                      const coordPts = profileData.points.filter((pt) => pt.northing !== undefined && pt.easting !== undefined);
+                      if (coordPts.length < 2) return null;
+
+                      const nMin = profileData.minNorthing;
+                      const nMax = profileData.maxNorthing;
+                      const nRange = Math.max(nMax - nMin, 1);
+
+                      const eMin = profileData.minEasting;
+                      const eMax = profileData.maxEasting;
+                      const eRange = Math.max(eMax - eMin, 1);
+
+                      const northPts = coordPts.map((c) => ({
+                        x: kpToPercent(c.kp),
+                        y: 80 - (((c.northing! - nMin) / nRange) * 60),
+                      }));
+
+                      const eastPts = coordPts.map((c) => ({
+                        x: kpToPercent(c.kp),
+                        y: 80 - (((c.easting! - eMin) / eRange) * 60),
+                      }));
+
+                      // Smooth cubic curve for Northing
+                      let northPath = `M ${northPts[0].x.toFixed(2)} ${northPts[0].y.toFixed(2)}`;
+                      for (let i = 0; i < northPts.length - 1; i++) {
+                        const p0 = northPts[i === 0 ? 0 : i - 1];
+                        const p1 = northPts[i];
+                        const p2 = northPts[i + 1];
+                        const p3 = northPts[i + 2 >= northPts.length ? northPts.length - 1 : i + 2];
+                        const cp1x = p1.x + (p2.x - p0.x) / 6;
+                        const cp1y = p1.y + (p2.y - p0.y) / 6;
+                        const cp2x = p2.x - (p3.x - p1.x) / 6;
+                        const cp2y = p2.y - (p3.y - p1.y) / 6;
+                        northPath += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+                      }
+
+                      // Smooth cubic curve for Easting
+                      let eastPath = `M ${eastPts[0].x.toFixed(2)} ${eastPts[0].y.toFixed(2)}`;
+                      for (let i = 0; i < eastPts.length - 1; i++) {
+                        const p0 = eastPts[i === 0 ? 0 : i - 1];
+                        const p1 = eastPts[i];
+                        const p2 = eastPts[i + 1];
+                        const p3 = eastPts[i + 2 >= eastPts.length ? eastPts.length - 1 : i + 2];
+                        const cp1x = p1.x + (p2.x - p0.x) / 6;
+                        const cp1y = p1.y + (p2.y - p0.y) / 6;
+                        const cp2x = p2.x - (p3.x - p1.x) / 6;
+                        const cp2y = p2.y - (p3.y - p1.y) / 6;
+                        eastPath += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+                      }
+
+                      return (
+                        <g key="coordinates-profile-lines">
+                          {/* Continuous Northing Amber Dashed Line */}
+                          {showNorthingLine && (
+                            <>
+                              <path d={northPath} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="4 3" opacity="0.95" />
+                              {northPts.map((pt, idx) => {
+                                if (pt.x < 0 || pt.x > 100) return null;
+                                return (
+                                  <circle
+                                    key={`n-pt-${idx}`}
+                                    cx={`${pt.x}%`}
+                                    cy={`${pt.y}%`}
+                                    r="2"
+                                    fill="#f59e0b"
+                                    opacity="0.8"
+                                  />
+                                );
+                              })}
+                            </>
+                          )}
+
+                          {/* Continuous Easting Purple Solid Line */}
+                          {showEastingLine && (
+                            <>
+                              <path d={eastPath} fill="none" stroke="#c084fc" strokeWidth="2.5" opacity="0.95" />
+                              {eastPts.map((pt, idx) => {
+                                if (pt.x < 0 || pt.x > 100) return null;
+                                return (
+                                  <circle
+                                    key={`e-pt-${idx}`}
+                                    cx={`${pt.x}%`}
+                                    cy={`${pt.y}%`}
+                                    r="2"
+                                    fill="#c084fc"
+                                    opacity="0.8"
+                                  />
+                                );
+                              })}
+                            </>
+                          )}
+                        </g>
+                      );
+                    })()}
+
+                    {/* HOVER SCANNING CROSSHAIR LINE */}
+                    {hoverProfilePoint && (
+                      <g key="hover-crosshair-coords">
+                        <line
+                          x1={`${hoverProfilePoint.xPct}%`}
+                          y1="0"
+                          x2={`${hoverProfilePoint.xPct}%`}
+                          y2="100%"
+                          stroke="#f59e0b"
+                          strokeWidth="1.5"
+                          strokeDasharray="2 2"
+                        />
+                        <circle cx={`${hoverProfilePoint.xPct}%`} cy="50%" r="3" fill="#f59e0b" />
+                      </g>
+                    )}
+                  </svg>
+
+                  {/* Interactive Floating Hover Pill */}
+                  {hoverProfilePoint && (
+                    <div
+                      style={{
+                        left: `${Math.max(10, Math.min(90, hoverProfilePoint.xPct))}%`,
+                        top: "4px",
+                      }}
+                      className="absolute -translate-x-1/2 bg-slate-950/95 border border-amber-500/70 text-slate-100 px-2 py-1 rounded shadow-xl pointer-events-none text-[8px] font-mono z-30 flex items-center gap-2 whitespace-nowrap backdrop-blur-sm"
+                    >
+                      <span className="text-blue-300 font-bold">KP {hoverProfilePoint.kp.toFixed(3)}</span>
+                      {hoverProfilePoint.northing !== undefined && (
+                        <span className="text-amber-400 font-semibold">🧭 N: {hoverProfilePoint.northing.toFixed(1)}m</span>
+                      )}
+                      {hoverProfilePoint.easting !== undefined && (
+                        <span className="text-purple-300 font-semibold">📍 E: {hoverProfilePoint.easting.toFixed(1)}m</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
