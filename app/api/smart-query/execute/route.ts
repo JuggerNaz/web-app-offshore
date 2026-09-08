@@ -44,8 +44,35 @@ export const POST = withTenant(async (request, { companyId }) => {
 
     let query = (supabase as any)
       .from(catDef.table)
-      .select(selectFields.join(","), { count: "exact" })
-      .eq("company_id", companyId);
+      .select(selectFields.join(","), { count: "exact" });
+
+    // Apply company scoping safely depending on the view schema
+    if (companyId) {
+      if (category === "structures") {
+        // v_smart_query_structures does not have company_id column; filter by structure IDs
+        const { data: tenantStructures } = await (supabase as any)
+          .from("structure")
+          .select("str_id")
+          .eq("company_id", companyId);
+        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
+        if (strIds.length > 0) {
+          query = query.in("id", strIds);
+        }
+      } else if (category === "components") {
+        // v_smart_query_components has structure_id, not company_id column
+        const { data: tenantStructures } = await (supabase as any)
+          .from("structure")
+          .select("str_id")
+          .eq("company_id", companyId);
+        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
+        if (strIds.length > 0) {
+          query = query.in("structure_id", strIds);
+        }
+      } else {
+        // jobpacks, sow, inspection_records, anomalies, findings, incomplete have company_id
+        query = query.eq("company_id", companyId);
+      }
+    }
 
     if (category === "findings") {
       query = query.eq("record_category", "Finding");
