@@ -100,7 +100,7 @@ export default function ROVLiveData({ rovJob, autoCapture }: ROVLiveDataProps) {
         const platformSettings = localStorage.getItem('data_acquisition_platform_v1');
         const pipelineSettings = localStorage.getItem('data_acquisition_pipeline_v1');
 
-        let settingsData = null;
+        let settingsData: any = null;
         if (platformSettings) {
             settingsData = JSON.parse(platformSettings);
         } else if (pipelineSettings) {

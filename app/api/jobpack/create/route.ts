@@ -81,7 +81,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             const { error: tsError } = await (supabase as any).from('taskstr').insert(taskStrRecords);
             if (tsError) throw tsError;
 
-            const taskInspRecords = [];
+            const taskInspRecords: any[] = [];
             for (const strId of structures) {
                 for (const type of selectedInspectionTypes) {
                     taskInspRecords.push({
@@ -114,7 +114,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             const { error: tsError } = await (supabase as any).from('taskstr').insert(taskStrRecords as any);
             if (tsError) throw tsError;
 
-            const taskInspRecords = [];
+            const taskInspRecords: any[] = [];
             for (const strId of uniqueStructures) {
                 let typesForStructure = componentTypes;
 
@@ -187,7 +187,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
                 if (tcError) throw tcError;
             }
 
-            const taskInspRecords = [];
+            const taskInspRecords: any[] = [];
 
             for (const strId of uniqueStructures) {
                 let compsForStr: string[] = [];

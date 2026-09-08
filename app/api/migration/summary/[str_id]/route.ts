@@ -140,7 +140,7 @@ export const POST = withAuth(
         facesCount = rFaces.rows?.[0]?.CNT || rFaces.rows?.[0]?.[0] || 0;
       } catch (e) {}
       try {
-        let rGeo = null;
+        let rGeo: any = null;
         try {
           rGeo = await connection.execute(`SELECT COUNT(*) as CNT FROM PIPE_GEO WHERE STR_ID = :strId`, { strId: str_id });
         } catch (_) {

@@ -87,7 +87,7 @@ export function UserDataTable() {
             setLoading(true);
             
             // Get current user and their local metadata (try session first to avoid navigator locks)
-            let authUser = null;
+            let authUser: any = null;
             try {
                 const { data: { session } } = await supabase.auth.getSession();
                 authUser = session?.user || null;

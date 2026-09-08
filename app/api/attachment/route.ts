@@ -109,8 +109,8 @@ export const GET = withTenant(async (request, { companyId }) => {
             .single();
 
           if (inspRecord) {
-            let jpName = null;
-            let platName = null;
+            let jpName: any = null;
+            let platName: any = null;
             
             if (inspRecord.jobpack_id) {
               const { data: jp } = await (supabase as any).from("jobpack").select("name").eq("id", inspRecord.jobpack_id).eq("company_id", companyId).single();

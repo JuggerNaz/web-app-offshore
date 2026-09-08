@@ -130,7 +130,7 @@ export default function AttachmentSection({ jobpackId, structureId, sowId, repor
         ...(allInspRecords || []).map(r => r.insp_id).filter(Boolean)
       ]));
       
-      const filterParts = [];
+      const filterParts: string[] = [];
       if (anomalyIds.length > 0) {
         filterParts.push(`and(source_type.ilike.anomaly,source_id.in.(${anomalyIds.join(",")}))`);
       }

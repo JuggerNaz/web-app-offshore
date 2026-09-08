@@ -94,7 +94,7 @@ export default function ComponentTreeDialog({
                 const [actualSowId, itemId] = sowId.split('-');
 
                 // Get report number filter if applicable
-                let targetReportNumber = null;
+                let targetReportNumber: any = null;
                 if (itemId) {
                     const { data: itemData } = await supabase
                         .from('u_sow_items')

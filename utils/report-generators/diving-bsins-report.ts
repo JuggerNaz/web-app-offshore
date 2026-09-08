@@ -221,7 +221,7 @@ export const generateDivingBSINSReport = async (
                     // Table Data
                     const renderGroupTable = (title: string, fields: { label: string; value: string }[]) => {
                         // We will render fields in 2 columns of key-value pairs to fit them nicely
-                        const body = [];
+                        const body: any[] = [];
                         for (let j = 0; j < fields.length; j += 2) {
                             const f1 = fields[j];
                             const f2 = fields[j + 1] || { label: "", value: "" };

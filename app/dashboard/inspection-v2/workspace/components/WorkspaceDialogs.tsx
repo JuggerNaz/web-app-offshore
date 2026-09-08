@@ -151,6 +151,7 @@ interface WorkspaceDialogsProps {
         selectorShowAll: boolean;
         isSeabedGuiOpen: boolean;
         isPipelineMapOpen?: boolean;
+        inspectionDirection?: string;
         tapeId: number | null;
         vidTimer: number;
         dataAcqFields: any;
@@ -516,6 +517,7 @@ export function WorkspaceDialogs({
         selectorShowAll,
         isSeabedGuiOpen,
         isPipelineMapOpen,
+        inspectionDirection,
         tapeId,
         vidTimer,
         dataAcqFields,
@@ -2370,6 +2372,12 @@ export function WorkspaceDialogs({
                     onClose={() => setters.setIsPipelineMapOpen?.(false)}
                     structureName={headerData?.structureName || "Pipeline Main Line"}
                     pipelineLengthKm={headerData?.lineLength ? parseFloat(headerData.lineLength) : (selectedComp?.length ? parseFloat(selectedComp.length) : 10.0)}
+                    supabase={supabase}
+                    jobpackId={jobPackId || undefined}
+                    structureId={structureId || undefined}
+                    sowReportNo={headerData?.sowReportNo || headerData?.sowNo || sowId}
+                    inspectionDirection={inspectionDirection || headerData?.inspectionDirection || "Increase KP"}
+                    liveTelemetry={dataAcqFields}
                     events={(currentRecords || []).map((r: any) => {
                         const data = r.inspection_data || {};
                         // Strictly tuned KP/FP — do NOT use raw_fp or raw_kp
@@ -2387,7 +2395,7 @@ export function WorkspaceDialogs({
                             // Strictly tuned northing & easting — do NOT use raw_northing or raw_easting
                             northing: r.northing || data.northing || data.utm_northing || "",
                             easting: r.easting || data.easting || data.utm_easting || "",
-                            depth: data.depth || data.water_depth || data.verification_depth || r.depth || r.elevation || "",
+                            depth: data.depth || data.water_depth || data.verification_depth || data.water_depth_m || data.seabed_depth || r.depth || r.elevation || "",
                             cp_fg_rdg: data.cp_fg_rdg || data.cp_fg || r.cp_fg_rdg || "",
                             rov_heading: data.rov_heading || data.heading || r.rov_heading || "",
                             inspection_date: r.inspection_date || data.inspection_date || "",

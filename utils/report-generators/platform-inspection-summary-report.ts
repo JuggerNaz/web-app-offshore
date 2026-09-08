@@ -309,7 +309,7 @@ export const generatePlatformInspectionSummaryReport = async (
                             totalCompl += (counts.completed || 0);
                             totalPend  += (counts.pending || 0);
 
-                            const parts = [];
+                            const parts: string[] = [];
                             if (counts.completed > 0) parts.push(`[OK] ${counts.completed}`);
                             if (counts.incomplete > 0) parts.push(`[!] ${counts.incomplete}`);
                             if (counts.anomaly > 0) parts.push(`[DEFECT] ${counts.anomaly}`);

@@ -17,7 +17,9 @@ import {
     Ruler,
     CheckCircle2,
     AlertCircle,
-    Link2
+    Link2,
+    ChevronDown,
+    ChevronRight
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -180,7 +182,7 @@ function getAssociatedComponentInfo(comp: any, allComponents: any[] = []) {
         }
     }
 
-    let matchedComp = null;
+    let matchedComp: any = null;
     if (assocId) {
         matchedComp = (allComponents || []).find((c: any) => String(c.id || c.comp_id) === String(assocId));
     }
@@ -367,6 +369,8 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     const [isRegisterOpen, setIsRegisterOpen] = React.useState(false);
     const [sortKey, setSortKey] = React.useState<SortKey>('name');
     const [sortDir, setSortDir] = React.useState<SortDir>('asc');
+    const [isSowCollapsed, setIsSowCollapsed] = React.useState(false);
+    const [isNonSowCollapsed, setIsNonSowCollapsed] = React.useState(false);
     const [pending3DTask, setPending3DTask] = React.useState<{ taskCode: string; comp: any } | null>(null);
     const [showUnsavedPrompt, setShowUnsavedPrompt] = React.useState(false);
 
@@ -442,7 +446,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
         const targetQId = String(comp3d.q_id || comp3d.name || comp3dRaw.q_id || comp3dRaw.name || "").toUpperCase().trim();
 
         // 1. Match directly against allComponents from DB by ID or exact QID
-        let fullComp = null;
+        let fullComp: any = null;
         if (allComponents && allComponents.length > 0) {
             fullComp = allComponents.find((c: any) => {
                 const cRaw = c.raw || c;
@@ -509,7 +513,6 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
             clickTimerRef.current = null;
         }
         clickTimerRef.current = setTimeout(() => {
-            handleComponentSelection(compToUse);
             handleSelect3DTaskWithCheck(taskCode, compToUse);
             clickTimerRef.current = null;
         }, 250);
@@ -522,7 +525,11 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
             clickTimerRef.current = null;
         }
 
-        handleComponentSelection(compToUse);
+        if (isFormDirty) {
+            if (!confirm("The inspection form has unsaved data. Are you sure you want to discard unsaved changes and view this recorded data?")) {
+                return;
+            }
+        }
 
         if (!existingRecords || existingRecords.length === 0) {
             handleSelect3DTaskWithCheck(taskCode, compToUse);
@@ -605,21 +612,8 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
     };
 
     const nonSowList = React.useMemo(() => {
-        const sowCompsWithoutValidTask = componentsSow.filter((c: any) => {
-            let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
-            const hasValidTask = tasksToFilter.some((tCode: string) => {
-                const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
-                if (!it) return true;
-                const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                if (inspMethod === "DIVING" && isDiving) return true;
-                if (inspMethod === "ROV" && isRov) return true;
-                return false;
-            });
-            return !hasValidTask;
-        });
-        return [...componentsNonSow, ...sowCompsWithoutValidTask];
-    }, [componentsSow, componentsNonSow, allInspectionTypes, inspMethod]);
+        return componentsNonSow || [];
+    }, [componentsNonSow]);
 
     const availableInspectionTypesForMode = React.useMemo(() => {
         return (allInspectionTypes || []).filter((it: any) => {
@@ -675,7 +669,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                             onClick={() => setCompView("LIST")} 
                             className={`px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${compView === 'LIST' ? 'bg-blue-600 text-white border-b border-blue-600' : 'text-slate-400 hover:text-white border-b border-transparent'}`}
                         >
-                            EVENT MENU
+                            {structureType === "pipeline" ? "EVENT MENU" : "COMPONENT LIST"}
                         </button>
                         <button 
                             onClick={() => setCompView("MODEL_3D")} 
@@ -709,161 +703,213 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                         </div>
                         <ScrollArea className="flex-1 p-2">
                             <div className="space-y-4">
-                                <div>
-                                    <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-900/20 px-2 py-1 rounded border border-blue-100 dark:border-blue-800/30 mb-1.5">
-                                        <div className="text-[9px] font-black uppercase text-blue-600 dark:text-blue-300 tracking-widest">SOW Scope</div>
-                                        <div className="flex items-center gap-2">
-                                            <button 
-                                                onClick={() => toggleSort('name')}
-                                                className={`text-[8px] font-black uppercase tracking-tighter flex items-center gap-0.5 px-1.5 py-0.5 rounded transition-colors ${sortKey === 'name' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-400 dark:text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/40'}`}
-                                            >
-                                                QID {sortKey === 'name' && (sortDir === 'asc' ? '↑' : '↓')}
-                                            </button>
-                                            <button 
-                                                onClick={() => toggleSort('startElev')}
-                                                className={`text-[8px] font-black uppercase tracking-tighter flex items-center gap-0.5 px-1.5 py-0.5 rounded transition-colors ${sortKey === 'startElev' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-400 dark:text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/40'}`}
-                                            >
-                                                Elev {sortKey === 'startElev' && (sortDir === 'asc' ? '↑' : '↓')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        {componentsSow.filter((c: any) => {
-                                            let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
-                                            const hasValidTask = tasksToFilter.some((tCode: string) => {
-                                                const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
-                                                if (!it) return true;
-                                                const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                                const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                                if (inspMethod === "DIVING" && isDiving) return true;
-                                                if (inspMethod === "ROV" && isRov) return true;
-                                                return false;
-                                            });
-                                            if (!hasValidTask) return false;
+                                {(() => {
+                                    const filteredSow = componentsSow.filter((c: any) => {
+                                        const term = compSearchTerm.toLowerCase().trim();
+                                        if (!term) return true;
+                                        
+                                        const qid = (c.name || c.q_id || '').toLowerCase();
+                                        const code = (c.raw?.code || c.code || '').toLowerCase();
+                                        const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
+                                        const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
+                                        const nodeStr = `${c.startNode || ''} ${c.endNode || ''}`.toLowerCase();
+                                        
+                                        return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term) || nodeStr.includes(term);
+                                    }).sort(sortFn);
 
-                                            const term = compSearchTerm.toLowerCase().trim();
-                                            if (!term) return true;
-                                            
-                                            const qid = (c.name || '').toLowerCase();
-                                            const code = (c.raw?.code || '').toLowerCase();
-                                            const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
-                                            const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
-                                            const nodeStr = `${c.startNode || ''} ${c.endNode || ''}`.toLowerCase();
-                                            
-                                            return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term) || nodeStr.includes(term);
-                                        }).sort(sortFn).map((c: any) => {
-                                            const isSelected = selectedComp?.id === c.id;
-                                            return (
-                                                <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-100'}`}>
-                                                    <div className="flex justify-between font-bold">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="flex-1 truncate">{c.name}</span>
-                                                            <div
-                                                                onClick={(e) => { e.stopPropagation(); handleComponentSelection(c); setCompSpecDialogOpen(true); }}
-                                                                className={`p-1 rounded hover:bg-black/10 transition-colors ${isSelected ? 'text-blue-100' : 'text-slate-300 hover:text-blue-500'}`}
-                                                                title="View Component Specs"
-                                                            >
-                                                                <Info className="w-3.5 h-3.5" />
-                                                            </div>
-                                                        </div>
-                                                        <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
-                                                    </div>
-                                                    {(c.startNode !== '-' || c.endNode !== '-') && (
-                                                        <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
-                                                    )}
-                                                    <div className="flex flex-wrap gap-1 mt-1.5">
-                                                        {(c.taskStatuses || [])
-                                                            .filter((ts: any) => {
-                                                                const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
-                                                                if (!it) return true;
-                                                                const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-                                                                const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-                                                                if (inspMethod === "DIVING" && isDiving) return true;
-                                                                if (inspMethod === "ROV" && isRov) return true;
-                                                                return false;
-                                                            })
-                                                            .map((ts: any, idx: number) => {
-                                                                const tCode = ts.code;
-                                                                const matchedType = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
-                                                                const displayName = matchedType?.name || tCode;
+                                    const filteredNonSow = nonSowList.filter((c: any) => {
+                                        const term = compSearchTerm.toLowerCase().trim();
+                                        if (!term) return true;
+                                        const qid = (c.name || c.q_id || '').toLowerCase();
+                                        const code = (c.raw?.code || c.code || '').toLowerCase();
+                                        const legStr = `${c.startLeg || ''} ${c.endLeg || ''}`.toLowerCase();
+                                        const elevStr = `${c.startElev || ''} ${c.endElev || ''}`.toLowerCase();
+                                        const nodeStr = `${c.startNode || ''} ${c.endNode || ''}`.toLowerCase();
+                                        return qid.includes(term) || code.includes(term) || legStr.includes(term) || elevStr.includes(term) || nodeStr.includes(term);
+                                    }).sort(sortFn);
 
-                                                                const compIdStr = String(c.id || c.comp_id || "");
-                                                                const compQIdStr = String(c.q_id || c.name || "").toUpperCase();
-
-                                                                const taskRecords = (currentRecords || []).filter((r: any) => {
-                                                                    const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
-                                                                                        ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
-                                                                    if (!matchesComp) return false;
-                                                                    const rCode = String(r.inspection_type_code || r.inspection_type?.code || r.task_code || "").toUpperCase();
-                                                                    return rCode === String(tCode).toUpperCase();
-                                                                });
-
-                                                                const isInspected = taskRecords.length > 0;
-                                                                const hasAnom = taskRecords.some((r: any) => r.has_anomaly);
-
-                                                                return (
-                                                                    <span 
-                                                                        key={idx} 
-                                                                        onClick={(e) => { 
-                                                                            e.stopPropagation(); 
-                                                                            handleTaskSingleClick(tCode, c); 
-                                                                        }}
-                                                                        onDoubleClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleTaskDoubleClick(tCode, taskRecords, displayName, c);
-                                                                        }}
-                                                                        className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-all ${
-                                                                            isSelected ? 'bg-white/20 text-blue-100 hover:bg-white/30' : 
-                                                                            isInspected ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' :
-                                                                            'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
-                                                                        }`}
-                                                                        title={isInspected ? `Single-click: add new inspection. Double-click: view recorded data (${taskRecords.length} rec)` : `Start inspection for ${displayName}`}
-                                                                    >
-                                                                        <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500 animate-pulse' : isInspected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                                                        {tCode}
-                                                                        {isInspected && (
-                                                                            <span className="text-[7.5px] font-black text-emerald-600 dark:text-emerald-300">({taskRecords.length})</span>
-                                                                        )}
-                                                                    </span>
-                                                                );
-                                                            })}
-                                                        <span 
-                                                            onClick={(e) => { 
-                                                                e.stopPropagation(); 
-                                                                handleComponentSelection(c);
-                                                                setCompSpecDialogOpen(false); 
-                                                                setShowTaskSelector?.(true);
-                                                            }}
-                                                            className={`inline-flex items-center justify-center w-5 h-4 rounded bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white transition-colors cursor-pointer text-[10px] font-bold border border-blue-500/20`}
-                                                            title="Add Additional Inspection Type"
-                                                        >
-                                                            +
+                                    return (
+                                        <>
+                                            {/* SOW SCOPE SECTION */}
+                                            <div>
+                                                <div 
+                                                    onClick={() => setIsSowCollapsed(prev => !prev)}
+                                                    className="flex items-center justify-between bg-blue-50/80 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2 py-1.5 rounded border border-blue-200/60 dark:border-blue-800/50 mb-1.5 cursor-pointer transition-colors select-none group"
+                                                    role="button"
+                                                    title={isSowCollapsed ? "Click to expand SOW Scope" : "Click to collapse SOW Scope"}
+                                                >
+                                                    <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-300">
+                                                        {isSowCollapsed ? (
+                                                            <ChevronRight className="w-3.5 h-3.5 text-blue-500 group-hover:scale-110 transition-transform" />
+                                                        ) : (
+                                                            <ChevronDown className="w-3.5 h-3.5 text-blue-500 group-hover:scale-110 transition-transform" />
+                                                        )}
+                                                        <span className="text-[9px] font-black uppercase tracking-widest">SOW Scope</span>
+                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-200/70 dark:bg-blue-800/80 text-blue-700 dark:text-blue-200">
+                                                            {filteredSow.length}
                                                         </span>
                                                     </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded tracking-widest mb-1.5 mt-2 border border-slate-200 dark:border-slate-800">Non-SOW</div>
-                                    <div className="space-y-1">
-                                        {nonSowList.filter((c: any) => {
-                                            const term = compSearchTerm.toLowerCase().trim();
-                                            if (!term) return true;
-                                            const qid = (c.name || '').toLowerCase();
-                                            const code = (c.raw?.code || '').toLowerCase();
-                                            return qid.includes(term) || code.includes(term);
-                                        }).sort(sortFn).map((c: any) => (
-                                            <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 dark:bg-slate-800 text-white border-slate-800 dark:border-slate-700 shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'}`}>
-                                                <div className="flex justify-between font-bold">
-                                                    <span>{c.name}</span>
-                                                    <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
+                                                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                                        <button 
+                                                            onClick={() => toggleSort('name')}
+                                                            className={`text-[8px] font-black uppercase tracking-tighter flex items-center gap-0.5 px-1.5 py-0.5 rounded transition-colors ${sortKey === 'name' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-500 dark:text-blue-400 hover:bg-blue-200/60 dark:hover:bg-blue-900/60'}`}
+                                                        >
+                                                            QID {sortKey === 'name' && (sortDir === 'asc' ? '↑' : '↓')}
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => toggleSort('startElev')}
+                                                            className={`text-[8px] font-black uppercase tracking-tighter flex items-center gap-0.5 px-1.5 py-0.5 rounded transition-colors ${sortKey === 'startElev' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-500 dark:text-blue-400 hover:bg-blue-200/60 dark:hover:bg-blue-900/60'}`}
+                                                        >
+                                                            Elev {sortKey === 'startElev' && (sortDir === 'asc' ? '↑' : '↓')}
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+
+                                                {!isSowCollapsed && (
+                                                    <div className="space-y-1">
+                                                        {filteredSow.length === 0 ? (
+                                                            <div className="text-center py-2 text-[10px] text-slate-400 dark:text-slate-500">No SOW components found</div>
+                                                        ) : (
+                                                            filteredSow.map((c: any) => {
+                                                                const isSelected = selectedComp?.id === c.id;
+                                                                return (
+                                                                    <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-100'}`}>
+                                                                        <div className="flex justify-between font-bold">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="flex-1 truncate">{c.name}</span>
+                                                                                <div
+                                                                                    onClick={(e) => { e.stopPropagation(); handleComponentSelection(c); setCompSpecDialogOpen(true); }}
+                                                                                    className={`p-1 rounded hover:bg-black/10 transition-colors ${isSelected ? 'text-blue-100' : 'text-slate-300 hover:text-blue-500'}`}
+                                                                                    title="View Component Specs"
+                                                                                >
+                                                                                    <Info className="w-3.5 h-3.5" />
+                                                                                </div>
+                                                                            </div>
+                                                                            <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
+                                                                        </div>
+                                                                        {(c.startNode !== '-' || c.endNode !== '-') && (
+                                                                            <div className={`text-[9px] font-mono mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>{c.startNode} → {c.endNode}</div>
+                                                                        )}
+                                                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                                                            {(c.taskStatuses || [])
+                                                                                .filter((ts: any) => {
+                                                                                    const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
+                                                                                    if (!it) return true;
+                                                                                    const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
+                                                                                    const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
+                                                                                    const hasExplicit = (it.metadata?.rov !== undefined && it.metadata?.rov !== null) || (it.metadata?.diving !== undefined && it.metadata?.diving !== null) || it.metadata?.job_type;
+                                                                                    if (!hasExplicit) return true;
+                                                                                    if (inspMethod === "DIVING" && isDiving) return true;
+                                                                                    if (inspMethod === "ROV" && isRov) return true;
+                                                                                    return false;
+                                                                                })
+                                                                                .map((ts: any, idx: number) => {
+                                                                                    const tCode = ts.code;
+                                                                                    const matchedType = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
+                                                                                    const displayName = matchedType?.name || tCode;
+
+                                                                                    const compIdStr = String(c.id || c.comp_id || "");
+                                                                                    const compQIdStr = String(c.q_id || c.name || "").toUpperCase();
+
+                                                                                    const taskRecords = (currentRecords || []).filter((r: any) => {
+                                                                                        const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
+                                                                                                            ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
+                                                                                        if (!matchesComp) return false;
+                                                                                        const rCode = String(r.inspection_type_code || r.inspection_type?.code || r.task_code || "").toUpperCase();
+                                                                                        return rCode === String(tCode).toUpperCase();
+                                                                                    });
+
+                                                                                    const isInspected = taskRecords.length > 0;
+                                                                                    const hasAnom = taskRecords.some((r: any) => r.has_anomaly);
+
+                                                                                    return (
+                                                                                        <span 
+                                                                                            key={idx} 
+                                                                                            onClick={(e) => { 
+                                                                                                e.stopPropagation(); 
+                                                                                                handleTaskSingleClick(tCode, c); 
+                                                                                            }}
+                                                                                            onDoubleClick={(e) => {
+                                                                                                e.stopPropagation(); 
+                                                                                                handleTaskDoubleClick(tCode, taskRecords, displayName, c);
+                                                                                            }}
+                                                                                            className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-all ${
+                                                                                                isSelected ? 'bg-white/20 text-blue-100 hover:bg-white/30' : 
+                                                                                                isInspected ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' :
+                                                                                                'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
+                                                                                            }`}
+                                                                                            title={isInspected ? `Single-click: add new inspection. Double-click: view recorded data (${taskRecords.length} rec)` : `Start inspection for ${displayName}`}
+                                                                                        >
+                                                                                            <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500 animate-pulse' : isInspected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                                                            {tCode}
+                                                                                            {isInspected && (
+                                                                                                <span className="text-[7.5px] font-black text-emerald-600 dark:text-emerald-300">({taskRecords.length})</span>
+                                                                                            )}
+                                                                                        </span>
+                                                                                    );
+                                                                                })}
+                                                                            <span 
+                                                                                onClick={(e) => { 
+                                                                                    e.stopPropagation(); 
+                                                                                    handleComponentSelection(c);
+                                                                                    setCompSpecDialogOpen(false); 
+                                                                                    setShowTaskSelector?.(true);
+                                                                                }}
+                                                                                className={`inline-flex items-center justify-center w-5 h-4 rounded bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white transition-colors cursor-pointer text-[10px] font-bold border border-blue-500/20`}
+                                                                                title="Add Additional Inspection Type"
+                                                                            >
+                                                                                +
+                                                                            </span>
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* NON-SOW SECTION */}
+                                            <div>
+                                                <div 
+                                                    onClick={() => setIsNonSowCollapsed(prev => !prev)}
+                                                    className="flex items-center justify-between text-slate-600 dark:text-slate-300 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700/80 px-2 py-1.5 rounded tracking-widest mb-1.5 mt-2 border border-slate-200 dark:border-slate-700/60 cursor-pointer transition-colors select-none group"
+                                                    role="button"
+                                                    title={isNonSowCollapsed ? "Click to expand Non-SOW" : "Click to collapse Non-SOW"}
+                                                >
+                                                    <div className="flex items-center gap-1.5">
+                                                        {isNonSowCollapsed ? (
+                                                            <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:scale-110 transition-transform" />
+                                                        ) : (
+                                                            <ChevronDown className="w-3.5 h-3.5 text-slate-500 group-hover:scale-110 transition-transform" />
+                                                        )}
+                                                        <span className="text-[9px] font-black uppercase tracking-widest">Non-SOW</span>
+                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                                            {filteredNonSow.length}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {!isNonSowCollapsed && (
+                                                    <div className="space-y-1">
+                                                        {filteredNonSow.length === 0 ? (
+                                                            <div className="text-center py-2 text-[10px] text-slate-400 dark:text-slate-500">No Non-SOW components found</div>
+                                                        ) : (
+                                                            filteredNonSow.map((c: any) => (
+                                                                <button key={c.id} onClick={() => { handleComponentSelection(c); }} className={`w-full text-left p-2 rounded text-xs transition-all border ${selectedComp?.id === c.id ? 'bg-slate-700 dark:bg-slate-800 text-white border-slate-800 dark:border-slate-700 shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'}`}>
+                                                                    <div className="flex justify-between font-bold">
+                                                                        <span>{c.name}</span>
+                                                                        <span className="font-mono opacity-75 text-[10px]">{c.depth}</span>
+                                                                    </div>
+                                                                </button>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </ScrollArea>
                     </div>

@@ -247,7 +247,7 @@ export const generateDivingMPINSReport = async (
                         { label: "Probe Size", value: String(d.probe_size ?? "—") }
                     ];
 
-                    const paramBody = [];
+                    const paramBody: any[] = [];
                     for (let j = 0; j < paramFields.length; j += 2) {
                         const f1 = paramFields[j];
                         const f2 = paramFields[j + 1] || { label: "", value: "" };

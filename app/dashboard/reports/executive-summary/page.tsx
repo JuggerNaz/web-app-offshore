@@ -296,7 +296,7 @@ export default function ExecutiveSummaryPage() {
 
             // Fetch Aliases
             const aliasesRes = await fetch("/api/report-aliases");
-            let aliases = [];
+            let aliases: any[] = [];
             if (aliasesRes.ok) {
                 const aliasesData = await aliasesRes.json();
                 aliases = Array.isArray(aliasesData?.data) ? aliasesData.data : [];
@@ -304,7 +304,7 @@ export default function ExecutiveSummaryPage() {
 
             // Fetch Contractors
             const contractorsRes = await fetch("/api/jobpack/utils/contractors");
-            let contractors = [];
+            let contractors: any[] = [];
             if (contractorsRes.ok) {
                 const contrData = await contractorsRes.json();
                 contractors = Array.isArray(contrData?.data) ? contrData.data : [];
@@ -735,7 +735,7 @@ export default function ExecutiveSummaryPage() {
                 TASK_TYPE: jp?.metadata?.tasktype || "N/A",
                 PLAN_TYPE: jp?.metadata?.plantype || "N/A",
                 INSPECTION_MODE: (() => {
-                    const modes = [];
+                    const modes: any[] = [];
                     if (jp?.metadata?.rov === 1 || jp?.metadata?.methods?.includes("ROV")) {
                         modes.push("ROV");
                     }
@@ -747,7 +747,7 @@ export default function ExecutiveSummaryPage() {
                     return modes.join(" / ") || "N/A";
                 })(),
                 PROJECT_SCOPE: (() => {
-                    const scopes = [];
+                    const scopes: any[] = [];
                     if (Number(jp?.metadata?.topside) === 1) scopes.push("Topside");
                     if (Number(jp?.metadata?.subsea) === 1) scopes.push("Subsea");
                     return scopes.join(" / ") || "N/A";

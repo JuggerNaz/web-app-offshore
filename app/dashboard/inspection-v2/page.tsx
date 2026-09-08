@@ -40,6 +40,13 @@ interface SOWReport {
     structure_id: number;
 }
 
+// Module-level in-memory cache to preserve state and data across client-side page transitions
+let memoryAllStructures: Structure[] = [];
+let memoryStructureMap = new Map<string, { title: string; type: "platform" | "pipeline" }>();
+const memoryJobPacksByStructure = new Map<string, JobPack[]>();
+const memorySowReportsByJobPack = new Map<string, SOWReport[]>();
+const memoryRawSowItemsByJobPack = new Map<string, any[]>();
+
 function getInitialInspectionState(key: string, paramName?: string): string {
     if (typeof window === "undefined") return "";
     try {
@@ -61,13 +68,65 @@ function getInitialInspectionState(key: string, paramName?: string): string {
     }
 }
 
+function getInitialCachedList<T>(sessionKey: string): T[] {
+    if (typeof window === "undefined") return [];
+    try {
+        const cached = sessionStorage.getItem(sessionKey);
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+    } catch (_) {}
+    return [];
+}
+
 export default function InspectionLanding() {
     const router = useRouter();
     const supabase = createClient();
 
-    const [jobPacks, setJobPacks] = useState<JobPack[]>([]);
-    const [sowReports, setSOWReports] = useState<SOWReport[]>([]);
-    const [rawSowItems, setRawSowItems] = useState<any[]>([]);
+    const initialStructure = useMemo(() => getInitialInspectionState("inspection_structure", "structure"), []);
+    const initialJobPack = useMemo(() => getInitialInspectionState("inspection_jobpack", "jobpack"), []);
+    const initialSow = useMemo(() => getInitialInspectionState("inspection_sow"), []);
+    const initialMode = useMemo(() => getInitialInspectionState("inspection_mode", "mode") || "ROV", []);
+
+    const initialRawStructId = initialStructure ? initialStructure.replace(/^(platform|pipeline)-/, "") : "";
+    const initialSowKey = initialJobPack && initialRawStructId ? `${initialJobPack}_${initialRawStructId}` : "";
+
+    const [allStructures, setAllStructures] = useState<Structure[]>(() => {
+        if (memoryAllStructures.length > 0) return memoryAllStructures;
+        return getInitialCachedList<Structure>("cached_all_structures");
+    });
+
+    const [jobPacks, setJobPacks] = useState<JobPack[]>(() => {
+        if (initialRawStructId && memoryJobPacksByStructure.has(initialRawStructId)) {
+            return memoryJobPacksByStructure.get(initialRawStructId) || [];
+        }
+        if (initialRawStructId) {
+            return getInitialCachedList<JobPack>(`cached_jobpacks_${initialRawStructId}`);
+        }
+        return [];
+    });
+
+    const [sowReports, setSOWReports] = useState<SOWReport[]>(() => {
+        if (initialSowKey && memorySowReportsByJobPack.has(initialSowKey)) {
+            return memorySowReportsByJobPack.get(initialSowKey) || [];
+        }
+        if (initialSowKey) {
+            return getInitialCachedList<SOWReport>(`cached_sows_${initialSowKey}`);
+        }
+        return [];
+    });
+
+    const [rawSowItems, setRawSowItems] = useState<any[]>(() => {
+        if (initialSowKey && memoryRawSowItemsByJobPack.has(initialSowKey)) {
+            return memoryRawSowItemsByJobPack.get(initialSowKey) || [];
+        }
+        if (initialSowKey) {
+            return getInitialCachedList<any>(`cached_sow_items_${initialSowKey}`);
+        }
+        return [];
+    });
+
     const [sowInspRecords, setSowInspRecords] = useState<any[]>([]);
     const [anomalyCount, setAnomalyCount] = useState<number>(0);
     const [anomalyStats, setAnomalyStats] = useState<{ total: number; rov: number; dive: number }>({ total: 0, rov: 0, dive: 0 });
@@ -76,14 +135,16 @@ export default function InspectionLanding() {
     const [sowReportsLoading, setSowReportsLoading] = useState<boolean>(false);
 
     const [mounted, setMounted] = useState(false);
-    const [selectedJobPack, setSelectedJobPack] = useState<string>("");
-    const [selectedStructure, setSelectedStructure] = useState<string>("");
-    const [selectedSOW, setSelectedSOW] = useState<string>("");
-    const [selectedMode, setSelectedMode] = useState<string>("ROV");
-    const [loading, setLoading] = useState(true);
+    const [selectedJobPack, setSelectedJobPack] = useState<string>(initialJobPack);
+    const [selectedStructure, setSelectedStructure] = useState<string>(initialStructure);
+    const [selectedSOW, setSelectedSOW] = useState<string>(initialSow);
+    const [selectedMode, setSelectedMode] = useState<string>(initialMode);
+    const [loading, setLoading] = useState(() => memoryAllStructures.length === 0);
 
-    const prevStructureRef = useRef<string>("");
-    const prevJobPackRef = useRef<string>("");
+    const prevStructureRef = useRef<string>(initialStructure);
+    const prevJobPackRef = useRef<string>(initialJobPack);
+    const activeJobPackReqIdRef = useRef<number>(0);
+    const activeSowReqIdRef = useRef<number>(0);
 
     // Filter states
     const [openJP, setOpenJP] = useState(false);
@@ -106,33 +167,45 @@ export default function InspectionLanding() {
         setCollapsedStructGroups(prev => ({ ...prev, [group]: !prev[group] }));
     };
 
-    const [allStructures, setAllStructures] = useState<Structure[]>([]);
-
     // Derive job packs that are assigned to the selected structure, sorted by start date desc
     const jobPacksForSelectedStructure = useMemo(() => {
         if (!selectedStructure) return [];
         const rawId = selectedStructure.replace(/^(platform|pipeline)-/, "");
+        const structObj = allStructures.find(s => s.id === selectedStructure || s.id.endsWith(`-${rawId}`));
+        const structName = structObj?.name?.toLowerCase().trim() || "";
+
         return jobPacks.filter((jp) => {
             if (!jp.structures || jp.structures.length === 0) return true;
             return jp.structures.some((s) => {
                 const sIdStr = String(s.id).replace(/^(platform|pipeline)-/, "");
-                return s.id.toString() === selectedStructure || sIdStr === rawId;
+                const sName = String(s.name || "").toLowerCase().trim();
+                return s.id.toString() === selectedStructure || sIdStr === rawId || (structName && sName === structName);
             });
         }).sort((a, b) => {
             if (!a.start_date) return 1;
             if (!b.start_date) return -1;
             return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
         });
-    }, [jobPacks, selectedStructure]);
+    }, [jobPacks, selectedStructure, allStructures]);
 
     const selectedJobPackData = jobPacks.find((jp) => jp.id.toString() === selectedJobPack);
     const selectedStructureData = useMemo(() => {
         if (!selectedStructure || allStructures.length === 0) return undefined;
+        // 1. Exact ID match (e.g. "platform-1" === "platform-1")
+        const exact = allStructures.find((s) => s.id.toString() === selectedStructure);
+        if (exact) return exact;
+
+        // 2. Fallback prefix-aware match if selectedStructure is unprefixed e.g. "1"
         const rawSelId = selectedStructure.replace(/^(platform|pipeline)-/, "");
+        const isPrefixedPlatform = selectedStructure.startsWith("platform-");
+        const isPrefixedPipeline = selectedStructure.startsWith("pipeline-");
+
         return allStructures.find((s) => {
-            if (s.id.toString() === selectedStructure) return true;
             const rawSId = s.id.toString().replace(/^(platform|pipeline)-/, "");
-            return rawSId === rawSelId;
+            if (rawSId !== rawSelId) return false;
+            if (isPrefixedPlatform && s.type !== "platform") return false;
+            if (isPrefixedPipeline && s.type !== "pipeline") return false;
+            return true;
         });
     }, [allStructures, selectedStructure]);
     const selectedSOWData = sowReports.find((s) => `${s.sow_id}-${s.item_no}` === selectedSOW || s.report_number === selectedSOW);
@@ -184,30 +257,16 @@ export default function InspectionLanding() {
     });
 
     // Load structures and restore persisted state safely on mount (prevents SSR hydration mismatch)
+    const hasInitialUrlSyncRef = useRef(false);
     useEffect(() => {
         setMounted(true);
         loadStructures();
-
-        const initialStructure = getInitialInspectionState("inspection_structure", "structure");
-        const initialJobPack = getInitialInspectionState("inspection_jobpack", "jobpack");
-        const initialSow = getInitialInspectionState("inspection_sow");
-        const initialMode = getInitialInspectionState("inspection_mode", "mode") || "ROV";
-
-        if (initialStructure) {
-            setSelectedStructure(initialStructure);
-            prevStructureRef.current = initialStructure;
-        }
-        if (initialJobPack) {
-            setSelectedJobPack(initialJobPack);
-            prevJobPackRef.current = initialJobPack;
-        }
-        if (initialSow) setSelectedSOW(initialSow);
-        if (initialMode) setSelectedMode(initialMode);
     }, []);
 
-    // Sync URL query parameters taking priority if provided
+    // Sync URL query parameters ONCE on initial mount if provided
     useEffect(() => {
-        if (allStructures.length > 0 && typeof window !== "undefined") {
+        if (allStructures.length > 0 && typeof window !== "undefined" && !hasInitialUrlSyncRef.current) {
+            hasInitialUrlSyncRef.current = true;
             const params = new URLSearchParams(window.location.search);
             const queryStructure = params.get("structure");
             const queryJobPack = params.get("jobpack");
@@ -230,6 +289,78 @@ export default function InspectionLanding() {
             }
         }
     }, [allStructures]);
+
+    // Structure selection handler with clean resets and URL param clearing
+    const handleStructureSelect = (structId: string) => {
+        const idStr = structId.toString();
+        const rawId = idStr.replace(/^(platform|pipeline)-/, "");
+        setSelectedStructure(idStr);
+        setSelectedJobPack("");
+        setSelectedSOW("");
+        setSelectedMode("ROV");
+
+        // Instant cache check for new structure
+        const cachedJps = memoryJobPacksByStructure.get(rawId);
+        if (cachedJps && cachedJps.length > 0) {
+            setJobPacks(cachedJps);
+            setJobPacksLoading(false);
+        } else {
+            setJobPacks([]);
+            setJobPacksLoading(true);
+        }
+
+        setSOWReports([]);
+        setRawSowItems([]);
+        setSowInspRecords([]);
+        setAnomalyCount(0);
+        sessionStorage.setItem("inspection_structure", idStr);
+        sessionStorage.removeItem("inspection_jobpack");
+        sessionStorage.removeItem("inspection_sow");
+        setOpenStruct(false);
+        setSearchStruct("");
+
+        // Clear URL search parameters so stale back-button URL does not restore old structure/jobpack
+        if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.search = "";
+            window.history.replaceState(null, "", url.pathname);
+        }
+    };
+
+    // Job pack selection handler
+    const handleJobPackSelect = (jpId: string) => {
+        const idStr = jpId.toString();
+        const rawStructId = selectedStructure.replace(/^(platform|pipeline)-/, "");
+        const sowKey = `${idStr}_${rawStructId}`;
+
+        setSelectedJobPack(idStr);
+        setSelectedSOW("");
+
+        const cachedSows = memorySowReportsByJobPack.get(sowKey);
+        const cachedItems = memoryRawSowItemsByJobPack.get(sowKey);
+        if (cachedSows && cachedSows.length > 0) {
+            setSOWReports(cachedSows);
+            if (cachedItems) setRawSowItems(cachedItems);
+            setSowReportsLoading(false);
+        } else {
+            setSOWReports([]);
+            setRawSowItems([]);
+            setSowReportsLoading(true);
+        }
+
+        setSowInspRecords([]);
+        setAnomalyCount(0);
+        sessionStorage.setItem("inspection_jobpack", idStr);
+        sessionStorage.removeItem("inspection_sow");
+        setOpenJP(false);
+        setSearchJP("");
+
+        if (typeof window !== "undefined" && window.location.search) {
+            const url = new URL(window.location.href);
+            url.search = "";
+            window.history.replaceState(null, "", url.pathname);
+        }
+    };
 
     // Expand the selected job pack's year by default
     useEffect(() => {
@@ -258,9 +389,9 @@ export default function InspectionLanding() {
         }
     }, [selectedJobPack]);
 
-    // Auto-normalize selectedStructure ID to canonical prefixed ID (e.g. "pipeline-5" or "platform-5")
+    // Auto-normalize unprefixed structure IDs (e.g. "5" -> "platform-5")
     useEffect(() => {
-        if (selectedStructureData && selectedStructure !== selectedStructureData.id) {
+        if (selectedStructureData && selectedStructure !== selectedStructureData.id && !selectedStructure.includes("-")) {
             setSelectedStructure(selectedStructureData.id);
             sessionStorage.setItem("inspection_structure", selectedStructureData.id);
         }
@@ -273,15 +404,11 @@ export default function InspectionLanding() {
             const rawPrev = prevStructureRef.current ? prevStructureRef.current.replace(/^(platform|pipeline)-/, "") : "";
             const rawCurr = selectedStructure.replace(/^(platform|pipeline)-/, "");
 
-            // Immediate Reset of downstream selections ONLY if structure actually changed (raw ID comparison)
+            // Reset downstream selections ONLY if structure actually changed
             if (rawPrev && rawPrev !== rawCurr) {
                 setSelectedJobPack("");
                 setSelectedSOW("");
                 setSelectedMode(prev => prev || "ROV");
-                setSOWReports([]);
-                setRawSowItems([]);
-                setSowInspRecords([]);
-                setAnomalyCount(0);
                 sessionStorage.removeItem("inspection_jobpack");
                 sessionStorage.removeItem("inspection_sow");
             }
@@ -326,10 +453,6 @@ export default function InspectionLanding() {
             if (prevJobPackRef.current && prevJobPackRef.current !== selectedJobPack) {
                 setSelectedSOW("");
                 setSelectedMode(prev => prev || "ROV");
-                setSOWReports([]);
-                setRawSowItems([]);
-                setSowInspRecords([]);
-                setAnomalyCount(0);
                 sessionStorage.removeItem("inspection_sow");
             }
             prevJobPackRef.current = selectedJobPack;
@@ -404,7 +527,7 @@ export default function InspectionLanding() {
                 const numBatches = Math.max(1, Math.ceil(total / batchSize));
 
                 // Fetch all pages in parallel to minimize satellite round-trip latency
-                const promises = [];
+                const promises: any[] = [];
                 for (let i = 0; i < numBatches; i++) {
                     const offset = i * batchSize;
                     let query = supabase
@@ -798,22 +921,31 @@ export default function InspectionLanding() {
     const [structureMapRef] = useState<{ current: Map<string, { title: string; type: "platform" | "pipeline" }> }>({ current: new Map() });
 
     async function loadStructures() {
+        if (memoryAllStructures.length > 0) {
+            setAllStructures(memoryAllStructures);
+            structureMapRef.current = memoryStructureMap;
+            setLoading(false);
+            return;
+        }
+
         try {
             const cached = sessionStorage.getItem("cached_all_structures");
             if (cached) {
                 const parsed = JSON.parse(cached);
                 if (Array.isArray(parsed) && parsed.length > 0) {
                     setAllStructures(parsed);
+                    memoryAllStructures = parsed;
                     const map = new Map<string, { title: string; type: "platform" | "pipeline" }>();
                     parsed.forEach((s: any) => map.set(s.id, { title: s.name, type: s.type }));
                     structureMapRef.current = map;
+                    memoryStructureMap = map;
                     setLoading(false);
                 }
             }
         } catch (_) {}
 
         try {
-            // Only fetch platforms and pipelines — no jobpack query (it times out due to huge metadata)
+            // Only fetch platforms and pipelines — no heavy jobpack query
             const [platformsRes, pipelinesRes] = await Promise.all([
                 fetch("/api/platform?limit=1000").then(r => r.json()),
                 fetch("/api/pipeline?limit=1000").then(r => r.json())
@@ -841,7 +973,9 @@ export default function InspectionLanding() {
 
             structuresList.sort((a, b) => a.name.localeCompare(b.name));
             setAllStructures(structuresList);
+            memoryAllStructures = structuresList;
             structureMapRef.current = structureMap;
+            memoryStructureMap = structureMap;
             try {
                 sessionStorage.setItem("cached_all_structures", JSON.stringify(structuresList));
             } catch (_) {}
@@ -853,76 +987,139 @@ export default function InspectionLanding() {
         }
     }
 
-    async function loadJobPacksForStructure(structureId: string) {
+    async function loadJobPacksForStructure(structureId: string, silentRevalidate: boolean = false) {
+        if (!structureId) {
+            setJobPacks([]);
+            setJobPacksLoading(false);
+            return;
+        }
+
         const rawId = structureId.replace(/^(platform|pipeline)-/, "");
         const cacheKey = `cached_jobpacks_${rawId}`;
+        const currentReqId = ++activeJobPackReqIdRef.current;
 
-        try {
-            const cached = sessionStorage.getItem(cacheKey);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    setJobPacks(parsed);
+        // Check in-memory map or sessionStorage first
+        let cached = memoryJobPacksByStructure.get(rawId);
+        if (!cached) {
+            try {
+                const stored = sessionStorage.getItem(cacheKey);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        cached = parsed;
+                        memoryJobPacksByStructure.set(rawId, parsed);
+                    }
                 }
-            }
-        } catch (_) {}
+            } catch (_) {}
+        }
 
-        setJobPacksLoading(true);
+        if (cached && cached.length > 0) {
+            setJobPacks(cached);
+            setJobPacksLoading(false);
+            if (silentRevalidate) return;
+        } else {
+            setJobPacksLoading(true);
+        }
+
         try {
             console.log("[Jobpack] Fetching jobpacks for structure:", rawId);
-            const res = await fetch(`/api/jobpack?structure_id=${rawId}&limit=100`);
+            const structObj = allStructures.find(s => s.id === structureId || s.id.endsWith(`-${rawId}`));
+            const titleParam = structObj?.name ? `&structure_title=${encodeURIComponent(structObj.name)}` : "";
+            const res = await fetch(`/api/jobpack?structure_id=${rawId}${titleParam}&limit=100`);
+
+            // Abandon stale response if user switched structures while fetching
+            if (activeJobPackReqIdRef.current !== currentReqId) return;
+
             if (!res.ok) {
                 console.warn(`[Jobpack] API returned status ${res.status}`);
-                setJobPacks([]);
+                if (!cached) setJobPacks([]);
                 return;
             }
+
             const resJson = await res.json();
             const data = resJson.data || [];
             console.log("[Jobpack] Received", data.length, "jobpacks for structure", rawId);
 
+            if (activeJobPackReqIdRef.current !== currentReqId) return;
+
             if (data.length > 0) {
-                const formatted = data.map((jp: any) => formatJobPack(jp, structureMapRef.current, structureId));
-                setJobPacks(formatted);
+                const mapToUse = structureMapRef.current.size > 0 ? structureMapRef.current : memoryStructureMap;
+                const formatted = data.map((jp: any) => formatJobPack(jp, mapToUse, structureId));
+                memoryJobPacksByStructure.set(rawId, formatted);
                 try {
                     sessionStorage.setItem(cacheKey, JSON.stringify(formatted));
                 } catch (_) {}
+                setJobPacks(formatted);
             } else {
-                setJobPacks([]);
+                if (!cached) {
+                    memoryJobPacksByStructure.set(rawId, []);
+                    setJobPacks([]);
+                }
             }
         } catch (error) {
-            console.error("Error loading jobpacks for structure:", error);
-            setJobPacks([]);
+            if (activeJobPackReqIdRef.current === currentReqId) {
+                console.error("Error loading jobpacks for structure:", error);
+                if (!cached) setJobPacks([]);
+            }
         } finally {
-            setJobPacksLoading(false);
+            if (activeJobPackReqIdRef.current === currentReqId) {
+                setJobPacksLoading(false);
+            }
         }
     }
 
-    async function loadSOWReports(jobPackId: string, structureId: string) {
+    async function loadSOWReports(jobPackId: string, structureId: string, silentRevalidate: boolean = false) {
+        if (!jobPackId || !structureId) {
+            setSOWReports([]);
+            setRawSowItems([]);
+            setSowReportsLoading(false);
+            return;
+        }
+
         const rawId = structureId.includes("-") ? structureId.split("-")[1] : structureId;
-        const cacheKeySow = `cached_sows_${jobPackId}_${rawId}`;
-        const cacheKeyItems = `cached_sow_items_${jobPackId}_${rawId}`;
+        const cacheKey = `${jobPackId}_${rawId}`;
+        const cacheKeySow = `cached_sows_${cacheKey}`;
+        const cacheKeyItems = `cached_sow_items_${cacheKey}`;
+        const currentReqId = ++activeSowReqIdRef.current;
 
-        try {
-            const cachedSows = sessionStorage.getItem(cacheKeySow);
-            const cachedItems = sessionStorage.getItem(cacheKeyItems);
-            if (cachedSows) {
-                const parsed = JSON.parse(cachedSows);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    setSOWReports(parsed);
-                }
-            }
-            if (cachedItems) {
-                const parsed = JSON.parse(cachedItems);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    setRawSowItems(parsed);
-                }
-            }
-        } catch (_) {}
+        let cachedSows = memorySowReportsByJobPack.get(cacheKey);
+        let cachedItems = memoryRawSowItemsByJobPack.get(cacheKey);
 
-        setSowReportsLoading(true);
+        if (!cachedSows) {
+            try {
+                const storedSows = sessionStorage.getItem(cacheKeySow);
+                const storedItems = sessionStorage.getItem(cacheKeyItems);
+                if (storedSows) {
+                    const parsed = JSON.parse(storedSows);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        cachedSows = parsed;
+                        memorySowReportsByJobPack.set(cacheKey, parsed);
+                    }
+                }
+                if (storedItems) {
+                    const parsedItems = JSON.parse(storedItems);
+                    if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+                        cachedItems = parsedItems;
+                        memoryRawSowItemsByJobPack.set(cacheKey, parsedItems);
+                    }
+                }
+            } catch (_) {}
+        }
+
+        if (cachedSows && cachedSows.length > 0) {
+            setSOWReports(cachedSows);
+            if (cachedItems) setRawSowItems(cachedItems);
+            setSowReportsLoading(false);
+            if (silentRevalidate) return;
+        } else {
+            setSowReportsLoading(true);
+        }
+
         try {
             console.log("Loading SOW reports via API for job pack:", jobPackId, "structure:", structureId);
             const res = await fetch(`/api/sow?jobpack_id=${jobPackId}&structure_id=${rawId}`);
+            if (activeSowReqIdRef.current !== currentReqId) return;
+
             if (!res.ok) {
                 throw new Error(`Failed to fetch SOW reports: ${res.statusText}`);
             }
@@ -933,7 +1130,10 @@ export default function InspectionLanding() {
 
             const sowData = sow ? [sow] : [];
             const itemsData = sow?.items || [];
+            if (activeSowReqIdRef.current !== currentReqId) return;
+
             setRawSowItems(itemsData);
+            memoryRawSowItemsByJobPack.set(cacheKey, itemsData);
             try {
                 sessionStorage.setItem(cacheKeyItems, JSON.stringify(itemsData));
             } catch (_) {}
@@ -1032,7 +1232,13 @@ export default function InspectionLanding() {
                 });
             }
 
+            if (activeSowReqIdRef.current !== currentReqId) return;
+
             console.log("Formatted distinct SOW reports:", formatted);
+            memorySowReportsByJobPack.set(cacheKey, formatted);
+            try {
+                sessionStorage.setItem(cacheKeySow, JSON.stringify(formatted));
+            } catch (_) {}
             setSOWReports(formatted);
 
             // Helper to prioritize ROV mode by default unless no ROV items are found in the SOW
@@ -1092,13 +1298,14 @@ export default function InspectionLanding() {
                 }
             }
         } catch (error) {
-            console.error("Error loading SOW reports:", error);
-            toast.error("Failed to load SOW reports");
-            setSOWReports([]);
-            setSelectedSOW("");
-            setSelectedMode(prev => prev || "ROV");
+            if (activeSowReqIdRef.current === currentReqId) {
+                console.error("Error loading SOW reports:", error);
+                if (!cachedSows) setSOWReports([]);
+            }
         } finally {
-            setSowReportsLoading(false);
+            if (activeSowReqIdRef.current === currentReqId) {
+                setSowReportsLoading(false);
+            }
         }
     }
 
@@ -1184,22 +1391,11 @@ export default function InspectionLanding() {
                                                         {selectedJobPackData?.structures
                                                             ?.filter((s: any) => s.name.toLowerCase().includes(searchStruct.toLowerCase()))
                                                             .map((struct: any) => {
-                                                                const isSelected = selectedStructure === struct.id.toString() ||
-                                                                    (!!selectedStructure && !!struct.id && selectedStructure.replace(/^(platform|pipeline)-/, "") === struct.id.toString().replace(/^(platform|pipeline)-/, ""));
+                                                                const isSelected = selectedStructure === struct.id.toString();
                                                                 return (
                                                                     <div
                                                                         key={`jp-struct-${struct.id}`}
-                                                                        onClick={() => {
-                                                                            if (!isSelected) {
-                                                                                setSelectedStructure(struct.id.toString());
-                                                                                setSelectedSOW("");
-                                                                                setSelectedMode(prev => prev || "ROV");
-                                                                                sessionStorage.setItem("inspection_structure", struct.id.toString());
-                                                                                sessionStorage.removeItem("inspection_sow");
-                                                                            }
-                                                                            setOpenStruct(false);
-                                                                            setSearchStruct("");
-                                                                        }}
+                                                                        onClick={() => handleStructureSelect(struct.id.toString())}
                                                                         className={`relative flex justify-between cursor-pointer select-none items-center rounded-lg px-3 py-2 mb-0.5 text-sm outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${isSelected ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 font-bold border border-green-200 dark:border-green-900" : "text-slate-800 dark:text-slate-200"}`}
                                                                     >
                                                                         <div className="flex items-center gap-2">
@@ -1252,22 +1448,11 @@ export default function InspectionLanding() {
                                                                          <span className="text-[9px] bg-blue-200/60 dark:bg-blue-900 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded-full font-bold">{groupedStructures.platforms.length}</span>
                                                                      </div>
                                                                      {!collapsedStructGroups["platforms"] && groupedStructures.platforms.map((struct) => {
-                                                                         const isSelected = selectedStructure === struct.id.toString() ||
-                                                                             (!!selectedStructure && !!struct.id && selectedStructure.replace(/^(platform|pipeline)-/, "") === struct.id.toString().replace(/^(platform|pipeline)-/, ""));
+                                                                         const isSelected = selectedStructure === struct.id.toString();
                                                                          return (
                                                                              <div
                                                                                  key={`${struct.id}-${struct.name}`}
-                                                                                 onClick={() => {
-                                                                                     if (!isSelected) {
-                                                                                         setSelectedStructure(struct.id.toString());
-                                                                                         setSelectedSOW("");
-                                                                                         setSelectedMode(prev => prev || "ROV");
-                                                                                         sessionStorage.setItem("inspection_structure", struct.id.toString());
-                                                                                         sessionStorage.removeItem("inspection_sow");
-                                                                                     }
-                                                                                     setOpenStruct(false);
-                                                                                     setSearchStruct("");
-                                                                                 }}
+                                                                                 onClick={() => handleStructureSelect(struct.id.toString())}
                                                                                  className={`relative flex justify-between cursor-pointer select-none items-center rounded-lg px-3 py-2 text-sm outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${isSelected ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 font-bold border border-green-200 dark:border-green-900" : "text-slate-800 dark:text-slate-200"}`}
                                                                              >
                                                                                  <div className="flex items-center gap-2">
@@ -1301,22 +1486,11 @@ export default function InspectionLanding() {
                                                                          <span className="text-[9px] bg-amber-200/60 dark:bg-amber-900 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 rounded-full font-bold">{groupedStructures.pipelines.length}</span>
                                                                      </div>
                                                                      {!collapsedStructGroups["pipelines"] && groupedStructures.pipelines.map((struct) => {
-                                                                         const isSelected = selectedStructure === struct.id.toString() ||
-                                                                             (!!selectedStructure && !!struct.id && selectedStructure.replace(/^(platform|pipeline)-/, "") === struct.id.toString().replace(/^(platform|pipeline)-/, ""));
+                                                                         const isSelected = selectedStructure === struct.id.toString();
                                                                          return (
                                                                              <div
                                                                                  key={`${struct.id}-${struct.name}`}
-                                                                                 onClick={() => {
-                                                                                     if (!isSelected) {
-                                                                                         setSelectedStructure(struct.id.toString());
-                                                                                         setSelectedSOW("");
-                                                                                         setSelectedMode(prev => prev || "ROV");
-                                                                                         sessionStorage.setItem("inspection_structure", struct.id.toString());
-                                                                                         sessionStorage.removeItem("inspection_sow");
-                                                                                     }
-                                                                                     setOpenStruct(false);
-                                                                                     setSearchStruct("");
-                                                                                 }}
+                                                                                 onClick={() => handleStructureSelect(struct.id.toString())}
                                                                                  className={`relative flex justify-between cursor-pointer select-none items-center rounded-lg px-3 py-2 text-sm outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${isSelected ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 font-bold border border-green-200 dark:border-green-900" : "text-slate-800 dark:text-slate-200"}`}
                                                                              >
                                                                                  <div className="flex items-center gap-2">
@@ -1421,9 +1595,7 @@ export default function InspectionLanding() {
                                                                             <div
                                                                                 key={jp.id}
                                                                                 onClick={() => {
-                                                                                    setSelectedJobPack(jp.id.toString());
-                                                                                    setOpenJP(false);
-                                                                                    setSearchJP("");
+                                                                                    handleJobPackSelect(jp.id.toString());
                                                                                     setTimeout(() => setOpenSOW(true), 150);
                                                                                 }}
                                                                                 className={`relative flex cursor-pointer select-none items-center rounded-lg px-2.5 py-2 mb-0.5 text-xs outline-none transition-all hover:bg-slate-100 dark:hover:bg-slate-800 ${selectedJobPack === jp.id.toString() ? "bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-100/70 dark:ring-blue-800/40" : ""}`}

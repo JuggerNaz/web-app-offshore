@@ -511,7 +511,7 @@ export function SeabedSurveyGuiInline({
             }
 
             // 1. Check or Insert Component dynamically
-            let componentId = null;
+            let componentId: any = null;
             const { data: existingComp } = await supabase.from('structure_components')
                 .select('id').eq('structure_id', structureId).eq('q_id', generatedQid).maybeSingle();
             
@@ -546,7 +546,7 @@ export function SeabedSurveyGuiInline({
             }
 
             // 2. Add to SOW if sowRecordId exists and not already mapped
-            let sowItemId = null;
+            let sowItemId: any = null;
 
             if (sowRecordId && componentId) {
                 // Check by component_id primarily as it is the most reliable FK
@@ -723,9 +723,9 @@ export function SeabedSurveyGuiInline({
 
         try {
             setIsSaving(true);
-            let componentId = undefined;
-            let oldComponentId = null;
-            let inspTypeId = null;
+            let componentId: any = undefined;
+            let oldComponentId: any = null;
+            let inspTypeId: any = null;
 
             // Fetch current record to identify old component
             const { data: recData } = await supabase.from('insp_records')

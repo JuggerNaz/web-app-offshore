@@ -73,7 +73,7 @@ export default function CPReadingSection({ jobpackId, structureId, sowId, report
         
         // Comprehensive list of possible CP keys used across different forms/methods
         const cpKeys = ["cp_reading", "cp_rdg", "CP Rdg (mV)", "cp_reading_mv", "cp"];
-        let cp = null;
+        let cp: any = null;
         let activeCpKey = "";
         
         for (const key of cpKeys) {

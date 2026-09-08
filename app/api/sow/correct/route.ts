@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
             .select("anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name, structure_id, sow_report_no")
             .eq("structure_id", structId);
 
-        const updates = [];
+        const updates: any[] = [];
 
         // 6. Process each existing SOW item to align status & report_number with inspection records & anomalies
         for (const item of sowItems) {
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 7. Identify missing SOW items (inspection records or anomalies without a SOW item)
-        const missingItems = [];
+        const missingItems: any[] = [];
         const existingKeys = new Set((sowItems || []).map((item: any) => `${item.component_id}:${item.inspection_type_id}`));
 
         const recordGroups: Record<string, any[]> = {};
@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
                 if (matchComp) compId = matchComp.id;
             }
 
-            let typeId = null;
+            let typeId: any = null;
             if (anom.category || anom.defect_type) {
                 const catStr = (anom.category || anom.defect_type || "").toUpperCase();
                 const matchType = (allTypes || []).find((t: any) => 

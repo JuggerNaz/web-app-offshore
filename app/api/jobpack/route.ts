@@ -5,6 +5,26 @@ import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth, withOptionalAuth } from "@/utils/with-auth";
 
+let serverJobpackCache: { data: any[]; timestamp: number } | null = null;
+const JOBPACK_CACHE_TTL_MS = 60 * 1000; // 60s
+
+async function getAllJobpacksCached(supabase: any) {
+  const now = Date.now();
+  if (serverJobpackCache && now - serverJobpackCache.timestamp < JOBPACK_CACHE_TTL_MS) {
+    return serverJobpackCache.data;
+  }
+  const { data, error } = await supabase
+    .from("jobpack")
+    .select("*")
+    .order("id", { ascending: false });
+
+  if (error || !data) {
+    return serverJobpackCache?.data || [];
+  }
+  serverJobpackCache = { data, timestamp: now };
+  return data;
+}
+
 export const GET = withOptionalAuth(async (request: NextRequest, { user }: { user: any }) => {
   const supabase = createClient();
 
@@ -38,6 +58,11 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
 
   // --- Single jobpack by ID (includes full metadata) ---
   if (singleIdParam) {
+    const allJps = await getAllJobpacksCached(supabase);
+    const found = allJps.find((jp: any) => Number(jp.id) === Number(singleIdParam));
+    if (found) {
+      return NextResponse.json({ data: found });
+    }
     const { data, error } = await (supabase as any)
       .from("jobpack")
       .select("*")
@@ -87,28 +112,27 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
       return apiPaginated([], createPaginationMeta(paginationParams, 0));
     }
 
-    // Small set — metadata is fine
-    const { data, error } = await (supabase as any)
-      .from("jobpack")
-      .select("*")
-      .in("id", Array.from(allIds))
-      .order("id", { ascending: false });
-
-    if (error) return handleSupabaseError(error, "Failed to fetch jobpack");
-    const sorted = sortByDate(data || []);
+    const allJps = await getAllJobpacksCached(supabase);
+    const filtered = allJps.filter((jp: any) => allIds.has(Number(jp.id)));
+    const sorted = sortByDate(filtered);
     return apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length));
   }
 
-  // --- Jobpacks for a specific structure (uses relational tables only — NO metadata scan) ---
-  if (structureIdParam) {
-    const rawSIdStr = String(structureIdParam).replace(/^(platform|pipeline)-/, "");
+  // --- Jobpacks for a specific structure (uses relational tables and cached metadata scan) ---
+  if (structureIdParam || structureTitleParam) {
+    const rawSIdStr = structureIdParam ? String(structureIdParam).replace(/^(platform|pipeline)-/, "") : "";
     const sIdNum = Number(rawSIdStr);
-    const validNum = !isNaN(sIdNum);
+    const validNum = !isNaN(sIdNum) && rawSIdStr !== "";
 
-    // 1. Find jobpack IDs from relational tables
+    // 1. Find jobpack IDs from relational tables in parallel
     const sowQuery = validNum
-      ? (supabase as any).from("u_sow").select("jobpack_id").eq("structure_id", sIdNum).not("jobpack_id", "is", null)
-      : Promise.resolve({ data: [] });
+      ? (structureTitleParam
+          ? (supabase as any).from("u_sow").select("jobpack_id").or(`structure_id.eq.${sIdNum},structure_title.eq."${structureTitleParam}"`).not("jobpack_id", "is", null)
+          : (supabase as any).from("u_sow").select("jobpack_id").eq("structure_id", sIdNum).not("jobpack_id", "is", null))
+      : (structureTitleParam
+          ? (supabase as any).from("u_sow").select("jobpack_id").eq("structure_title", structureTitleParam).not("jobpack_id", "is", null)
+          : Promise.resolve({ data: [] }));
+
     const recQuery = validNum
       ? (supabase as any).from("insp_records").select("jobpack_id").eq("structure_id", sIdNum).not("jobpack_id", "is", null)
       : Promise.resolve({ data: [] });
@@ -119,11 +143,12 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
       ? (supabase as any).from("insp_rov_jobs").select("jobpack_id").eq("structure_id", sIdNum).not("jobpack_id", "is", null)
       : Promise.resolve({ data: [] });
 
-    const [sowJps, recJps, diveJps, rovJps] = await Promise.all([
+    const [sowJps, recJps, diveJps, rovJps, allJobpacks] = await Promise.all([
       sowQuery,
       recQuery,
       diveQuery,
       rovQuery,
+      getAllJobpacksCached(supabase),
     ]);
 
     const matchedJpIds = new Set<number>();
@@ -132,22 +157,36 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     (Array.isArray(diveJps?.data) ? diveJps.data : []).forEach((r: any) => r.jobpack_id && matchedJpIds.add(Number(r.jobpack_id)));
     (Array.isArray(rovJps?.data) ? rovJps.data : []).forEach((r: any) => r.jobpack_id && matchedJpIds.add(Number(r.jobpack_id)));
 
-    // 2. Also scan jobpack metadata.structures to catch jobpacks only linked via metadata
-    const { data: jobpackBatch } = await (supabase as any)
-      .from("jobpack")
-      .select("id, metadata")
-      .limit(1000);
-
-    if (Array.isArray(jobpackBatch)) {
-      jobpackBatch.forEach((jp: any) => {
+    // 2. Scan in-memory jobpack list for metadata structures
+    if (Array.isArray(allJobpacks)) {
+      const cleanTitle = structureTitleParam?.toLowerCase().trim();
+      allJobpacks.forEach((jp: any) => {
         const structures = jp.metadata?.structures || [];
+        let matches = false;
         if (Array.isArray(structures)) {
-          const matches = structures.some((s: any) => {
-            const sid = String(s.id || s.structure_id || s.platform_id || "").replace(/^(platform|pipeline)-/, "");
-            return sid === rawSIdStr || (validNum && Number(sid) === sIdNum);
+          matches = structures.some((s: any) => {
+            const sid = String(s.id || s.structure_id || s.platform_id || s.pipe_id || "").replace(/^(platform|pipeline)-/, "");
+            if (rawSIdStr && (sid === rawSIdStr || (validNum && Number(sid) === sIdNum))) return true;
+            if (cleanTitle) {
+              const sName = String(s.title || s.name || s.code || "").toLowerCase().trim();
+              if (sName === cleanTitle) return true;
+            }
+            return false;
           });
-          if (matches) matchedJpIds.add(Number(jp.id));
         }
+        if (!matches) {
+          const directSId = String(jp.metadata?.structure_id || jp.metadata?.platform_id || jp.metadata?.pipe_id || jp.metadata?.plat_id || "").replace(/^(platform|pipeline)-/, "");
+          if (rawSIdStr && directSId && (directSId === rawSIdStr || (validNum && Number(directSId) === sIdNum))) {
+            matches = true;
+          }
+          if (!matches && cleanTitle) {
+            const directTitle = String(jp.metadata?.structure_name || jp.metadata?.plantype || jp.metadata?.title || "").toLowerCase().trim();
+            if (directTitle && (directTitle === cleanTitle || directTitle.includes(cleanTitle) || cleanTitle.includes(directTitle))) {
+              matches = true;
+            }
+          }
+        }
+        if (matches) matchedJpIds.add(Number(jp.id));
       });
     }
 
@@ -155,15 +194,9 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
       return apiPaginated([], createPaginationMeta(paginationParams, 0));
     }
 
-    // 3. Fetch only the matched jobpacks with full metadata (small set — fast)
-    const { data, error } = await (supabase as any)
-      .from("jobpack")
-      .select("*")
-      .in("id", Array.from(matchedJpIds))
-      .order("id", { ascending: false });
-
-    if (error) return handleSupabaseError(error, "Failed to fetch jobpack");
-    const sorted = sortByDate(data || []);
+    // Filter matched jobpacks directly from in-memory cache
+    const matched = allJobpacks.filter((jp: any) => matchedJpIds.has(Number(jp.id)));
+    const sorted = sortByDate(matched);
     return apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length));
   }
 
@@ -189,6 +222,8 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
 export const POST = withAuth(async (request: NextRequest, { user }: { user: any }) => {
   const supabase = createClient();
   const body = await request.json();
+
+  serverJobpackCache = null; // Invalidate cache on new jobpack creation
 
   const { data, error } = await (supabase as any)
     .from("jobpack")

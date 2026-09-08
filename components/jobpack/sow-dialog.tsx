@@ -394,7 +394,7 @@ export function SOWDialog({
         
         const elv1 = comp.elv_1 != null ? Number(comp.elv_1) : null;
         const elv2 = comp.elv_2 != null ? Number(comp.elv_2) : null;
-        const bounds = [];
+        const bounds: number[] = [];
         if (elv1 !== null) bounds.push(elv1);
         if (elv2 !== null) bounds.push(elv2);
         
@@ -416,7 +416,7 @@ export function SOWDialog({
             return [{ start: 0, end: 0, label: `${minElv.toFixed(1)}m – ${maxElv.toFixed(1)}m`, isSplit: false }];
         }
         
-        const ranges = [];
+        const ranges: any[] = [];
         for (let i = 0; i < sortedPoints.length - 1; i++) {
             const start = sortedPoints[i];
             const end = sortedPoints[i + 1];

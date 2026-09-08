@@ -52,7 +52,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             return NextResponse.json({ data: null });
         }
 
-        let logoUrl = null;
+        let logoUrl: string | null = null;
         if (settings.logo_path) {
             const { data: publicUrlData } = supabase.storage
                 .from("company-assets")

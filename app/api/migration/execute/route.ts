@@ -969,7 +969,7 @@ export async function POST(request: NextRequest) {
       
       if (listRows.length > 0) {
         const listRecords = listRows.map((r: any) => {
-          let crDate = null;
+          let crDate: any = null;
           if (r.CR_DATE) {
             crDate = formatLocalISOString(r.CR_DATE) || null;
           }
@@ -1054,7 +1054,7 @@ export async function POST(request: NextRequest) {
       
       if (comboRows.length > 0) {
         const comboRecords = comboRows.map((r: any) => {
-          let crDate = null;
+          let crDate: any = null;
           if (r.CR_DATE) {
             crDate = formatLocalISOString(r.CR_DATE) || null;
           }
@@ -3007,7 +3007,7 @@ export async function POST(request: NextRequest) {
             jobpackDefaultPrefixMap.set(oracleInspNo, jobpackResolvedRepPrefix);
 
             // Upsert Postgres jobpack by either oracleInspNo or case-insensitive jobpack name
-            let existingJp = null;
+            let existingJp: any = null;
             try {
               const { data: jpByInspNo } = await (supabase.from as any)("jobpack")
                 .select("id, metadata, name, status")
@@ -3849,7 +3849,7 @@ export async function POST(request: NextRequest) {
               if (logsCols.has(c)) selectCols.push(c);
             });
 
-            const orderByFields = [];
+            const orderByFields: string[] = [];
             if (dateCol) orderByFields.push(`${dateCol} ASC`);
             if (timeCol) orderByFields.push(`${timeCol} ASC`);
             const orderByClause = orderByFields.length > 0 ? `ORDER BY ${orderByFields.join(', ')}` : '';
@@ -4707,7 +4707,7 @@ export async function POST(request: NextRequest) {
 
             if (!tNo) return;
 
-            let chNo = null;
+            let chNo: any = null;
             if (inspCond) {
               chNo = parseDivingChapter(inspCond);
             }
@@ -5599,7 +5599,7 @@ export async function POST(request: NextRequest) {
                       const mappedData: any = {};
                       fieldMappings.forEach((m: any) => {
                         const colName = String(m.oracleCol).toUpperCase();
-                        let val = null;
+                        let val: any = null;
                         if (Array.isArray(row)) {
                           val = row[oracleColsToFetch.indexOf(colName)];
                         } else {
@@ -5655,7 +5655,7 @@ export async function POST(request: NextRequest) {
                     const metaNames = typeRes.metaData.map((m: any) => m.name.toUpperCase());
                     for (const row of typeRes.rows as any[]) {
                       // Extract INSP_ID dynamically (handle both Array and Object row formats)
-                      let inspIdVal = null;
+                      let inspIdVal: any = null;
                       if (Array.isArray(row)) {
                         const inspIdIdx = metaNames.indexOf('INSP_ID');
                         if (inspIdIdx !== -1) {
@@ -5670,7 +5670,7 @@ export async function POST(request: NextRequest) {
 
                       const mappedData: any = {};
                       metaNames.forEach((colName: string, idx: number) => {
-                        let val = null;
+                        let val: any = null;
                         if (Array.isArray(row)) {
                           val = row[idx];
                         } else if (row && typeof row === 'object') {
@@ -5704,7 +5704,7 @@ export async function POST(request: NextRequest) {
                       if (mapKey && mappings[mapKey]) {
                         mappings[mapKey].forEach((m: any) => {
                           const cName = String(m.oracleCol).toUpperCase();
-                          let val = null;
+                          let val: any = null;
                           if (Array.isArray(row)) {
                             const valIdx = metaNames.indexOf(cName);
                             if (valIdx > -1) {
@@ -6931,7 +6931,7 @@ export async function POST(request: NextRequest) {
               }
 
               // 3) Populate cp_rdg_additional repeater
-              const additionalCps = [];
+              const additionalCps: any[] = [];
               if (cpIn !== null) {
                 additionalCps.push({ reading: cpIn > 0 ? -cpIn : cpIn, location: "CP In" });
               }
@@ -7027,7 +7027,7 @@ export async function POST(request: NextRequest) {
             if (typCode.toUpperCase() === 'RFMD') {
               // 1) Map COMP_COND to member_status
               const compCondRaw = String(rowObj.COMP_COND || '').trim().toLowerCase();
-              let memberStatusVal = null;
+              let memberStatusVal: any = null;
               if (compCondRaw) {
                 if (compCondRaw === 'fmd unable to take' || compCondRaw.includes('unable to take') || compCondRaw.includes('unable') || compCondRaw.includes('not take')) {
                   memberStatusVal = 'Unable to Take Reading';
@@ -7329,7 +7329,7 @@ export async function POST(request: NextRequest) {
                 }
 
                 // d) Extract missing bolts/nuts
-                let missingCount = null;
+                let missingCount: any = null;
                 let missingMatchText = '';
                 const boltPatternA = /(?:missing\s+)?([0-9]+)\s*(?:missing\s+)?(?:bolt|nut|stud)s?(?:\s+missing)?\b/i;
                 const boltPatternB = /(?:missing\s+)(?:bolt|nut|stud)s?\s*[:\-]?\s*([0-9]+)\b/i;
@@ -7580,7 +7580,7 @@ export async function POST(request: NextRequest) {
                   }
                   
                   // Construct standard dimensions text (e.g. "1.5m x 0.5m" or "2m")
-                  const dimsTextParts = [];
+                  const dimsTextParts: any[] = [];
                   if (dims.length !== null) dimsTextParts.push(`${dims.length}${dims.lengthUnit}`);
                   if (dims.width !== null) dimsTextParts.push(`${dims.width}${dims.widthUnit}`);
                   inspectionDataObj.size_dimensions = dimsTextParts.join(' x ') || (dims.length !== null ? `${dims.length}${dims.lengthUnit}` : null);
@@ -7794,7 +7794,7 @@ export async function POST(request: NextRequest) {
           if (defectRows && defectRows.length > 0) {
             report["ANOMALY"].oracleRows = defectRows.length;
 
-            const anomaliesToInsert = [];
+            const anomaliesToInsert: any[] = [];
 
             for (const row of defectRows) {
               const rObj = Array.isArray(row) ? qCols.reduce((acc, col, idx) => {
@@ -7837,8 +7837,8 @@ export async function POST(request: NextRequest) {
               
               let status = 'OPEN';
               let isRectified = false;
-              let rectifiedRemarks = null;
-              let rectifiedDate = null;
+              let rectifiedRemarks: any = null;
+              let rectifiedDate: any = null;
 
               if (rectifidVal === 1) {
                 status = 'CLOSED';
@@ -7963,7 +7963,7 @@ export async function POST(request: NextRequest) {
               logs.push(`WARNING: Loading company storage settings failed: ${prefErr.message}. Defaulting to Supabase.`);
             }
 
-            const attachmentsToInsert = [];
+            const attachmentsToInsert: any[] = [];
             let copiedFilesCount = 0;
 
             for (const row of attachRows) {
@@ -8030,7 +8030,7 @@ export async function POST(request: NextRequest) {
               const fName = rObj.A_FILENAME ? String(rObj.A_FILENAME).trim() : "";
               const pDir = rObj.A_PATH ? String(rObj.A_PATH).trim() : "";
               let legacyPath = "";
-              let searchLocationsAttempted = [];
+              let searchLocationsAttempted: any[] = [];
 
               if (fName) {
                 // 1. If legacyAttachmentPath was defined, search there first

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   FileText,
   Eye,
+  EyeOff,
   ArrowRight,
   Maximize2,
   Minimize2,
@@ -37,6 +38,19 @@ import {
   TrendingUp,
   Download,
   Info,
+  ExternalLink,
+  RefreshCw,
+  Hourglass,
+  Navigation,
+  Radio,
+  RadioTower,
+  ChevronRight,
+  Sparkles,
+  Columns,
+  Maximize,
+  Minimize,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -64,7 +78,7 @@ export interface PipelineEventItem {
   survey_run?: "current" | "previous";
 }
 
-interface PipelineSeabedEventMapProps {
+export interface PipelineSeabedEventMapProps {
   isOpen: boolean;
   onClose: () => void;
   structureName?: string;
@@ -72,6 +86,14 @@ interface PipelineSeabedEventMapProps {
   events?: PipelineEventItem[];
   previousEvents?: PipelineEventItem[]; // For historical comparison
   onSelectEvent?: (event: PipelineEventItem) => void;
+  // Dynamic fetch & live telemetry props
+  supabase?: any;
+  jobpackId?: string | number;
+  structureId?: string | number;
+  sowReportNo?: string | number;
+  inspectionDirection?: string; // e.g. "Increase KP" | "Reverse KP" | "Decrease KP"
+  liveTelemetry?: any; // dataAcqFields array or object { kp, northing, easting, depth, heading, ... }
+  onRefreshInspection?: () => void;
 }
 
 export function PipelineSeabedEventMap({
@@ -82,6 +104,13 @@ export function PipelineSeabedEventMap({
   events = [],
   previousEvents = [],
   onSelectEvent,
+  supabase,
+  jobpackId,
+  structureId,
+  sowReportNo,
+  inspectionDirection = "Increase KP",
+  liveTelemetry,
+  onRefreshInspection,
 }: PipelineSeabedEventMapProps) {
   // Navigation & Zoom State
   const [zoomLevel, setZoomLevel] = useState<number>(1); // 1x to 50x
@@ -91,17 +120,34 @@ export function PipelineSeabedEventMap({
   const [selectionBox, setSelectionBox] = useState<{ startX: number; endX: number } | null>(null);
   const [isSelecting, setIsSelecting] = useState<boolean>(false);
 
+  // Full Data Fetching & Hourglass State
+  const [fetchedEvents, setFetchedEvents] = useState<PipelineEventItem[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
+  const [loadingProgressText, setLoadingProgressText] = useState<string>("");
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string>("");
+
+  // Historical Comparison State
+  const [availableHistoricalJobpacks, setAvailableHistoricalJobpacks] = useState<any[]>([]);
+  const [selectedHistoricalJobpackId, setSelectedHistoricalJobpackId] = useState<string>("");
+  const [historicalEvents, setHistoricalEvents] = useState<PipelineEventItem[]>(previousEvents || []);
+  const [isLoadingHistorical, setIsLoadingHistorical] = useState<boolean>(false);
+
   // Filter State
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showAnomaliesOnly, setShowAnomaliesOnly] = useState<boolean>(false);
   const [showComparison, setShowComparison] = useState<boolean>(false);
-  const [showDepthGraph, setShowDepthGraph] = useState<boolean>(true);
-  const [showCoordinatesGraph, setShowCoordinatesGraph] = useState<boolean>(true);
-  const [showDepthTerrain, setShowDepthTerrain] = useState<boolean>(true);
-  const [showSpanBurialLines, setShowSpanBurialLines] = useState<boolean>(true);
-  const [showNorthingLine, setShowNorthingLine] = useState<boolean>(true);
-  const [showEastingLine, setShowEastingLine] = useState<boolean>(true);
+
+  // Bottom Graph Switcher & Sizing State
+  const [graphTab, setGraphTab] = useState<"depth" | "plan" | "coords_profile" | "split" | "hidden">("depth");
+  const [graphHeightSize, setGraphHeightSize] = useState<"compact" | "medium" | "expanded">("medium");
+
+  // Live ROV Marker & Lookahead State
+  const [showLiveRov, setShowLiveRov] = useState<boolean>(true);
+  const [lookaheadRangeKm, setLookaheadRangeKm] = useState<number>(1.0); // 0.25, 0.5, 1.0, 2.0 km
+  const [showLookaheadHud, setShowLookaheadHud] = useState<boolean>(true);
+
+  // Hover & Tooltips
   const [hoverProfilePoint, setHoverProfilePoint] = useState<{
     xPct: number;
     kp: number;
@@ -110,6 +156,16 @@ export function PipelineSeabedEventMap({
     burial?: number;
     easting?: number;
     northing?: number;
+    event?: PipelineEventItem;
+  } | null>(null);
+  const [hoverPlanPoint, setHoverPlanPoint] = useState<{
+    xPct: number;
+    yPct: number;
+    kp: number;
+    easting: number;
+    northing: number;
+    depth?: number;
+    event?: PipelineEventItem;
   } | null>(null);
 
   // Measure Tool State
@@ -121,6 +177,288 @@ export function PipelineSeabedEventMap({
   const [activeEvent, setActiveEvent] = useState<PipelineEventItem | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef<boolean>(false);
+  const dragStartXRef = useRef<number>(0);
+  const dragStartViewKpRef = useRef<{ start: number; end: number }>({ start: 0, end: 10 });
+  const scrollbarTrackRef = useRef<HTMLDivElement>(null);
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+
+  // Parse Live Telemetry from ROV data string / dataAcqFields
+  const liveRovData = useMemo(() => {
+    if (!liveTelemetry) return null;
+
+    let kp: number | null = null;
+    let northing: number | null = null;
+    let easting: number | null = null;
+    let depth: number | null = null;
+    let heading: number | null = null;
+    let cp: number | null = null;
+
+    if (Array.isArray(liveTelemetry)) {
+      liveTelemetry.forEach((item: any) => {
+        const field = (item.targetField || item.field_name || item.name || item.label || "").toLowerCase();
+        const rawVal = item.value ?? item.val ?? "";
+        const numVal = parseFloat(String(rawVal).replace(/[^0-9.-]/g, ""));
+        if (isNaN(numVal)) return;
+
+        if (field.includes("kp") || field.includes("chainage") || field.includes("fp_kp")) {
+          kp = numVal;
+        } else if (field.includes("north") || field.includes("utm_n") || field === "n") {
+          northing = numVal;
+        } else if (field.includes("east") || field.includes("utm_e") || field === "e") {
+          easting = numVal;
+        } else if (field.includes("depth") || field.includes("water_depth")) {
+          depth = numVal;
+        } else if (field.includes("heading") || field.includes("hdg") || field.includes("gyro")) {
+          heading = numVal;
+        } else if (field.includes("cp") || field.includes("fg_rdg")) {
+          cp = numVal;
+        }
+      });
+    } else if (typeof liveTelemetry === "object") {
+      const obj = liveTelemetry as Record<string, any>;
+      const parseNum = (v: any) => {
+        if (typeof v === "number") return v;
+        const n = parseFloat(String(v || ""));
+        return isNaN(n) ? null : n;
+      };
+      kp = parseNum(obj.kp ?? obj.fp_kp ?? obj.raw_kp ?? obj.KP);
+      northing = parseNum(obj.northing ?? obj.utm_northing ?? obj.North ?? obj.N);
+      easting = parseNum(obj.easting ?? obj.utm_easting ?? obj.East ?? obj.E);
+      depth = parseNum(obj.depth ?? obj.water_depth ?? obj.Depth);
+      heading = parseNum(obj.rov_heading ?? obj.heading ?? obj.Heading ?? obj.HDG);
+      cp = parseNum(obj.cp_fg_rdg ?? obj.cp ?? obj.CP);
+    }
+
+    if (kp === null && northing === null && easting === null && depth === null) {
+      return null;
+    }
+
+    return {
+      kp: kp ?? 0,
+      northing,
+      easting,
+      depth,
+      heading: heading ?? 0,
+      cp,
+    };
+  }, [liveTelemetry]);
+
+  // Fetch ALL pipeline inspection records with complete pagination (no row limits)
+  const fetchAllPipelineRecords = useCallback(async () => {
+    if (!supabase) return;
+    const activeStructId = structureId ? String(structureId) : null;
+    const activeJobId = jobpackId ? String(jobpackId) : null;
+    if (!activeStructId && !activeJobId) return;
+
+    try {
+      setIsLoadingEvents(true);
+      setLoadingProgressText("Connecting to database & loading complete pipeline records...");
+
+      let allRecords: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from("insp_records")
+          .select("*");
+
+        if (activeStructId && activeStructId !== "0") {
+          query = query.eq("structure_id", activeStructId);
+        } else if (activeJobId && activeJobId !== "0") {
+          query = query.eq("jobpack_id", activeJobId);
+        }
+
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        query = query.order("fp_kp", { ascending: true }).range(from, to);
+
+        const { data, error } = await query;
+        if (error) {
+          console.error("Error fetching pipeline records chunk:", error);
+          break;
+        }
+
+        if (data && data.length > 0) {
+          allRecords = allRecords.concat(data);
+          setLoadingProgressText(`Retrieved ${allRecords.length} records so far...`);
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page += 1;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      // Map raw records to PipelineEventItem
+      const mappedEvents: PipelineEventItem[] = allRecords.map((r: any) => {
+        const data = r.inspection_data || {};
+        const kpNum = parseFloat(r.fp_kp ?? r.kp ?? data.fp_kp ?? data.kp ?? "0");
+        const isAnom =
+          r.has_anomaly ||
+          (r.insp_anomalies && r.insp_anomalies.length > 0) ||
+          r.finding_type === "Anomaly" ||
+          data.finding_type === "Anomaly";
+        const anomCode =
+          r.insp_anomalies?.[0]?.anomaly_ref_no ||
+          r.insp_anomalies?.[0]?.defect_type_code ||
+          data.anomaly_code ||
+          r.anomaly_code ||
+          "";
+
+        return {
+          id: r.insp_id || r.id,
+          event_name: data.event_name || r.event_name || r.inspection_type_code || "Event",
+          event_type: data.event_type || r.event_type || "",
+          event_position: data.event_position || r.event_position || "",
+          event_description: data.event_description || r.event_description || data.remarks || "",
+          kp: isNaN(kpNum) ? 0 : kpNum,
+          end_kp: data.end_kp ? parseFloat(data.end_kp) : undefined,
+          northing: r.northing || data.northing || data.utm_northing || "",
+          easting: r.easting || data.easting || data.utm_easting || "",
+          depth: data.depth || data.water_depth || data.verification_depth || data.water_depth_m || data.seabed_depth || r.depth || r.elevation || "",
+          cp_fg_rdg: data.cp_fg_rdg || data.cp_fg || r.cp_fg_rdg || "",
+          rov_heading: data.rov_heading || data.heading || r.rov_heading || "",
+          inspection_date: r.inspection_date || data.inspection_date || "",
+          inspection_time: r.inspection_time || data.inspection_time || "",
+          tape_count_no: r.tape_count_no || data.tape_count_no || "",
+          finding_type: isAnom ? "Anomaly" : (r.finding_type || data.finding_type || "Complete"),
+          findings: data.findings || r.findings || "",
+          anomaly_code: anomCode,
+          span_height: data.span_height ? parseFloat(data.span_height) : (data.gap_under_pipe ? parseFloat(data.gap_under_pipe) : undefined),
+          burial_depth: data.burial_depth ? parseFloat(data.burial_depth) : (data.depth_of_burial ? parseFloat(data.depth_of_burial) : undefined),
+          survey_run: "current",
+        };
+      });
+
+      if (mappedEvents.length > 0) {
+        setFetchedEvents(mappedEvents);
+        toast.success(`Loaded all ${mappedEvents.length} full pipeline records successfully.`);
+      }
+      setLastRefreshedAt(new Date().toLocaleTimeString());
+    } catch (err: any) {
+      console.error("Pipeline records fetch error:", err);
+      toast.error("Failed to load full pipeline records: " + (err.message || "Unknown error"));
+    } finally {
+      setIsLoadingEvents(false);
+      setLoadingProgressText("");
+    }
+  }, [supabase, structureId, jobpackId]);
+
+  // Fetch Available Historical Jobpacks for this structure
+  const fetchHistoricalJobpacks = useCallback(async () => {
+    if (!supabase || !structureId) return;
+    try {
+      const { data, error } = await supabase
+        .from("sow_jobpacks")
+        .select("jobpack_id, sow_report_no, jobpack_name, created_at")
+        .eq("structure_id", structureId)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        const filtered = data.filter((j: any) => String(j.jobpack_id) !== String(jobpackId));
+        setAvailableHistoricalJobpacks(filtered);
+      }
+    } catch (e) {
+      console.error("Error fetching historical jobpacks list:", e);
+    }
+  }, [supabase, structureId, jobpackId]);
+
+  // Load records for a selected historical jobpack
+  const loadHistoricalJobpackRecords = async (histJobId: string) => {
+    if (!supabase || !histJobId) {
+      setHistoricalEvents(previousEvents || []);
+      return;
+    }
+    try {
+      setIsLoadingHistorical(true);
+      toast.loading("Retrieving historical survey events...");
+      
+      let histRecords: any[] = [];
+      let page = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("insp_records")
+          .select("*")
+          .eq("jobpack_id", histJobId)
+          .range(page * 1000, (page + 1) * 1000 - 1);
+
+        if (error || !data || data.length === 0) {
+          hasMore = false;
+        } else {
+          histRecords = histRecords.concat(data);
+          if (data.length < 1000) hasMore = false;
+          else page++;
+        }
+      }
+
+      const mappedHist: PipelineEventItem[] = histRecords.map((r: any) => {
+        const data = r.inspection_data || {};
+        const kpNum = parseFloat(r.fp_kp ?? r.kp ?? data.fp_kp ?? data.kp ?? "0");
+        const isAnom = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0) || r.finding_type === "Anomaly";
+        return {
+          id: `hist-${r.insp_id || r.id}`,
+          event_name: `[HIST] ${data.event_name || r.event_name || r.inspection_type_code || "Event"}`,
+          event_type: data.event_type || r.event_type || "",
+          event_position: data.event_position || r.event_position || "",
+          event_description: data.event_description || r.event_description || "",
+          kp: isNaN(kpNum) ? 0 : kpNum,
+          end_kp: data.end_kp ? parseFloat(data.end_kp) : undefined,
+          northing: r.northing || data.northing || "",
+          easting: r.easting || data.easting || "",
+          depth: data.depth || data.water_depth || data.verification_depth || data.water_depth_m || data.seabed_depth || r.depth || r.elevation || "",
+          cp_fg_rdg: data.cp_fg_rdg || r.cp_fg_rdg || "",
+          rov_heading: data.rov_heading || r.rov_heading || "",
+          inspection_date: r.inspection_date || data.inspection_date || "",
+          finding_type: isAnom ? "Anomaly" : "Complete",
+          findings: data.findings || r.findings || "",
+          anomaly_code: r.insp_anomalies?.[0]?.anomaly_ref_no || data.anomaly_code || "",
+          span_height: data.span_height ? parseFloat(data.span_height) : undefined,
+          burial_depth: data.burial_depth ? parseFloat(data.burial_depth) : undefined,
+          survey_run: "previous",
+        };
+      });
+
+      setHistoricalEvents(mappedHist);
+      setShowComparison(true);
+      toast.dismiss();
+      toast.success(`Loaded ${mappedHist.length} historical events for comparison.`);
+    } catch (e: any) {
+      toast.dismiss();
+      toast.error("Failed to load historical data: " + e.message);
+    } finally {
+      setIsLoadingHistorical(false);
+    }
+  };
+
+  // Trigger full initial fetch when opened
+  useEffect(() => {
+    if (isOpen) {
+      if (supabase && (structureId || jobpackId)) {
+        fetchAllPipelineRecords();
+        fetchHistoricalJobpacks();
+      }
+    }
+  }, [isOpen, supabase, structureId, jobpackId, fetchAllPipelineRecords, fetchHistoricalJobpacks]);
+
+  // Combine parent provided events with dynamically fetched records
+  const effectiveCurrentEvents = useMemo(() => {
+    if (fetchedEvents.length > 0) return fetchedEvents;
+    return events || [];
+  }, [fetchedEvents, events]);
+
+  // Combined Active Survey + Historical Events (when comparison is toggled)
+  const combinedEvents = useMemo(() => {
+    if (!showComparison || historicalEvents.length === 0) {
+      return effectiveCurrentEvents;
+    }
+    return [...effectiveCurrentEvents, ...historicalEvents];
+  }, [effectiveCurrentEvents, historicalEvents, showComparison]);
 
   // Helper to filter out VIDEO LOG and MARINE GROWTH
   const isExcludedEvent = (name?: string, type?: string) => {
@@ -160,6 +498,7 @@ export function PipelineSeabedEventMap({
     const nameUpper = (evt.event_name || "").toUpperCase().trim();
     const typeUpper = (evt.event_type || "").trim();
     const posUpper = (evt.event_position || "").trim();
+    const isHist = evt.survey_run === "previous";
 
     if (nameUpper.includes("SEABED") || nameUpper.includes("SEABED PROFILE")) {
       const pTitle = typeUpper ? typeUpper : "SEABED";
@@ -167,30 +506,33 @@ export function PipelineSeabedEventMap({
       const cat = typeUpper ? `SEABED: ${typeUpper.toUpperCase()}` : posUpper ? `SEABED (${posUpper.toUpperCase()})` : "SEABED PROFILE";
       return {
         category: cat,
-        primaryTitle: pTitle,
+        primaryTitle: isHist ? `[PREV] ${pTitle}` : pTitle,
         subTitle: sTitle,
         fullLabel: sTitle ? `${pTitle} (${sTitle})` : pTitle,
+        isHist,
       };
     }
 
-    const title = evt.event_name || evt.event_type || "Event";
+    const rawTitle = evt.event_name || evt.event_type || "Event";
+    const title = isHist && !rawTitle.startsWith("[") ? `[PREV] ${rawTitle}` : rawTitle;
     return {
-      category: title,
+      category: evt.event_name || evt.event_type || "Event",
       primaryTitle: title,
       subTitle: posUpper,
       fullLabel: posUpper ? `${title} (${posUpper})` : title,
+      isHist,
     };
   };
 
   // Calculate actual total max KP from events if greater than default pipeline length
   const maxCalculatedKp = useMemo(() => {
     let maxKp = pipelineLengthKm || 1.0;
-    events.forEach((e) => {
+    combinedEvents.forEach((e) => {
       if (e.kp && e.kp > maxKp) maxKp = e.kp;
       if (e.end_kp && e.end_kp > maxKp) maxKp = e.end_kp;
     });
     return Math.max(maxKp, 0.5);
-  }, [events, pipelineLengthKm]);
+  }, [combinedEvents, pipelineLengthKm]);
 
   // Sync initial viewEndKp with maxCalculatedKp when opened
   useEffect(() => {
@@ -203,138 +545,219 @@ export function PipelineSeabedEventMap({
 
   // Surveyed events KP range
   const surveyedRange = useMemo(() => {
-    const validKps = events
+    const validKps = effectiveCurrentEvents
       .filter((e) => typeof e.kp === "number" && !isNaN(e.kp) && !isExcludedEvent(e.event_name, e.event_type))
       .map((e) => e.kp);
     if (validKps.length === 0) return null;
     const minKp = Math.min(...validKps);
     const maxKp = Math.max(...validKps);
     return { minKp, maxKp, span: maxKp - minKp };
-  }, [events]);
+  }, [effectiveCurrentEvents]);
 
-  const handleFitSurveyRange = () => {
-    if (!surveyedRange) return;
-    const padding = Math.max(0.05, surveyedRange.span * 0.05);
-    const nStart = Math.max(0, surveyedRange.minKp - padding);
-    const nEnd = Math.min(maxCalculatedKp, surveyedRange.maxKp + padding);
-    setViewStartKp(nStart);
-    setViewEndKp(nEnd);
-    setZoomLevel(maxCalculatedKp / (nEnd - nStart));
-    toast.info(`Zoomed to active survey data range: KP ${nStart.toFixed(3)} - ${nEnd.toFixed(3)}`);
-  };
-
-  // Event Categories list (Excluding Video Log and Marine Growth, and splitting Seabed Profile)
+  // Extract unique categories for filtering
   const availableCategories = useMemo(() => {
-    const set = new Set<string>();
-    events.forEach((e) => {
+    const cats = new Set<string>();
+    combinedEvents.forEach((e) => {
       if (isExcludedEvent(e.event_name, e.event_type)) return;
       const { category } = getEventDisplay(e);
-      if (category) set.add(category);
+      if (category) cats.add(category.trim().toUpperCase());
     });
-    return Array.from(set).sort();
-  }, [events]);
+    return Array.from(cats).sort();
+  }, [combinedEvents]);
 
-  // Filtered Events List
+  // Filtered Events based on search, anomaly toggle, and category selection
   const filteredEvents = useMemo(() => {
-    return events.filter((evt) => {
-      // Exclude Video Log and Marine Growth
-      if (isExcludedEvent(evt.event_name, evt.event_type)) return false;
+    return combinedEvents.filter((e) => {
+      if (isExcludedEvent(e.event_name, e.event_type)) return false;
 
-      // Category filter
+      if (showAnomaliesOnly) {
+        const isAnom =
+          e.finding_type === "Anomaly" ||
+          e.finding_type === "Finding" ||
+          String(e.anomaly_code || "").trim() !== "";
+        if (!isAnom) return false;
+      }
+
       if (selectedCategories.length > 0) {
-        const { category, primaryTitle } = getEventDisplay(evt);
-        const isMatch =
-          selectedCategories.includes(category) ||
-          selectedCategories.includes(primaryTitle) ||
-          (selectedCategories.includes("SEABED PROFILE") && (evt.event_name || "").toUpperCase().includes("SEABED"));
-        if (!isMatch) return false;
+        const { category } = getEventDisplay(e);
+        const match = selectedCategories.some((cat) =>
+          category.toUpperCase().includes(cat.toUpperCase())
+        );
+        if (!match) return false;
       }
-      // Anomalies only filter
-      if (showAnomaliesOnly && evt.finding_type !== "Anomaly" && evt.finding_type !== "Finding" && !evt.anomaly_code) {
-        return false;
-      }
-      // Search query
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchName = evt.event_name?.toLowerCase().includes(q);
-        const matchType = evt.event_type?.toLowerCase().includes(q);
-        const matchPos = evt.event_position?.toLowerCase().includes(q);
-        const matchDesc = evt.event_description?.toLowerCase().includes(q);
-        const matchKp = evt.kp?.toString().includes(q);
-        const matchAnomaly = evt.anomaly_code?.toLowerCase().includes(q);
-        if (!matchName && !matchType && !matchPos && !matchDesc && !matchKp && !matchAnomaly) {
+        const matchName = (e.event_name || "").toLowerCase().includes(q);
+        const matchType = (e.event_type || "").toLowerCase().includes(q);
+        const matchPos = (e.event_position || "").toLowerCase().includes(q);
+        const matchDesc = (e.event_description || "").toLowerCase().includes(q);
+        const matchCode = (e.anomaly_code || "").toLowerCase().includes(q);
+        const matchKp = e.kp.toFixed(3).includes(q);
+        if (!matchName && !matchType && !matchPos && !matchDesc && !matchCode && !matchKp) {
           return false;
         }
       }
+
       return true;
     });
-  }, [events, selectedCategories, showAnomaliesOnly, searchQuery]);
+  }, [combinedEvents, showAnomaliesOnly, selectedCategories, searchQuery]);
 
-  // Handle Box Selection & Canvas Panning
-  const [isPanning, setIsPanning] = useState<boolean>(false);
-  const [panStartX, setPanStartX] = useState<number>(0);
-  const [panStartKpRange, setPanStartKpRange] = useState<{ start: number; end: number }>({ start: 0, end: 10 });
-  const scrollbarTrackRef = useRef<HTMLDivElement>(null);
-  const [isDraggingScrollbar, setIsDraggingScrollbar] = useState<boolean>(false);
+  // Directional Lookahead Ahead Events Calculation
+  const isIncreaseFlow = useMemo(() => {
+    const dir = (inspectionDirection || "").toLowerCase();
+    return !dir.includes("reverse") && !dir.includes("decrease");
+  }, [inspectionDirection]);
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+  const upcomingEvents = useMemo(() => {
+    const currentRefKp = (showLiveRov && liveRovData?.kp !== null && liveRovData?.kp !== undefined) 
+      ? liveRovData.kp 
+      : (viewStartKp + viewEndKp) / 2;
 
-    if (isMarkAreaMode) {
-      setSelectionBox({ startX: x, endX: x });
-      setIsSelecting(true);
-    } else {
-      // Pan mode
-      setIsPanning(true);
-      setPanStartX(e.clientX);
-      setPanStartKpRange({ start: viewStartKp, end: viewEndKp });
+    const range = lookaheadRangeKm;
+
+    const ahead = combinedEvents.filter((evt) => {
+      if (isExcludedEvent(evt.event_name, evt.event_type)) return false;
+      if (typeof evt.kp !== "number" || isNaN(evt.kp)) return false;
+
+      if (isIncreaseFlow) {
+        return evt.kp > currentRefKp && evt.kp <= currentRefKp + range;
+      } else {
+        return evt.kp < currentRefKp && evt.kp >= currentRefKp - range;
+      }
+    });
+
+    // Sort in direction of travel
+    ahead.sort((a, b) => (isIncreaseFlow ? a.kp - b.kp : b.kp - a.kp));
+
+    return ahead.map((evt) => {
+      const distMeters = Math.abs(evt.kp - currentRefKp) * 1000;
+      const isAnom =
+        evt.finding_type === "Anomaly" ||
+        evt.finding_type === "Finding" ||
+        String(evt.anomaly_code || "").trim() !== "";
+      const isHist = evt.survey_run === "previous";
+
+      return {
+        event: evt,
+        distMeters: Math.round(distMeters),
+        distKp: Math.abs(evt.kp - currentRefKp).toFixed(3),
+        isAnom,
+        isHist,
+      };
+    });
+  }, [combinedEvents, showLiveRov, liveRovData, viewStartKp, viewEndKp, lookaheadRangeKm, isIncreaseFlow]);
+
+  // Fit to Active Survey Range
+  const handleFitSurveyRange = () => {
+    if (!surveyedRange) {
+      toast.info("No surveyed events found to fit.");
+      return;
     }
+    const pad = Math.max(surveyedRange.span * 0.05, 0.05);
+    const nStart = Math.max(0, surveyedRange.minKp - pad);
+    const nEnd = Math.min(maxCalculatedKp, surveyedRange.maxKp + pad);
+    setViewStartKp(nStart);
+    setViewEndKp(nEnd);
+    const newSpan = nEnd - nStart;
+    setZoomLevel(newSpan > 0 ? maxCalculatedKp / newSpan : 1);
+    toast.success(`Fitted view to survey range: ${nStart.toFixed(3)} - ${nEnd.toFixed(3)} KP`);
+  };
+
+  // Center view on current ROV position
+  const handleCenterOnRov = () => {
+    if (!liveRovData || liveRovData.kp === null || liveRovData.kp === undefined) {
+      toast.info("No active ROV position data to center on.");
+      return;
+    }
+    const rovKp = liveRovData.kp;
+    const span = viewEndKp - viewStartKp;
+    let nStart = rovKp - span / 2;
+    let nEnd = rovKp + span / 2;
+    if (nStart < 0) {
+      nStart = 0;
+      nEnd = span;
+    }
+    if (nEnd > maxCalculatedKp) {
+      nEnd = maxCalculatedKp;
+      nStart = Math.max(0, maxCalculatedKp - span);
+    }
+    setViewStartKp(nStart);
+    setViewEndKp(nEnd);
+    toast.info(`Centered on ROV position (KP ${rovKp.toFixed(3)})`);
+  };
+
+  // Pop-out / Floating Window Handler for Extended Screen
+  const handlePopOutWindow = () => {
+    const url = `/dashboard/inspection-v2/pipeline-map-popout?jobpack=${jobpackId || "0"}&structure=${structureId || "0"}&structureName=${encodeURIComponent(structureName)}&length=${pipelineLengthKm}&dir=${encodeURIComponent(inspectionDirection || "Increase KP")}`;
+    if (typeof window !== "undefined") {
+      window.open(url, "_blank", "width=1600,height=900,menubar=no,status=no,toolbar=no,resizable=yes");
+      toast.success("Opened Pipeline Map in floating window for extended screen monitoring.");
+    }
+  };
+
+  // Canvas Mouse Drag Panning & Mark Area Selection
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isMarkAreaMode) {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const startX = e.clientX - rect.left;
+      setIsSelecting(true);
+      setSelectionBox({ startX, endX: startX });
+      return;
+    }
+
+    setIsPanning(true);
+    isDraggingRef.current = true;
+    dragStartXRef.current = e.clientX;
+    dragStartViewKpRef.current = { start: viewStartKp, end: viewEndKp };
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
-
-    if (isSelecting && selectionBox) {
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      setSelectionBox((prev) => (prev ? { ...prev, endX: x } : null));
-    } else if (isPanning) {
-      const deltaX = e.clientX - panStartX;
-      const width = containerRef.current.clientWidth;
-      if (width > 0) {
-        const span = panStartKpRange.end - panStartKpRange.start;
-        const deltaKp = -(deltaX / width) * span;
-        let newStart = panStartKpRange.start + deltaKp;
-        let newEnd = panStartKpRange.end + deltaKp;
-
-        if (newStart < 0) {
-          newStart = 0;
-          newEnd = span;
-        }
-        if (newEnd > maxCalculatedKp) {
-          newEnd = maxCalculatedKp;
-          newStart = Math.max(0, maxCalculatedKp - span);
-        }
-        setViewStartKp(newStart);
-        setViewEndKp(newEnd);
-      }
+    if (isMarkAreaMode && isSelecting && selectionBox) {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const endX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      setSelectionBox({ ...selectionBox, endX });
+      return;
     }
+
+    if (!isDraggingRef.current || !containerRef.current) return;
+    const dx = e.clientX - dragStartXRef.current;
+    const rect = containerRef.current.getBoundingClientRect();
+    const width = rect.width || 1;
+    const span = dragStartViewKpRef.current.end - dragStartViewKpRef.current.start;
+    const dKp = -(dx / width) * span;
+
+    let newStart = dragStartViewKpRef.current.start + dKp;
+    let newEnd = dragStartViewKpRef.current.end + dKp;
+
+    if (newStart < 0) {
+      newStart = 0;
+      newEnd = span;
+    }
+    if (newEnd > maxCalculatedKp) {
+      newEnd = maxCalculatedKp;
+      newStart = Math.max(0, maxCalculatedKp - span);
+    }
+
+    setViewStartKp(newStart);
+    setViewEndKp(newEnd);
   };
 
   const handleMouseUp = () => {
-    if (isSelecting && selectionBox && containerRef.current) {
+    isDraggingRef.current = false;
+    if (isMarkAreaMode && isSelecting && selectionBox) {
       setIsSelecting(false);
-      const width = containerRef.current.clientWidth;
-      const startX = Math.min(selectionBox.startX, selectionBox.endX);
-      const endX = Math.max(selectionBox.startX, selectionBox.endX);
-      const dragDistance = endX - startX;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const width = rect.width;
+        const x1 = Math.min(selectionBox.startX, selectionBox.endX);
+        const x2 = Math.max(selectionBox.startX, selectionBox.endX);
+        const span = viewEndKp - viewStartKp;
 
-      if (dragDistance > 15 && width > 0) {
-        const currentSpan = viewEndKp - viewStartKp;
-        const newStartKp = viewStartKp + (startX / width) * currentSpan;
-        const newEndKp = viewStartKp + (endX / width) * currentSpan;
+        const newStartKp = viewStartKp + (x1 / width) * span;
+        const newEndKp = viewStartKp + (x2 / width) * span;
 
         setViewStartKp(Math.max(0, newStartKp));
         setViewEndKp(Math.min(maxCalculatedKp, newEndKp));
@@ -421,7 +844,7 @@ export function PipelineSeabedEventMap({
     return ((kp - viewStartKp) / span) * 100;
   };
 
-  // Dynamic Tree / Leaf Top Flags Auto-Arranger (Auto-scales and spaces flags when few/many events visible)
+  // Dynamic Tree / Leaf Top Flags Auto-Arranger
   const arrangedFlags = useMemo(() => {
     const visible = filteredEvents
       .map((evt) => {
@@ -431,79 +854,63 @@ export function PipelineSeabedEventMap({
           event: evt,
           pct,
           display,
-          isAnomaly: evt.finding_type === "Anomaly" || evt.finding_type === "Finding" || String(evt.anomaly_code || "").trim() !== "",
+          isAnomaly:
+            evt.finding_type === "Anomaly" ||
+            evt.finding_type === "Finding" ||
+            String(evt.anomaly_code || "").trim() !== "",
           isSelected: activeEvent?.id === evt.id,
+          isHist: evt.survey_run === "previous",
         };
       })
       .filter((f) => f.pct >= -4 && f.pct <= 104)
       .sort((a, b) => a.pct - b.pct);
 
-    const visibleCount = visible.length;
-    if (visibleCount === 0) return [];
+    const totalVisible = visible.length;
+    let numTiers = 5;
+    let minGapPct = 3.5;
 
-    // Dynamically adjust vertical tier spacing based on density of events on screen
-    let minStem = 36;
-    let tierStep = 44;
-    let maxTiers = 5;
-
-    if (visibleCount <= 5) {
-      minStem = 45;
-      tierStep = 55;
-      maxTiers = 4;
-    } else if (visibleCount <= 12) {
-      minStem = 38;
-      tierStep = 48;
-      maxTiers = 5;
-    } else if (visibleCount <= 25) {
-      minStem = 34;
-      tierStep = 40;
-      maxTiers = 6;
+    if (totalVisible > 40) {
+      numTiers = 9;
+      minGapPct = 1.8;
+    } else if (totalVisible > 25) {
+      numTiers = 7;
+      minGapPct = 2.4;
+    } else if (totalVisible > 12) {
+      numTiers = 5;
+      minGapPct = 3.2;
+    } else if (totalVisible > 5) {
+      numTiers = 4;
+      minGapPct = 4.5;
     } else {
-      minStem = 30;
-      tierStep = 34;
-      maxTiers = 6;
+      numTiers = 3;
+      minGapPct = 6.0;
     }
 
-    const tierHeights = Array.from({ length: maxTiers }, (_, i) => minStem + i * tierStep);
-    const lastPctForTier = new Array(maxTiers).fill(-100);
-    const minGapPct = visibleCount <= 8 ? 7.0 : visibleCount <= 18 ? 5.5 : 4.5;
+    const tierHeights = Array.from({ length: numTiers }, (_, i) => 24 + i * 26);
+    const lastPctForTier: number[] = Array(numTiers).fill(-999);
 
-    return visible.map((item, idx) => {
-      const prevItem = visible[idx - 1];
-      const nextItem = visible[idx + 1];
-      const prevDist = prevItem ? Math.abs(item.pct - prevItem.pct) : 999;
-      const nextDist = nextItem ? Math.abs(item.pct - nextItem.pct) : 999;
-      const isIsolated = prevDist > 14 && nextDist > 14;
-
+    return visible.map((item) => {
       let assignedTier = 0;
+      let foundTier = false;
 
-      if (isIsolated && visibleCount <= 10) {
-        // When there are few events and they are well separated, auto-arrange them across staggered heights to fill space nicely
-        assignedTier = idx % Math.min(3, maxTiers);
-      } else {
-        // Find the first available tier that avoids horizontal collision
-        let foundTier = -1;
-        for (let t = 0; t < maxTiers; t++) {
-          if (item.pct - lastPctForTier[t] >= minGapPct) {
-            foundTier = t;
-            break;
+      for (let t = 0; t < numTiers; t++) {
+        if (item.pct - lastPctForTier[t] >= minGapPct) {
+          assignedTier = t;
+          foundTier = true;
+          break;
+        }
+      }
+
+      if (!foundTier) {
+        let lowestLastPctIndex = 0;
+        let lowestVal = Infinity;
+        for (let t = 0; t < numTiers; t++) {
+          if (lastPctForTier[t] < lowestVal) {
+            lowestVal = lastPctForTier[t];
+            lowestLastPctIndex = t;
           }
         }
-        if (foundTier !== -1) {
-          assignedTier = foundTier;
-        } else {
-          // All tiers occupied recently; pick the tier with the greatest distance
-          let bestTier = 0;
-          let maxDist = -1;
-          for (let i = 0; i < maxTiers; i++) {
-            const dist = item.pct - lastPctForTier[i];
-            if (dist > maxDist) {
-              maxDist = dist;
-              bestTier = i;
-            }
-          }
-          assignedTier = bestTier;
-        }
+        assignedTier = lowestLastPctIndex;
       }
 
       lastPctForTier[assignedTier] = item.pct;
@@ -511,7 +918,7 @@ export function PipelineSeabedEventMap({
       return {
         ...item,
         tier: assignedTier,
-        stemHeight: Math.min(240, tierHeights[assignedTier]),
+        stemHeight: Math.min(260, tierHeights[assignedTier]),
       };
     });
   }, [filteredEvents, viewStartKp, viewEndKp, activeEvent]);
@@ -545,55 +952,68 @@ export function PipelineSeabedEventMap({
     return matchesAfter[0] || null;
   }, [filteredEvents, viewEndKp]);
 
-  const nearestMatch = useMemo(() => {
-    if (filteredEvents.length === 0) return null;
-    let closest = filteredEvents[0];
-    let minDiff = Math.abs(closest.kp - currentMidKp);
-    for (const evt of filteredEvents) {
-      const diff = Math.abs(evt.kp - currentMidKp);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = evt;
-      }
-    }
-    return closest;
-  }, [filteredEvents, currentMidKp]);
-
-  // Compute Longitudinal Series Data (Continuous Trajectory Interpolation, Bathymetry Depth, Spans & Burials)
+  // Compute Longitudinal Series Data
   const profileData = useMemo(() => {
-    const validEvents = events
+    const validEvents = combinedEvents
       .filter((e) => typeof e.kp === "number" && !isNaN(e.kp))
       .map((e) => {
-        const d = typeof e.depth === "number" ? e.depth : parseFloat(String(e.depth || ""));
-        const east = typeof e.easting === "number" ? e.easting : parseFloat(String(e.easting || ""));
-        const north = typeof e.northing === "number" ? e.northing : parseFloat(String(e.northing || ""));
+        const rawD = e.depth;
+        let d: number | undefined = undefined;
+        if (typeof rawD === "number" && !isNaN(rawD)) {
+          d = rawD;
+        } else if (rawD !== undefined && rawD !== null && String(rawD).trim() !== "") {
+          const parsed = parseFloat(String(rawD).replace(/[^0-9.-]/g, ""));
+          if (!isNaN(parsed)) d = parsed;
+        }
+
+        const rawEast = e.easting;
+        let east: number | undefined = undefined;
+        if (typeof rawEast === "number" && !isNaN(rawEast)) {
+          east = rawEast;
+        } else if (rawEast !== undefined && rawEast !== null && String(rawEast).trim() !== "") {
+          const parsed = parseFloat(String(rawEast).replace(/[^0-9.-]/g, ""));
+          if (!isNaN(parsed)) east = parsed;
+        }
+
+        const rawNorth = e.northing;
+        let north: number | undefined = undefined;
+        if (typeof rawNorth === "number" && !isNaN(rawNorth)) {
+          north = rawNorth;
+        } else if (rawNorth !== undefined && rawNorth !== null && String(rawNorth).trim() !== "") {
+          const parsed = parseFloat(String(rawNorth).replace(/[^0-9.-]/g, ""));
+          if (!isNaN(parsed)) north = parsed;
+        }
+
         const span = e.span_height ? (typeof e.span_height === "number" ? e.span_height : parseFloat(String(e.span_height))) : 0;
         const burial = e.burial_depth ? (typeof e.burial_depth === "number" ? e.burial_depth : parseFloat(String(e.burial_depth))) : 0;
 
         return {
           event: e,
           kp: e.kp,
-          depth: isNaN(d) ? undefined : d,
-          easting: isNaN(east) ? undefined : east,
-          northing: isNaN(north) ? undefined : north,
+          depth: d,
+          easting: east,
+          northing: north,
           span: isNaN(span) ? 0 : span,
           burial: isNaN(burial) ? 0 : burial,
+          isHist: e.survey_run === "previous",
         };
       })
       .sort((a, b) => a.kp - b.kp);
 
-    // 1. Coordinates Trajectory Interpolation Model (Strictly within surveyed KP bounds)
-    const knownCoords = validEvents
+    const currentEvents = validEvents.filter((e) => !e.isHist);
+    const histEvents = validEvents.filter((e) => e.isHist);
+
+    const knownCoords = (currentEvents.length > 0 ? currentEvents : validEvents)
       .filter((e) => e.easting !== undefined && e.northing !== undefined)
       .sort((a, b) => a.kp - b.kp);
 
     const getInterpolatedCoords = (kp: number): { easting: number; northing: number } | null => {
       if (knownCoords.length === 0) return null;
-      if (knownCoords.length === 1) {
-        return kp === knownCoords[0].kp ? { easting: knownCoords[0].easting!, northing: knownCoords[0].northing! } : null;
+      if (knownCoords.length === 1 || kp <= knownCoords[0].kp) {
+        return { easting: knownCoords[0].easting!, northing: knownCoords[0].northing! };
       }
-      if (kp < knownCoords[0].kp || kp > knownCoords[knownCoords.length - 1].kp) {
-        return null; // Do not extrapolate beyond actual survey boundaries
+      if (kp >= knownCoords[knownCoords.length - 1].kp) {
+        return { easting: knownCoords[knownCoords.length - 1].easting!, northing: knownCoords[knownCoords.length - 1].northing! };
       }
       for (let i = 0; i < knownCoords.length - 1; i++) {
         const p0 = knownCoords[i];
@@ -606,21 +1026,20 @@ export function PipelineSeabedEventMap({
           };
         }
       }
-      return null;
+      return { easting: knownCoords[knownCoords.length - 1].easting!, northing: knownCoords[knownCoords.length - 1].northing! };
     };
 
-    // 2. Depth Seabed Terrain Interpolation Model (Strictly within surveyed KP bounds)
-    const knownDepths = validEvents
+    const knownDepths = (currentEvents.length > 0 ? currentEvents : validEvents)
       .filter((e) => e.depth !== undefined)
       .sort((a, b) => a.kp - b.kp);
 
     const getInterpolatedDepth = (kp: number): number | null => {
       if (knownDepths.length === 0) return null;
-      if (knownDepths.length === 1) {
-        return kp === knownDepths[0].kp ? knownDepths[0].depth! : null;
+      if (knownDepths.length === 1 || kp <= knownDepths[0].kp) {
+        return knownDepths[0].depth!;
       }
-      if (kp < knownDepths[0].kp || kp > knownDepths[knownDepths.length - 1].kp) {
-        return null; // Do not draw artificial flatline where no depth was measured
+      if (kp >= knownDepths[knownDepths.length - 1].kp) {
+        return knownDepths[knownDepths.length - 1].depth!;
       }
       for (let i = 0; i < knownDepths.length - 1; i++) {
         const p0 = knownDepths[i];
@@ -630,11 +1049,26 @@ export function PipelineSeabedEventMap({
           return p0.depth! + (p1.depth! - p0.depth!) * ratio;
         }
       }
-      return null;
+      return knownDepths[knownDepths.length - 1].depth!;
     };
 
-    // High-resolution sample points for the top zoomed viewport
-    const sampleCount = 60;
+    const histKnownDepths = histEvents.filter((e) => e.depth !== undefined).sort((a, b) => a.kp - b.kp);
+    const getHistInterpolatedDepth = (kp: number): number | null => {
+      if (histKnownDepths.length === 0) return null;
+      if (kp <= histKnownDepths[0].kp) return histKnownDepths[0].depth!;
+      if (kp >= histKnownDepths[histKnownDepths.length - 1].kp) return histKnownDepths[histKnownDepths.length - 1].depth!;
+      for (let i = 0; i < histKnownDepths.length - 1; i++) {
+        const p0 = histKnownDepths[i];
+        const p1 = histKnownDepths[i + 1];
+        if (kp >= p0.kp && kp <= p1.kp) {
+          const ratio = (kp - p0.kp) / (p1.kp - p0.kp || 1);
+          return p0.depth! + (p1.depth! - p0.depth!) * ratio;
+        }
+      }
+      return histKnownDepths[histKnownDepths.length - 1].depth!;
+    };
+
+    const sampleCount = 80;
     const vSpan = viewEndKp - viewStartKp;
     const sampleKps = new Set<number>();
     for (let i = 0; i <= sampleCount; i++) {
@@ -649,10 +1083,12 @@ export function PipelineSeabedEventMap({
       .map((kp) => {
         const coords = getInterpolatedCoords(kp);
         const depth = getInterpolatedDepth(kp);
+        const histDepth = getHistInterpolatedDepth(kp);
         const matchEvt = validEvents.find((e) => Math.abs(e.kp - kp) < 0.005);
         return {
           kp,
           depth: depth ?? undefined,
+          histDepth: histDepth ?? undefined,
           easting: coords?.easting,
           northing: coords?.northing,
           span: matchEvt?.span || 0,
@@ -661,12 +1097,15 @@ export function PipelineSeabedEventMap({
         };
       });
 
-    const allDepths = continuousPoints.map((e) => e.depth).filter((d): d is number => d !== undefined);
-    const minDepth = allDepths.length > 0 ? Math.min(...allDepths) : 20;
-    const maxDepth = allDepths.length > 0 ? Math.max(...allDepths) : 60;
+    const allDepths = validEvents.map((e) => e.depth).filter((d): d is number => d !== undefined);
+    const rawMinDepth = allDepths.length > 0 ? Math.min(...allDepths) : 20;
+    const rawMaxDepth = allDepths.length > 0 ? Math.max(...allDepths) : 60;
+    const dPad = Math.max((rawMaxDepth - rawMinDepth) * 0.08, 1);
+    const minDepth = Math.max(0, rawMinDepth - dPad);
+    const maxDepth = rawMaxDepth + dPad;
 
-    const allEastings = continuousPoints.map((e) => e.easting).filter((v): v is number => v !== undefined);
-    const allNorthings = continuousPoints.map((e) => e.northing).filter((v): v is number => v !== undefined);
+    const allEastings = validEvents.map((e) => e.easting).filter((v): v is number => v !== undefined);
+    const allNorthings = validEvents.map((e) => e.northing).filter((v): v is number => v !== undefined);
     const minEasting = allEastings.length > 0 ? Math.min(...allEastings) : 0;
     const maxEasting = allEastings.length > 0 ? Math.max(...allEastings) : 1000;
     const minNorthing = allNorthings.length > 0 ? Math.min(...allNorthings) : 0;
@@ -675,6 +1114,8 @@ export function PipelineSeabedEventMap({
     return {
       points: continuousPoints,
       rawEvents: validEvents,
+      getInterpolatedDepth,
+      getInterpolatedCoords,
       minDepth,
       maxDepth: maxDepth === minDepth ? minDepth + 10 : maxDepth,
       minEasting,
@@ -682,17 +1123,74 @@ export function PipelineSeabedEventMap({
       minNorthing,
       maxNorthing: maxNorthing === minNorthing ? minNorthing + 100 : maxNorthing,
     };
-  }, [events, viewStartKp, viewEndKp]);
+  }, [combinedEvents, viewStartKp, viewEndKp]);
+
+  // 2D Cartesian Plan Bounds Calculation (Northing as Y, Easting as X, KP as Z trajectory)
+  const planBounds = useMemo(() => {
+    const coordPts = profileData.points.filter((pt) => pt.northing !== undefined && pt.easting !== undefined);
+    if (coordPts.length === 0) {
+      return {
+        points: [],
+        minEasting: profileData.minEasting,
+        maxEasting: profileData.maxEasting,
+        minNorthing: profileData.minNorthing,
+        maxNorthing: profileData.maxNorthing,
+        eRange: Math.max(profileData.maxEasting - profileData.minEasting, 100),
+        nRange: Math.max(profileData.maxNorthing - profileData.minNorthing, 100),
+        hasCoords: false,
+      };
+    }
+
+    const eastings = coordPts.map((p) => p.easting!);
+    const northings = coordPts.map((p) => p.northing!);
+    const rawMinE = Math.min(...eastings);
+    const rawMaxE = Math.max(...eastings);
+    const rawMinN = Math.min(...northings);
+    const rawMaxN = Math.max(...northings);
+
+    const rawERange = rawMaxE - rawMinE;
+    const rawNRange = rawMaxN - rawMinN;
+    const ePad = Math.max(rawERange * 0.08, 15);
+    const nPad = Math.max(rawNRange * 0.08, 15);
+
+    const minEasting = rawMinE - ePad;
+    const maxEasting = rawMaxE + ePad;
+    const minNorthing = rawMinN - nPad;
+    const maxNorthing = rawMaxN + nPad;
+    const eRange = Math.max(maxEasting - minEasting, 1);
+    const nRange = Math.max(maxNorthing - minNorthing, 1);
+
+    return {
+      points: coordPts,
+      minEasting,
+      maxEasting,
+      minNorthing,
+      maxNorthing,
+      eRange,
+      nRange,
+      hasCoords: coordPts.length >= 2,
+    };
+  }, [profileData]);
+
+  const eastingToPlanXPct = (easting: number) => {
+    if (planBounds.eRange <= 0) return 50;
+    return Math.max(3, Math.min(97, ((easting - planBounds.minEasting) / planBounds.eRange) * 100));
+  };
+
+  const northingToPlanYPct = (northing: number) => {
+    if (planBounds.nRange <= 0) return 50;
+    return Math.max(3, Math.min(97, (1 - (northing - planBounds.minNorthing) / planBounds.nRange) * 100));
+  };
 
   // Rulers & Ticks Calculation
   const rulerTicks = useMemo(() => {
     const visibleSpan = viewEndKp - viewStartKp;
-    let step = 1.0; // Default 1 km
-    if (visibleSpan <= 0.2) step = 0.01; // 10m
-    else if (visibleSpan <= 0.5) step = 0.05; // 50m
-    else if (visibleSpan <= 1.0) step = 0.1; // 100m
-    else if (visibleSpan <= 3.0) step = 0.5; // 500m
-    else if (visibleSpan <= 10.0) step = 1.0; // 1 km
+    let step = 1.0;
+    if (visibleSpan <= 0.2) step = 0.01;
+    else if (visibleSpan <= 0.5) step = 0.05;
+    else if (visibleSpan <= 1.0) step = 0.1;
+    else if (visibleSpan <= 3.0) step = 0.5;
+    else if (visibleSpan <= 10.0) step = 1.0;
     else step = 2.0;
 
     const ticks: { kp: number; percent: number; label: string; isMajor: boolean }[] = [];
@@ -713,6 +1211,7 @@ export function PipelineSeabedEventMap({
 
   // Color helper for Event Badges
   const getEventBadgeColor = (evt: PipelineEventItem) => {
+    if (evt.survey_run === "previous") return "bg-purple-700 text-purple-100 border-purple-500 shadow-purple-900";
     if (evt.finding_type === "Anomaly") return "bg-red-500 text-white border-red-700 shadow-red-500/50";
     if (evt.finding_type === "Finding") return "bg-amber-500 text-white border-amber-700 shadow-amber-500/50";
     const name = (evt.event_name || evt.event_type || "").toUpperCase();
@@ -747,42 +1246,92 @@ export function PipelineSeabedEventMap({
   const scrollThumbLeftPct = maxCalculatedKp > 0 ? (viewStartKp / maxCalculatedKp) * 100 : 0;
   const scrollThumbWidthPct = maxCalculatedKp > 0 ? Math.max(3, ((viewEndKp - viewStartKp) / maxCalculatedKp) * 100) : 100;
 
+  // Dynamic height class for bottom graphs
+  const graphHeightClass = useMemo(() => {
+    if (graphHeightSize === "compact") return "h-36";
+    if (graphHeightSize === "expanded") return "h-72";
+    return "h-52"; // medium default
+  }, [graphHeightSize]);
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-7xl w-[96vw] h-[92vh] flex flex-col p-0 gap-0 bg-slate-950 text-slate-100 border-slate-800 overflow-hidden rounded-xl shadow-2xl">
-        {/* Top Dialog Header Bar */}
-        <DialogHeader className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-slate-800 flex flex-row items-center justify-between shrink-0">
+      <DialogContent className="max-w-[98vw] w-[98vw] h-[94vh] flex flex-col p-0 gap-0 bg-slate-950 text-slate-100 border-slate-800 overflow-hidden rounded-xl shadow-2xl">
+        {/* Top Dialog Header Bar (Clean HTML nesting without <div> inside <p>) */}
+        <DialogHeader className="px-4 py-2 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-slate-800 flex flex-row items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+            <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
               <Compass className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <DialogTitle className="text-sm font-black uppercase tracking-wider text-slate-100 flex items-center gap-2">
+              <DialogTitle className="text-sm font-black uppercase tracking-wider text-slate-100 flex items-center gap-2 flex-wrap">
                 <span>{structureName} — 2D/3D Interactive Pipeline Seabed & Event Map</span>
-                <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-[9px]">
+                <span className="inline-flex items-center px-2 py-0.5 rounded border bg-blue-500/10 text-blue-400 border-blue-500/30 text-[9px] font-mono">
                   0.000 to {maxCalculatedKp.toFixed(3)} KP ({maxCalculatedKp.toFixed(2)} km)
-                </Badge>
+                </span>
+                {isLoadingEvents && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border bg-amber-500/20 text-amber-300 border-amber-500/40 text-[9px] animate-pulse">
+                    <Hourglass className="w-3 h-3 animate-spin" /> Retrieving all records...
+                  </span>
+                )}
+                {lastRefreshedAt && !isLoadingEvents && (
+                  <span className="text-[8.5px] font-mono text-slate-400 font-normal">
+                    Refreshed: {lastRefreshedAt}
+                  </span>
+                )}
               </DialogTitle>
-              <DialogDescription className="text-[10px] text-slate-400">
-                Full-length 3D metallic pipeline profile, tree/leaf top flags, continuous spans, anomalies & interactive panning scrollbar
-              </DialogDescription>
+              <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                <span>3D metallic profile, tree/leaf top flags, continuous bathymetry, live ROV telemetry & historical jobpack comparison</span>
+                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[8px] bg-slate-800 text-cyan-300 border border-cyan-800 font-mono font-bold">
+                  DIR: {inspectionDirection}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Refresh Data Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                fetchAllPipelineRecords();
+                onRefreshInspection?.();
+              }}
+              disabled={isLoadingEvents}
+              className="h-7 px-2 text-[9px] font-bold uppercase border-slate-700 text-slate-200 hover:bg-slate-800"
+              title="Refresh complete records from database"
+            >
+              <RefreshCw className={`w-3 h-3 mr-1 ${isLoadingEvents ? "animate-spin text-amber-400" : "text-cyan-400"}`} />
+              {isLoadingEvents ? "Loading..." : "Refresh"}
+            </Button>
+
+            {/* Float / Pop-out Window for Extended Screen */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePopOutWindow}
+              className="h-7 px-2.5 text-[9px] font-bold uppercase border-cyan-700/80 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/60 shadow-sm"
+              title="Open map in floating window for secondary / extended monitor"
+            >
+              <ExternalLink className="w-3 h-3 mr-1 text-cyan-400" />
+              Pop-out / Float
+            </Button>
+
+            {/* Mark Area Zoom */}
             <Button
               variant={isMarkAreaMode ? "default" : "outline"}
               size="sm"
               onClick={() => setIsMarkAreaMode(!isMarkAreaMode)}
-              className={`h-8 px-2.5 text-[10px] font-bold uppercase ${
+              className={`h-7 px-2 text-[9px] font-bold uppercase ${
                 isMarkAreaMode ? "bg-amber-600 hover:bg-amber-700 text-white" : "border-slate-700 text-slate-300"
               }`}
               title="Click & Drag on pipeline to zoom into selected area"
             >
-              <Maximize2 className="w-3.5 h-3.5 mr-1" />
-              {isMarkAreaMode ? "Drag Area to Zoom..." : "Mark Area"}
+              <Maximize2 className="w-3 h-3 mr-1" />
+              {isMarkAreaMode ? "Drag to Zoom..." : "Mark Area"}
             </Button>
 
+            {/* Measure Distance */}
             <Button
               variant={isMeasureMode ? "default" : "outline"}
               size="sm"
@@ -791,56 +1340,155 @@ export function PipelineSeabedEventMap({
                 setMeasurePoint1(null);
                 setMeasurePoint2(null);
               }}
-              className={`h-8 px-2.5 text-[10px] font-bold uppercase ${
+              className={`h-7 px-2 text-[9px] font-bold uppercase ${
                 isMeasureMode ? "bg-cyan-600 hover:bg-cyan-700 text-white" : "border-slate-700 text-slate-300"
               }`}
               title="Click two events to measure distance"
             >
-              <Ruler className="w-3.5 h-3.5 mr-1" />
-              {isMeasureMode ? "Select 2 Events..." : "Measure Distance"}
+              <Ruler className="w-3 h-3 mr-1" />
+              {isMeasureMode ? "Select 2 Pts..." : "Measure"}
             </Button>
 
+            {/* Historical Jobpack Comparison */}
             <Button
               variant={showComparison ? "default" : "outline"}
               size="sm"
               onClick={() => setShowComparison(!showComparison)}
-              className={`h-8 px-2.5 text-[10px] font-bold uppercase ${
-                showComparison ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "border-slate-700 text-slate-300"
+              className={`h-7 px-2 text-[9px] font-bold uppercase ${
+                showComparison ? "bg-purple-600 hover:bg-purple-700 text-white" : "border-slate-700 text-slate-300"
               }`}
-              title="Compare with Previous Survey Run"
+              title="Compare with Historical Jobpack Survey"
             >
-              <History className="w-3.5 h-3.5 mr-1" />
-              {showComparison ? "Hide Compare" : "Compare Previous"}
+              <History className="w-3 h-3 mr-1" />
+              {showComparison ? "Hide Compare" : "Compare Hist"}
             </Button>
 
             <Button
               variant="outline"
               size="sm"
               onClick={handlePrintGraphics}
-              className="h-8 px-2.5 text-[10px] font-bold uppercase border-slate-700 text-slate-300 hover:bg-slate-800"
+              className="h-7 px-2 text-[9px] font-bold uppercase border-slate-700 text-slate-300 hover:bg-slate-800"
             >
-              <Printer className="w-3.5 h-3.5 mr-1" /> Print Report
+              <Printer className="w-3 h-3 mr-1" /> Print
             </Button>
 
             <Button
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="h-8 w-8 text-slate-400 hover:text-white hover:bg-slate-800"
+              className="h-7 w-7 text-slate-400 hover:text-white hover:bg-slate-800"
             >
               <X className="w-4 h-4" />
             </Button>
           </div>
         </DialogHeader>
 
-        {/* Toolbar & Filters Bar */}
-        <div className="px-4 py-2 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-          <div className="flex items-center gap-3">
-            {/* Filter by Category */}
-            <div className="flex items-center gap-1.5">
-              <Filter className="w-3.5 h-3.5 text-blue-400" />
-              <span className="text-[10px] font-black uppercase text-slate-400">Category Filter:</span>
-              <div className="flex items-center gap-1 flex-wrap">
+        {/* Hourglass & Loading Progress Banner */}
+        {isLoadingEvents && (
+          <div className="bg-amber-950/80 border-b border-amber-800/80 px-4 py-1.5 flex items-center justify-between text-xs text-amber-200 z-20 animate-pulse">
+            <div className="flex items-center gap-2">
+              <Hourglass className="w-4 h-4 text-amber-400 animate-spin" />
+              <span className="font-bold uppercase text-[10px] tracking-wider">
+                Retrieving Complete Pipeline Data:
+              </span>
+              <span className="font-mono text-[10px]">
+                {loadingProgressText || "Fetching all inspection records without limits..."}
+              </span>
+            </div>
+            <span className="text-[9px] text-amber-300 font-mono">Full Relational Dataset</span>
+          </div>
+        )}
+
+        {/* Toolbar & Live Telemetry & Filters Bar */}
+        <div className="px-4 py-1.5 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Live ROV Beacon Controls */}
+            <div className="flex items-center gap-1.5 bg-slate-950/90 border border-slate-800 px-2 py-0.5 rounded">
+              <Radio className={`w-3.5 h-3.5 ${liveRovData ? "text-emerald-400 animate-pulse" : "text-slate-500"}`} />
+              <span className="text-[9px] font-bold text-slate-300 uppercase">ROV Beacon:</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowLiveRov(!showLiveRov)}
+                className={`h-5 px-1.5 text-[8.5px] font-bold ${
+                  showLiveRov ? "text-emerald-400 bg-emerald-950/60 border border-emerald-800" : "text-slate-400"
+                }`}
+              >
+                {showLiveRov ? "Active (Show)" : "Hidden"}
+              </Button>
+              {liveRovData && (
+                <div className="flex items-center gap-2 font-mono text-[9px] text-emerald-300 pl-1 border-l border-slate-800">
+                  <span>KP: <strong>{liveRovData.kp.toFixed(3)}</strong></span>
+                  {liveRovData.depth !== null && <span>Depth: {liveRovData.depth.toFixed(1)}m</span>}
+                  {liveRovData.heading !== null && <span>Hdg: {liveRovData.heading.toFixed(0)}°</span>}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCenterOnRov}
+                    className="h-4 px-1 text-[8px] font-bold text-cyan-300 hover:bg-cyan-950"
+                    title="Center view on current ROV position"
+                  >
+                    🎯 Center
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Historical Jobpack Dropdown Selector (if comparison active) */}
+            {showComparison && (
+              <div className="flex items-center gap-1 bg-purple-950/40 border border-purple-800/60 px-2 py-0.5 rounded">
+                <History className="w-3 h-3 text-purple-400" />
+                <span className="text-[9px] font-bold text-purple-300 uppercase">Jobpack Ref:</span>
+                <select
+                  value={selectedHistoricalJobpackId}
+                  onChange={(e) => {
+                    const jid = e.target.value;
+                    setSelectedHistoricalJobpackId(jid);
+                    loadHistoricalJobpackRecords(jid);
+                  }}
+                  className="h-5 text-[9px] bg-slate-950 border border-purple-700 text-purple-200 rounded px-1"
+                >
+                  <option value="">Select Historical Jobpack...</option>
+                  {availableHistoricalJobpacks.map((j) => (
+                    <option key={j.jobpack_id} value={j.jobpack_id}>
+                      {j.sow_report_no || j.jobpack_name || `Jobpack #${j.jobpack_id}`}
+                    </option>
+                  ))}
+                </select>
+                {isLoadingHistorical && <Hourglass className="w-3 h-3 animate-spin text-purple-400" />}
+              </div>
+            )}
+
+            {/* Lookahead Range Toggle */}
+            <div className="flex items-center gap-1 bg-slate-950/80 border border-slate-800 px-2 py-0.5 rounded">
+              <Navigation className="w-3 h-3 text-cyan-400" />
+              <span className="text-[9px] font-bold text-slate-300 uppercase">Lookahead:</span>
+              <div className="flex items-center gap-0.5">
+                {[
+                  { label: "250m", val: 0.25 },
+                  { label: "500m", val: 0.5 },
+                  { label: "1km", val: 1.0 },
+                  { label: "2km", val: 2.0 },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => setLookaheadRangeKm(item.val)}
+                    className={`text-[8.5px] px-1.5 py-0.2 rounded font-mono font-bold transition-all ${
+                      lookaheadRangeKm === item.val
+                        ? "bg-cyan-600 text-white"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1 flex-wrap">
+              <Filter className="w-3 h-3 text-blue-400 ml-1" />
+              <div className="flex items-center gap-1 max-w-[280px] overflow-x-auto py-0.5 scrollbar-thin">
                 {availableCategories.map((cat) => {
                   const isSelected = selectedCategories.includes(cat);
                   return (
@@ -852,7 +1500,7 @@ export function PipelineSeabedEventMap({
                           isSelected ? prev.filter((c) => c !== cat) : [...prev, cat]
                         );
                       }}
-                      className={`cursor-pointer text-[9px] px-2 py-0.5 font-bold transition-all ${
+                      className={`cursor-pointer text-[8.5px] px-1.5 py-0.2 font-bold whitespace-nowrap transition-all ${
                         isSelected
                           ? "bg-blue-600 text-white border-blue-400"
                           : "bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-500"
@@ -862,120 +1510,151 @@ export function PipelineSeabedEventMap({
                     </Badge>
                   );
                 })}
-                {selectedCategories.length > 0 && (
-                  <button
-                    onClick={() => setSelectedCategories([])}
-                    className="text-[9px] text-blue-400 hover:underline ml-1"
-                  >
-                    Clear Filter
-                  </button>
-                )}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {/* Anomalies Only Checkbox */}
-            <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-red-400 uppercase bg-red-950/40 border border-red-900/50 px-2 py-1 rounded">
+            <label className="flex items-center gap-1 cursor-pointer text-[9px] font-bold text-red-400 uppercase bg-red-950/40 border border-red-900/50 px-1.5 py-0.5 rounded">
               <Checkbox
                 checked={showAnomaliesOnly}
                 onCheckedChange={(c) => setShowAnomaliesOnly(!!c)}
-                className="border-red-500 data-[state=checked]:bg-red-600"
+                className="w-3 h-3 border-red-500 data-[state=checked]:bg-red-600"
               />
-              <AlertTriangle className="w-3 h-3" /> Anomalies Only
-            </label>
-
-            {/* Depth & KP Graph Toggle */}
-            <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-slate-300 uppercase bg-slate-800/60 border border-slate-700 px-2 py-1 rounded hover:border-cyan-500/50 transition-colors">
-              <Checkbox
-                checked={showDepthGraph}
-                onCheckedChange={(c) => setShowDepthGraph(!!c)}
-                className="border-cyan-500 data-[state=checked]:bg-cyan-600"
-              />
-              <TrendingUp className="w-3 h-3 text-cyan-400" /> Depth & KP
-            </label>
-
-            {/* Coordinates Graph Toggle */}
-            <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-slate-300 uppercase bg-slate-800/60 border border-slate-700 px-2 py-1 rounded hover:border-amber-500/50 transition-colors">
-              <Checkbox
-                checked={showCoordinatesGraph}
-                onCheckedChange={(c) => setShowCoordinatesGraph(!!c)}
-                className="border-amber-500 data-[state=checked]:bg-amber-600"
-              />
-              <Compass className="w-3 h-3 text-amber-400" /> Coordinates (N/E)
+              <AlertTriangle className="w-3 h-3" /> Anomalies
             </label>
 
             {/* Search Input */}
-            <div className="relative w-48">
-              <Search className="w-3 h-3 absolute left-2 top-2 text-slate-400" />
+            <div className="relative w-36">
+              <Search className="w-3 h-3 absolute left-1.5 top-1.5 text-slate-400" />
               <Input
                 type="text"
                 placeholder="Search event or KP..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-7 text-[10px] pl-7 bg-slate-950 border-slate-700 text-slate-200 focus-visible:ring-blue-500"
+                className="h-6 text-[9px] pl-6 bg-slate-950 border-slate-700 text-slate-200 focus-visible:ring-blue-500"
               />
             </div>
 
             {/* Zoom Controls */}
-            <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 p-0.5 rounded">
+            <div className="flex items-center gap-0.5 bg-slate-950 border border-slate-800 p-0.5 rounded">
               {surveyedRange && surveyedRange.span < maxCalculatedKp * 0.95 && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleFitSurveyRange}
-                  className="h-6 px-2 text-[9px] font-bold text-cyan-300 border-cyan-800/80 bg-cyan-950/40 hover:bg-cyan-900/60 mr-0.5 shadow-sm"
+                  className="h-5 px-1.5 text-[8px] font-bold text-cyan-300 border-cyan-800/80 bg-cyan-950/40 hover:bg-cyan-900/60 mr-0.5 shadow-sm"
                   title={`Fit view to active survey KP range (${surveyedRange.minKp.toFixed(2)} - ${surveyedRange.maxKp.toFixed(2)} km)`}
                 >
-                  <Maximize2 className="w-3 h-3 mr-1 text-cyan-400" />
-                  Fit Survey Range ({surveyedRange.minKp.toFixed(1)}-{surveyedRange.maxKp.toFixed(1)}k)
+                  <Maximize2 className="w-2.5 h-2.5 mr-0.5 text-cyan-400" />
+                  Fit ({surveyedRange.minKp.toFixed(1)}-{surveyedRange.maxKp.toFixed(1)}k)
                 </Button>
               )}
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleZoomIn}
-                className="h-6 w-6 text-slate-300 hover:text-white"
+                className="h-5 w-5 text-slate-300 hover:text-white"
                 title="Zoom In"
               >
-                <ZoomIn className="w-3.5 h-3.5" />
+                <ZoomIn className="w-3 h-3" />
               </Button>
-              <span className="text-[9px] font-mono font-bold text-blue-400 px-1">
+              <span className="text-[8.5px] font-mono font-bold text-blue-400 px-0.5">
                 {zoomLevel.toFixed(1)}x
               </span>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleZoomOut}
-                className="h-6 w-6 text-slate-300 hover:text-white"
+                className="h-5 w-5 text-slate-300 hover:text-white"
                 title="Zoom Out"
               >
-                <ZoomOut className="w-3.5 h-3.5" />
+                <ZoomOut className="w-3 h-3" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleResetZoom}
-                className="h-6 w-6 text-slate-400 hover:text-white"
+                className="h-5 w-5 text-slate-400 hover:text-white"
                 title="Reset Zoom (Full Pipeline Length)"
               >
-                <RotateCcw className="w-3 h-3" />
+                <RotateCcw className="w-2.5 h-2.5" />
               </Button>
             </div>
           </div>
         </div>
 
+        {/* UPCOMING EXPECTED EVENTS LOOKAHEAD HUD STRIP */}
+        {showLookaheadHud && (
+          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-cyan-900/50 px-4 py-1 flex items-center justify-between gap-3 text-xs shrink-0 select-none overflow-x-auto scrollbar-thin">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
+              </span>
+              <span className="text-[9.5px] font-black uppercase tracking-wider text-cyan-300 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-cyan-400" />
+                Upcoming Ahead (+{(lookaheadRangeKm * 1000).toFixed(0)}m | {isIncreaseFlow ? "Increasing KP ➔" : "◀ Reverse KP"}):
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-1 overflow-x-auto py-0.5 scrollbar-none">
+              {upcomingEvents.length === 0 ? (
+                <span className="text-[9px] text-slate-500 font-mono italic">
+                  No registered events within the next {(lookaheadRangeKm * 1000).toFixed(0)}m range along inspection route
+                </span>
+              ) : (
+                upcomingEvents.slice(0, 8).map((ue, idx) => (
+                  <div
+                    key={`ahead-${idx}`}
+                    onClick={() => jumpToKp(ue.event.kp)}
+                    className={`cursor-pointer px-2 py-0.5 rounded text-[8.5px] font-mono font-bold flex items-center gap-1.5 transition-all hover:scale-105 shrink-0 border ${
+                      ue.isAnom
+                        ? "bg-red-950/80 border-red-500 text-red-200 shadow-sm shadow-red-950"
+                        : ue.isHist
+                        ? "bg-purple-950/80 border-purple-500 text-purple-200 shadow-sm"
+                        : "bg-slate-900/90 border-slate-700 text-slate-200 hover:border-cyan-500"
+                    }`}
+                    title={`Click to jump to ${ue.event.event_name} at KP ${ue.event.kp.toFixed(3)} (+${ue.distMeters}m ahead)`}
+                  >
+                    <span className="text-cyan-400 font-black">+{ue.distMeters}m</span>
+                    <span className="truncate max-w-[110px] text-slate-100">
+                      {ue.event.event_name || ue.event.event_type}
+                    </span>
+                    <span className="text-slate-400 text-[7.5px]">({ue.event.kp.toFixed(3)})</span>
+                    {ue.isAnom && (
+                      <span className="bg-red-900 text-white text-[7px] px-1 rounded uppercase font-black">
+                        {ue.event.anomaly_code || "ANOM"}
+                      </span>
+                    )}
+                    {ue.isHist && (
+                      <span className="bg-purple-900 text-purple-200 text-[7px] px-1 rounded uppercase font-black">
+                        HIST
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <span className="text-[8.5px] font-mono text-slate-500 shrink-0">
+              {upcomingEvents.length} Targets Ahead
+            </span>
+          </div>
+        )}
+
         {/* Main Graphical Canvas Area */}
         <div className="flex-1 flex flex-col bg-slate-950 relative overflow-hidden select-none">
           {/* Measure Banner if active */}
           {isMeasureMode && (
-            <div className="bg-cyan-950/80 border-b border-cyan-800/80 px-4 py-1.5 flex items-center justify-between text-xs text-cyan-200 z-10">
+            <div className="bg-cyan-950/80 border-b border-cyan-800/80 px-4 py-1 flex items-center justify-between text-xs text-cyan-200 z-10">
               <div className="flex items-center gap-2">
-                <Ruler className="w-4 h-4 text-cyan-400 animate-bounce" />
-                <span className="font-bold uppercase text-[10px] tracking-wider">
+                <Ruler className="w-3.5 h-3.5 text-cyan-400 animate-bounce" />
+                <span className="font-bold uppercase text-[9px] tracking-wider">
                   Distance Measurement Mode:
                 </span>
-                <span>
+                <span className="text-[9.5px]">
                   {!measurePoint1
                     ? "Click on the 1st event marker"
                     : !measurePoint2
@@ -991,21 +1670,21 @@ export function PipelineSeabedEventMap({
                     setMeasurePoint1(null);
                     setMeasurePoint2(null);
                   }}
-                  className="h-6 text-[9px] font-bold text-cyan-300 hover:bg-cyan-900/50"
+                  className="h-5 text-[8.5px] font-bold text-cyan-300 hover:bg-cyan-900/50"
                 >
-                  Clear Selection
+                  Clear
                 </Button>
               )}
             </div>
           )}
 
-          {/* Graphical Pipeline View */}
+          {/* Graphical Pipeline View (Spans top half) */}
           <div
             ref={containerRef}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            className={`flex-1 relative flex flex-col justify-end p-6 pb-2 overflow-hidden transition-all ${
+            className={`flex-1 relative flex flex-col justify-end p-4 pb-1 overflow-hidden transition-all ${
               isMarkAreaMode ? "cursor-crosshair bg-amber-950/10" : "cursor-grab active:cursor-grabbing"
             }`}
           >
@@ -1021,127 +1700,74 @@ export function PipelineSeabedEventMap({
                   width: `${Math.abs(selectionBox.endX - selectionBox.startX)}px`,
                 }}
               >
-                <span className="text-[10px] font-black uppercase text-amber-300 bg-slate-900/90 px-2 py-0.5 rounded border border-amber-500/50">
+                <span className="text-[9px] font-black uppercase text-amber-300 bg-slate-900/90 px-2 py-0.5 rounded border border-amber-500/50">
                   Release to Zoom
                 </span>
               </div>
             )}
 
             {/* Active KP Range Header Indicator */}
-            <div className="absolute top-3 left-4 text-[10px] font-mono text-slate-400 flex items-center gap-3 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-800 z-10">
-              <span className="text-blue-400 font-bold">VISIBLE KP: {viewStartKp.toFixed(3)} km</span>
-              <span>→</span>
-              <span className="text-blue-400 font-bold">{viewEndKp.toFixed(3)} km</span>
-              <span className="text-slate-500">| Total Span: {(viewEndKp - viewStartKp).toFixed(3)} km</span>
-              {zoomLevel > 1 && (
-                <Badge variant="outline" className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/30">
-                  Drag canvas or use bottom scrollbar to pan
-                </Badge>
+            <div className="absolute top-2 left-4 z-20 flex items-center gap-2 pointer-events-none">
+              <span className="inline-flex items-center px-2 py-0.5 rounded border bg-slate-900/90 text-slate-300 border-slate-700 text-[8.5px] font-mono backdrop-blur-md">
+                Viewport KP: {viewStartKp.toFixed(3)} - {viewEndKp.toFixed(3)} (Span: {(viewEndKp - viewStartKp).toFixed(3)} km)
+              </span>
+              {showComparison && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded border bg-purple-950/90 text-purple-300 border-purple-700 text-[8.5px] font-mono">
+                  Historical Overlay Active ({historicalEvents.length} events)
+                </span>
               )}
             </div>
 
-            {/* Historical Comparison Parallel Pipeline Track */}
-            {showComparison && previousEvents.length > 0 && (
-              <div className="relative w-full h-10 mb-4 border-b border-indigo-500/30 flex items-center shrink-0">
-                <div className="absolute top-0 left-2 text-[8px] font-black uppercase tracking-widest text-indigo-400">
-                  Previous Survey Run Track (Historical Comparison)
-                </div>
-                {/* 3D Ghost Pipeline Line */}
-                <div className="w-full h-3 rounded-full bg-gradient-to-r from-indigo-900 via-indigo-700 to-indigo-900 opacity-60 border border-indigo-500/40 relative shadow-inner">
-                  {previousEvents.map((pevt, idx) => {
-                    const pct = kpToPercent(pevt.kp);
-                    if (pct < 0 || pct > 100) return null;
-                    return (
-                      <div
-                        key={idx}
-                        className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-indigo-400 border border-indigo-200"
-                        style={{ left: `${pct}%` }}
-                        title={`Previous Event: ${pevt.event_name} at KP ${pevt.kp}`}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* TREE / LEAF TOP FLAGS LAYER (Placed Above Pipeline) */}
-            <div className="relative w-full h-64 mb-1 overflow-visible select-none">
-              {/* Notice Banner when filtered events exist on the pipeline but are outside current viewport */}
-              {filteredEvents.length > 0 && arrangedFlags.length === 0 && (
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900/95 border border-blue-500/50 rounded-xl p-4 shadow-2xl flex flex-col items-center gap-2 z-30 max-w-md text-center backdrop-blur-md">
-                  <div className="flex items-center gap-2 text-blue-400 font-bold text-xs uppercase">
-                    <Search className="w-4 h-4" />
-                    <span>{filteredEvents.length} Matching Events Found On Pipeline</span>
-                  </div>
-                  <p className="text-[11px] text-slate-300">
-                    No matching events in current visible range (KP {viewStartKp.toFixed(3)} - {viewEndKp.toFixed(3)}).
-                    Click any highlighted dot on the bottom scrollbar or jump to nearest match:
-                  </p>
-                  {nearestMatch && (
-                    <Button
-                      size="sm"
-                      onClick={() => jumpToKp(nearestMatch.kp)}
-                      className="h-7 text-[10px] font-bold uppercase bg-blue-600 hover:bg-blue-700 text-white mt-1 px-3 shadow"
-                    >
-                      Jump to Nearest Match @ KP {nearestMatch.kp.toFixed(3)} →
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {/* SVG Connecting Branches/Stems */}
-              <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none z-10">
+            {/* TREE / LEAF TOP FLAGS LAYER (ABOVE 3D PIPE) */}
+            <div className="relative w-full flex-1 pointer-events-auto min-h-[140px]">
+              {/* SVG Connecting Stems (Tree Branches to Pipeline) */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible">
                 {arrangedFlags.map((item, idx) => {
-                  const xPct = `${item.pct}%`;
-                  const bottomY = 256; // bottom of flags canvas (connects to pipe)
-                  const topY = bottomY - item.stemHeight;
                   const isAnom = item.isAnomaly;
-                  const strokeColor = item.isSelected ? "#38bdf8" : isAnom ? "#ef4444" : "#475569";
-                  const strokeWidth = item.isSelected ? 2 : isAnom ? 1.5 : 1;
-
+                  const isSel = item.isSelected;
+                  const isHist = item.isHist;
                   return (
                     <g key={`stem-${idx}`}>
-                      {/* Vertical branch line */}
                       <line
-                        x1={xPct}
-                        y1={topY}
-                        x2={xPct}
-                        y2={bottomY}
-                        stroke={strokeColor}
-                        strokeWidth={strokeWidth}
-                        strokeDasharray={item.tier > 2 ? "2 2" : "none"}
-                        opacity={item.isSelected ? 1 : 0.75}
+                        x1={`${item.pct}%`}
+                        y1={`calc(100% - ${item.stemHeight}px)`}
+                        x2={`${item.pct}%`}
+                        y2="100%"
+                        stroke={isAnom ? "#ef4444" : isHist ? "#c084fc" : isSel ? "#38bdf8" : "#64748b"}
+                        strokeWidth={isAnom || isSel ? "2" : "1"}
+                        strokeDasharray={isHist ? "2 2" : isAnom ? "3 1" : "none"}
+                        opacity={isSel ? "1" : "0.75"}
                       />
-                      {/* Anchor pin dot at pipe connection */}
                       <circle
-                        cx={xPct}
-                        cy={bottomY}
-                        r={isAnom ? 4 : 2.5}
-                        fill={isAnom ? "#ef4444" : item.isSelected ? "#38bdf8" : "#94a3b8"}
+                        cx={`${item.pct}%`}
+                        cy="100%"
+                        r={isAnom ? "4.5" : "3"}
+                        fill={isAnom ? "#ef4444" : isHist ? "#a855f7" : isSel ? "#38bdf8" : "#94a3b8"}
                       />
                     </g>
                   );
                 })}
               </svg>
 
-              {/* HTML Interactive Flag / Leaf Cards */}
+              {/* DOM Flag Leaf Cards */}
               {arrangedFlags.map((item, idx) => {
+                const evt = item.event;
                 const isAnom = item.isAnomaly;
                 const isSel = item.isSelected;
-                const evt = item.event;
+                const isHist = item.isHist;
 
                 return (
                   <div
-                    key={`flag-${idx}`}
+                    key={`flag-${evt.id || idx}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (isMeasureMode) {
                         if (!measurePoint1) setMeasurePoint1(evt);
                         else if (!measurePoint2) setMeasurePoint2(evt);
-                      } else {
-                        setActiveEvent(evt);
-                        onSelectEvent?.(evt);
+                        return;
                       }
+                      setActiveEvent(evt);
+                      onSelectEvent?.(evt);
                     }}
                     style={{
                       left: `${item.pct}%`,
@@ -1152,22 +1778,29 @@ export function PipelineSeabedEventMap({
                     }`}
                   >
                     {isAnom ? (
-                      /* Anomaly Flag Card (Glowing Red / Warning Leaf) */
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-red-950/90 border border-red-500 shadow-md shadow-red-950 text-white whitespace-nowrap text-[9px] font-bold">
+                      /* Anomaly Flag Card */
+                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/90 border border-red-500 shadow-md shadow-red-950 text-white whitespace-nowrap text-[8.5px] font-bold">
                         <span className="relative flex h-2 w-2">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
                         </span>
                         <span className="text-red-300 font-extrabold">{evt.anomaly_code || "ANOMALY"}</span>
-                        <span className="text-slate-400 font-mono text-[8px]">({evt.kp.toFixed(3)})</span>
+                        <span className="text-slate-400 font-mono text-[7.5px]">({evt.kp.toFixed(3)})</span>
                         {evt.findings && (
-                          <span className="bg-red-900 text-white text-[8px] px-1 rounded uppercase font-black">
+                          <span className="bg-red-900 text-white text-[7.5px] px-1 rounded uppercase font-black">
                             {evt.findings.slice(0, 10)}
                           </span>
                         )}
                       </div>
+                    ) : isHist ? (
+                      /* Historical Event Flag Card */
+                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-950/90 border border-dashed border-purple-400 shadow-md text-purple-200 whitespace-nowrap text-[8px] font-bold hover:text-white">
+                        <span className="bg-purple-900 text-purple-200 text-[7px] px-0.5 rounded font-black">HIST</span>
+                        <span className="truncate max-w-[110px]">{item.display?.primaryTitle || evt.event_name}</span>
+                        <span className="text-purple-300 font-mono text-[7.5px]">{evt.kp.toFixed(3)}</span>
+                      </div>
                     ) : (
-                      /* Standard Event Flag Card (Leaf-style Glass Tag) */
+                      /* Standard Event Flag Card */
                       <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700 hover:border-slate-500 shadow-md text-slate-200 whitespace-nowrap text-[8.5px] font-bold hover:text-white">
                         <div className={`w-2 h-2 rounded-full ${getEventBadgeColor(evt)}`} />
                         <span className="truncate max-w-[130px]">{item.display?.primaryTitle || evt.event_name || evt.event_type || "Event"}</span>
@@ -1188,10 +1821,10 @@ export function PipelineSeabedEventMap({
             <div className="relative w-full h-12 my-1 flex items-center shrink-0">
               {/* 3D Pipe Body */}
               <div className="w-full h-9 rounded-full bg-gradient-to-b from-slate-600 via-slate-300 to-slate-800 dark:from-slate-700 dark:via-slate-200 dark:to-slate-900 border border-slate-400/50 shadow-[0_10px_25px_rgba(0,0,0,0.6)] relative overflow-visible flex items-center">
-                {/* Specular Highlight Streak running along the 3D pipe */}
+                {/* Specular Highlight Streak */}
                 <div className="absolute top-1 left-0 right-0 h-1.5 bg-gradient-to-r from-white/40 via-white/80 to-white/40 blur-[1px] rounded-full pointer-events-none" />
 
-                {/* Weld Joint Rings spaced along length */}
+                {/* Weld Joint Rings */}
                 <div className="absolute inset-0 flex justify-between items-center pointer-events-none px-4 opacity-40">
                   {[...Array(20)].map((_, i) => (
                     <div key={i} className="w-1 h-full bg-slate-950 border-r border-white/40" />
@@ -1223,17 +1856,38 @@ export function PipelineSeabedEventMap({
                       style={{ left: `${startPct}%`, width: `${widthPct}%` }}
                       title={`${evt.event_name} (${evt.kp.toFixed(3)} to ${evt.end_kp.toFixed(3)} KP)`}
                     >
-                      <span className="text-[8px] font-black uppercase text-white bg-slate-900/80 px-1 rounded truncate">
+                      <span className="text-[7.5px] font-black uppercase text-white bg-slate-900/80 px-1 rounded truncate">
                         {evt.event_name || "Span"} ({(evt.end_kp - evt.kp).toFixed(3)} km)
                       </span>
                     </div>
                   );
                 })}
+
+                {/* LIVE ROV PULSING BEACON MARKER ON 3D PIPE */}
+                {showLiveRov && liveRovData && liveRovData.kp !== null && (
+                  (() => {
+                    const rovPct = kpToPercent(liveRovData.kp);
+                    if (rovPct < -2 || rovPct > 102) return null;
+                    return (
+                      <div
+                        style={{ left: `${rovPct}%` }}
+                        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center"
+                      >
+                        <div className="absolute w-8 h-8 rounded-full border-2 border-emerald-400 animate-ping opacity-60" />
+                        <div className="absolute w-5 h-5 rounded-full bg-emerald-500/40 blur-[2px]" />
+                        <div className="relative bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded-full border-2 border-white shadow-[0_0_15px_rgba(16,185,129,0.9)] flex items-center gap-1 text-[8px]">
+                          <RadioTower className="w-3 h-3 animate-spin" />
+                          <span>ROV {liveRovData.kp.toFixed(3)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                )}
               </div>
             </div>
 
-            {/* DYNAMIC SCALE RULER (KM & METER AUTO-ARRANGING TICK MARKS) */}
-            <div className="relative w-full h-8 border-t-2 border-slate-700 mt-1 pt-1 flex items-center font-mono text-[9px] text-slate-400 select-none shrink-0">
+            {/* DYNAMIC SCALE RULER */}
+            <div className="relative w-full h-7 border-t-2 border-slate-700 mt-1 pt-1 flex items-center font-mono text-[8.5px] text-slate-400 select-none shrink-0">
               {rulerTicks.map((t, idx) => (
                 <div
                   key={idx}
@@ -1242,7 +1896,7 @@ export function PipelineSeabedEventMap({
                 >
                   <div
                     className={`w-0.5 ${
-                      t.isMajor ? "h-3 bg-blue-400 font-black" : "h-1.5 bg-slate-600"
+                      t.isMajor ? "h-2.5 bg-blue-400 font-black" : "h-1 bg-slate-600"
                     }`}
                   />
                   <span className={`mt-0.5 ${t.isMajor ? "text-blue-300 font-bold" : "text-slate-500"}`}>
@@ -1253,14 +1907,14 @@ export function PipelineSeabedEventMap({
             </div>
 
             {/* INTERACTIVE HORIZONTAL SCROLLBAR & MINI-MAP PAN SLIDER */}
-            <div className="w-full bg-slate-900/90 border border-slate-800 rounded-md p-1.5 my-2 flex items-center gap-2 select-none shrink-0">
+            <div className="w-full bg-slate-900/90 border border-slate-800 rounded-md p-1 my-1 flex items-center gap-2 select-none shrink-0">
               <div className="flex items-center gap-1">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => handlePanStep("left")}
                   disabled={viewStartKp <= 0}
-                  className="h-6 px-2 text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30"
+                  className="h-5 px-1.5 text-[8.5px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30"
                   title="Pan Left along pipeline"
                 >
                   ◀ Pan Left
@@ -1270,7 +1924,7 @@ export function PipelineSeabedEventMap({
                     variant="outline"
                     size="sm"
                     onClick={() => jumpToKp(prevMatch.kp)}
-                    className="h-6 px-1.5 text-[8px] font-bold text-cyan-300 border-cyan-700 bg-cyan-950/40 hover:bg-cyan-900/60"
+                    className="h-5 px-1 text-[7.5px] font-bold text-cyan-300 border-cyan-700 bg-cyan-950/40 hover:bg-cyan-900/60"
                     title={`Jump to previous matching event at KP ${prevMatch.kp.toFixed(3)}`}
                   >
                     ← Match ({prevMatch.kp.toFixed(2)})
@@ -1278,45 +1932,47 @@ export function PipelineSeabedEventMap({
                 )}
               </div>
 
-              {/* Scrollbar Track Rendering Filtered Event Ticks */}
+              {/* Interactive Track */}
               <div
                 ref={scrollbarTrackRef}
                 onClick={handleScrollbarClick}
-                className="flex-1 h-5 bg-slate-950 border border-slate-800 rounded relative cursor-pointer overflow-hidden flex items-center"
+                className="flex-1 h-4 bg-slate-950 rounded relative border border-slate-800 cursor-pointer overflow-hidden flex items-center"
+                title="Click or drag to pan along full pipeline"
               >
-                {/* Filtered Event Markers in mini-track */}
-                {filteredEvents.map((e, idx) => {
-                  if (!maxCalculatedKp) return null;
-                  const ePct = (e.kp / maxCalculatedKp) * 100;
-                  const isAnom = e.finding_type === "Anomaly" || e.finding_type === "Finding" || !!e.anomaly_code;
+                {/* Event dots overview */}
+                {combinedEvents.map((e, idx) => {
+                  const pct = maxCalculatedKp > 0 ? (e.kp / maxCalculatedKp) * 100 : 0;
+                  const isAnom = e.finding_type === "Anomaly" || e.finding_type === "Finding";
+                  const isHist = e.survey_run === "previous";
                   return (
                     <div
-                      key={`mini-evt-${idx}`}
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        jumpToKp(e.kp);
-                      }}
-                      className={`absolute top-1/2 -translate-y-1/2 rounded-full cursor-pointer hover:scale-150 transition-transform ${
-                        isAnom
-                          ? "bg-red-500 z-10 w-2 h-3.5 shadow-[0_0_6px_rgba(239,68,68,0.9)] ring-1 ring-red-300"
-                          : "bg-cyan-400 w-1.5 h-2.5 shadow-[0_0_4px_rgba(34,211,238,0.7)]"
+                      key={`mini-${idx}`}
+                      style={{ left: `${pct}%` }}
+                      className={`absolute top-0 bottom-0 w-0.5 pointer-events-none opacity-80 ${
+                        isAnom ? "bg-red-500" : isHist ? "bg-purple-500" : "bg-blue-400"
                       }`}
-                      style={{ left: `${ePct}%` }}
-                      title={`Click to jump to: ${e.event_name || e.event_type} @ KP ${e.kp.toFixed(3)}`}
                     />
                   );
                 })}
 
-                {/* Draggable Viewport Slider Thumb */}
+                {/* ROV position marker on mini-track */}
+                {liveRovData && liveRovData.kp !== null && (
+                  <div
+                    style={{ left: `${(liveRovData.kp / maxCalculatedKp) * 100}%` }}
+                    className="absolute top-0 bottom-0 w-1.5 bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,1)] z-20 pointer-events-none"
+                  />
+                )}
+
+                {/* Viewport Thumb */}
                 <div
                   style={{
                     left: `${scrollThumbLeftPct}%`,
                     width: `${scrollThumbWidthPct}%`,
                   }}
-                  className="absolute top-0 bottom-0 bg-blue-600/30 border-2 border-blue-400 rounded shadow-[0_0_10px_rgba(59,130,246,0.5)] flex items-center justify-center transition-all cursor-grab active:cursor-grabbing hover:bg-blue-600/40"
+                  className="absolute top-0 bottom-0 bg-blue-500/30 border-2 border-cyan-400 rounded-sm shadow-md pointer-events-none flex items-center justify-center"
                 >
-                  <span className="text-[8px] font-black uppercase text-blue-200 tracking-tighter truncate px-1 pointer-events-none">
-                    {viewStartKp.toFixed(1)}k - {viewEndKp.toFixed(1)}k
+                  <span className="text-[7.5px] font-black font-mono text-cyan-200">
+                    {viewStartKp.toFixed(1)}k-{viewEndKp.toFixed(1)}k
                   </span>
                 </div>
               </div>
@@ -1327,7 +1983,7 @@ export function PipelineSeabedEventMap({
                     variant="outline"
                     size="sm"
                     onClick={() => jumpToKp(nextMatch.kp)}
-                    className="h-6 px-1.5 text-[8px] font-bold text-cyan-300 border-cyan-700 bg-cyan-950/40 hover:bg-cyan-900/60"
+                    className="h-5 px-1 text-[7.5px] font-bold text-cyan-300 border-cyan-700 bg-cyan-950/40 hover:bg-cyan-900/60"
                     title={`Jump to next matching event at KP ${nextMatch.kp.toFixed(3)}`}
                   >
                     Match ({nextMatch.kp.toFixed(2)}) →
@@ -1338,7 +1994,7 @@ export function PipelineSeabedEventMap({
                   size="sm"
                   onClick={() => handlePanStep("right")}
                   disabled={viewEndKp >= maxCalculatedKp}
-                  className="h-6 px-2 text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30"
+                  className="h-5 px-1.5 text-[8.5px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30"
                   title="Pan Right along pipeline"
                 >
                   Pan Right ▶
@@ -1346,537 +2002,1129 @@ export function PipelineSeabedEventMap({
               </div>
             </div>
 
-            {/* 1. DEPTH & KP PROFILE GRAPH (SEABED BATHYMETRY, SPAN & BURIAL PROFILES) */}
-            {showDepthGraph && (
-              <div className="w-full h-32 bg-slate-900/90 border border-slate-800 rounded-lg p-2 mt-2 relative flex flex-col shrink-0 select-none">
-                {/* Header with Interactive Channel Toggles */}
-                <div className="flex flex-wrap items-center justify-between text-[9px] font-black uppercase text-cyan-400 border-b border-slate-800 pb-1.5 mb-1 gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1.5 text-slate-200">
-                      <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="text-cyan-400 font-bold">1. Seabed Depth & Pipe Profile</span>
-                      <span className="text-slate-500 font-normal">(Water Depth Bathymetry vs KP)</span>
-                    </span>
-                  </div>
+            {/* BOTTOM GRAPHS CONTAINER WITH INTERACTIVE TAB SWITCHER & EXPAND CONTROLS */}
+            <div className="w-full bg-slate-950/95 border border-slate-800 rounded-lg p-2 mt-1 flex flex-col gap-1 shrink-0 shadow-lg">
+              {/* Tab Navigation Toolbar for Bottom Graphs */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1 flex-wrap gap-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5 text-cyan-400" /> Graph View:
+                  </span>
 
-                  {/* Channel Badges / Toggles */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      onClick={() => setShowDepthTerrain(!showDepthTerrain)}
-                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border transition-all ${
-                        showDepthTerrain
-                          ? "bg-cyan-950/80 border-cyan-500 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.4)]"
-                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-50"
-                      }`}
-                      title="Toggle Seabed Terrain / Water Depth Bathymetry profile"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                      Seabed Depth ({profileData.minDepth.toFixed(1)}m - {profileData.maxDepth.toFixed(1)}m)
-                    </button>
+                  {/* Tab 1: Seabed Depth Bathymetry */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setGraphTab("depth")}
+                    className={`h-6 px-2 text-[9px] font-bold uppercase transition-all ${
+                      graphTab === "depth"
+                        ? "bg-cyan-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900"
+                    }`}
+                  >
+                    <TrendingUp className="w-3 h-3 mr-1 text-cyan-300" />
+                    1. Seabed Depth (vs KP)
+                  </Button>
 
-                    <button
-                      onClick={() => setShowSpanBurialLines(!showSpanBurialLines)}
-                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border transition-all ${
-                        showSpanBurialLines
-                          ? "bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
-                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-50"
-                      }`}
-                      title="Toggle Free Span & Burial Depth profiles"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      Free Span
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 ml-1" />
-                      Burial
-                    </button>
-                  </div>
+                  {/* Tab 2: 2D Plan View / Top Elevation */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setGraphTab("plan")}
+                    className={`h-6 px-2 text-[9px] font-bold uppercase transition-all ${
+                      graphTab === "plan"
+                        ? "bg-amber-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900"
+                    }`}
+                  >
+                    <Compass className="w-3 h-3 mr-1 text-amber-300" />
+                    2. Top Elevation (Plan N/E)
+                  </Button>
+
+                  {/* Tab 3: Longitudinal Coordinates vs KP */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setGraphTab("coords_profile")}
+                    className={`h-6 px-2 text-[9px] font-bold uppercase transition-all ${
+                      graphTab === "coords_profile"
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900"
+                    }`}
+                  >
+                    <Activity className="w-3 h-3 mr-1 text-indigo-300" />
+                    3. Coordinates (N/E vs KP)
+                  </Button>
+
+                  {/* Tab 4: Side-by-Side Split View */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setGraphTab("split")}
+                    className={`h-6 px-2 text-[9px] font-bold uppercase transition-all ${
+                      graphTab === "split"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900"
+                    }`}
+                  >
+                    <Columns className="w-3 h-3 mr-1 text-emerald-300" />
+                    Split Dual View
+                  </Button>
+
+                  {/* Tab 5: Hide Graphs to maximize 3D pipeline view */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setGraphTab(graphTab === "hidden" ? "depth" : "hidden")}
+                    className={`h-6 px-2 text-[9px] font-bold uppercase transition-all ${
+                      graphTab === "hidden"
+                        ? "bg-slate-700 text-slate-200"
+                        : "text-slate-500 hover:text-slate-300"
+                    }`}
+                  >
+                    {graphTab === "hidden" ? <Eye className="w-3 h-3 mr-1" /> : <EyeOff className="w-3 h-3 mr-1" />}
+                    {graphTab === "hidden" ? "Show Graphs" : "Hide (Maximize Pipe)"}
+                  </Button>
                 </div>
 
-                {/* SVG Curve Canvas with Interactive Crosshair */}
-                <div
-                  className="flex-1 relative w-full h-full cursor-crosshair overflow-hidden"
-                  onMouseMove={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-                    const currentSpan = viewEndKp - viewStartKp;
-                    const hoverKp = viewStartKp + (xPct / 100) * currentSpan;
+                {/* Sizing & Expand Controls */}
+                {graphTab !== "hidden" && (
+                  <div className="flex items-center gap-1 font-mono text-[9px] text-slate-400">
+                    <span className="text-[8px] uppercase text-slate-500 mr-0.5">Size:</span>
+                    <button
+                      onClick={() => setGraphHeightSize("compact")}
+                      className={`px-1.5 py-0.5 rounded text-[8px] ${
+                        graphHeightSize === "compact" ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Small
+                    </button>
+                    <button
+                      onClick={() => setGraphHeightSize("medium")}
+                      className={`px-1.5 py-0.5 rounded text-[8px] ${
+                        graphHeightSize === "medium" ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Medium
+                    </button>
+                    <button
+                      onClick={() => setGraphHeightSize("expanded")}
+                      className={`px-1.5 py-0.5 rounded text-[8px] ${
+                        graphHeightSize === "expanded" ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Large
+                    </button>
+                  </div>
+                )}
+              </div>
 
-                    // Find closest point in profile data
-                    let closest = profileData.points[0];
-                    let minDiff = 9999;
-                    profileData.points.forEach((pt) => {
-                      const diff = Math.abs(pt.kp - hoverKp);
-                      if (diff < minDiff) {
-                        minDiff = diff;
-                        closest = pt;
-                      }
-                    });
+              {/* Render Selected Bottom Graph View */}
+              {graphTab !== "hidden" && (
+                <div className={`w-full ${graphHeightClass} relative transition-all duration-150`}>
+                  {/* MODE 1: FULL SEABED DEPTH BATHYMETRY WITH DIRECT EVENT INDICATORS */}
+                  {graphTab === "depth" && (
+                    <div 
+                      className="w-full h-full relative border border-slate-800/80 rounded bg-slate-900/40 p-1.5 flex flex-col overflow-hidden cursor-crosshair select-none"
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                        const targetKp = viewStartKp + (xPct / 100) * (viewEndKp - viewStartKp);
+                        const interp = profileData.points.find((p) => Math.abs(p.kp - targetKp) < 0.05);
+                        // Check if close to an event
+                        const closeEvt = filteredEvents.find((evt) => Math.abs(evt.kp - targetKp) < 0.02);
+                        setHoverProfilePoint({
+                          xPct,
+                          kp: targetKp,
+                          depth: interp?.depth,
+                          span: interp?.span,
+                          burial: interp?.burial,
+                          easting: interp?.easting,
+                          northing: interp?.northing,
+                          event: closeEvt,
+                        });
+                      }}
+                      onMouseLeave={() => setHoverProfilePoint(null)}
+                    >
+                      <div className="flex items-center justify-between text-[8.5px] font-mono text-slate-400 pb-1 border-b border-slate-800 shrink-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-cyan-300 font-bold flex items-center gap-1">
+                            <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                            WATER DEPTH & SEABED TERRAIN PROFILE (BATHYMETRY VS KP)
+                          </span>
+                          <span className="text-[8px] text-slate-400 bg-slate-800/80 border border-slate-700 px-1.5 py-0.2 rounded font-mono">
+                            Click any event marker on graph to view details
+                          </span>
+                          {showComparison && (
+                            <span className="text-[8px] text-purple-400 bg-purple-950/40 border border-purple-600 px-1 rounded">
+                              Historical Seabed Profile (Dashed Violet)
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-cyan-400 font-bold">
+                            Depth Range: {profileData.minDepth.toFixed(1)}m – {profileData.maxDepth.toFixed(1)}m
+                          </span>
+                          {liveRovData?.depth !== null && liveRovData?.depth !== undefined && (
+                            <span className="text-emerald-400 font-bold">
+                              ROV Depth: {liveRovData.depth.toFixed(1)}m
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                    setHoverProfilePoint({
-                      xPct,
-                      kp: hoverKp,
-                      depth: closest?.depth,
-                      span: closest?.span,
-                      burial: closest?.burial,
-                      easting: closest?.easting,
-                      northing: closest?.northing,
-                    });
-                  }}
-                  onMouseLeave={() => setHoverProfilePoint(null)}
-                >
-                  <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                    <defs>
-                      {/* Seabed Bathymetry Terrain Linear Gradient */}
-                      <linearGradient id="seabedTerrainGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
-                        <stop offset="40%" stopColor="#0284c7" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#082f49" stopOpacity="0.05" />
-                      </linearGradient>
+                      <div className="relative w-full flex-1 mt-1 overflow-hidden">
+                        <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                          {/* Depth Horizontal Grid Lines */}
+                          {[0, 25, 50, 75, 100].map((pct, i) => (
+                            <line 
+                              key={`dgrid-${i}`} 
+                              x1="0" 
+                              y1={pct} 
+                              x2="100" 
+                              y2={pct} 
+                              stroke="#334155" 
+                              strokeWidth="0.5" 
+                              strokeDasharray="2 2"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          ))}
 
-                      {/* Span Height Glowing Area Gradient */}
-                      <linearGradient id="spanAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
-                        <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-                      </linearGradient>
+                          {/* Primary Seabed Terrain Gradient Area Fill */}
+                          {profileData.points.length > 1 && (
+                            <polygon
+                              points={`0,100 ${profileData.points
+                                .map((p) => {
+                                  const x = kpToPercent(p.kp);
+                                  const d = p.depth ?? profileData.minDepth;
+                                  const dSpan = profileData.maxDepth - profileData.minDepth || 1;
+                                  const y = ((d - profileData.minDepth) / dSpan) * 80 + 10;
+                                  return `${x},${y}`;
+                                })
+                                .join(" ")} 100,100`}
+                              fill="url(#seabed-gradient-full)"
+                              opacity="0.45"
+                            />
+                          )}
 
-                      {/* Burial Depth Glowing Area Gradient */}
-                      <linearGradient id="burialAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.0" />
-                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.45" />
-                      </linearGradient>
-                    </defs>
+                          {/* Primary Seabed Profile Line */}
+                          {profileData.points.length > 1 && (
+                            <polyline
+                              points={profileData.points
+                                .map((p) => {
+                                  const x = kpToPercent(p.kp);
+                                  const d = p.depth ?? profileData.minDepth;
+                                  const dSpan = profileData.maxDepth - profileData.minDepth || 1;
+                                  const y = ((d - profileData.minDepth) / dSpan) * 80 + 10;
+                                  return `${x},${y}`;
+                                })
+                                .join(" ")}
+                              fill="none"
+                              stroke="#06b6d4"
+                              strokeWidth="2.5"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          )}
 
-                    {/* Seabed Reference Grid Lines */}
-                    <line x1="0" y1="25%" x2="100%" y2="25%" stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
-                    <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#334155" strokeDasharray="3 3" strokeWidth="1.5" />
-                    <line x1="0" y1="75%" x2="100%" y2="75%" stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
-                    <text x="6" y="48%" fill="#64748b" fontSize="7.5" fontFamily="monospace" fontWeight="bold">Seabed Datum (0m)</text>
-                    <text x="6" y="18%" fill="#06b6d4" fontSize="7" fontFamily="monospace">Min: {profileData.minDepth.toFixed(1)}m</text>
-                    <text x="6" y="90%" fill="#06b6d4" fontSize="7" fontFamily="monospace">Max: {profileData.maxDepth.toFixed(1)}m</text>
+                          {/* Historical Seabed Profile Line (Dashed Violet) */}
+                          {showComparison && profileData.points.some((p) => p.histDepth !== undefined) && (
+                            <polyline
+                              points={profileData.points
+                                .filter((p) => p.histDepth !== undefined)
+                                .map((p) => {
+                                  const x = kpToPercent(p.kp);
+                                  const d = p.histDepth!;
+                                  const dSpan = profileData.maxDepth - profileData.minDepth || 1;
+                                  const y = ((d - profileData.minDepth) / dSpan) * 80 + 10;
+                                  return `${x},${y}`;
+                                })
+                                .join(" ")}
+                              fill="none"
+                              stroke="#c084fc"
+                              strokeWidth="2"
+                              strokeDasharray="4 3"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          )}
 
-                    {/* 1. SEABED TERRAIN / WATER DEPTH BATHYMETRY SMOOTH MESH */}
-                    {showDepthTerrain && profileData.points.length >= 2 && (() => {
-                      const depthPoints = profileData.points.filter((pt) => pt.depth !== undefined);
-                      if (depthPoints.length < 2) return null;
+                          {/* Vertical Drop Guidelines connecting from top down to depth profile point */}
+                          {filteredEvents.map((evt, idx) => {
+                            const x = kpToPercent(evt.kp);
+                            if (x < -2 || x > 102) return null;
 
-                      const dMin = profileData.minDepth;
-                      const dMax = profileData.maxDepth;
-                      const dRange = Math.max(dMax - dMin, 1);
+                            let d = typeof evt.depth === "number" ? evt.depth : parseFloat(String(evt.depth || ""));
+                            if (isNaN(d) && profileData.getInterpolatedDepth) {
+                              const interp = profileData.getInterpolatedDepth(evt.kp);
+                              if (interp !== null && interp !== undefined) d = interp;
+                            }
+                            if (isNaN(d)) d = (profileData.minDepth + profileData.maxDepth) / 2;
 
-                      const pts = depthPoints.map((pt) => ({
-                        x: kpToPercent(pt.kp),
-                        y: 20 + (((pt.depth! - dMin) / dRange) * 55),
-                      }));
+                            const dSpan = profileData.maxDepth - profileData.minDepth || 1;
+                            const y = ((d - profileData.minDepth) / dSpan) * 80 + 10;
 
-                      // Smooth cubic curve path
-                      let pathD = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
-                      for (let i = 0; i < pts.length - 1; i++) {
-                        const p0 = pts[i === 0 ? 0 : i - 1];
-                        const p1 = pts[i];
-                        const p2 = pts[i + 1];
-                        const p3 = pts[i + 2 >= pts.length ? pts.length - 1 : i + 2];
+                            const isAnom =
+                              evt.finding_type === "Anomaly" ||
+                              evt.finding_type === "Finding" ||
+                              String(evt.anomaly_code || "").trim() !== "";
+                            const isSelected = activeEvent?.id === evt.id;
 
-                        const cp1x = p1.x + (p2.x - p0.x) / 6;
-                        const cp1y = p1.y + (p2.y - p0.y) / 6;
-                        const cp2x = p2.x - (p3.x - p1.x) / 6;
-                        const cp2y = p2.y - (p3.y - p1.y) / 6;
-
-                        pathD += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
-                      }
-
-                      const closedPolygonD = `${pathD} L ${pts[pts.length - 1].x.toFixed(2)} 100 L ${pts[0].x.toFixed(2)} 100 Z`;
-
-                      return (
-                        <g key="seabed-terrain-mesh">
-                          {/* Smooth Shaded Underwater Bathymetry Area */}
-                          <path d={closedPolygonD} fill="url(#seabedTerrainGrad)" />
-                          {/* Top Smooth Bathymetry Contour Line */}
-                          <path d={pathD} fill="none" stroke="#06b6d4" strokeWidth="2.5" />
-                          {/* Discrete Survey Sampling Points */}
-                          {depthPoints.map((pt, idx) => {
-                            const x = kpToPercent(pt.kp);
-                            if (x < 0 || x > 100) return null;
-                            const y = 20 + (((pt.depth! - dMin) / dRange) * 55);
                             return (
-                              <circle
-                                key={`d-pt-${idx}`}
-                                cx={`${x}%`}
-                                cy={`${y}%`}
-                                r="2"
-                                fill="#06b6d4"
-                                opacity="0.9"
+                              <line
+                                key={`d-stem-${evt.id || idx}`}
+                                x1={x}
+                                y1={0}
+                                x2={x}
+                                y2={y}
+                                stroke={isAnom ? "#ef4444" : isSelected ? "#38bdf8" : "#475569"}
+                                strokeWidth={isAnom || isSelected ? "1.5" : "0.5"}
+                                strokeDasharray={isAnom ? "2 1" : "1 2"}
+                                opacity={isAnom || isSelected ? "0.9" : "0.35"}
+                                vectorEffect="non-scaling-stroke"
                               />
                             );
                           })}
-                        </g>
-                      );
-                    })()}
 
-                    {/* FREE SPAN & BURIAL DEPTH SMOOTH PROFILES & BARS */}
-                    {showSpanBurialLines && (() => {
-                      const spanBurialPts = profileData.points;
-                      const hasSpans = spanBurialPts.some((p) => p.span > 0);
-                      const hasBurials = spanBurialPts.some((p) => p.burial > 0);
-
-                      // Build Span Curve & Shaded Envelope
-                      const spanCurvePts = spanBurialPts.map((p) => ({
-                        x: kpToPercent(p.kp),
-                        y: 50 - Math.min(32, (p.span || 0) * 16),
-                      }));
-
-                      const burialCurvePts = spanBurialPts.map((p) => ({
-                        x: kpToPercent(p.kp),
-                        y: 50 + Math.min(32, (p.burial || 0) * 16),
-                      }));
-
-                      let spanPath = `M ${spanCurvePts[0].x.toFixed(2)} ${spanCurvePts[0].y.toFixed(2)}`;
-                      for (let i = 0; i < spanCurvePts.length - 1; i++) {
-                        const p0 = spanCurvePts[i === 0 ? 0 : i - 1];
-                        const p1 = spanCurvePts[i];
-                        const p2 = spanCurvePts[i + 1];
-                        const p3 = spanCurvePts[i + 2 >= spanCurvePts.length ? spanCurvePts.length - 1 : i + 2];
-                        const cp1x = p1.x + (p2.x - p0.x) / 6;
-                        const cp1y = p1.y + (p2.y - p0.y) / 6;
-                        const cp2x = p2.x - (p3.x - p1.x) / 6;
-                        const cp2y = p2.y - (p3.y - p1.y) / 6;
-                        spanPath += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
-                      }
-
-                      let burialPath = `M ${burialCurvePts[0].x.toFixed(2)} ${burialCurvePts[0].y.toFixed(2)}`;
-                      for (let i = 0; i < burialCurvePts.length - 1; i++) {
-                        const p0 = burialCurvePts[i === 0 ? 0 : i - 1];
-                        const p1 = burialCurvePts[i];
-                        const p2 = burialCurvePts[i + 1];
-                        const p3 = burialCurvePts[i + 2 >= burialCurvePts.length ? burialCurvePts.length - 1 : i + 2];
-                        const cp1x = p1.x + (p2.x - p0.x) / 6;
-                        const cp1y = p1.y + (p2.y - p0.y) / 6;
-                        const cp2x = p2.x - (p3.x - p1.x) / 6;
-                        const cp2y = p2.y - (p3.y - p1.y) / 6;
-                        burialPath += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
-                      }
-
-                      const closedSpanArea = `${spanPath} L ${spanCurvePts[spanCurvePts.length - 1].x.toFixed(2)} 50 L ${spanCurvePts[0].x.toFixed(2)} 50 Z`;
-                      const closedBurialArea = `${burialPath} L ${burialCurvePts[burialCurvePts.length - 1].x.toFixed(2)} 50 L ${burialCurvePts[0].x.toFixed(2)} 50 Z`;
-
-                      return (
-                        <g key="span-burial-curves">
-                          {/* Span Shaded Area & Smooth Emerald Curve */}
-                          {hasSpans && (
-                            <>
-                              <path d={closedSpanArea} fill="url(#spanAreaGrad)" />
-                              <path d={spanPath} fill="none" stroke="#10b981" strokeWidth="2.5" />
-                            </>
+                          {/* Hover Crosshair Vertical Line */}
+                          {hoverProfilePoint && (
+                            <line
+                              x1={hoverProfilePoint.xPct}
+                              y1="0"
+                              x2={hoverProfilePoint.xPct}
+                              y2="100"
+                              stroke="#38bdf8"
+                              strokeWidth="1"
+                              strokeDasharray="2 2"
+                              vectorEffect="non-scaling-stroke"
+                            />
                           )}
 
-                          {/* Burial Shaded Area & Smooth Blue Curve */}
-                          {hasBurials && (
-                            <>
-                              <path d={closedBurialArea} fill="url(#burialAreaGrad)" />
-                              <path d={burialPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" />
-                            </>
-                          )}
+                          <defs>
+                            <linearGradient id="seabed-gradient-full" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#0891b2" stopOpacity="0.85" />
+                              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.05" />
+                            </linearGradient>
+                          </defs>
+                        </svg>
 
-                          {/* Discrete Peak / Valley Callout Markers */}
+                        {/* FIXED-PIXEL CRISP EVENT DOTS HTML OVERLAY (NEVER STRETCHES INTO OVALS) */}
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
                           {filteredEvents.map((evt, idx) => {
-                            if (!evt.kp) return null;
-                            const pct = kpToPercent(evt.kp);
-                            if (pct < 0 || pct > 100) return null;
+                            const x = kpToPercent(evt.kp);
+                            if (x < -2 || x > 102) return null;
 
-                            const spanH = evt.span_height || 0;
-                            const burialD = evt.burial_depth || 0;
-
-                            if (spanH > 0) {
-                              const heightPx = Math.min(30, spanH * 15);
-                              return (
-                                <g key={`span-marker-${idx}`}>
-                                  <line x1={`${pct}%`} y1="50%" x2={`${pct}%`} y2={`${50 - heightPx}%`} stroke="#10b981" strokeWidth="2" strokeDasharray="2 2" />
-                                  <circle cx={`${pct}%`} cy={`${50 - heightPx}%`} r="3.5" fill="#10b981" className="animate-pulse" />
-                                  <text x={`${pct}%`} y={`${42 - heightPx}%`} fill="#34d399" fontSize="7.5" fontWeight="bold" textAnchor="middle">
-                                    +{spanH.toFixed(2)}m
-                                  </text>
-                                </g>
-                              );
+                            let d = typeof evt.depth === "number" ? evt.depth : parseFloat(String(evt.depth || ""));
+                            if (isNaN(d) && profileData.getInterpolatedDepth) {
+                              const interp = profileData.getInterpolatedDepth(evt.kp);
+                              if (interp !== null && interp !== undefined) d = interp;
                             }
+                            if (isNaN(d)) d = (profileData.minDepth + profileData.maxDepth) / 2;
 
-                            if (burialD > 0) {
-                              const depthPx = Math.min(30, burialD * 15);
-                              return (
-                                <g key={`burial-marker-${idx}`}>
-                                  <line x1={`${pct}%`} y1="50%" x2={`${pct}%`} y2={`${50 + depthPx}%`} stroke="#3b82f6" strokeWidth="2" strokeDasharray="2 2" />
-                                  <circle cx={`${pct}%`} cy={`${50 + depthPx}%`} r="3.5" fill="#3b82f6" />
-                                  <text x={`${pct}%`} y={`${62 + depthPx}%`} fill="#60a5fa" fontSize="7.5" fontWeight="bold" textAnchor="middle">
-                                    -{burialD.toFixed(2)}m
-                                  </text>
-                                </g>
-                              );
-                            }
-                            return null;
+                            const dSpan = profileData.maxDepth - profileData.minDepth || 1;
+                            const y = ((d - profileData.minDepth) / dSpan) * 80 + 10;
+
+                            const isAnom =
+                              evt.finding_type === "Anomaly" ||
+                              evt.finding_type === "Finding" ||
+                              String(evt.anomaly_code || "").trim() !== "";
+                            const isHist = evt.survey_run === "previous";
+                            const isSelected = activeEvent?.id === evt.id;
+
+                            const nameUpper = (evt.event_name || evt.event_type || "").toUpperCase();
+                            const dotBg = isAnom
+                              ? "bg-red-500"
+                              : isHist
+                              ? "bg-purple-500"
+                              : nameUpper.includes("CP")
+                              ? "bg-cyan-400"
+                              : nameUpper.includes("ANODE")
+                              ? "bg-indigo-400"
+                              : nameUpper.includes("SPAN")
+                              ? "bg-emerald-400"
+                              : nameUpper.includes("BURIAL")
+                              ? "bg-blue-400"
+                              : nameUpper.includes("FIELD JOINT")
+                              ? "bg-amber-400"
+                              : "bg-sky-400";
+
+                            return (
+                              <div
+                                key={`depth-dot-html-${evt.id || idx}`}
+                                style={{
+                                  left: `${x}%`,
+                                  top: `${y}%`,
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveEvent(evt);
+                                  onSelectEvent?.(evt);
+                                }}
+                                onMouseEnter={() => {
+                                  setHoverProfilePoint({
+                                    xPct: x,
+                                    kp: evt.kp,
+                                    depth: d,
+                                    span: evt.span_height,
+                                    burial: evt.burial_depth,
+                                    event: evt,
+                                  });
+                                }}
+                                className={`absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer flex items-center justify-center transition-transform duration-100 ${
+                                  isSelected ? "scale-125 z-30" : "hover:scale-125 hover:z-30"
+                                }`}
+                                title={`${evt.event_name || evt.event_type} (KP ${evt.kp.toFixed(3)})`}
+                              >
+                                {isAnom ? (
+                                  <div className="relative flex items-center justify-center">
+                                    <span className="absolute w-3.5 h-3.5 rounded-full bg-red-500 opacity-60 animate-ping" />
+                                    <span className={`w-2 h-2 rotate-45 bg-red-500 border border-white rounded-[1px] shadow-sm shadow-red-950 ${isSelected ? "ring-2 ring-cyan-300 w-2.5 h-2.5" : ""}`} />
+                                  </div>
+                                ) : isHist ? (
+                                  <div className="relative flex items-center justify-center">
+                                    <span className={`w-1.5 h-1.5 rotate-45 bg-purple-500 border border-white rounded-[1px] ${isSelected ? "ring-2 ring-cyan-300 w-2 h-2" : ""}`} />
+                                  </div>
+                                ) : (
+                                  <div className="relative flex items-center justify-center">
+                                    {isSelected && (
+                                      <span className="absolute w-3.5 h-3.5 rounded-full border-2 border-cyan-400 animate-ping" />
+                                    )}
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full border border-white shadow-sm ${dotBg} ${
+                                        isSelected ? "ring-2 ring-cyan-300 w-2 h-2" : ""
+                                      }`}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
                           })}
-                        </g>
-                      );
-                    })()}
 
-                    {/* HOVER SCANNING CROSSHAIR LINE */}
-                    {hoverProfilePoint && (
-                      <g key="hover-crosshair-depth">
-                        <line
-                          x1={`${hoverProfilePoint.xPct}%`}
-                          y1="0"
-                          x2={`${hoverProfilePoint.xPct}%`}
-                          y2="100%"
-                          stroke="#38bdf8"
-                          strokeWidth="1.5"
-                          strokeDasharray="2 2"
-                        />
-                        <circle cx={`${hoverProfilePoint.xPct}%`} cy="50%" r="3" fill="#38bdf8" />
-                      </g>
-                    )}
-                  </svg>
+                          {/* ROV Live Beacon Marker */}
+                          {showLiveRov && liveRovData && liveRovData.kp !== null && liveRovData.depth !== null && (
+                            (() => {
+                              const rx = kpToPercent(liveRovData.kp);
+                              const dSpan = profileData.maxDepth - profileData.minDepth || 1;
+                              const ry = ((liveRovData.depth - profileData.minDepth) / dSpan) * 80 + 10;
+                              return (
+                                <div
+                                  style={{ left: `${rx}%`, top: `${ry}%` }}
+                                  className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center z-30"
+                                >
+                                  <span className="absolute w-4 h-4 rounded-full bg-emerald-400 opacity-60 animate-ping" />
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white shadow-[0_0_8px_rgba(16,185,129,1)]" />
+                                </div>
+                              );
+                            })()
+                          )}
+                        </div>
 
-                  {/* Interactive Floating Hover Pill */}
-                  {hoverProfilePoint && (
-                    <div
-                      style={{
-                        left: `${Math.max(10, Math.min(90, hoverProfilePoint.xPct))}%`,
-                        top: "4px",
+                        {/* Rich Hover Inspection Tooltip with Event Context */}
+                        {hoverProfilePoint && (
+                          <div
+                            style={{
+                              left: `${Math.max(4, Math.min(78, hoverProfilePoint.xPct))}%`,
+                              top: "6px",
+                            }}
+                            className="absolute bg-slate-950/95 border border-cyan-500/80 text-white px-2.5 py-1.5 rounded-lg text-[9px] font-mono shadow-2xl pointer-events-none z-30 flex flex-col gap-1 backdrop-blur-md whitespace-nowrap"
+                          >
+                            {hoverProfilePoint.event ? (
+                              <>
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase text-white ${
+                                      hoverProfilePoint.event.finding_type === "Anomaly"
+                                        ? "bg-red-600 animate-pulse"
+                                        : hoverProfilePoint.event.survey_run === "previous"
+                                        ? "bg-purple-600"
+                                        : "bg-cyan-700"
+                                    }`}
+                                  >
+                                    {hoverProfilePoint.event.anomaly_code ||
+                                      hoverProfilePoint.event.finding_type ||
+                                      hoverProfilePoint.event.event_type ||
+                                      "EVENT"}
+                                  </span>
+                                  <span className="font-bold text-slate-100 text-[9.5px]">
+                                    {hoverProfilePoint.event.event_name || hoverProfilePoint.event.event_type}
+                                  </span>
+                                  {hoverProfilePoint.event.findings && (
+                                    <span className="text-amber-300 text-[8px] bg-amber-950/80 px-1 rounded border border-amber-700">
+                                      {hoverProfilePoint.event.findings}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 text-slate-300 text-[8.5px]">
+                                  <span className="text-cyan-300 font-bold">📍 KP {hoverProfilePoint.kp.toFixed(3)}</span>
+                                  {hoverProfilePoint.depth !== undefined && (
+                                    <span className="text-blue-400 font-bold">🌊 Depth: {hoverProfilePoint.depth.toFixed(1)}m</span>
+                                  )}
+                                  {hoverProfilePoint.span ? (
+                                    <span className="text-emerald-400 font-bold">⛰️ Span: {hoverProfilePoint.span.toFixed(2)}m</span>
+                                  ) : null}
+                                  {hoverProfilePoint.burial ? (
+                                    <span className="text-indigo-300 font-bold">🛡️ Burial: {hoverProfilePoint.burial.toFixed(2)}m</span>
+                                  ) : null}
+                                  <span className="text-cyan-300 font-semibold italic">🖱️ Click to select</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-3">
+                                <span className="text-cyan-300 font-bold">📍 KP {hoverProfilePoint.kp.toFixed(3)}</span>
+                                {hoverProfilePoint.depth !== undefined && (
+                                  <span className="text-blue-400 font-bold">🌊 Depth: {hoverProfilePoint.depth.toFixed(1)}m</span>
+                                )}
+                                {hoverProfilePoint.span ? (
+                                  <span className="text-emerald-400 font-bold">⛰️ Span: {hoverProfilePoint.span.toFixed(2)}m</span>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MODE 2: FULL 2D PLAN VIEW (TOP ELEVATION: NORTHING [Y] VS EASTING [X]) */}
+                  {graphTab === "plan" && (
+                    <div 
+                      className="w-full h-full relative border border-slate-800/80 rounded bg-slate-900/40 p-1.5 flex flex-col overflow-hidden cursor-crosshair select-none"
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                        const yPct = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                        const curEasting = planBounds.minEasting + (xPct / 100) * planBounds.eRange;
+                        const curNorthing = planBounds.maxNorthing - (yPct / 100) * planBounds.nRange;
+
+                        // Find closest event by coordinate proximity
+                        const closeEvt = filteredEvents.find((evt) => {
+                          const eNum = typeof evt.easting === "number" ? evt.easting : parseFloat(String(evt.easting || ""));
+                          const nNum = typeof evt.northing === "number" ? evt.northing : parseFloat(String(evt.northing || ""));
+                          if (isNaN(eNum) || isNaN(nNum)) return false;
+                          const dE = eNum - curEasting;
+                          const dN = nNum - curNorthing;
+                          return Math.sqrt(dE * dE + dN * dN) < Math.max(planBounds.eRange, planBounds.nRange) * 0.05;
+                        });
+
+                        setHoverPlanPoint({
+                          xPct,
+                          yPct,
+                          kp: closeEvt?.kp || 0,
+                          easting: curEasting,
+                          northing: curNorthing,
+                          depth: closeEvt?.depth ? parseFloat(String(closeEvt.depth)) : undefined,
+                          event: closeEvt,
+                        });
                       }}
-                      className="absolute -translate-x-1/2 bg-slate-950/95 border border-cyan-500/70 text-slate-100 px-2 py-1 rounded shadow-xl pointer-events-none text-[8px] font-mono z-30 flex items-center gap-2 whitespace-nowrap backdrop-blur-sm"
+                      onMouseLeave={() => setHoverPlanPoint(null)}
                     >
-                      <span className="text-blue-300 font-bold">KP {hoverProfilePoint.kp.toFixed(3)}</span>
-                      {hoverProfilePoint.depth !== undefined && (
-                        <span className="text-cyan-400 font-semibold">🌊 Depth: {hoverProfilePoint.depth.toFixed(1)}m</span>
-                      )}
-                      {hoverProfilePoint.span ? (
-                        <span className="text-emerald-400 font-semibold">Span: +{hoverProfilePoint.span.toFixed(2)}m</span>
-                      ) : null}
-                      {hoverProfilePoint.burial ? (
-                        <span className="text-blue-400 font-semibold">Burial: -{hoverProfilePoint.burial.toFixed(2)}m</span>
-                      ) : null}
+                      <div className="flex items-center justify-between text-[8.5px] font-mono text-slate-400 pb-1 border-b border-slate-800 shrink-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-400 font-bold flex items-center gap-1">
+                            <Compass className="w-3.5 h-3.5 text-amber-400" />
+                            TOP ELEVATION 2D PLAN MAP (NORTHING [Y] VS EASTING [X] — KP AS Z-AXIS)
+                          </span>
+                          <span className="text-[8px] text-slate-400 bg-slate-800/80 border border-slate-700 px-1.5 py-0.2 rounded font-mono">
+                            Hover over map to inspect coordinates & events
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 font-bold text-slate-300">
+                          <span className="text-amber-400">Northing: {planBounds.minNorthing.toFixed(0)}m – {planBounds.maxNorthing.toFixed(0)}m</span>
+                          <span className="text-purple-300">Easting: {planBounds.minEasting.toFixed(0)}m – {planBounds.maxEasting.toFixed(0)}m</span>
+                        </div>
+                      </div>
+
+                      <div className="relative w-full flex-1 mt-1 overflow-hidden">
+                        <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                          {/* Plan Coordinate Grid */}
+                          {[25, 50, 75].map((pct, i) => (
+                            <React.Fragment key={`pgrid-${i}`}>
+                              <line x1="0" y1={pct} x2="100" y2={pct} stroke="#334155" strokeWidth="0.5" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
+                              <line x1={pct} y1="0" x2={pct} y2="100" stroke="#334155" strokeWidth="0.5" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
+                            </React.Fragment>
+                          ))}
+
+                          {/* Pipeline Trajectory Path Polyline */}
+                          {planBounds.points.length > 1 && (
+                            <polyline
+                              points={planBounds.points
+                                .map((p) => `${eastingToPlanXPct(p.easting!)},${northingToPlanYPct(p.northing!)}`)
+                                .join(" ")}
+                              fill="none"
+                              stroke="#fbbf24"
+                              strokeWidth="3"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          )}
+
+                          {/* Hover Crosshairs for Plan Map */}
+                          {hoverPlanPoint && (
+                            <g>
+                              <line
+                                x1={hoverPlanPoint.xPct}
+                                y1="0"
+                                x2={hoverPlanPoint.xPct}
+                                y2="100"
+                                stroke="#f59e0b"
+                                strokeWidth="1"
+                                strokeDasharray="2 2"
+                                opacity="0.8"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                              <line
+                                x1="0"
+                                y1={hoverPlanPoint.yPct}
+                                x2="100"
+                                y2={hoverPlanPoint.yPct}
+                                stroke="#f59e0b"
+                                strokeWidth="1"
+                                strokeDasharray="2 2"
+                                opacity="0.8"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            </g>
+                          )}
+                        </svg>
+
+                        {/* Events and Anomalies HTML Overlay on Plan Map */}
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                          {filteredEvents.map((evt, idx) => {
+                            const east = typeof evt.easting === "number" ? evt.easting : parseFloat(String(evt.easting || ""));
+                            const north = typeof evt.northing === "number" ? evt.northing : parseFloat(String(evt.northing || ""));
+                            if (isNaN(east) || isNaN(north)) return null;
+
+                            const x = eastingToPlanXPct(east);
+                            const y = northingToPlanYPct(north);
+                            const isAnom = evt.finding_type === "Anomaly" || evt.finding_type === "Finding";
+                            const isSelected = activeEvent?.id === evt.id;
+
+                            return (
+                              <div
+                                key={`plan-dot-${idx}`}
+                                style={{ left: `${x}%`, top: `${y}%` }}
+                                className={`absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer ${
+                                  isSelected ? "scale-125 z-30" : "hover:scale-125 hover:z-30"
+                                }`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveEvent(evt);
+                                  onSelectEvent?.(evt);
+                                }}
+                                onMouseEnter={() => {
+                                  setHoverPlanPoint({
+                                    xPct: x,
+                                    yPct: y,
+                                    kp: evt.kp,
+                                    easting: east,
+                                    northing: north,
+                                    depth: evt.depth ? parseFloat(String(evt.depth)) : undefined,
+                                    event: evt,
+                                  });
+                                }}
+                              >
+                                {isAnom ? (
+                                  <div className="w-2 h-2 rotate-45 bg-red-500 border border-white rounded-[1px] shadow-sm shadow-red-950" />
+                                ) : (
+                                  <div className={`w-1.5 h-1.5 rounded-full bg-cyan-400 border border-white shadow-sm ${isSelected ? "ring-2 ring-cyan-300 w-2 h-2" : ""}`} />
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* ROV Live Marker with Gyro Heading on Plan Map */}
+                          {showLiveRov && liveRovData && liveRovData.easting !== null && liveRovData.northing !== null && (
+                            (() => {
+                              const rx = eastingToPlanXPct(liveRovData.easting);
+                              const ry = northingToPlanYPct(liveRovData.northing);
+                              const hdg = liveRovData.heading || 0;
+                              return (
+                                <div
+                                  style={{ left: `${rx}%`, top: `${ry}%` }}
+                                  className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center z-30"
+                                >
+                                  <span className="absolute w-5 h-5 rounded-full bg-emerald-400 opacity-40 animate-ping" />
+                                  <div className="relative w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center shadow-lg">
+                                    <div
+                                      style={{ transform: `rotate(${hdg}deg)` }}
+                                      className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[6px] border-b-white"
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          )}
+                        </div>
+
+                        {/* Rich Hover Inspection Tooltip on Plan Map */}
+                        {hoverPlanPoint && (
+                          <div
+                            style={{
+                              left: `${Math.max(4, Math.min(78, hoverPlanPoint.xPct))}%`,
+                              top: "6px",
+                            }}
+                            className="absolute bg-slate-950/95 border border-amber-500/80 text-white px-2.5 py-1.5 rounded-lg text-[9px] font-mono shadow-2xl pointer-events-none z-30 flex flex-col gap-1 backdrop-blur-md whitespace-nowrap"
+                          >
+                            {hoverPlanPoint.event ? (
+                              <>
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase text-white ${
+                                      hoverPlanPoint.event.finding_type === "Anomaly"
+                                        ? "bg-red-600 animate-pulse"
+                                        : hoverPlanPoint.event.survey_run === "previous"
+                                        ? "bg-purple-600"
+                                        : "bg-amber-600"
+                                    }`}
+                                  >
+                                    {hoverPlanPoint.event.anomaly_code ||
+                                      hoverPlanPoint.event.finding_type ||
+                                      hoverPlanPoint.event.event_type ||
+                                      "EVENT"}
+                                  </span>
+                                  <span className="font-bold text-slate-100 text-[9.5px]">
+                                    {hoverPlanPoint.event.event_name || hoverPlanPoint.event.event_type}
+                                  </span>
+                                  {hoverPlanPoint.event.findings && (
+                                    <span className="text-amber-300 text-[8px] bg-amber-950/80 px-1 rounded border border-amber-700">
+                                      {hoverPlanPoint.event.findings}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 text-slate-300 text-[8.5px]">
+                                  {hoverPlanPoint.kp !== undefined && (
+                                    <span className="text-cyan-300 font-bold">📍 KP {hoverPlanPoint.kp.toFixed(3)}</span>
+                                  )}
+                                  <span className="text-amber-300">🧭 N: {hoverPlanPoint.northing.toFixed(1)}m</span>
+                                  <span className="text-purple-300">E: {hoverPlanPoint.easting.toFixed(1)}m</span>
+                                  {hoverPlanPoint.depth !== undefined && (
+                                    <span className="text-blue-400 font-bold">🌊 Depth: {hoverPlanPoint.depth.toFixed(1)}m</span>
+                                  )}
+                                  <span className="text-cyan-300 font-semibold italic">🖱️ Click to select</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-3">
+                                <span className="text-amber-300 font-bold">🧭 Northing: {hoverPlanPoint.northing.toFixed(1)}m</span>
+                                <span className="text-purple-300 font-bold">Easting: {hoverPlanPoint.easting.toFixed(1)}m</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MODE 3: LONGITUDINAL COORDINATES VS KP */}
+                  {graphTab === "coords_profile" && (
+                    <div 
+                      className="w-full h-full relative border border-slate-800/80 rounded bg-slate-900/40 p-1.5 flex flex-col overflow-hidden cursor-crosshair select-none"
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                        const targetKp = viewStartKp + (xPct / 100) * (viewEndKp - viewStartKp);
+                        const coords = profileData.getInterpolatedCoords?.(targetKp);
+                        const depth = profileData.getInterpolatedDepth?.(targetKp);
+                        const closeEvt = filteredEvents.find((evt) => Math.abs(evt.kp - targetKp) < 0.02);
+
+                        setHoverProfilePoint({
+                          xPct,
+                          kp: targetKp,
+                          easting: coords?.easting,
+                          northing: coords?.northing,
+                          depth: depth ?? undefined,
+                          event: closeEvt,
+                        });
+                      }}
+                      onMouseLeave={() => setHoverProfilePoint(null)}
+                    >
+                      <div className="flex items-center justify-between text-[8.5px] font-mono text-slate-400 pb-1 border-b border-slate-800 shrink-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-indigo-300 font-bold flex items-center gap-1">
+                            <Activity className="w-3.5 h-3.5 text-indigo-400" />
+                            COORDINATES VS KP PROFILE (NORTHING IN AMBER, EASTING IN PURPLE)
+                          </span>
+                          <span className="text-[8px] text-slate-400 bg-slate-800/80 border border-slate-700 px-1.5 py-0.2 rounded font-mono">
+                            Move cursor over graph to inspect coordinates
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-amber-400 font-bold">Northing Range: {planBounds.minNorthing.toFixed(0)}m – {planBounds.maxNorthing.toFixed(0)}m</span>
+                          <span className="text-purple-300 font-bold">Easting Range: {planBounds.minEasting.toFixed(0)}m – {planBounds.maxEasting.toFixed(0)}m</span>
+                        </div>
+                      </div>
+
+                      <div className="relative w-full flex-1 mt-1 overflow-hidden">
+                        <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                          {/* Northing Line (Amber) */}
+                          {profileData.points.filter((p) => p.northing !== undefined).length > 1 && (
+                            <polyline
+                              points={profileData.points
+                                .filter((p) => p.northing !== undefined)
+                                .map((p) => {
+                                  const x = kpToPercent(p.kp);
+                                  const nSpan = planBounds.maxNorthing - planBounds.minNorthing || 1;
+                                  const y = 90 - ((p.northing! - planBounds.minNorthing) / nSpan) * 80;
+                                  return `${x},${y}`;
+                                })
+                                .join(" ")}
+                              fill="none"
+                              stroke="#f59e0b"
+                              strokeWidth="2.5"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          )}
+
+                          {/* Easting Line (Purple) */}
+                          {profileData.points.filter((p) => p.easting !== undefined).length > 1 && (
+                            <polyline
+                              points={profileData.points
+                                .filter((p) => p.easting !== undefined)
+                                .map((p) => {
+                                  const x = kpToPercent(p.kp);
+                                  const eSpan = planBounds.maxEasting - planBounds.minEasting || 1;
+                                  const y = 90 - ((p.easting! - planBounds.minEasting) / eSpan) * 80;
+                                  return `${x},${y}`;
+                                })
+                                .join(" ")}
+                              fill="none"
+                              stroke="#c084fc"
+                              strokeWidth="2"
+                              strokeDasharray="4 2"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          )}
+
+                          {/* Hover Crosshair Vertical Line */}
+                          {hoverProfilePoint && (
+                            <line
+                              x1={hoverProfilePoint.xPct}
+                              y1="0"
+                              x2={hoverProfilePoint.xPct}
+                              y2="100"
+                              stroke="#818cf8"
+                              strokeWidth="1"
+                              strokeDasharray="2 2"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          )}
+                        </svg>
+
+                        {/* Rich Hover Inspection Tooltip on Coordinates Graph */}
+                        {hoverProfilePoint && (
+                          <div
+                            style={{
+                              left: `${Math.max(4, Math.min(78, hoverProfilePoint.xPct))}%`,
+                              top: "6px",
+                            }}
+                            className="absolute bg-slate-950/95 border border-indigo-500/80 text-white px-2.5 py-1.5 rounded-lg text-[9px] font-mono shadow-2xl pointer-events-none z-30 flex flex-col gap-1 backdrop-blur-md whitespace-nowrap"
+                          >
+                            {hoverProfilePoint.event ? (
+                              <>
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase text-white ${
+                                      hoverProfilePoint.event.finding_type === "Anomaly"
+                                        ? "bg-red-600 animate-pulse"
+                                        : "bg-indigo-600"
+                                    }`}
+                                  >
+                                    {hoverProfilePoint.event.anomaly_code ||
+                                      hoverProfilePoint.event.finding_type ||
+                                      "EVENT"}
+                                  </span>
+                                  <span className="font-bold text-slate-100 text-[9.5px]">
+                                    {hoverProfilePoint.event.event_name || hoverProfilePoint.event.event_type}
+                                  </span>
+                                  {hoverProfilePoint.event.findings && (
+                                    <span className="text-amber-300 text-[8px] bg-amber-950/80 px-1 rounded border border-amber-700">
+                                      {hoverProfilePoint.event.findings}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 text-slate-300 text-[8.5px]">
+                                  <span className="text-cyan-300 font-bold">📍 KP {hoverProfilePoint.kp.toFixed(3)}</span>
+                                  {hoverProfilePoint.northing !== undefined && (
+                                    <span className="text-amber-300">🧭 N: {hoverProfilePoint.northing.toFixed(1)}m</span>
+                                  )}
+                                  {hoverProfilePoint.easting !== undefined && (
+                                    <span className="text-purple-300">E: {hoverProfilePoint.easting.toFixed(1)}m</span>
+                                  )}
+                                  {hoverProfilePoint.depth !== undefined && (
+                                    <span className="text-blue-400 font-bold">🌊 Depth: {hoverProfilePoint.depth.toFixed(1)}m</span>
+                                  )}
+                                  <span className="text-cyan-300 font-semibold italic">🖱️ Click to select</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-3">
+                                <span className="text-cyan-300 font-bold">📍 KP {hoverProfilePoint.kp.toFixed(3)}</span>
+                                {hoverProfilePoint.northing !== undefined && (
+                                  <span className="text-amber-300 font-bold">🧭 N: {hoverProfilePoint.northing.toFixed(1)}m</span>
+                                )}
+                                {hoverProfilePoint.easting !== undefined && (
+                                  <span className="text-purple-300 font-bold">E: {hoverProfilePoint.easting.toFixed(1)}m</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MODE 4: DUAL SPLIT VIEW (50/50 DEPTH & PLAN SIDE BY SIDE) */}
+                  {graphTab === "split" && (
+                    <div className="w-full h-full grid grid-cols-2 gap-2">
+                      {/* Left: Seabed Depth with Fixed-Pixel Event Dots & Hover Tooltip */}
+                      <div 
+                        className="h-full relative border border-slate-800/80 rounded bg-slate-900/40 p-1 flex flex-col overflow-hidden cursor-crosshair select-none"
+                        onMouseMove={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                          const targetKp = viewStartKp + (xPct / 100) * (viewEndKp - viewStartKp);
+                          const interp = profileData.points.find((p) => Math.abs(p.kp - targetKp) < 0.05);
+                          const closeEvt = filteredEvents.find((evt) => Math.abs(evt.kp - targetKp) < 0.02);
+                          setHoverProfilePoint({
+                            xPct,
+                            kp: targetKp,
+                            depth: interp?.depth,
+                            span: interp?.span,
+                            burial: interp?.burial,
+                            easting: interp?.easting,
+                            northing: interp?.northing,
+                            event: closeEvt,
+                          });
+                        }}
+                        onMouseLeave={() => setHoverProfilePoint(null)}
+                      >
+                        <div className="flex items-center justify-between text-[7.5px] font-mono text-slate-400 pb-0.5 border-b border-slate-800 shrink-0">
+                          <span className="text-cyan-300 font-bold flex items-center gap-1">
+                            <TrendingUp className="w-3 h-3 text-cyan-400" /> Depth vs KP
+                          </span>
+                          <span className="text-slate-400">{profileData.minDepth.toFixed(1)}m – {profileData.maxDepth.toFixed(1)}m</span>
+                        </div>
+                        <div className="relative w-full flex-1 overflow-hidden">
+                          <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                            {profileData.points.length > 1 && (
+                              <polyline
+                                points={profileData.points
+                                  .map((p) => {
+                                    const x = kpToPercent(p.kp);
+                                    const d = p.depth ?? profileData.minDepth;
+                                    const dSpan = profileData.maxDepth - profileData.minDepth || 1;
+                                    const y = ((d - profileData.minDepth) / dSpan) * 80 + 10;
+                                    return `${x},${y}`;
+                                  })
+                                  .join(" ")}
+                                fill="none"
+                                stroke="#06b6d4"
+                                strokeWidth="2"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            )}
+
+                            {/* Hover Crosshair Vertical Line */}
+                            {hoverProfilePoint && (
+                              <line
+                                x1={hoverProfilePoint.xPct}
+                                y1="0"
+                                x2={hoverProfilePoint.xPct}
+                                y2="100"
+                                stroke="#38bdf8"
+                                strokeWidth="1"
+                                strokeDasharray="2 2"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            )}
+                          </svg>
+
+                          {/* HTML Overlay Fixed-Pixel Dots on Split Depth */}
+                          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                            {filteredEvents.map((evt, idx) => {
+                              const x = kpToPercent(evt.kp);
+                              if (x < -2 || x > 102) return null;
+
+                              let d = typeof evt.depth === "number" ? evt.depth : parseFloat(String(evt.depth || ""));
+                              if (isNaN(d) && profileData.getInterpolatedDepth) {
+                                const interp = profileData.getInterpolatedDepth(evt.kp);
+                                if (interp !== null && interp !== undefined) d = interp;
+                              }
+                              if (isNaN(d)) d = (profileData.minDepth + profileData.maxDepth) / 2;
+
+                              const dSpan = profileData.maxDepth - profileData.minDepth || 1;
+                              const y = ((d - profileData.minDepth) / dSpan) * 80 + 10;
+
+                              const isAnom =
+                                evt.finding_type === "Anomaly" ||
+                                evt.finding_type === "Finding" ||
+                                String(evt.anomaly_code || "").trim() !== "";
+                              const isSelected = activeEvent?.id === evt.id;
+
+                              return (
+                                <div
+                                  key={`split-depth-dot-${evt.id || idx}`}
+                                  style={{ left: `${x}%`, top: `${y}%` }}
+                                  className={`absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer ${
+                                    isSelected ? "scale-125 z-30" : "hover:scale-125 hover:z-30"
+                                  }`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveEvent(evt);
+                                    onSelectEvent?.(evt);
+                                  }}
+                                >
+                                  {isAnom ? (
+                                    <div className="w-1.5 h-1.5 rotate-45 bg-red-500 border border-white rounded-[1px]" />
+                                  ) : (
+                                    <div className={`w-1.5 h-1.5 rounded-full bg-cyan-400 border border-white ${isSelected ? "ring-2 ring-cyan-300" : ""}`} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Split Depth Hover Tooltip */}
+                          {hoverProfilePoint && (
+                            <div
+                              style={{
+                                left: `${Math.max(4, Math.min(65, hoverProfilePoint.xPct))}%`,
+                                top: "4px",
+                              }}
+                              className="absolute bg-slate-950/95 border border-cyan-500/80 text-white px-2 py-1 rounded text-[8px] font-mono shadow-xl pointer-events-none z-30 flex flex-col gap-0.5 backdrop-blur-md whitespace-nowrap"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-cyan-300 font-bold">📍 KP {hoverProfilePoint.kp.toFixed(3)}</span>
+                                {hoverProfilePoint.depth !== undefined && (
+                                  <span className="text-blue-400">🌊 {hoverProfilePoint.depth.toFixed(1)}m</span>
+                                )}
+                              </div>
+                              {hoverProfilePoint.event && (
+                                <span className="text-slate-200 font-bold truncate max-w-[140px]">
+                                  {hoverProfilePoint.event.event_name || hoverProfilePoint.event.event_type}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: 2D Plan View with Fixed-Pixel Event Dots & Hover Tooltip */}
+                      <div 
+                        className="h-full relative border border-slate-800/80 rounded bg-slate-900/40 p-1 flex flex-col overflow-hidden cursor-crosshair select-none"
+                        onMouseMove={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                          const yPct = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                          const curEasting = planBounds.minEasting + (xPct / 100) * planBounds.eRange;
+                          const curNorthing = planBounds.maxNorthing - (yPct / 100) * planBounds.nRange;
+
+                          const closeEvt = filteredEvents.find((evt) => {
+                            const eNum = typeof evt.easting === "number" ? evt.easting : parseFloat(String(evt.easting || ""));
+                            const nNum = typeof evt.northing === "number" ? evt.northing : parseFloat(String(evt.northing || ""));
+                            if (isNaN(eNum) || isNaN(nNum)) return false;
+                            const dE = eNum - curEasting;
+                            const dN = nNum - curNorthing;
+                            return Math.sqrt(dE * dE + dN * dN) < Math.max(planBounds.eRange, planBounds.nRange) * 0.08;
+                          });
+
+                          setHoverPlanPoint({
+                            xPct,
+                            yPct,
+                            kp: closeEvt?.kp || 0,
+                            easting: curEasting,
+                            northing: curNorthing,
+                            depth: closeEvt?.depth ? parseFloat(String(closeEvt.depth)) : undefined,
+                            event: closeEvt,
+                          });
+                        }}
+                        onMouseLeave={() => setHoverPlanPoint(null)}
+                      >
+                        <div className="flex items-center justify-between text-[7.5px] font-mono text-slate-400 pb-0.5 border-b border-slate-800 shrink-0">
+                          <span className="text-amber-400 font-bold flex items-center gap-1">
+                            <Compass className="w-3 h-3 text-amber-400" /> Plan Map (N vs E)
+                          </span>
+                          <span className="text-slate-400">KP Station Path</span>
+                        </div>
+                        <div className="relative w-full flex-1 overflow-hidden">
+                          <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                            {planBounds.points.length > 1 && (
+                              <polyline
+                                points={planBounds.points
+                                  .map((p) => `${eastingToPlanXPct(p.easting!)},${northingToPlanYPct(p.northing!)}`)
+                                  .join(" ")}
+                                fill="none"
+                                stroke="#fbbf24"
+                                strokeWidth="2"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            )}
+
+                            {/* Split Plan Crosshairs */}
+                            {hoverPlanPoint && (
+                              <g>
+                                <line x1={hoverPlanPoint.xPct} y1="0" x2={hoverPlanPoint.xPct} y2="100" stroke="#f59e0b" strokeWidth="0.8" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
+                                <line x1="0" y1={hoverPlanPoint.yPct} x2="100" y2={hoverPlanPoint.yPct} stroke="#f59e0b" strokeWidth="0.8" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
+                              </g>
+                            )}
+                          </svg>
+
+                          {/* HTML Overlay Fixed-Pixel Dots on Split Plan */}
+                          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                            {filteredEvents.map((evt, idx) => {
+                              const east = typeof evt.easting === "number" ? evt.easting : parseFloat(String(evt.easting || ""));
+                              const north = typeof evt.northing === "number" ? evt.northing : parseFloat(String(evt.northing || ""));
+                              if (isNaN(east) || isNaN(north)) return null;
+
+                              const x = eastingToPlanXPct(east);
+                              const y = northingToPlanYPct(north);
+                              const isAnom = evt.finding_type === "Anomaly" || evt.finding_type === "Finding";
+
+                              return (
+                                <div
+                                  key={`split-plan-dot-${evt.id || idx}`}
+                                  style={{ left: `${x}%`, top: `${y}%` }}
+                                  className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveEvent(evt);
+                                    onSelectEvent?.(evt);
+                                  }}
+                                >
+                                  {isAnom ? (
+                                    <div className="w-1.5 h-1.5 rotate-45 bg-red-500 border border-white rounded-[1px]" />
+                                  ) : (
+                                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 border border-white" />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Split Plan Hover Tooltip */}
+                          {hoverPlanPoint && (
+                            <div
+                              style={{
+                                left: `${Math.max(4, Math.min(65, hoverPlanPoint.xPct))}%`,
+                                top: "4px",
+                              }}
+                              className="absolute bg-slate-950/95 border border-amber-500/80 text-white px-2 py-1 rounded text-[8px] font-mono shadow-xl pointer-events-none z-30 flex flex-col gap-0.5 backdrop-blur-md whitespace-nowrap"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-amber-300">N: {hoverPlanPoint.northing.toFixed(0)}m</span>
+                                <span className="text-purple-300">E: {hoverPlanPoint.easting.toFixed(0)}m</span>
+                              </div>
+                              {hoverPlanPoint.event && (
+                                <span className="text-slate-200 font-bold truncate max-w-[140px]">
+                                  {hoverPlanPoint.event.event_name || hoverPlanPoint.event.event_type}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* 2. COORDINATES PROFILE GRAPH (NORTHING & EASTING VS KP) */}
-            {showCoordinatesGraph && (
-              <div className="w-full h-32 bg-slate-900/90 border border-slate-800 rounded-lg p-2 mt-2 relative flex flex-col shrink-0 select-none">
-                {/* Header with Interactive Channel Toggles */}
-                <div className="flex flex-wrap items-center justify-between text-[9px] font-black uppercase text-amber-400 border-b border-slate-800 pb-1.5 mb-1 gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1.5 text-slate-200">
-                      <Compass className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-amber-400 font-bold">2. Coordinates Profile</span>
-                      <span className="text-slate-500 font-normal">(Northing & Easting Grid vs KP)</span>
-                    </span>
-                  </div>
-
-                  {/* Channel Badges / Toggles */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      onClick={() => setShowNorthingLine(!showNorthingLine)}
-                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border transition-all ${
-                        showNorthingLine
-                          ? "bg-amber-950/80 border-amber-500 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.4)]"
-                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-50"
-                      }`}
-                      title="Toggle Northing (Y) Trajectory curve"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      Northing (Y): {profileData.minNorthing.toFixed(0)}m - {profileData.maxNorthing.toFixed(0)}m
-                    </button>
-
-                    <button
-                      onClick={() => setShowEastingLine(!showEastingLine)}
-                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border transition-all ${
-                        showEastingLine
-                          ? "bg-purple-950/80 border-purple-500 text-purple-300 shadow-[0_0_8px_rgba(192,132,252,0.4)]"
-                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-50"
-                      }`}
-                      title="Toggle Easting (X) Trajectory curve"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                      Easting (X): {profileData.minEasting.toFixed(0)}m - {profileData.maxEasting.toFixed(0)}m
-                    </button>
-                  </div>
-                </div>
-
-                {/* SVG Curve Canvas with Interactive Crosshair */}
-                <div
-                  className="flex-1 relative w-full h-full cursor-crosshair overflow-hidden"
-                  onMouseMove={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-                    const currentSpan = viewEndKp - viewStartKp;
-                    const hoverKp = viewStartKp + (xPct / 100) * currentSpan;
-
-                    let closest = profileData.points[0];
-                    let minDiff = 9999;
-                    profileData.points.forEach((pt) => {
-                      const diff = Math.abs(pt.kp - hoverKp);
-                      if (diff < minDiff) {
-                        minDiff = diff;
-                      }
-                    });
-
-                    setHoverProfilePoint({
-                      xPct,
-                      kp: hoverKp,
-                      depth: closest?.depth,
-                      span: closest?.span,
-                      burial: closest?.burial,
-                      easting: closest?.easting,
-                      northing: closest?.northing,
-                    });
-                  }}
-                  onMouseLeave={() => setHoverProfilePoint(null)}
-                >
-                  <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                    {/* Coordinate Reference Grid Lines */}
-                    <line x1="0" y1="20%" x2="100%" y2="20%" stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
-                    <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#334155" strokeDasharray="3 3" strokeWidth="1.5" />
-                    <line x1="0" y1="80%" x2="100%" y2="80%" stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
-                    
-                    {/* Axis Bounds Labels */}
-                    <text x="6" y="16%" fill="#f59e0b" fontSize="7.5" fontFamily="monospace" fontWeight="bold">N-Max: {profileData.maxNorthing.toFixed(0)}m</text>
-                    <text x="6" y="88%" fill="#f59e0b" fontSize="7.5" fontFamily="monospace" fontWeight="bold">N-Min: {profileData.minNorthing.toFixed(0)}m</text>
-                    
-                    <text x="98%" y="16%" fill="#c084fc" fontSize="7.5" fontFamily="monospace" fontWeight="bold" textAnchor="end">E-Max: {profileData.maxEasting.toFixed(0)}m</text>
-                    <text x="98%" y="88%" fill="#c084fc" fontSize="7.5" fontFamily="monospace" fontWeight="bold" textAnchor="end">E-Min: {profileData.minEasting.toFixed(0)}m</text>
-
-                    {/* FULL-LENGTH COORDINATE TRAJECTORY CURVES (NORTHING & EASTING) */}
-                    {profileData.points.length >= 2 && (() => {
-                      const coordPts = profileData.points.filter((pt) => pt.northing !== undefined && pt.easting !== undefined);
-                      if (coordPts.length < 2) return null;
-
-                      const nMin = profileData.minNorthing;
-                      const nMax = profileData.maxNorthing;
-                      const nRange = Math.max(nMax - nMin, 1);
-
-                      const eMin = profileData.minEasting;
-                      const eMax = profileData.maxEasting;
-                      const eRange = Math.max(eMax - eMin, 1);
-
-                      const northPts = coordPts.map((c) => ({
-                        x: kpToPercent(c.kp),
-                        y: 80 - (((c.northing! - nMin) / nRange) * 60),
-                      }));
-
-                      const eastPts = coordPts.map((c) => ({
-                        x: kpToPercent(c.kp),
-                        y: 80 - (((c.easting! - eMin) / eRange) * 60),
-                      }));
-
-                      // Smooth cubic curve for Northing
-                      let northPath = `M ${northPts[0].x.toFixed(2)} ${northPts[0].y.toFixed(2)}`;
-                      for (let i = 0; i < northPts.length - 1; i++) {
-                        const p0 = northPts[i === 0 ? 0 : i - 1];
-                        const p1 = northPts[i];
-                        const p2 = northPts[i + 1];
-                        const p3 = northPts[i + 2 >= northPts.length ? northPts.length - 1 : i + 2];
-                        const cp1x = p1.x + (p2.x - p0.x) / 6;
-                        const cp1y = p1.y + (p2.y - p0.y) / 6;
-                        const cp2x = p2.x - (p3.x - p1.x) / 6;
-                        const cp2y = p2.y - (p3.y - p1.y) / 6;
-                        northPath += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
-                      }
-
-                      // Smooth cubic curve for Easting
-                      let eastPath = `M ${eastPts[0].x.toFixed(2)} ${eastPts[0].y.toFixed(2)}`;
-                      for (let i = 0; i < eastPts.length - 1; i++) {
-                        const p0 = eastPts[i === 0 ? 0 : i - 1];
-                        const p1 = eastPts[i];
-                        const p2 = eastPts[i + 1];
-                        const p3 = eastPts[i + 2 >= eastPts.length ? eastPts.length - 1 : i + 2];
-                        const cp1x = p1.x + (p2.x - p0.x) / 6;
-                        const cp1y = p1.y + (p2.y - p0.y) / 6;
-                        const cp2x = p2.x - (p3.x - p1.x) / 6;
-                        const cp2y = p2.y - (p3.y - p1.y) / 6;
-                        eastPath += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
-                      }
-
-                      return (
-                        <g key="coordinates-profile-lines">
-                          {/* Continuous Northing Amber Dashed Line */}
-                          {showNorthingLine && (
-                            <>
-                              <path d={northPath} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="4 3" opacity="0.95" />
-                              {northPts.map((pt, idx) => {
-                                if (pt.x < 0 || pt.x > 100) return null;
-                                return (
-                                  <circle
-                                    key={`n-pt-${idx}`}
-                                    cx={`${pt.x}%`}
-                                    cy={`${pt.y}%`}
-                                    r="2"
-                                    fill="#f59e0b"
-                                    opacity="0.8"
-                                  />
-                                );
-                              })}
-                            </>
-                          )}
-
-                          {/* Continuous Easting Purple Solid Line */}
-                          {showEastingLine && (
-                            <>
-                              <path d={eastPath} fill="none" stroke="#c084fc" strokeWidth="2.5" opacity="0.95" />
-                              {eastPts.map((pt, idx) => {
-                                if (pt.x < 0 || pt.x > 100) return null;
-                                return (
-                                  <circle
-                                    key={`e-pt-${idx}`}
-                                    cx={`${pt.x}%`}
-                                    cy={`${pt.y}%`}
-                                    r="2"
-                                    fill="#c084fc"
-                                    opacity="0.8"
-                                  />
-                                );
-                              })}
-                            </>
-                          )}
-                        </g>
-                      );
-                    })()}
-
-                    {/* HOVER SCANNING CROSSHAIR LINE */}
-                    {hoverProfilePoint && (
-                      <g key="hover-crosshair-coords">
-                        <line
-                          x1={`${hoverProfilePoint.xPct}%`}
-                          y1="0"
-                          x2={`${hoverProfilePoint.xPct}%`}
-                          y2="100%"
-                          stroke="#f59e0b"
-                          strokeWidth="1.5"
-                          strokeDasharray="2 2"
-                        />
-                        <circle cx={`${hoverProfilePoint.xPct}%`} cy="50%" r="3" fill="#f59e0b" />
-                      </g>
-                    )}
-                  </svg>
-
-                  {/* Interactive Floating Hover Pill */}
-                  {hoverProfilePoint && (
-                    <div
-                      style={{
-                        left: `${Math.max(10, Math.min(90, hoverProfilePoint.xPct))}%`,
-                        top: "4px",
-                      }}
-                      className="absolute -translate-x-1/2 bg-slate-950/95 border border-amber-500/70 text-slate-100 px-2 py-1 rounded shadow-xl pointer-events-none text-[8px] font-mono z-30 flex items-center gap-2 whitespace-nowrap backdrop-blur-sm"
-                    >
-                      <span className="text-blue-300 font-bold">KP {hoverProfilePoint.kp.toFixed(3)}</span>
-                      {hoverProfilePoint.northing !== undefined && (
-                        <span className="text-amber-400 font-semibold">🧭 N: {hoverProfilePoint.northing.toFixed(1)}m</span>
-                      )}
-                      {hoverProfilePoint.easting !== undefined && (
-                        <span className="text-purple-300 font-semibold">📍 E: {hoverProfilePoint.easting.toFixed(1)}m</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* ACTIVE EVENT DETAILS POPOVER PANEL */}
@@ -1977,22 +3225,22 @@ export function PipelineSeabedEventMap({
         </div>
 
         {/* Footer Summary & Stats */}
-        <div className="px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 font-mono shrink-0">
+        <div className="px-4 py-1.5 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-[9.5px] text-slate-400 font-mono shrink-0">
           <div className="flex items-center gap-4">
             <span>
-              Total Filtered Events: <strong className="text-slate-200">{filteredEvents.length}</strong>
+              Total Pipeline Records: <strong className="text-slate-200">{combinedEvents.length}</strong>
             </span>
             <span>
-              Anomalies Flagged:{" "}
+              Filtered: <strong className="text-cyan-400">{filteredEvents.length}</strong>
+            </span>
+            <span>
+              Anomalies:{" "}
               <strong className="text-red-400">
                 {filteredEvents.filter((e) => e.finding_type === "Anomaly").length}
               </strong>
             </span>
             <span>
-              Current Scale Precision:{" "}
-              <strong className="text-blue-400 font-bold">
-                {zoomLevel > 10 ? "10 cm / Meter Scale" : zoomLevel > 3 ? "100 Meter Scale" : "Kilometer Scale"}
-              </strong>
+              Direction: <strong className="text-emerald-400">{inspectionDirection}</strong>
             </span>
           </div>
 

@@ -79,7 +79,7 @@ export default function AttachmentManager({
             toast.error("Failed to load attachments");
         } else {
             // Sort by sort_order if exists, then created_at
-            const sorted = (data || []).sort((a, b) => {
+            const sorted = ((data || []) as any[]).sort((a: any, b: any) => {
                 const orderA = a.meta?.sort_order ?? 999999;
                 const orderB = b.meta?.sort_order ?? 999999;
                 if (orderA !== orderB) return orderA - orderB;
@@ -92,7 +92,7 @@ export default function AttachmentManager({
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
-            const files = Array.from(e.target.files).map(f => ({
+            const files = Array.from(e.target.files).map((f: any) => ({
                 file: f,
                 title: f.name.split('.')[0], // Default title to filename
                 description: ""
@@ -130,7 +130,7 @@ export default function AttachmentManager({
             if (error) throw error;
 
             toast.success("Attachment updated");
-            setExistingAttachments(prev => prev.map(a => a.id === att.id ? { ...a, meta: newMeta } : a));
+            setExistingAttachments(prev => prev.map((a: any) => a.id === att.id ? { ...a, meta: newMeta } : a));
         } catch (error) {
             console.error("Error updating attachment metadata:", error);
             toast.error("Failed to update attachment");
@@ -163,7 +163,7 @@ export default function AttachmentManager({
         newItems[newIndex] = updatedCurrent;
 
         // Re-sort to be sure
-        newItems.sort((a, b) => (a.meta?.sort_order ?? 0) - (b.meta?.sort_order ?? 0));
+        newItems.sort((a: any, b: any) => (a.meta?.sort_order ?? 0) - (b.meta?.sort_order ?? 0));
         setExistingAttachments(newItems);
 
         // Update DB

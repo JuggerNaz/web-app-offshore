@@ -428,16 +428,25 @@ function V10PreviewLayout() {
   };
 
   const activeTableColumns = useMemo(() => {
-    const isPipe = isPipeline || (typeof pathname === "string" && pathname.includes("pipeline"));
+    const isPipe = Boolean(
+      isPipeline ||
+      headerData?.structureType === "pipeline" ||
+      (typeof pathname === "string" && pathname.includes("pipeline")) ||
+      searchParams.get("structure")?.toUpperCase().includes("PIPELINE")
+    );
     return [
       { id: "status", label: "Status", fixed: true },
       ...columnSettings.filter((c) => {
         if (!c.visible) return false;
-        if (isPipe && (c.id === "type" || c.id === "component")) return false;
+        if (isPipe) {
+          if (c.id === "type" || c.id === "component") return false;
+        } else {
+          if (c.id === "event_name" || c.id === "event_type" || c.id === "event_position") return false;
+        }
         return true;
       }),
     ];
-  }, [columnSettings, isPipeline, pathname]);
+  }, [columnSettings, isPipeline, headerData?.structureType, pathname, searchParams]);
 
   // --- DOCKABLE LAYOUT STATE ---
   const [layoutModel, setLayoutModel] = useState<Model | null>(null);
@@ -1206,10 +1215,15 @@ function V10PreviewLayout() {
       const selectFields = `
         *,
         inspection_type:inspection_type_id!left(id, code, name),
+        structure_components:component_id!left(id, q_id, code, metadata),
         insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
         insp_video_tapes:tape_id!left(tape_no)
       `;
+
+      const activeReportNo = (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report")
+        ? headerData.sowReportNo
+        : (targetReportNumber || sowParam);
 
       // 1. Get exact total count for parallel batching
       let countQuery = supabase
@@ -1220,6 +1234,9 @@ function V10PreviewLayout() {
       if (numStrId) {
         countQuery = countQuery.eq("structure_id", numStrId);
       }
+      if (activeReportNo) {
+        countQuery = countQuery.or(`sow_report_no.eq."${activeReportNo}",sow_report_no.is.null`);
+      }
 
       const { count: totalCount } = await countQuery;
       const total = totalCount || 0;
@@ -1227,7 +1244,7 @@ function V10PreviewLayout() {
       const numBatches = Math.max(1, Math.ceil(total / batchSize));
 
       // 2. Fetch all pages in parallel to avoid Supabase 1000-row cap
-      const batchPromises = [];
+      const batchPromises: any[] = [];
       for (let i = 0; i < numBatches; i++) {
         const offset = i * batchSize;
         let query = supabase
@@ -1240,6 +1257,9 @@ function V10PreviewLayout() {
 
         if (numStrId) {
           query = query.eq("structure_id", numStrId);
+        }
+        if (activeReportNo) {
+          query = query.or(`sow_report_no.eq."${activeReportNo}",sow_report_no.is.null`);
         }
         batchPromises.push(query);
       }
@@ -1594,6 +1614,7 @@ function V10PreviewLayout() {
     "Complete"
   );
   const [isUserInteraction, setIsUserInteraction] = useState(false);
+  const [isFormModified, setIsFormModified] = useState(false);
   const hasUserInteracted = useRef(false);
 
   useEffect(() => {
@@ -1784,6 +1805,7 @@ function V10PreviewLayout() {
 
   // Helper to handle prop changes and track user interaction
   const handleDynamicPropChange = (name: string, value: any) => {
+    setIsFormModified(true);
     setDynamicProps((prev) => {
       const updated = { ...prev, [name]: value };
 
@@ -1820,6 +1842,7 @@ function V10PreviewLayout() {
   };
 
   const handleRequiredPropChange = (name: string, value: any) => {
+    setIsFormModified(true);
     setRequiredProps((prev) => ({ ...prev, [name]: value }));
     hasUserInteracted.current = true;
     setIsUserInteraction(true);
@@ -1943,7 +1966,7 @@ function V10PreviewLayout() {
       if (data) {
         // Map snake_case to camelCase
         setCriteriaRules(
-          data.map((r) => ({
+          data.map((r: any) => ({
             id: String(r.id),
             fieldName: r.field_name,
             priorityId: r.priority_id,
@@ -2089,7 +2112,7 @@ function V10PreviewLayout() {
       try {
         const { data: dbComps } = await supabase
           .from("structure_components")
-          .select("id, q_id, name, type, metadata")
+          .select("id, q_id, code, metadata")
           .eq("structure_id", parsedStructId);
 
         if (dbComps && dbComps.length > 0) {
@@ -2107,8 +2130,8 @@ function V10PreviewLayout() {
               return {
                 id: dbMatch.id,
                 q_id: dbMatch.q_id,
-                name: dbMatch.name,
-                type: dbMatch.type || "PIPELINE",
+                name: dbMatch.q_id || dbMatch.metadata?.name || "Pipeline Main Line",
+                type: dbMatch.code || dbMatch.metadata?.type || "PIPELINE",
                 raw: dbMatch,
               };
             }
@@ -2118,8 +2141,8 @@ function V10PreviewLayout() {
           return {
             id: dbComps[0].id,
             q_id: dbComps[0].q_id || headerData.structureName || "PIPELINE-01",
-            name: dbComps[0].name || headerData.structureName || "Pipeline Main Line",
-            type: dbComps[0].type || "PIPELINE",
+            name: dbComps[0].q_id || dbComps[0].metadata?.name || headerData.structureName || "Pipeline Main Line",
+            type: dbComps[0].code || dbComps[0].metadata?.type || "PIPELINE",
             raw: dbComps[0],
           };
         }
@@ -2134,9 +2157,9 @@ function V10PreviewLayout() {
           .insert({
             structure_id: parsedStructId,
             q_id: defaultQid,
-            name: defaultName,
-            type: "PIPELINE",
+            code: "PP",
             metadata: {
+              name: defaultName,
               start_kp: 0.000,
               end_kp: totalLen,
               length_km: totalLen,
@@ -2647,7 +2670,7 @@ function V10PreviewLayout() {
 
           const { data } = await query;
           if (!data || data.length === 0) return "pending";
-          const hasIncomplete = data.some((r) => r.status === "INCOMPLETE");
+          const hasIncomplete = (data as any[]).some((r: any) => r.status === "INCOMPLETE");
           return hasIncomplete ? "incomplete" : "completed";
         };
 
@@ -2851,7 +2874,7 @@ function V10PreviewLayout() {
           if (candidates) {
             const normalize = (s: string) => s.toUpperCase().replace(/0/g, 'O').replace(/\s+/g, '');
             const targetNorm = normalize(jobPackId);
-            const matched = candidates.find(c => normalize(c.name) === targetNorm);
+            const matched = (candidates as any[]).find((c: any) => normalize(c.name) === targetNorm);
             if (matched) {
               resolvedJobPackId = String(matched.id);
             }
@@ -3397,7 +3420,7 @@ function V10PreviewLayout() {
         .in("source_type", ["inspection", "INSPECTION"]);
 
       if (attachments && attachments.length > 0) {
-        const paths = attachments.map((a) => a.path).filter(Boolean);
+        const paths = (attachments as any[]).map((a: any) => a.path).filter(Boolean);
         if (paths.length > 0) {
           const { error: storageErr } = await supabase.storage.from("attachments").remove(paths);
           if (storageErr) console.warn("Storage deletion error:", storageErr);
@@ -3440,7 +3463,6 @@ function V10PreviewLayout() {
       toast.error("Failed to delete record");
     }
   };
-
   const resetForm = () => {
     const isPipe = isPipeline || headerData.structureType === "pipeline";
     if (isPipe) {
@@ -3489,6 +3511,7 @@ function V10PreviewLayout() {
     setPhotoLinked(false);
     setPendingAttachments([]);
     setDeletedAttachmentIds([]);
+    setIsFormModified(false);
   };
 
   // Re-classification Logic
@@ -3541,47 +3564,70 @@ function V10PreviewLayout() {
   };
 
   const handleComponentSelection = (c: any) => {
-    if (selectedComp && activeSpec && !showCompSelector) {
-      toast.warning("To switch components, please click the 'Change' button in the form header.");
+    if (!c) return;
+
+    const currentCompId = selectedComp?.id || selectedComp?.comp_id;
+    const newCompId = c.id || c.comp_id;
+    const isSameComp = currentCompId && newCompId && String(currentCompId) === String(newCompId);
+
+    // 1. If user explicitly clicked the "CHANGE" button next to QID in the inspection form (showCompSelector === true)
+    if (showCompSelector) {
+      setShowCompSelector(false);
+      if (editingRecordId && selectedComp && !isSameComp) {
+        const orphaned = diffSpecifications(c, activeSpec || "");
+        setPendingReclass({
+          type: "COMPONENT",
+          newComponent: c,
+          newTask: activeSpec,
+          componentTaskStatuses: c.taskStatuses || [],
+          orphanedFields: orphaned,
+        });
+        return;
+      } else {
+        setSelectedComp(c);
+        toast.success(`Component changed to ${c.name || c.q_id || 'selected component'}`);
+        return;
+      }
+    }
+
+    // 2. If clicking the currently selected component
+    if (isSameComp) {
+      setSelectedComp(c);
       return;
     }
 
-    if (editingRecordId && selectedComp && c.id !== selectedComp.id) {
-      const orphaned = diffSpecifications(c, activeSpec || "");
-      setPendingReclass({
-        type: "COMPONENT",
-        newComponent: c,
-        newTask: activeSpec,
-        componentTaskStatuses: c.taskStatuses || [],
-        orphanedFields: orphaned,
-      });
-    } else {
-      setSelectedComp(c);
-      resetForm();
-      // AUTO-SELECT LOGIC: 
-      // If exactly one task exists, auto-select it.
-      // If multiple tasks exist, leave activeSpec null so the user sees the new selection screen.
-      if (c.taskStatuses && c.taskStatuses.length > 0) {
-        const validTasks = c.taskStatuses.filter((ts: any) => {
-          const it = (allInspectionTypes || []).find(
-            (type: any) => type.code === ts.code || type.name === ts.code
-          );
-          if (!it) return true;
-          const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && it.metadata.job_type.includes("ROV"));
-          const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && it.metadata.job_type.includes("DIVING"));
-          
-          if (inspMethod === "DIVING" && !isDiving) return false;
-          if (inspMethod === "ROV" && !isRov) return false;
-          return true;
-        });
+    // 3. User clicked another component without clicking the CHANGE button
+    // If the form has unsaved/modified data, alert the user to confirm before switching
+    if (isFormModified) {
+      if (!confirm("The inspection form has unsaved data. Are you sure you want to discard unsaved changes and switch to another component?")) {
+        return;
+      }
+    }
 
-        if (validTasks.length === 1) {
-          console.log(`[Workspace] Auto-selecting only valid task: ${validTasks[0].code}`);
-          setActiveSpec(validTasks[0].code);
-        } else if (validTasks.length > 1) {
-          console.log(`[Workspace] Multiple tasks found (${validTasks.length}). Showing selection screen.`);
-          setActiveSpec(null);
-        }
+    // 4. Reset current form & switch to the newly selected component
+    resetForm();
+    setSelectedComp(c);
+
+    if (c.taskStatuses && c.taskStatuses.length > 0) {
+      const validTasks = c.taskStatuses.filter((ts: any) => {
+        const it = (allInspectionTypes || []).find(
+          (type: any) => type.code === ts.code || type.name === ts.code
+        );
+        if (!it) return true;
+        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
+        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
+        
+        if (inspMethod === "DIVING" && !isDiving) return false;
+        if (inspMethod === "ROV" && !isRov) return false;
+        return true;
+      });
+
+      if (validTasks.length === 1) {
+        console.log(`[Workspace] Auto-selecting only valid task: ${validTasks[0].code}`);
+        setActiveSpec(validTasks[0].code);
+      } else if (validTasks.length > 1) {
+        console.log(`[Workspace] Multiple tasks found (${validTasks.length}). Showing selection screen.`);
+        setActiveSpec(null);
       }
     }
   };
@@ -4181,6 +4227,7 @@ function V10PreviewLayout() {
       const selectFields = `
         *,
         inspection_type:inspection_type_id!left(id, code, name),
+        structure_components:component_id!left(id, q_id, code, metadata),
         insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
         insp_video_tapes:tape_id!left(tape_no)
@@ -4213,7 +4260,7 @@ function V10PreviewLayout() {
         headerData.sowReportNo !== "N/A" &&
         headerData.sowReportNo !== "Unknown Report"
       ) {
-        const sowOrFilter = `sow_report_no.eq."${headerData.sowReportNo}",sow_report_no.is.null`;
+        const sowOrFilter = `sow_report_no.eq.${headerData.sowReportNo},sow_report_no.is.null`;
         inspsQuery = inspsQuery.or(sowOrFilter);
         allInspsQuery = allInspsQuery.or(sowOrFilter);
       }
@@ -4303,7 +4350,7 @@ function V10PreviewLayout() {
         if (inspMethod === "DIVING") {
           mvtLabel = last.activity || last.movement_type || "Awaiting Deployment";
           const mappedItem = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(
-            (a) => a.value === mvtLabel || a.label === mvtLabel
+            (a: any) => a.value === mvtLabel || a.label === mvtLabel
           );
           if (mappedItem) mvtLabel = mappedItem.label;
         } else {
@@ -4313,7 +4360,7 @@ function V10PreviewLayout() {
         setCurrentMovement(mvtLabel);
 
         // Find initial launch event for start time
-        const launchEvent = movs.find((m) => {
+        const launchEvent = (movs as any[]).find((m: any) => {
           const type = (m.activity || m.movement_type || "").toLowerCase();
           return (
             type.includes("left surface") ||
@@ -4327,7 +4374,7 @@ function V10PreviewLayout() {
 
         setDiveStartTime(startTime || null);
 
-        const recoveryEvent = movs.find((m) => {
+        const recoveryEvent = (movs as any[]).find((m: any) => {
           const type = (m.activity || m.movement_type || "").toLowerCase();
           return (
             type.includes("arrived surface") ||
@@ -4373,8 +4420,8 @@ function V10PreviewLayout() {
 
         const { data: recTapes } = await recTapesQuery;
         if (recTapes && recTapes.length > 0) {
-          const uniqueTapeIds = Array.from(new Set(recTapes.map((r) => r.tape_id)));
-          tapes = uniqueTapeIds.map((tid) => ({
+          const uniqueTapeIds = Array.from(new Set((recTapes as any[]).map((r: any) => r.tape_id)));
+          tapes = uniqueTapeIds.map((tid: any) => ({
             tape_id: tid,
             tape_no: `TAPE-${tid}`,
             status: "ACTIVE",
@@ -4382,7 +4429,7 @@ function V10PreviewLayout() {
         }
       }
 
-      const tapeIds = tapes?.map((t) => t.tape_id) || [];
+      const tapeIds = (tapes as any[])?.map((t: any) => t.tape_id) || [];
       setJobTapes(tapes || []);
 
       if (tapes && tapes.length > 0) {
@@ -4523,13 +4570,25 @@ function V10PreviewLayout() {
       if (inspsRes.error) {
         console.error("[Sync] Inspection fetch error:", inspsRes.error.message || inspsRes.error, inspsRes.error.details, inspsRes.error.hint);
         try {
-          const fallbackRes = await supabase
+          let fallbackQuery = supabase
             .from("insp_records")
-            .select("*", { count: "exact" })
+            .select(selectFields, { count: "exact" })
             .eq("jobpack_id", parseInt(jobPackId || "0"))
             .not(inspCol, "is", null)
             .order("inspection_date", { ascending: false })
             .order("inspection_time", { ascending: false });
+
+          if (structureId && !isNaN(Number(structureId))) {
+            fallbackQuery = fallbackQuery.eq("structure_id", Number(structureId));
+          }
+          if (
+            headerData.sowReportNo &&
+            headerData.sowReportNo !== "N/A" &&
+            headerData.sowReportNo !== "Unknown Report"
+          ) {
+            fallbackQuery = fallbackQuery.or(`sow_report_no.eq.${headerData.sowReportNo},sow_report_no.is.null`);
+          }
+          const fallbackRes = await fallbackQuery;
           if (fallbackRes.data) {
             inspsRes = fallbackRes;
           }
@@ -4591,9 +4650,9 @@ function V10PreviewLayout() {
         setCurrentRecords(inspsWithCounts);
 
         // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
-        const logInspectionIds = new Set(allEv.map((ev) => ev.inspectionId).filter(Boolean));
+        const logInspectionIds = new Set((allEv as any[]).map((ev: any) => ev.inspectionId).filter(Boolean));
 
-        inspsWithCounts.forEach((r) => {
+        (inspsWithCounts as any[]).forEach((r: any) => {
           if (!logInspectionIds.has(r.insp_id)) {
             const status =
               r.has_anomaly || r.status === "Anomaly" || r.status === "Defect"
@@ -4629,7 +4688,7 @@ function V10PreviewLayout() {
       }
 
       allEv.sort(
-        (a, b) => new Date(b.eventTime || 0).getTime() - new Date(a.eventTime || 0).getTime()
+        (a: any, b: any) => new Date(b.eventTime || 0).getTime() - new Date(a.eventTime || 0).getTime()
       );
       setVideoEvents(allEv);
       setIsDeploymentValid(true);
@@ -4708,16 +4767,16 @@ function V10PreviewLayout() {
 
       // 2. Batch lookup dive_no / deployment_no from the dive/rov tables
       const diveJobIds = Array.from(
-        new Set(modeFiltered.filter((r) => r.dive_job_id).map((r) => r.dive_job_id))
+        new Set((modeFiltered as any[]).filter((r: any) => r.dive_job_id).map((r: any) => r.dive_job_id))
       );
       const rovJobIds = Array.from(
-        new Set(modeFiltered.filter((r) => r.rov_job_id).map((r) => r.rov_job_id))
+        new Set((modeFiltered as any[]).filter((r: any) => r.rov_job_id).map((r: any) => r.rov_job_id))
       );
       const tapeIds = Array.from(
-        new Set(modeFiltered.filter((r) => r.tape_id).map((r) => r.tape_id))
+        new Set((modeFiltered as any[]).filter((r: any) => r.tape_id).map((r: any) => r.tape_id))
       );
       const inspTypeIds = Array.from(
-        new Set(modeFiltered.filter((r) => r.inspection_type_id).map((r) => r.inspection_type_id))
+        new Set((modeFiltered as any[]).filter((r: any) => r.inspection_type_id).map((r: any) => r.inspection_type_id))
       );
 
       // Lookup maps
@@ -4767,7 +4826,7 @@ function V10PreviewLayout() {
       const currentDepIds = new Set<string>();
       if (activeDep?.id) currentDepIds.add(String(activeDep.id));
       // Also check all deployments for this jobpack
-      deployments.forEach((d) => currentDepIds.add(String(d.id)));
+      (deployments as any[]).forEach((d: any) => currentDepIds.add(String(d.id)));
 
       // 4. Partition into Current Workpack and Historical Data
       const current: any[] = [];
@@ -5368,16 +5427,16 @@ function V10PreviewLayout() {
       }
 
       const recJobs = recJobsRes.data;
-      const existingJobIds = new Set(results.map((r: any) => r[targetColumn]));
+      const existingJobIds = new Set((results as any[]).map((r: any) => r[targetColumn]));
 
       if (recJobs && recJobs.length > 0) {
-        const orphanedJobIds = Array.from(new Set(recJobs.map((r: any) => r[targetColumn]))).filter(
-          (id) => !existingJobIds.has(id)
+        const orphanedJobIds = Array.from(new Set((recJobs as any[]).map((r: any) => r[targetColumn]))).filter(
+          (id: any) => !existingJobIds.has(id)
         );
 
         if (orphanedJobIds.length > 0) {
           console.log("[fetchDeps] Merging orphaned job IDs from records:", orphanedJobIds);
-          const virtualJobs = orphanedJobIds.map((jid) => ({
+          const virtualJobs = orphanedJobIds.map((jid: any) => ({
             [targetColumn]: jid,
             dive_no: `Legacy-${jid}`,
             diver_name: "Legacy Records",
@@ -5390,7 +5449,7 @@ function V10PreviewLayout() {
 
       if (results.length > 0) {
         console.log(`[fetchDeps] Mapping ${results.length} results from ${table}`);
-        const mapped = results.map((d) => {
+        const mapped = (results as any[]).map((d: any) => {
           // CRITICAL: Ensure we get the numeric ID for lookups
           const rawId = d.dive_job_id || d.rov_job_id || d.id;
           const idStr = String(rawId);
@@ -5466,14 +5525,13 @@ function V10PreviewLayout() {
       let hasMore = true;
       let offset = 0;
       const pageSize = 1000;
-      let compErr = null;
+      let compErr: any = null;
 
       while (hasMore) {
         const { data: pageData, error: pageErr } = await supabase
           .from("structure_components")
-          .select("id, structure_id, q_id, name, code, metadata, is_deleted, water_depth, type")
+          .select("id, structure_id, id_no, q_id, comp_id, code, metadata, is_deleted")
           .eq("structure_id", parseInt(structureId))
-          .not("is_deleted", "eq", true)
           .range(offset, offset + pageSize - 1);
 
         if (pageErr) {
@@ -5492,7 +5550,21 @@ function V10PreviewLayout() {
         }
       }
 
-      if (!allCompsDataRaw || compErr) return { assigned: [], unassigned: [], all: [] };
+      if (allCompsDataRaw.length === 0) {
+        try {
+          const apiRes = await fetch(`/api/structure-components?structure_id=${structureId}`);
+          if (apiRes.ok) {
+            const apiJson = await apiRes.json();
+            if (Array.isArray(apiJson.data) && apiJson.data.length > 0) {
+              allCompsDataRaw = apiJson.data;
+            }
+          }
+        } catch (apiErr) {
+          console.warn("[sowAndComps] Error fetching from structure-components API fallback:", apiErr);
+        }
+      }
+
+      if (!allCompsDataRaw || allCompsDataRaw.length === 0) return { assigned: [], unassigned: [], all: [] };
 
       // Further filter legacy 'del' flag from metadata
       const allCompsData = allCompsDataRaw.filter((c: any) => {
@@ -5506,8 +5578,21 @@ function V10PreviewLayout() {
       });
 
       // 2. Fetch SOW items scoped strictly to this sowId AND report Number
+      let resolvedSowId = sowId;
+      if (!resolvedSowId && jobPackId && structureId) {
+        const { data: sowRec } = await supabase
+          .from("u_sow")
+          .select("id")
+          .eq("jobpack_id", parseInt(jobPackId))
+          .eq("structure_id", parseInt(structureId))
+          .maybeSingle();
+        if (sowRec?.id) {
+          resolvedSowId = String(sowRec.id);
+        }
+      }
+
       let allSowItems: any[] = [];
-      if (sowId) {
+      if (resolvedSowId) {
         let hasMoreSow = true;
         let offsetSow = 0;
 
@@ -5515,7 +5600,7 @@ function V10PreviewLayout() {
           let sowItemsQuery = supabase
             .from("u_sow_items")
             .select("*, inspection_type:inspection_type_id!left(id, code, name, metadata)")
-            .eq("sow_id", sowId)
+            .eq("sow_id", parseInt(resolvedSowId))
             .range(offsetSow, offsetSow + pageSize - 1);
 
           if (targetReportNumber) {
@@ -5570,10 +5655,10 @@ function V10PreviewLayout() {
       const assignedCompsMap = new Map<number, { code: string; status: string }[]>();
 
       if (sowItems) {
-        sowItems.forEach((item) => {
+        (sowItems as any[]).forEach((item: any) => {
           // Match component by qid, id, or type — no method filter here
           // (ROV/DIVING filter applies to task display, not component scope)
-          let matchingComp = null;
+          let matchingComp: any = null;
           if (item.component_id) {
             matchingComp = (allCompsData || []).find((c: any) => c.id === item.component_id);
           }
@@ -5669,9 +5754,13 @@ function V10PreviewLayout() {
           displayDepth = `${elv2Num}m`;
         }
 
+        const compQId = comp.q_id || comp.name || `Node ${comp.id}`;
         const obj = {
           id: comp.id,
-          name: comp.q_id || comp.name || `Node ${comp.id}`,
+          name: compQId,
+          q_id: compQId,
+          code: comp.code || comp.type || "-",
+          type: comp.type || comp.code || "-",
           depth: displayDepth,
           lowestElev,
           startNode,
@@ -5722,14 +5811,14 @@ function V10PreviewLayout() {
         // Merge with JSON Registry
         const registryMap = new Map();
         const sharedFields = (inspectionRegistry as any).sharedFields || {};
-        if (inspectionRegistry && inspectionRegistry.inspectionTypes) {
-          inspectionRegistry.inspectionTypes.forEach((it) => {
+        if (inspectionRegistry && (inspectionRegistry as any).inspectionTypes) {
+          (inspectionRegistry as any).inspectionTypes.forEach((it: any) => {
             const resolved = resolveInspectionType(it, sharedFields);
             registryMap.set(resolved.code, resolved);
           });
         }
 
-        const mergedTypes = typesData.map((dbType) => {
+        const mergedTypes = (typesData as any[]).map((dbType: any) => {
           const registryEntry = registryMap.get(dbType.code);
           const formattedName = formatInspectionTypeName(dbType.name);
 
@@ -5747,7 +5836,7 @@ function V10PreviewLayout() {
         });
 
         const discardedCodes = ["PLATGI", "LOGS", "EXSUM", "NAVIG"];
-        const activeTypes = mergedTypes.filter((it) => !discardedCodes.includes(it.code) && it.is_active === true);
+        const activeTypes = mergedTypes.filter((it: any) => !discardedCodes.includes(it.code) && it.is_active === true);
         setAllInspectionTypes(activeTypes);
       }
 
@@ -5764,8 +5853,8 @@ function V10PreviewLayout() {
 
     const activeSpecClean = (activeSpec || "").trim();
     const activeIt =
-      allInspectionTypes.find((t) => (t.code || "").trim() === activeSpecClean) ||
-      allInspectionTypes.find((t) => (t.name || "").trim() === activeSpecClean);
+      allInspectionTypes.find((t: any) => (t.code || "").trim() === activeSpecClean) ||
+      allInspectionTypes.find((t: any) => (t.name || "").trim() === activeSpecClean);
 
     if (!activeIt?.default_properties) return [];
 
@@ -5821,7 +5910,7 @@ function V10PreviewLayout() {
 
     // 1. Historical data preservation (Legacy Fields) - THE UNION STRATEGY
     if (editingRecordId) {
-      const recordRow = currentRecords.find((r) => r.insp_id === editingRecordId);
+      const recordRow = currentRecords.find((r: any) => r.insp_id === editingRecordId);
       if (recordRow && recordRow.inspection_data) {
         try {
           const recordData =
@@ -5877,7 +5966,7 @@ function V10PreviewLayout() {
             ) {
               const niceLabel = key
                 .split("_")
-                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                .map((w: any) => w.charAt(0).toUpperCase() + w.slice(1))
                 .join(" ");
               props.push({
                 name: key,
@@ -5896,14 +5985,14 @@ function V10PreviewLayout() {
     const isRovType =
       inspMethod === "ROV" ||
       rovKeywords.some(
-        (kw) =>
+        (kw: any) =>
           (activeIt?.code || "").includes(kw) || (activeIt?.name || "").toUpperCase().includes(kw)
       ) ||
       activeIt?.metadata?.rov == 1;
 
     if (isRovType) {
       const existingNames = props.map((p: any) => String(p.name || p.label || "").toLowerCase());
-      const extra = [];
+      const extra: any[] = [];
       if (!existingNames.includes("northing"))
         extra.push({ name: "northing", label: "Northing", type: "text" });
       if (!existingNames.includes("easting"))
@@ -5914,14 +6003,14 @@ function V10PreviewLayout() {
     // 3. Filter legacy fields logic:
     // For new records, hide any field marked as isLegacy or having "(legacy)" in the label.
     // For existing records (editing), show legacy fields only if data exists in ANY historical record for this component.
-    props = props.filter((p) => {
+    props = props.filter((p: any) => {
       const isLegacy = p.isLegacy || (p.label || "").toLowerCase().includes("(legacy)");
       if (!isLegacy) return true;
 
       // If it is legacy, only show if we are in modification mode (editingRecordId set)
       // AND any historical record for this component has data for it.
       if (editingRecordId) {
-        const hasDataInHistory = currentRecords.some((r) => {
+        const hasDataInHistory = currentRecords.some((r: any) => {
           if (r.component_id !== selectedComp?.id) return false;
           const recordData =
             typeof r.inspection_data === "string"
@@ -5946,7 +6035,7 @@ function V10PreviewLayout() {
       // Recursive function to find all lib_codes in the field tree
       const extractCodes = (fields: any[]): string[] => {
         let codes: string[] = [];
-        fields.forEach((f) => {
+        fields.forEach((f: any) => {
           if (f.lib_code) codes.push(f.lib_code);
           if (f.subFields && Array.isArray(f.subFields)) {
             codes = [...codes, ...extractCodes(f.subFields)];
@@ -5961,7 +6050,7 @@ function V10PreviewLayout() {
 
       const allCodes = extractCodes(activeFormProps);
       const libCodesToFetch = Array.from(
-        new Set(allCodes.filter((c) => !libOptionsMap[c]))
+        new Set(allCodes.filter((c: any) => !libOptionsMap[c]))
       ) as string[];
 
       if (libCodesToFetch.length === 0) return;
@@ -6593,7 +6682,7 @@ function V10PreviewLayout() {
           if (!isNaN(val)) {
              if (vDepthUnit === 'ft') val = val * 0.3048;
              const sorted = [...activeMGIProfile.thresholds].sort((a: any, b: any) => a.depth - b.depth);
-             let foundThreshold = null;
+             let foundThreshold: any = null;
              for (let i = 0; i < sorted.length; i++) {
                  if (val <= sorted[i].depth) {
                      foundThreshold = sorted[i].max_thickness;
@@ -6993,7 +7082,7 @@ function V10PreviewLayout() {
           record_category: category,
         };
 
-        let anomalyErr = null;
+        let anomalyErr: any = null;
         if (existingAnomaly) {
           const { error } = await supabase
             .from("insp_anomalies")
@@ -7083,6 +7172,7 @@ function V10PreviewLayout() {
         setAnomalyData((prev: any) => ({ ...prev, referenceNo: finalAutoRefNo }));
         setPrevRefNo(finalAutoRefNo);
         setIsCommitting(false);
+        setIsFormModified(false);
       } else {
         toast.success("Inspection record saved successfully!");
         resetForm();
@@ -7196,6 +7286,11 @@ function V10PreviewLayout() {
   };
 
   const handleEditRecord = async (record: any) => {
+    if (isFormModified) {
+      if (!confirm("The inspection form has unsaved data. Are you sure you want to discard unsaved changes and open this inspection data?")) {
+        return;
+      }
+    }
     setDeletedAttachmentIds([]);
     let fullRecord = record;
     const recordId = record.insp_id || record.id;
@@ -7392,7 +7487,7 @@ function V10PreviewLayout() {
         .in("source_type", ["inspection", "INSPECTION"]);
 
     if (atts && atts.length > 0) {
-      const mapped = atts.map((a) => {
+      const mapped = (atts as any[]).map((a: any) => {
         const publicUrl = getAttachmentUrl(a, supabase);
         return {
           id: a.id,
@@ -7454,6 +7549,8 @@ function V10PreviewLayout() {
       });
     }
 
+    setIsFormModified(false);
+
     setTimeout(() => {
       const formArea = document.getElementById(FORM_AREA_ID);
       if (formArea) formArea.scrollIntoView({ behavior: "smooth" });
@@ -7506,9 +7603,9 @@ function V10PreviewLayout() {
     setSelectedComp(updatedComp);
 
     // Update all local lists to reflect the change globally in the workspace
-    setAllComps((prev) => prev.map((c) => (c.id === updatedRaw.id ? updatedComp : c)));
-    setComponentsSow((prev) => prev.map((c) => (c.id === updatedRaw.id ? updatedComp : c)));
-    setComponentsNonSow((prev) => prev.map((c) => (c.id === updatedRaw.id ? updatedComp : c)));
+    setAllComps((prev) => prev.map((c: any) => (c.id === updatedRaw.id ? updatedComp : c)));
+    setComponentsSow((prev) => prev.map((c: any) => (c.id === updatedRaw.id ? updatedComp : c)));
+    setComponentsNonSow((prev) => prev.map((c: any) => (c.id === updatedRaw.id ? updatedComp : c)));
 
     // Real-time synchronization for Nominal/Wall Thickness
     if (activeSpec && activeFormProps.length > 0) {
@@ -7581,7 +7678,7 @@ function V10PreviewLayout() {
       return;
     }
 
-    const it = allInspectionTypes.find((t) => t.id.toString() === typeIdStr);
+    const it = allInspectionTypes.find((t: any) => t.id.toString() === typeIdStr);
     if (!it) {
       return;
     }
@@ -7653,7 +7750,7 @@ function V10PreviewLayout() {
       .eq("report_number", sowReportNo)
       .maybeSingle();
 
-    let error = null;
+    let error: any = null;
     if (!existingItem) {
       const { error: insertError } = await supabase.from("u_sow_items").insert({
         sow_id: targetSowId,
@@ -8316,6 +8413,7 @@ function V10PreviewLayout() {
             totalRecords={totalRecords}
             editingRecordId={editingRecordId}
             isPipe={isPipe}
+            allComps={[...(componentsSow || []), ...(componentsNonSow || [])]}
           />
         );
         break;
@@ -8362,12 +8460,7 @@ function V10PreviewLayout() {
               handleEditRecord={handleEditRecord}
               handleTaskChange={handleTaskChange}
               setShowTaskSelector={setShowTaskSelector}
-              isFormDirty={Boolean(
-                (dynamicProps && Object.keys(dynamicProps).length > 0) ||
-                (recordNotes && recordNotes.trim().length > 0) ||
-                (anomalyData && (anomalyData.defectCode || anomalyData.priority || anomalyData.description)) ||
-                editingRecordId !== null
-              )}
+              isFormDirty={Boolean(isFormModified)}
               handleCommitRecord={handleCommitRecord}
               resetForm={resetForm}
               onDirectSelectTask={(comp: any, taskCode: string) => {
@@ -8385,6 +8478,7 @@ function V10PreviewLayout() {
                 setShowTaskSelector(false);
                 setShowCompSelector(false);
                 setEditingRecordId(null);
+                setIsFormModified(false);
               }}
             />
           );
@@ -9213,6 +9307,7 @@ function V10PreviewLayout() {
           selectorShowAll,
           isSeabedGuiOpen,
           isPipelineMapOpen,
+          inspectionDirection,
           tapeId,
           vidTimer,
           dataAcqFields,

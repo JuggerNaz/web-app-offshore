@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import * as THREE from 'three';
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Fender } from "./Fender";
@@ -368,7 +368,7 @@ const ComponentMesh = ({
 
         const clampInfo = parseRiserClampInfo(component?.q_id || "");
         
-        let targetRiser = null;
+        let targetRiser: any = null;
         if (allLayouts && allLayouts.length > 0) {
             const compAnyObj = component as any;
             const assocIdVal = md?.associated_comp_id || compAnyObj?.associated_component_id || compAnyObj?.associated_id;

@@ -10,7 +10,7 @@ import { getUserMembership } from "@/utils/role-auth";
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
-  let user = null;
+  let user: any = null;
   try {
     const { data } = await supabase.auth.getUser();
     user = data?.user;

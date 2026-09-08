@@ -62,6 +62,7 @@ interface EventsTablePanelProps {
   setRecordsLimit: (val: number) => void;
   totalRecords: number;
   isPipe?: boolean;
+  allComps?: any[];
 }
 
 export function EventsTablePanel({
@@ -92,6 +93,7 @@ export function EventsTablePanel({
   totalRecords,
   editingRecordId,
   isPipe = false,
+  allComps = [],
 }: EventsTablePanelProps) {
   function formatCounter(seconds: number | string): string {
     if (seconds === undefined || seconds === null || seconds === "") return "00:00:00";
@@ -436,13 +438,17 @@ export function EventsTablePanel({
                           <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-medium w-fit uppercase text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-800 shadow-none mt-1">{r.inspection_type_code || r.inspection_type?.code || "UNK"}</Badge>
                         </td>
                       );
-                    case "component":
+                    case "component": {
+                      const compObj = r.structure_components || allComps?.find((c: any) => c.id === r.component_id || c.raw?.id === r.component_id || (c.q_id && c.q_id === r.component_qid));
+                      const qid = r.structure_components?.q_id || r.structure_components?.name || compObj?.q_id || compObj?.name || compObj?.raw?.q_id || compObj?.raw?.name || r.component_qid || r.component_name || r.component?.q_id || r.component?.name || r.q_id || r.inspection_data?.component_qid || r.inspection_data?.component || r.inspection_data?.q_id || r.inspection_data?.component_name || r.inspection_data?.qid || r.inspection_data?.comp_name || (r.component_type === "PP" ? (r.inspection_data?.pipe_name || r.inspection_data?.pipeline_name || "Pipeline Main Line") : "-");
+                      const compCode = r.component_type || r.structure_components?.code || compObj?.raw?.code || compObj?.code || compObj?.type || r.inspection_data?.component_type || "-";
                       return (
                         <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200">
-                          <div className="font-bold text-sm">{r.structure_components?.q_id || "-"}</div>
-                          <div className="text-[10px] text-slate-400 dark:text-slate-400 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || "-"}</div>
+                          <div className="font-bold text-sm text-slate-800 dark:text-slate-100">{qid}</div>
+                          <div className="text-[10px] text-slate-400 dark:text-slate-400 font-bold uppercase tracking-tight mt-0.5">{compCode}</div>
                         </td>
                       );
+                    }
                     case "elev": {
                       const kpVal = r.fp_kp ?? r.kp ?? r.inspection_data?.fp_kp ?? r.inspection_data?.kp ?? r.inspection_data?.kp_value ?? r.inspection_data?.kp_fp;
                       const elevVal = r.elevation ?? r.inspection_data?.elevation;

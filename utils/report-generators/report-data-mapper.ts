@@ -27,7 +27,7 @@ const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image
 
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const pages = [];
+        const pages: any[] = [];
 
         for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
