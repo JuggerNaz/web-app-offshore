@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  Loader2, Download, Save, FolderOpen, Edit, Trash2, Search, Sparkles,
+  Loader2, Download, Save, FolderOpen, Edit, Trash2, Search, Sparkles, Zap,
   FileSpreadsheet, FileText, Braces, Code, ChevronDown, RotateCcw
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -16,9 +16,10 @@ import { toast } from "sonner";
 
 // ─── STEP 6: RESULTS ────────────────────────────────────────────────────────────
 
-export function StepResults({ category, selectedFields, computedFields, data, count, loading, truncated }: {
+export function StepResults({ category, selectedFields, computedFields, data, count, loading, truncated, templateName }: {
   category: string; selectedFields: string[]; computedFields: ComputedField[];
   data: Record<string, any>[]; count: number; loading: boolean; truncated: boolean;
+  templateName?: string;
 }) {
   const [tableSearch, setTableSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -58,11 +59,27 @@ export function StepResults({ category, selectedFields, computedFields, data, co
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white">Query Results</h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-xl font-black text-slate-900 dark:text-white">Query Results</h2>
+            {templateName ? (
+              <Badge variant="outline" className="gap-1 bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30 px-2.5 py-0.5 text-xs font-semibold rounded-lg">
+                <Sparkles className="w-3 h-3 text-violet-500" />
+                Template: <span className="font-bold text-slate-900 dark:text-white">{templateName}</span>
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="gap-1 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30 px-2.5 py-0.5 text-xs font-semibold rounded-lg">
+                <Zap className="w-3 h-3 text-cyan-500" />
+                {cat.label}
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-slate-500 mt-0.5">
-            <span className="font-bold text-cyan-600">{count.toLocaleString()}</span> record{count !== 1 ? "s" : ""} found
+            <span className="font-bold text-cyan-600">{filteredData.length.toLocaleString()}</span> record{filteredData.length !== 1 ? "s" : ""} found
+            {tableSearch && data.length !== filteredData.length && (
+              <span className="text-xs text-slate-400 ml-1.5">(filtered from {data.length.toLocaleString()} total)</span>
+            )}
             {truncated && <span className="text-amber-500 ml-2">(showing first 10,000)</span>}
           </p>
         </div>

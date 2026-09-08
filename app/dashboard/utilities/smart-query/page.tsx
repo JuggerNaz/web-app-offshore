@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import type { ComputedField, SortRule, ConditionRule } from "@/utils/smart-query-schema";
+import { QUERY_CATEGORIES, type ComputedField, type SortRule, type ConditionRule } from "@/utils/smart-query-schema";
 import { StepCategory, StepFields, StepComputed, StepSorting, StepConditions } from "./steps";
 import { StepResults, StepSaveExport } from "./results";
 
@@ -36,6 +36,7 @@ export default function SmartQueryPage() {
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currentQueryId, setCurrentQueryId] = useState<string | undefined>();
+  const [currentQueryName, setCurrentQueryName] = useState<string | undefined>();
 
   const { data: savedData, mutate: refreshSaved } = useSWR("/api/smart-query/saved", fetcher);
   const savedQueries = savedData?.data || [];
@@ -94,6 +95,7 @@ export default function SmartQueryPage() {
     setSorting(cfg.sorting || []);
     setConditions(cfg.conditions || []);
     setCurrentQueryId(sq.id);
+    setCurrentQueryName(sq.name);
     setStep(2);
     toast.success(`Loaded "${sq.name}" — review & modify fields as needed`);
   };
@@ -101,7 +103,7 @@ export default function SmartQueryPage() {
   const resetWizard = () => {
     setStep(1); setCategory(""); setSelectedFields([]); setComputedFields([]);
     setSorting([]); setConditions([]); setResults([]); setResultCount(0);
-    setTruncated(false); setCurrentQueryId(undefined);
+    setTruncated(false); setCurrentQueryId(undefined); setCurrentQueryName(undefined);
   };
 
   return (
@@ -120,7 +122,20 @@ export default function SmartQueryPage() {
                 <div className="h-1 w-1 rounded-full bg-cyan-500" />
                 <span className="bg-gradient-to-r from-cyan-600 to-violet-600 bg-clip-text text-transparent">AI-Powered</span>
               </div>
-              <h1 className="text-2xl md:text-3xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">Smart Query</h1>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl md:text-3xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">Smart Query</h1>
+                {currentQueryName ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-violet-500/10 border border-violet-500/30 text-violet-600 dark:text-violet-400 text-xs font-bold shadow-sm">
+                    <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                    <span>Template: <span className="text-slate-900 dark:text-white font-black">{currentQueryName}</span></span>
+                  </div>
+                ) : category ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-600 dark:text-cyan-400 text-xs font-bold shadow-sm">
+                    <Building2 className="w-3.5 h-3.5 text-cyan-500" />
+                    <span>Category: <span className="text-slate-900 dark:text-white font-black">{QUERY_CATEGORIES.find(c => c.id === category)?.label || category}</span></span>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
           <Button variant="outline" size="sm" className="rounded-xl text-xs gap-1.5" onClick={resetWizard}>
@@ -163,7 +178,7 @@ export default function SmartQueryPage() {
         <div className="flex-1 min-h-0 bg-white dark:bg-slate-900/60 rounded-[1.5rem] border border-slate-200/60 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-black/20 p-6 md:p-8 overflow-y-auto custom-scrollbar">
           {step === 1 && <StepCategory 
             value={category} 
-            onChange={v => { setCategory(v); setSelectedFields([]); setComputedFields([]); setSorting([]); setConditions([]); }} 
+            onChange={v => { setCategory(v); setSelectedFields([]); setComputedFields([]); setSorting([]); setConditions([]); setCurrentQueryName(undefined); setCurrentQueryId(undefined); }} 
             savedQueries={savedQueries} 
             onLoadQuery={loadQuery}
             onDeleteQuery={async (id) => {
@@ -178,7 +193,7 @@ export default function SmartQueryPage() {
           {step === 3 && <StepComputed category={category} selectedFields={selectedFields} computed={computedFields} onChange={setComputedFields} />}
           {step === 4 && <StepSorting category={category} selectedFields={selectedFields} computedFields={computedFields} sorting={sorting} onChange={setSorting} />}
           {step === 5 && <StepConditions category={category} selectedFields={selectedFields} conditions={conditions} onChange={setConditions} />}
-          {step === 6 && <StepResults category={category} selectedFields={selectedFields} computedFields={computedFields} data={results} count={resultCount} loading={loading} truncated={truncated} />}
+          {step === 6 && <StepResults category={category} selectedFields={selectedFields} computedFields={computedFields} data={results} count={resultCount} loading={loading} truncated={truncated} templateName={currentQueryName} />}
           {step === 7 && <StepSaveExport category={category} selectedFields={selectedFields} computedFields={computedFields} sorting={sorting} conditions={conditions} data={results} savedQueries={savedQueries} onLoadQuery={loadQuery} onRefreshSaved={() => refreshSaved()} currentQueryId={currentQueryId} />}
         </div>
 

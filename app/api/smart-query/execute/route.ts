@@ -57,6 +57,8 @@ export const POST = withTenant(async (request, { companyId }) => {
         const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
         if (strIds.length > 0) {
           query = query.in("id", strIds);
+        } else {
+          query = query.eq("id", -999999);
         }
       } else if (category === "components") {
         // v_smart_query_components has structure_id, not company_id column
@@ -67,17 +69,87 @@ export const POST = withTenant(async (request, { companyId }) => {
         const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
         if (strIds.length > 0) {
           query = query.in("structure_id", strIds);
+        } else {
+          query = query.eq("structure_id", -999999);
         }
-      } else {
-        // jobpacks, sow, inspection_records, anomalies, findings, incomplete have company_id
-        query = query.eq("company_id", companyId);
+      } else if (category === "jobpacks") {
+        // v_smart_query_jobpacks has id, not company_id column
+        const { data: tenantJobpacks } = await (supabase as any)
+          .from("jobpack")
+          .select("id")
+          .eq("company_id", companyId);
+        const jpIds = tenantJobpacks?.map((j: any) => j.id) || [];
+        if (jpIds.length > 0) {
+          query = query.in("id", jpIds);
+        } else {
+          query = query.eq("id", -999999);
+        }
+      } else if (category === "sow") {
+        // v_smart_query_sow has structure_id, not company_id column
+        const { data: tenantStructures } = await (supabase as any)
+          .from("structure")
+          .select("str_id")
+          .eq("company_id", companyId);
+        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
+        if (strIds.length > 0) {
+          query = query.in("structure_id", strIds);
+        } else {
+          query = query.eq("structure_id", -999999);
+        }
+      } else if (category === "inspection_records" || category === "incomplete") {
+        // v_smart_query_inspection_records / v_smart_query_incomplete have structure_id, not company_id column
+        const { data: tenantStructures } = await (supabase as any)
+          .from("structure")
+          .select("str_id")
+          .eq("company_id", companyId);
+        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
+        if (strIds.length > 0) {
+          query = query.in("structure_id", strIds);
+        } else {
+          query = query.eq("structure_id", -999999);
+        }
+      } else if (category === "anomalies" || category === "findings") {
+        // Find anomalies belonging to company directly or via tenant structures
+        const { data: tenantStructures } = await (supabase as any)
+          .from("structure")
+          .select("str_id")
+          .eq("company_id", companyId);
+        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
+
+        const { data: tenantAnoms } = await (supabase as any)
+          .from("insp_anomalies")
+          .select("anomaly_id")
+          .eq("company_id", companyId);
+        const anomIds = new Set<number>(tenantAnoms?.map((a: any) => a.anomaly_id) || []);
+
+        if (strIds.length > 0) {
+          const { data: recAnoms } = await (supabase as any)
+            .from("insp_records")
+            .select("insp_id")
+            .in("structure_id", strIds);
+          const inspIds = recAnoms?.map((r: any) => r.insp_id) || [];
+          if (inspIds.length > 0) {
+            const { data: linkedAnoms } = await (supabase as any)
+              .from("insp_anomalies")
+              .select("anomaly_id")
+              .in("inspection_id", inspIds);
+            linkedAnoms?.forEach((a: any) => anomIds.add(a.anomaly_id));
+          }
+        }
+
+        const finalAnomIds = Array.from(anomIds);
+        if (finalAnomIds.length > 0) {
+          query = query.in("anomaly_id", finalAnomIds);
+        } else {
+          query = query.eq("anomaly_id", -999999);
+        }
       }
     }
 
     if (category === "findings") {
-      query = query.eq("record_category", "Finding");
+      query = query.or("record_category.ilike.Finding,record_category.eq.Finding,record_category.eq.FINDING");
     } else if (category === "anomalies") {
-      query = query.or("record_category.eq.Anomaly,record_category.is.null");
+      query = query.or("record_category.ilike.Anomaly,record_category.eq.ANOMALY,record_category.eq.Anomaly,record_category.is.null");
     } else if (category === "incomplete") {
       query = query.eq("status", "INCOMPLETE");
     }
@@ -214,7 +286,7 @@ export const POST = withTenant(async (request, { companyId }) => {
 
     return NextResponse.json({
       data: results,
-      count: count || results.length,
+      count: results.length === 0 ? 0 : (count || results.length),
       truncated: (count || 0) > MAX_ROWS,
     });
   } catch (error: any) {

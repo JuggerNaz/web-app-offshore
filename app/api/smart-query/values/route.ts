@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { QUERY_CATEGORIES } from "@/utils/smart-query-schema";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request, { companyId }) => {
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get("category");
@@ -24,12 +25,61 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // Fetch up to 5000 rows to ensure we get a good spread of distinct values
-    const { data, error } = await (supabase as any)
+    let query = (supabase as any)
       .from(catDef.table)
       .select(field)
-      .not(field, "is", null)
-      .limit(5000);
+      .not(field, "is", null);
+
+    if (companyId) {
+      if (category === "structures") {
+        const { data: tenantStructures } = await (supabase as any)
+          .from("structure")
+          .select("str_id")
+          .eq("company_id", companyId);
+        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
+        if (strIds.length > 0) {
+          query = query.in("id", strIds);
+        } else {
+          query = query.eq("id", -999999);
+        }
+      } else if (category === "components" || category === "sow" || category === "inspection_records" || category === "incomplete") {
+        const { data: tenantStructures } = await (supabase as any)
+          .from("structure")
+          .select("str_id")
+          .eq("company_id", companyId);
+        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
+        if (strIds.length > 0) {
+          query = query.in("structure_id", strIds);
+        } else {
+          query = query.eq("structure_id", -999999);
+        }
+      } else if (category === "jobpacks") {
+        const { data: tenantJobpacks } = await (supabase as any)
+          .from("jobpack")
+          .select("id")
+          .eq("company_id", companyId);
+        const jpIds = tenantJobpacks?.map((j: any) => j.id) || [];
+        if (jpIds.length > 0) {
+          query = query.in("id", jpIds);
+        } else {
+          query = query.eq("id", -999999);
+        }
+      } else if (category === "anomalies" || category === "findings") {
+        const { data: tenantAnoms } = await (supabase as any)
+          .from("insp_anomalies")
+          .select("anomaly_id")
+          .eq("company_id", companyId);
+        const anomIds = tenantAnoms?.map((a: any) => a.anomaly_id) || [];
+        if (anomIds.length > 0) {
+          query = query.in("anomaly_id", anomIds);
+        } else {
+          query = query.eq("anomaly_id", -999999);
+        }
+      }
+    }
+
+    // Fetch up to 5000 rows to ensure we get a good spread of distinct values
+    const { data, error } = await query.limit(5000);
 
     if (error) {
       console.error("[SmartQuery] Values API error:", error);
@@ -54,4 +104,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
