@@ -1,6 +1,24 @@
 {
   "components": [
     {
+      "code": "cb",
+      "componentType": "cb_comp",
+      "fields": [
+        {
+          "name": "cgud_typ",
+          "type": "string"
+        },
+        {
+          "name": "fitg_typ",
+          "type": "string"
+        },
+        {
+          "name": "no_slots",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "code": "cf",
       "componentType": "cf_comp",
       "fields": [

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import * as THREE from 'three';
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Fender } from "./Fender";
@@ -6,6 +6,7 @@ import { RiserGuard } from "./RiserGuard";
 import { CaissonSupport } from "./CaissonSupport";
 import { RiserClamp } from "./RiserClamp";
 import { PileLeg } from "./PileLeg";
+import { GuideBucket } from "./GuideBucket";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
     OrbitControls,
@@ -23,7 +24,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, Eye, SlidersHorizontal, Layers, Palette, Filter, History } from "lucide-react";
+import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, ChevronDown, Eye, SlidersHorizontal, Layers, Palette, Filter, History } from "lucide-react";
 import { getEffectiveClockAngle, computeRiserOffsetEndpoints, generatePlatform3DCoordinates } from "@/utils/platform-3d-math";
 import { getMainLegElementSets } from "../platform-legs-recognition";
 
@@ -210,9 +211,14 @@ const ComponentMesh = ({
     const isNode = (code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND") && !qIdUpper.includes("SUPP") && !qIdUpper.includes("CLP");
     const isAnode = code === "AN" || code.includes("ANOD");
     const isCaissonSupportComponent = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
-    const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupportComponent;
-    const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupportComponent;
-    const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport) || code.includes("WELD")) && !isClamp;
+    const isConductorSupport =
+        /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
+        (qIdUpper.startsWith("CB-") || qIdUpper.startsWith("GB-") || qIdUpper.startsWith("CGB-")) ||
+        (code === "CG" && qIdUpper.includes("BUCK"));
+    const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || isConductorSupport;
+    const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupportComponent && !isGuideBucket;
+    const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupportComponent && !isGuideBucket;
+    const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport) || code.includes("WELD")) && !isClamp && !isGuideBucket;
     const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS");
     const isRiser = !isAnode && !isRiserSupport && !isCaisson && (
         code === "RS" ||
@@ -224,10 +230,10 @@ const ComponentMesh = ({
     const isConductor = code === "CD" || isCaisson || code.includes("COND") || code === "CO";
 
     const defaultMeshColor = isAnode
-        ? "#F8FAFC"
+        ? "#e2e8f0"
         : isWeld
             ? "#94a3b8"
-            : isClamp
+            : (isClamp || isGuideBucket)
                 ? "#facc15"
                 : isRiser
                     ? "#334155"
@@ -305,8 +311,8 @@ const ComponentMesh = ({
 
     const quaternion = new THREE.Quaternion();
     const euler = new THREE.Euler();
-    if (isCaissonSupportComponent) {
-        // Caisson supports wrap around vertical caisson pipes, so force straight vertical alignment
+    if (isCaissonSupportComponent || isGuideBucket) {
+        // Caisson supports and Guide Buckets wrap around vertical pipes/conductors, so force straight vertical alignment
         direction = new THREE.Vector3(0, 1, 0);
         euler.set(0, 0, 0);
     } else if (length > 0.001) {
@@ -767,6 +773,73 @@ const ComponentMesh = ({
         );
     }
 
+    if (isGuideBucket) {
+        const guideBucketGroup = useMemo(() => {
+            let bucketColor = "#facc15";
+            if (isInspectionHighlighted) {
+                if (inspectionStatus === "Incomplete") bucketColor = "#d97706";
+                else if (inspectionStatus === "Completed") bucketColor = "#22c55e";
+                else bucketColor = "#334155";
+            }
+            return new GuideBucket({
+                outerRadius: (baseThickness || 0.3) / 2 + 0.08,
+                height: 0.55,
+                color: bucketColor,
+                isSelected,
+                isHovered: hovered,
+            });
+        }, [baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus]);
+
+        return (
+            <group
+                position={[position.x + ox, position.y + oy, position.z + oz]}
+                rotation={euler}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClick();
+                }}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onDoubleClick) onDoubleClick();
+                }}
+                onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setHovered(true);
+                }}
+                onPointerOut={(e) => {
+                    e.stopPropagation();
+                    setHovered(false);
+                }}
+            >
+                <primitive object={guideBucketGroup} />
+
+                {/* Click target wrapper */}
+                <mesh castShadow={false} receiveShadow={false}>
+                    <cylinderGeometry args={[(baseThickness || 0.3) / 2 + 0.35, (baseThickness || 0.3) / 2 + 0.35, 0.7, 16]} />
+                    <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+
+                {showLabel && (
+                    <Html
+                        distanceFactor={15}
+                        position={[0, 0.65, 0]}
+                        center
+                        zIndexRange={[10, 0]}
+                    >
+                        <div
+                            className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
+                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
+                                : "bg-slate-900/90 text-slate-100 border-slate-700"
+                                }`}
+                        >
+                            {labelText}
+                        </div>
+                    </Html>
+                )}
+            </group>
+        );
+    }
+
     if (isCaissonSupportComponent) {
         const caissonSupportGroup = useMemo(() => {
             let supportColor = "#facc15";
@@ -931,6 +1004,7 @@ const ComponentMesh = ({
                 <mesh
                     castShadow
                     receiveShadow
+                    rotation={[0, 0, 0]}
                     onClick={(e) => {
                         e.stopPropagation();
                         onClick();
@@ -951,8 +1025,8 @@ const ComponentMesh = ({
                     )}
                     <meshStandardMaterial
                         color={displayColor}
-                        metalness={isAnode ? 0.85 : isWeld ? 0.2 : isClamp ? 0.8 : isRiser || isConductor ? 0.75 : 0.7}
-                        roughness={isAnode ? 0.25 : isWeld ? 0.5 : isClamp ? 0.25 : isRiser || isConductor ? 0.45 : 0.3}
+                        metalness={isAnode ? 0.35 : isWeld ? 0.2 : isClamp ? 0.8 : isRiser || isConductor ? 0.75 : 0.7}
+                        roughness={isAnode ? 0.35 : isWeld ? 0.5 : isClamp ? 0.25 : isRiser || isConductor ? 0.45 : 0.3}
                         emissive={emissiveColor}
                         emissiveIntensity={emissiveInt}
                     />
@@ -975,39 +1049,55 @@ const ComponentMesh = ({
                             />
                         </mesh>
                     )}
-                    {isAnode && (
-                        <group>
-                            { }
-                            <mesh position={[0, safeMeshLength / 2 + 0.1, 0]} castShadow receiveShadow>
-                                <cylinderGeometry args={[0.025, 0.025, 0.2, 12]} />
-                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
-                            </mesh>
-                            <mesh
-                                position={[0, safeMeshLength / 2 + 0.18, -offsetDistance / 2]}
-                                rotation={[Math.PI / 2, 0, 0]}
-                                castShadow
-                                receiveShadow
-                            >
-                                <cylinderGeometry args={[0.025, 0.025, offsetDistance, 12]} />
-                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
-                            </mesh>
-                            { }
-                            <mesh position={[0, -safeMeshLength / 2 - 0.1, 0]} castShadow receiveShadow>
-                                <cylinderGeometry args={[0.025, 0.025, 0.2, 12]} />
-                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
-                            </mesh>
-                            <mesh
-                                position={[0, -safeMeshLength / 2 - 0.18, -offsetDistance / 2]}
-                                rotation={[Math.PI / 2, 0, 0]}
-                                castShadow
-                                receiveShadow
-                            >
-                                <cylinderGeometry args={[0.025, 0.025, offsetDistance, 12]} />
-                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
-                            </mesh>
-                        </group>
-                    )}
                 </mesh>
+
+                {isAnode && (
+                    <group>
+                        {/* Top Standoff Insert */}
+                        {/* Axial extension rod */}
+                        <mesh position={[0, safeMeshLength / 2 + 0.09, 0]} castShadow receiveShadow>
+                            <cylinderGeometry args={[0.025, 0.025, 0.18, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                        {/* Smooth corner spherical elbow */}
+                        <mesh position={[0, safeMeshLength / 2 + 0.18, 0]} castShadow receiveShadow>
+                            <sphereGeometry args={[0.025, 16, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                        {/* Standoff leg into pipe */}
+                        <mesh
+                            position={[0, safeMeshLength / 2 + 0.18, -offsetDistance / 2]}
+                            rotation={[Math.PI / 2, 0, 0]}
+                            castShadow
+                            receiveShadow
+                        >
+                            <cylinderGeometry args={[0.025, 0.025, offsetDistance, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+
+                        {/* Bottom Standoff Insert */}
+                        {/* Axial extension rod */}
+                        <mesh position={[0, -safeMeshLength / 2 - 0.09, 0]} castShadow receiveShadow>
+                            <cylinderGeometry args={[0.025, 0.025, 0.18, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                        {/* Smooth corner spherical elbow */}
+                        <mesh position={[0, -safeMeshLength / 2 - 0.18, 0]} castShadow receiveShadow>
+                            <sphereGeometry args={[0.025, 16, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                        {/* Standoff leg into pipe */}
+                        <mesh
+                            position={[0, -safeMeshLength / 2 - 0.18, -offsetDistance / 2]}
+                            rotation={[Math.PI / 2, 0, 0]}
+                            castShadow
+                            receiveShadow
+                        >
+                            <cylinderGeometry args={[0.025, 0.025, offsetDistance, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                    </group>
+                )}
 
                 { }
                 <mesh
@@ -1448,10 +1538,15 @@ function InstancedComponentViewer({
                 qIdUpper.startsWith("BLD");
             const isRiserGuard = code === "RG" || code.includes("RGUARD") || code.includes("RISG");
             const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
-            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport;
-            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport;
+            const isConductorSupport =
+                /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
+                (qIdUpper.startsWith("CB-") || qIdUpper.startsWith("GB-") || qIdUpper.startsWith("CGB-")) ||
+                (code === "CG" && qIdUpper.includes("BUCK"));
+            const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || isConductorSupport;
+            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport && !isGuideBucket;
+            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport && !isGuideBucket;
 
-            const isRiser = !isRiserSupport && !isCaissonSupport && !isClamp && (
+            const isRiser = !isRiserSupport && !isCaissonSupport && !isClamp && !isGuideBucket && (
                 code === "RS" ||
                 code.includes("RISER") || code.includes("RISR") ||
                 qIdUpper.includes("RISER") || qIdUpper.includes("RISR") ||
@@ -1470,7 +1565,7 @@ function InstancedComponentViewer({
             const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE");
             const isPileLegComponent = (code === "PL" || isPile || qIdUpper.includes("PILE LEG") || qIdUpper.includes("PILE_LEG")) && !isSingleNode && (hasTwoNodes || dist > 0.001);
 
-            if (isFender || isRiserGuard || isRiser || isClamp || isCaissonSupport || isPileLegComponent) {
+            if (isFender || isRiserGuard || isRiser || isClamp || isCaissonSupport || isGuideBucket || isPileLegComponent) {
                 custom.push({ ...layout, comp, code });
                 return;
             }
@@ -1818,15 +1913,17 @@ function InstancedComponentViewer({
             const axialLen = 0.12;    // longer axial extension
             const penetration = 0.04;
             
-            // Render Main Anode Body (Box)
-            const boxQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cylDir);
+            // Render Main Anode Body (Box) - true square cross-section aligned with standoff stubs and member
+            const tangent = cylDir.clone().cross(normal).normalize();
+            const basisMatrix = new THREE.Matrix4().makeBasis(tangent, cylDir, normal);
+            const boxQuat = new THREE.Quaternion().setFromRotationMatrix(basisMatrix);
             boxMatrix.compose(pos, boxQuat, new THREE.Vector3(anodeWidth, anodeLength, anodeHeight));
             boxMesh.setMatrixAt(i, boxMatrix);
             
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            const bodyColor = isSelected ? "#f97316" : "#e2e8f0"; // light grey/zinc for anode body
-            const stubColor = isSelected ? "#f97316" : "#94a3b8"; // steel grey for steel core stubs
+            const bodyColor = isSelected ? "#f97316" : "#e2e8f0"; // light metallic silver for anode body
+            const stubColor = isSelected ? "#f97316" : "#e2e8f0"; // light metallic silver for stubs matching anode body
             
             color.set(getInspectionColor(item, bodyColor));
             boxMesh.setColorAt(i, color);
@@ -1872,9 +1969,9 @@ function InstancedComponentViewer({
             stubMesh.setMatrixAt(stubIndex++, stubMatrix);
             stubMesh.setColorAt(stubIndex - 1, color);
             
-            // Elbow Joint Spheres 1 & 2 (Sphere nodes at corner bend)
+            // Elbow Joint Spheres 1 & 2 (Smooth spherical corner elbows bridging axial & radial stubs)
             const elbowQuat = new THREE.Quaternion();
-            const elbowScale = new THREE.Vector3(stubRadius * 1.3, stubRadius * 1.3, stubRadius * 1.3);
+            const elbowScale = new THREE.Vector3(stubRadius, stubRadius, stubRadius);
             
             const elbow1Matrix = new THREE.Matrix4().compose(corner1, elbowQuat, elbowScale);
             elbowMesh.setMatrixAt(elbowIndex++, elbow1Matrix);
@@ -1982,7 +2079,7 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <boxGeometry args={[1, 1, 1]} />
-                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
+                    <meshStandardMaterial metalness={0.35} roughness={0.35} />
                 </instancedMesh>
             )}
 
@@ -1992,8 +2089,8 @@ function InstancedComponentViewer({
                     ref={anodeStubRef}
                     args={[undefined, undefined, anodes.length * 4]}
                 >
-                    <cylinderGeometry args={[1, 1, 1, 12]} />
-                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
+                    <cylinderGeometry args={[1, 1, 1, 16]} />
+                    <meshStandardMaterial metalness={0.35} roughness={0.35} />
                 </instancedMesh>
             )}
 
@@ -2003,8 +2100,8 @@ function InstancedComponentViewer({
                     ref={anodeElbowRef}
                     args={[undefined, undefined, anodes.length * 2]}
                 >
-                    <torusGeometry args={[0.08, 0.05, 8, 12, Math.PI / 2]} />
-                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
+                    <sphereGeometry args={[1, 16, 16]} />
+                    <meshStandardMaterial metalness={0.35} roughness={0.35} />
                 </instancedMesh>
             )}
 
@@ -2753,7 +2850,7 @@ export function Structural3DViewer({
             const code = (c.code || "").trim().toUpperCase();
             const qIdUpper = (c.q_id || "").toUpperCase();
 
-            // Whitelist riser supports/clamps ΓÇö never exclude them
+            // Whitelist riser supports/clamps — never exclude them
             const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM");
 
             if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) {
@@ -3159,9 +3256,16 @@ export function Structural3DViewer({
 
             const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE") || dbQIdUpper.includes("PILE");
             const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
-            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport;
-            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport;
-            const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport && !isClamp) || code.includes("WELD")) && !isClamp;
+            const isConductorSupport =
+                /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
+                /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(dbQIdUpper) ||
+                (qIdUpper.startsWith("CB-") || qIdUpper.startsWith("GB-") || qIdUpper.startsWith("CGB-")) ||
+                (dbQIdUpper.startsWith("CB-") || dbQIdUpper.startsWith("GB-") || dbQIdUpper.startsWith("CGB-")) ||
+                (code === "CG" && qIdUpper.includes("BUCK"));
+            const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || dbQIdUpper.includes("BUCKET") || isConductorSupport;
+            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport && !isGuideBucket;
+            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport && !isGuideBucket;
+            const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport && !isClamp) || code.includes("WELD")) && !isClamp && !isGuideBucket;
 
             const compMd = comp.metadata || dbItem.metadata || {};
             const sLegStr = (comp.s_leg || compMd.s_leg || dbItem.s_leg || "").toString().trim().toUpperCase();
@@ -3182,7 +3286,7 @@ export function Structural3DViewer({
             if (inspectionStatus === "Incomplete") inspectionColor = "#d97706"; // Dark Yellow
 
             const weldColor = isWeld ? "#cbd5e1" : null;
-            const clampColor = isClamp ? "#facc15" : null;
+            const clampColor = (isClamp || isGuideBucket) ? "#facc15" : null;
             const finalColor = isInspectionMode ? dbItem.inspection_color : (clampColor || weldColor || dbItem.color_hex || "#64748b");
 
             let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
@@ -3913,6 +4017,7 @@ export function Structural3DViewer({
                                 {colorMode === "INSPECTION_TASK_TYPE" && "Task Type"}
                                 {colorMode === "HISTORICAL_COMPARE" && "Historical Compare"}
                             </span>
+                            <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", openDropdown === "colormap" && "rotate-180")} />
                         </Button>
 
                         {openDropdown === "colormap" && (
@@ -3940,11 +4045,11 @@ export function Structural3DViewer({
                                 <div className="flex flex-col gap-1 text-[10px]">
                                     {[
                                         { mode: "DEFAULT", label: "Standard Metallic 3D", desc: "Default material rendering" },
-                                        { mode: "ANOMALY_PRIORITY", label: "≡ƒö┤ Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4, Findings & Rectified" },
-                                        { mode: "FINDING_CATEGORY", label: "≡ƒöì Finding Category", desc: "Color by Corrosion, Marine Growth, Coating, Debris, Scour" },
-                                        { mode: "INSPECTION_STATUS", label: "≡ƒôè Inspection Status", desc: "Complete vs Incomplete vs Pending" },
-                                        { mode: "INSPECTION_TASK_TYPE", label: "≡ƒÄ¿ Inspection Task Type", desc: "Color code by FMD, UT, Anode, GVINS" },
-                                        { mode: "HISTORICAL_COMPARE", label: "≡ƒô£ Historical Jobpack Compare", desc: "Compare past campaign anomalies vs present" }
+                                        { mode: "ANOMALY_PRIORITY", label: "🔴 Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4, Findings & Rectified" },
+                                        { mode: "FINDING_CATEGORY", label: "🔍 Finding Category", desc: "Color by Corrosion, Marine Growth, Coating, Debris, Scour" },
+                                        { mode: "INSPECTION_STATUS", label: "📊 Inspection Status", desc: "Complete vs Incomplete vs Pending" },
+                                        { mode: "INSPECTION_TASK_TYPE", label: "🎨 Inspection Task Type", desc: "Color code by FMD, UT, Anode, GVINS" },
+                                        { mode: "HISTORICAL_COMPARE", label: "📜 Historical Jobpack Compare", desc: "Compare past campaign anomalies vs present" }
                                     ].map(opt => (
                                         <button
                                             key={opt.mode}
@@ -4070,131 +4175,6 @@ export function Structural3DViewer({
                     </div>
                 )}
 
-                {/* Inspection Filter (OFF) - Hidden in Inspection Workspace */}
-                {!isWorkspace && (
-                    <div className="relative">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setOpenDropdown(openDropdown === "inspection" ? null : "inspection")}
-                            className={cn(
-                                "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
-                                compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
-                                isInspectionMode
-                                    ? "border-purple-400 text-purple-600 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                                    : "border-slate-200 text-slate-500"
-                            )}
-                            title="Inspection Mode Filter"
-                        >
-                            <Eye className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                            <span>{compactMode ? (isInspectionMode ? `(${selectedInspectionFilters.length})` : "OFF") : `Inspection ${isInspectionMode ? `(${selectedInspectionFilters.length}/3)` : "OFF"} Γû╝`}</span>
-                        </Button>
-
-                        {openDropdown === "inspection" && (
-                            <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-72 flex flex-col gap-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                                        Inspection Mode
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                        {selectedInspectionFilters.length < 3 && (
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
-                                                    setIsInspectionMode(true);
-                                                }}
-                                                className="text-[9px] font-black uppercase text-purple-600 hover:text-purple-800 transition-colors"
-                                            >
-                                                Select All
-                                            </button>
-                                        )}
-                                        <label className="flex items-center cursor-pointer">
-                                            <div className="relative">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only"
-                                                    checked={isInspectionMode}
-                                                    onChange={(e) => {
-                                                        const nextState = e.target.checked;
-                                                        setIsInspectionMode(nextState);
-                                                        if (nextState && selectedInspectionFilters.length === 0) {
-                                                            setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
-                                                        }
-                                                    }}
-                                                />
-                                                <div className={`block w-8 h-5 rounded-full ${isInspectionMode ? 'bg-purple-500' : 'bg-slate-200'}`}></div>
-                                                <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition ${isInspectionMode ? 'transform translate-x-3' : ''}`}></div>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-1.5 py-1">
-                                    {/* Not Inspected Checkbox */}
-                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedInspectionFilters.includes("NOT_INSPECTED")}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                if (!isInspectionMode) setIsInspectionMode(true);
-                                                if (checked) {
-                                                    setSelectedInspectionFilters((prev) => [...prev, "NOT_INSPECTED"]);
-                                                } else {
-                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NOT_INSPECTED"));
-                                                }
-                                            }}
-                                            className="h-4 w-4 rounded border-slate-300 text-slate-600 focus:ring-purple-500 accent-slate-600"
-                                        />
-                                        <div className="w-2.5 h-2.5 rounded-full bg-slate-400 border border-slate-500 shrink-0" />
-                                        <span className="text-xs font-bold text-slate-700">Not Inspected</span>
-                                    </label>
-
-                                    {/* Inspected (No Anomaly) Checkbox */}
-                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-emerald-50/60 cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedInspectionFilters.includes("NO_ANOMALY")}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                if (!isInspectionMode) setIsInspectionMode(true);
-                                                if (checked) {
-                                                    setSelectedInspectionFilters((prev) => [...prev, "NO_ANOMALY"]);
-                                                } else {
-                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NO_ANOMALY"));
-                                                }
-                                            }}
-                                            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 accent-emerald-600"
-                                        />
-                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] border border-emerald-600 shrink-0" />
-                                        <span className="text-xs font-bold text-emerald-700">Inspected (No Anomaly)</span>
-                                    </label>
-
-                                    {/* Inspected (Has Anomaly) Checkbox */}
-                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50/80 cursor-pointer transition-colors border border-transparent hover:border-red-100">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedInspectionFilters.includes("HAS_ANOMALY")}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                if (!isInspectionMode) setIsInspectionMode(true);
-                                                if (checked) {
-                                                    setSelectedInspectionFilters((prev) => [...prev, "HAS_ANOMALY"]);
-                                                } else {
-                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "HAS_ANOMALY"));
-                                                }
-                                            }}
-                                            className="h-4 w-4 rounded border-red-400 text-red-600 focus:ring-red-500 accent-red-600"
-                                        />
-                                        <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] border border-red-600 shrink-0 animate-pulse" />
-                                        <span className="text-xs font-bold text-red-700">Inspected (Has Anomaly)</span>
-                                    </label>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
                 {/* Elevation Filter */}
                 <div className="relative">
                     <Button
@@ -4202,7 +4182,7 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "elevation" ? null : "elevation")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
+                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1.5",
                             compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
                             selectedElevations.length > 0
                                 ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
@@ -4211,7 +4191,8 @@ export function Structural3DViewer({
                         title="Filter Elevations"
                     >
                         <Layers className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        <span>{compactMode ? (selectedElevations.length > 0 ? `(${selectedElevations.length})` : "Elv") : `Elevation ${selectedElevations.length > 0 ? `(${selectedElevations.length})` : ""} Γû╝`}</span>
+                        <span>{compactMode ? (selectedElevations.length > 0 ? `(${selectedElevations.length})` : "Elv") : `Elevation ${selectedElevations.length > 0 ? `(${selectedElevations.length})` : ""}`}</span>
+                        <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", openDropdown === "elevation" && "rotate-180")} />
                     </Button>
 
                     {openDropdown === "elevation" && (
@@ -4281,7 +4262,7 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "face" ? null : "face")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
+                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1.5",
                             compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
                             selectedFaces.length > 0
                                 ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
@@ -4290,7 +4271,8 @@ export function Structural3DViewer({
                         title="Filter Structural Faces"
                     >
                         <Compass className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        <span>{compactMode ? (selectedFaces.length > 0 ? `(${selectedFaces.length})` : "Face") : `Face ${selectedFaces.length > 0 ? `(${selectedFaces.length})` : ""} Γû╝`}</span>
+                        <span>{compactMode ? (selectedFaces.length > 0 ? `(${selectedFaces.length})` : "Face") : `Face ${selectedFaces.length > 0 ? `(${selectedFaces.length})` : ""}`}</span>
+                        <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", openDropdown === "face" && "rotate-180")} />
                     </Button>
 
                     {openDropdown === "face" && (
@@ -4359,7 +4341,7 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "display" ? null : "display")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md border transition-all font-black uppercase tracking-widest flex items-center justify-center",
+                            "bg-white/90 backdrop-blur-md border transition-all font-black uppercase tracking-widest flex items-center justify-center gap-1.5",
                             compactMode ? "h-8 w-8 rounded-lg px-0" : "h-9 px-4 rounded-xl text-[10px]",
                             openDropdown === "display"
                                 ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
@@ -4368,7 +4350,8 @@ export function Structural3DViewer({
                         title="Display Settings"
                     >
                         <SlidersHorizontal className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        {!compactMode && <span className="ml-1">Display Γû╝</span>}
+                        {!compactMode && <span>Display</span>}
+                        {!compactMode && <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", openDropdown === "display" && "rotate-180")} />}
                     </Button>
 
                     {openDropdown === "display" && (

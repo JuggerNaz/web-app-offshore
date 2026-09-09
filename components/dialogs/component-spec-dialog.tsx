@@ -339,7 +339,7 @@ export function ComponentSpecDialog({
     if (lowerCode === "cd" && !("coat_typ" in patchedTemplate)) {
       patchedTemplate.coat_typ = "";
     }
-    if (lowerCode === "cf" && !("cgud_typ" in patchedTemplate)) {
+    if ((lowerCode === "cf" || lowerCode === "cb") && !("cgud_typ" in patchedTemplate)) {
       patchedTemplate.cgud_typ = "";
       patchedTemplate.fitg_typ = "";
     }
@@ -633,6 +633,7 @@ export function ComponentSpecDialog({
             "sg",
             "cu",
             "cf",
+            "cb",
             "it",
             "lg",
             "wn",
@@ -693,7 +694,7 @@ export function ComponentSpecDialog({
               delete info.diameter;
               delete info.position;
               delete info.id_chk;
-            } else if (code === "cf") {
+            } else if (code === "cf" || code === "cb") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -924,6 +925,7 @@ export function ComponentSpecDialog({
             "sg",
             "cu",
             "cf",
+            "cb",
             "it",
             "lg",
             "wn",
@@ -957,7 +959,7 @@ export function ComponentSpecDialog({
               delete info.depth;
               delete info.diameter;
               delete info.id_chk;
-            } else if (code === "cf") {
+            } else if (code === "cf" || code === "cb") {
               delete info.wall_thk;
               delete info.depth;
               delete info.diameter;
@@ -3498,9 +3500,9 @@ export function ComponentSpecDialog({
                             return renderSelect(key, "Select clamp material", clamMatData);
                           if (key === "coat_typ" && lowerCode === "cd")
                             return renderSelect(key, "Select coating type", coatTypData);
-                          if (key === "cgud_typ" && lowerCode === "cf")
+                          if (key === "cgud_typ" && (lowerCode === "cf" || lowerCode === "cb"))
                             return renderSelect(key, "Select guide type", cgudTypData);
-                          if (key === "fitg_typ" && lowerCode === "cf")
+                          if (key === "fitg_typ" && (lowerCode === "cf" || lowerCode === "cb"))
                             return renderSelect(key, "Select fitting type", fitgTypData);
                           if (key === "sgud_typ" && lowerCode === "sg")
                             return renderSelect(key, "Select guard type", sgudTypData);
