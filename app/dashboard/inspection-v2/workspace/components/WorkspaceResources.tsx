@@ -879,6 +879,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                         ) : (
                             <>
                                 <Structural3DViewer
+                                     platformId={platformDetails?.plat_id || platformDetails?.id || (platformDetails as any)?.structure_id || webapp3dData?.structure_id}
                                      webapp3dData={webapp3dData}
                                      components={allComponents}
                                      platformDetails={platformDetails}

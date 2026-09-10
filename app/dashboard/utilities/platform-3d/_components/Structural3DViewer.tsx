@@ -24,9 +24,15 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, ChevronDown, Eye, SlidersHorizontal, Layers, Palette, Filter, History } from "lucide-react";
+import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, ChevronDown, Eye, SlidersHorizontal, Layers, Palette, Filter, History, Loader2 } from "lucide-react";
 import { getEffectiveClockAngle, computeRiserOffsetEndpoints, generatePlatform3DCoordinates } from "@/utils/platform-3d-math";
 import { getMainLegElementSets } from "../platform-legs-recognition";
+import {
+    loadPlatform3DSession,
+    savePlatform3DSession,
+    clearPlatform3DSession,
+    type Platform3DSessionState
+} from "../utils/platform-3d-storage";
 
 interface Component3D {
     id: number;
@@ -51,6 +57,7 @@ export type VisualizationMode =
     | "HISTORICAL_COMPARE";
 
 interface Structural3DViewerProps {
+    platformId?: number | string;
     webapp3dData?: any;
     components: Component3D[];
     platformDetails?: any;
@@ -72,6 +79,7 @@ interface Structural3DViewerProps {
     selectedHistoricalCampaignId?: string | number;
     isInspectionMode?: boolean;
     selectedInspectionFilters?: string[];
+    isLoading?: boolean;
 }
 
 function parseRiserClampInfo(qId: string) {
@@ -1321,7 +1329,7 @@ function CameraDistanceController({ onChange }: { onChange: (isClose: boolean) =
     return null;
 }
 
-function ResetViewHandler({ trigger }: { trigger: number }) {
+function ResetViewHandler({ trigger, platformId }: { trigger: number; platformId?: number | string | null }) {
     const api = useBounds();
     const isFirstRun = React.useRef(true);
 
@@ -1330,8 +1338,11 @@ function ResetViewHandler({ trigger }: { trigger: number }) {
             isFirstRun.current = false;
             return;
         }
+        if (platformId) {
+            clearPlatform3DSession(platformId);
+        }
         api.refresh().fit();
-    }, [trigger, api]);
+    }, [trigger, api, platformId]);
 
     return null;
 }
@@ -1349,9 +1360,95 @@ function CameraHeadlight({ intensity = 0.85 }: { intensity?: number }) {
     return <directionalLight ref={lightRef} intensity={intensity} />;
 }
 
+function CameraPersistenceTracker({
+    platformId,
+    initialState,
+    onRestored,
+}: {
+    platformId: number | string | null;
+    initialState: Platform3DSessionState | null;
+    onRestored?: () => void;
+}) {
+    const { camera, controls } = useThree();
+    const hasAppliedInitialRef = useRef(false);
 
+    // Apply saved camera coordinates upon mount before first paint
+    useLayoutEffect(() => {
+        if (!controls || !initialState || hasAppliedInitialRef.current) return;
+        hasAppliedInitialRef.current = true;
 
+        if (initialState.cameraPosition && initialState.controlsTarget) {
+            const [cx, cy, cz] = initialState.cameraPosition;
+            const [tx, ty, tz] = initialState.controlsTarget;
 
+            if (isFinite(cx) && isFinite(cy) && isFinite(cz)) {
+                camera.position.set(cx, cy, cz);
+            }
+            if (isFinite(tx) && isFinite(ty) && isFinite(tz)) {
+                (controls as any).target.set(tx, ty, tz);
+                camera.lookAt(tx, ty, tz);
+            }
+            camera.updateMatrixWorld(true);
+            camera.updateProjectionMatrix();
+            if (typeof (controls as any).update === 'function') {
+                (controls as any).update();
+            }
+            if (onRestored) {
+                onRestored();
+            }
+        }
+    }, [controls, camera, initialState, onRestored]);
+
+    // Attach listeners to controls to save state on user movement
+    useEffect(() => {
+        if (!controls || !platformId) return;
+
+        const orbControls = controls as any;
+        let debounceTimer: NodeJS.Timeout | null = null;
+
+        const handleControlsChange = () => {
+            const cp = camera.position;
+            const ct = orbControls.target;
+            if (
+                isFinite(cp.x) && isFinite(cp.y) && isFinite(cp.z) &&
+                isFinite(ct.x) && isFinite(ct.y) && isFinite(ct.z)
+            ) {
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    savePlatform3DSession(platformId, {
+                        cameraPosition: [cp.x, cp.y, cp.z],
+                        controlsTarget: [ct.x, ct.y, ct.z],
+                    });
+                }, 500);
+            }
+        };
+
+        const handleControlsEnd = () => {
+            const cp = camera.position;
+            const ct = orbControls.target;
+            if (
+                isFinite(cp.x) && isFinite(cp.y) && isFinite(cp.z) &&
+                isFinite(ct.x) && isFinite(ct.y) && isFinite(ct.z)
+            ) {
+                savePlatform3DSession(platformId, {
+                    cameraPosition: [cp.x, cp.y, cp.z],
+                    controlsTarget: [ct.x, ct.y, ct.z],
+                });
+            }
+        };
+
+        orbControls.addEventListener('change', handleControlsChange);
+        orbControls.addEventListener('end', handleControlsEnd);
+
+        return () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            orbControls.removeEventListener('change', handleControlsChange);
+            orbControls.removeEventListener('end', handleControlsEnd);
+        };
+    }, [controls, camera, platformId]);
+
+    return null;
+}
 
 function CameraRig({
     selectedPos,
@@ -1359,12 +1456,14 @@ function CameraRig({
     isActivated,
     isDirectClickRef,
     focusTargetPos,
+    hasSavedCameraState = false,
 }: {
     selectedPos: THREE.Vector3 | null;
     selectedCompId?: number;
     isActivated: boolean;
     isDirectClickRef: React.MutableRefObject<boolean>;
     focusTargetPos: THREE.Vector3 | null;
+    hasSavedCameraState?: boolean;
 }) {
     const { camera, controls } = useThree();
     const animRef = useRef<number | null>(null);
@@ -1423,6 +1522,11 @@ function CameraRig({
         if (prevSelectedCompIdRef.current === selectedCompId) {
             return;
         }
+        // If this is the initial render and we have a restored camera position, preserve it
+        if (prevSelectedCompIdRef.current === undefined && hasSavedCameraState) {
+            prevSelectedCompIdRef.current = selectedCompId;
+            return;
+        }
         prevSelectedCompIdRef.current = selectedCompId;
 
         if (selectedPos && controls && !focusTargetPos) {
@@ -1436,7 +1540,7 @@ function CameraRig({
                 (controls as any).update();
             }
         }
-    }, [selectedPos, selectedCompId, camera, controls, isActivated, isDirectClickRef, focusTargetPos]);
+    }, [selectedPos, selectedCompId, camera, controls, isActivated, isDirectClickRef, focusTargetPos, hasSavedCameraState]);
 
     return null;
 }
@@ -2806,6 +2910,7 @@ function getComponentColorByMode(
 }
 
 export function Structural3DViewer({
+    platformId,
     components: rawComponents,
     platformDetails,
     elevations = [],
@@ -2825,12 +2930,36 @@ export function Structural3DViewer({
     activeColorMode: externalColorMode = "DEFAULT",
     selectedHistoricalCampaignId: externalCampaignId = "ALL",
     isInspectionMode: externalIsInspectionMode = false,
-    selectedInspectionFilters: externalSelectedInspectionFilters = ["Pending", "Completed", "Incomplete"]
+    selectedInspectionFilters: externalSelectedInspectionFilters = ["Pending", "Completed", "Incomplete"],
+    isLoading = false
 }: Structural3DViewerProps) {
     const isWorkspace = Boolean(
         isInspectionWorkspace || 
         compactMode || 
         (currentRecords && currentRecords.length > 0)
+    );
+
+    const activePlatformId = useMemo(() => {
+        return (
+            platformId ||
+            platformDetails?.plat_id ||
+            platformDetails?.id ||
+            platformDetails?.structure_id ||
+            webapp3dData?.structure_id ||
+            null
+        );
+    }, [platformId, platformDetails, webapp3dData]);
+
+    const initialSession = useMemo(() => {
+        if (!activePlatformId) return null;
+        return loadPlatform3DSession(activePlatformId);
+    }, [activePlatformId]);
+
+    const hasSavedCameraState = Boolean(
+        initialSession?.cameraPosition &&
+        initialSession?.controlsTarget &&
+        Array.isArray(initialSession.cameraPosition) &&
+        Array.isArray(initialSession.controlsTarget)
     );
     const wincairsParamsMap = useMemo(() => {
         const map = new Map<number, any>();
@@ -2893,18 +3022,18 @@ export function Structural3DViewer({
     useEffect(() => {
         setSelectedInspectionFilters(externalSelectedInspectionFilters);
     }, [externalSelectedInspectionFilters]);
-    const [showGrid, setShowGrid] = useState(true);
+    const [showGrid, setShowGrid] = useState(() => initialSession?.showGrid ?? true);
     const [resetTrigger, setResetTrigger] = useState(0);
-    const [showWater, setShowWater] = useState(true);
-    const [showWeldNumbering, setShowWeldNumbering] = useState(true);
-    const [showElevations, setShowElevations] = useState(true);
+    const [showWater, setShowWater] = useState(() => initialSession?.showWater ?? true);
+    const [showWeldNumbering, setShowWeldNumbering] = useState(() => initialSession?.showWeldNumbering ?? true);
+    const [showElevations, setShowElevations] = useState(() => initialSession?.showElevations ?? true);
     const [isCameraClose, setIsCameraClose] = useState(false);
-    const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
-    const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
+    const [selectedElevations, setSelectedElevations] = useState<number[]>(() => initialSession?.selectedElevations ?? []);
+    const [selectedFaces, setSelectedFaces] = useState<string[]>(() => initialSession?.selectedFaces ?? []);
     const [searchQuery, setSearchQuery] = useState("");
     const [showSearchDropdown, setShowSearchDropdown] = useState(false);
     const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | "inspection" | "colormap" | null>(null);
-    const [colorMode, setColorMode] = useState<VisualizationMode>(externalColorMode);
+    const [colorMode, setColorMode] = useState<VisualizationMode>(() => (initialSession?.colorMode as VisualizationMode) ?? externalColorMode);
     const [selectedCampaignId, setSelectedCampaignId] = useState<string | number>(externalCampaignId);
     const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<string | null>(null);
     const [libraryColors, setLibraryColors] = useState<Record<string, string>>({});
@@ -2922,6 +3051,21 @@ export function Structural3DViewer({
             return newList;
         });
     };
+
+    // Sync state changes to storage
+    useEffect(() => {
+        if (!activePlatformId) return;
+        savePlatform3DSession(activePlatformId, {
+            showGrid,
+            showWater,
+            showWeldNumbering,
+            showElevations,
+            selectedElevations,
+            selectedFaces,
+            colorMode,
+            selectedCompId: selectedCompId || null,
+        });
+    }, [activePlatformId, showGrid, showWater, showWeldNumbering, showElevations, selectedElevations, selectedFaces, colorMode, selectedCompId]);
 
     // Fetch and aggregate jobpacks strictly by structure_id registered in the jobpack (Inspection Workspace only)
     useEffect(() => {
@@ -3163,10 +3307,11 @@ export function Structural3DViewer({
     useEffect(() => {
         if (externalCampaignId) setSelectedCampaignId(externalCampaignId);
     }, [externalCampaignId]);
-    const [isActivated, setIsActivated] = useState(false);
+    const [isActivated, setIsActivated] = useState<boolean>(() => Boolean(isWorkspace || selectedCompId));
     const [isActivating, setIsActivating] = useState(false);
 
     const handleActivate = () => {
+        if (isLoading) return;
         setIsActivating(true);
         setTimeout(() => {
             setIsActivated(true);
@@ -3680,10 +3825,17 @@ export function Structural3DViewer({
                     /* DEFER ACTIVATION / INITIAL PLACEHOLDER */
                     <div className="relative z-10 flex flex-col items-center justify-center space-y-8 max-w-xl text-center p-4">
                         {/* Top Decorative Tag */}
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] shadow-sm shadow-blue-500/5 animate-pulse">
-                            <Compass className="w-3.5 h-3.5 stroke-[2] text-blue-400 animate-[spin_8s_linear_infinite]" />
-                            3D Modeling Utility Ready
-                        </div>
+                        {isLoading ? (
+                            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[9px] font-black text-amber-500 dark:text-amber-400 uppercase tracking-[0.3em] shadow-sm shadow-amber-500/5">
+                                <Loader2 className="w-3.5 h-3.5 stroke-[2.5] text-amber-500 dark:text-amber-400 animate-spin" />
+                                Syncing Platform Data...
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] shadow-sm shadow-blue-500/5 animate-pulse">
+                                <Compass className="w-3.5 h-3.5 stroke-[2] text-blue-400 animate-[spin_8s_linear_infinite]" />
+                                3D Modeling Utility Ready
+                            </div>
+                        )}
 
                         {/* Title & Info */}
                         <div className="space-y-3">
@@ -3699,25 +3851,43 @@ export function Structural3DViewer({
                         {/* Telemetry Stats Grid */}
                         <div className="grid grid-cols-3 gap-6 w-full max-w-md py-4 px-6 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 backdrop-blur-sm shadow-inner">
                             <div className="flex flex-col items-center justify-center text-center">
-                                <span className="text-xl font-black text-blue-400 leading-none mb-1">
-                                    {components.length}
-                                </span>
+                                {isLoading && components.length === 0 ? (
+                                    <div className="h-6 flex items-center justify-center mb-1">
+                                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <span className={cn("text-xl font-black text-blue-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                        {components.length}
+                                    </span>
+                                )}
                                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
                                     Assets
                                 </span>
                             </div>
-                            <div className="flex flex-col items-center justify-center text-center border-x border-slate-800/80">
-                                <span className="text-xl font-black text-indigo-400 leading-none mb-1">
-                                    {availableElevations.length}
-                                </span>
+                            <div className="flex flex-col items-center justify-center text-center border-x border-slate-200 dark:border-slate-800/80">
+                                {isLoading && availableElevations.length === 0 ? (
+                                    <div className="h-6 flex items-center justify-center mb-1">
+                                        <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <span className={cn("text-xl font-black text-indigo-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                        {availableElevations.length}
+                                    </span>
+                                )}
                                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
                                     Elevations
                                 </span>
                             </div>
                             <div className="flex flex-col items-center justify-center text-center">
-                                <span className="text-xl font-black text-emerald-400 leading-none mb-1">
-                                    {availableFaces.length}
-                                </span>
+                                {isLoading && availableFaces.length === 0 ? (
+                                    <div className="h-6 flex items-center justify-center mb-1">
+                                        <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <span className={cn("text-xl font-black text-emerald-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                        {availableFaces.length}
+                                    </span>
+                                )}
                                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
                                     Faces
                                 </span>
@@ -3725,23 +3895,43 @@ export function Structural3DViewer({
                         </div>
 
                         {/* Action Trigger Card */}
-                        <button
-                            onClick={handleActivate}
-                            className="group relative flex flex-col items-center justify-center p-6 bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] border border-orange-400/30 rounded-2xl shadow-lg hover:shadow-blue-500/20 transition-all duration-300 w-full max-w-sm overflow-hidden"
-                        >
-                            <div className="absolute inset-0 bg-radial-gradient from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        {isLoading ? (
+                            <button
+                                disabled
+                                type="button"
+                                className="relative flex flex-col items-center justify-center p-6 bg-slate-100 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700/60 rounded-2xl shadow-inner w-full max-w-sm cursor-not-allowed opacity-80 select-none transition-all duration-300"
+                            >
+                                <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600/50 text-slate-500 dark:text-slate-300 mb-3 shadow-inner">
+                                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                                </div>
 
-                            <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 border border-white/20 text-white mb-3 group-hover:scale-110 transition-transform duration-300 shadow-md">
-                                <Play className="w-5 h-5 fill-current text-white stroke-[1.5]" />
-                            </div>
+                                <span className="relative z-10 text-xs font-black uppercase tracking-[0.25em] text-slate-700 dark:text-slate-200">
+                                    Loading Platform Model...
+                                </span>
+                                <span className="relative z-10 text-[9px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-widest mt-1">
+                                    Fetching structural telemetry
+                                </span>
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={handleActivate}
+                                className="group relative flex flex-col items-center justify-center p-6 bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] border border-blue-400/30 rounded-2xl shadow-lg hover:shadow-blue-500/20 transition-all duration-300 w-full max-w-sm overflow-hidden cursor-pointer"
+                            >
+                                <div className="absolute inset-0 bg-radial-gradient from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                            <span className="relative z-10 text-xs font-black uppercase tracking-[0.25em] text-white">
-                                Load 3D Platform Model
-                            </span>
-                            <span className="relative z-10 text-[9px] font-bold text-blue-200 uppercase tracking-widest mt-1 opacity-80">
-                                Click to initialize GPU rendering
-                            </span>
-                        </button>
+                                <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 border border-white/20 text-white mb-3 group-hover:scale-110 transition-transform duration-300 shadow-md">
+                                    <Play className="w-5 h-5 fill-current text-white stroke-[1.5]" />
+                                </div>
+
+                                <span className="relative z-10 text-xs font-black uppercase tracking-[0.25em] text-white">
+                                    Load 3D Platform Model
+                                </span>
+                                <span className="relative z-10 text-[9px] font-bold text-blue-200 uppercase tracking-widest mt-1 opacity-80">
+                                    Click to initialize GPU rendering
+                                </span>
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -3752,6 +3942,12 @@ export function Structural3DViewer({
 
     return (
         <div className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative rounded-3xl overflow-hidden shadow-2xl">
+            {isLoading && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2 bg-slate-900/90 dark:bg-slate-900/95 backdrop-blur-md border border-blue-500/30 rounded-2xl shadow-xl animate-in fade-in zoom-in-95 duration-200">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">Syncing Platform 3D Data...</span>
+                </div>
+            )}
             <div className="relative z-0 w-full h-full">
                 <Canvas
                 shadows="soft"
@@ -3767,9 +3963,14 @@ export function Structural3DViewer({
             >
                 <color attach="background" args={["#ffffff"]} />
                 <fog attach="fog" args={["#ffffff", 40, 220]} />
-                <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
-                <CameraRig selectedPos={selectedPos} selectedCompId={selectedCompId} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} />
+                <PerspectiveCamera
+                    makeDefault
+                    position={initialSession?.cameraPosition && Array.isArray(initialSession.cameraPosition) ? initialSession.cameraPosition : [45, 45, 45]}
+                    fov={45}
+                />
+                <CameraRig selectedPos={selectedPos} selectedCompId={selectedCompId} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} hasSavedCameraState={hasSavedCameraState} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
+                <CameraPersistenceTracker platformId={activePlatformId} initialState={initialSession} />
 
                 <ambientLight intensity={0.45} />
                 <hemisphereLight intensity={0.35} color="#e2e8f0" groundColor="#334155" />
@@ -3793,8 +3994,8 @@ export function Structural3DViewer({
                 <CameraHeadlight intensity={0.4} />
 
 
-                <Bounds fit clip margin={1.0}>
-                    <ResetViewHandler trigger={resetTrigger} />
+                <Bounds fit={!hasSavedCameraState} clip margin={1.0}>
+                    <ResetViewHandler trigger={resetTrigger} platformId={activePlatformId} />
                     <CameraDistanceController onChange={setIsCameraClose} />
                     <SelectToZoom>
                         {/* Elevation Level Planes & Markers */}
