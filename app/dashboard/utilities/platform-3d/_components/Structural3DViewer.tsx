@@ -23,7 +23,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, Eye, SlidersHorizontal, Layers, Palette, Filter, History } from "lucide-react";
+import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, Eye, SlidersHorizontal, Layers, Palette, Filter, History, AlertCircle, Activity } from "lucide-react";
 import { getEffectiveClockAngle, computeRiserOffsetEndpoints, generatePlatform3DCoordinates } from "@/utils/platform-3d-math";
 import { getMainLegElementSets } from "../platform-legs-recognition";
 
@@ -3939,30 +3939,36 @@ export function Structural3DViewer({
 
                                 <div className="flex flex-col gap-1 text-[10px]">
                                     {[
-                                        { mode: "DEFAULT", label: "Standard Metallic 3D", desc: "Default material rendering" },
-                                        { mode: "ANOMALY_PRIORITY", label: "≡ƒö┤ Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4, Findings & Rectified" },
-                                        { mode: "FINDING_CATEGORY", label: "≡ƒöì Finding Category", desc: "Color by Corrosion, Marine Growth, Coating, Debris, Scour" },
-                                        { mode: "INSPECTION_STATUS", label: "≡ƒôè Inspection Status", desc: "Complete vs Incomplete vs Pending" },
-                                        { mode: "INSPECTION_TASK_TYPE", label: "≡ƒÄ¿ Inspection Task Type", desc: "Color code by FMD, UT, Anode, GVINS" },
-                                        { mode: "HISTORICAL_COMPARE", label: "≡ƒô£ Historical Jobpack Compare", desc: "Compare past campaign anomalies vs present" }
-                                    ].map(opt => (
-                                        <button
-                                            key={opt.mode}
-                                            onClick={() => {
-                                                setColorMode(opt.mode as VisualizationMode);
-                                                setOpenDropdown(null);
-                                            }}
-                                            className={cn(
-                                                "w-full text-left p-2 rounded-lg transition-all flex flex-col border cursor-pointer",
-                                                colorMode === opt.mode
-                                                    ? "bg-blue-600/30 border-blue-500 text-white font-bold"
-                                                    : "bg-slate-950/40 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
-                                            )}
-                                        >
-                                            <span className="font-bold text-xs">{opt.label}</span>
-                                            <span className="text-[9px] text-slate-400">{opt.desc}</span>
-                                        </button>
-                                    ))}
+                                        { mode: "DEFAULT", label: "Standard Metallic 3D", desc: "Default material rendering", icon: Box, iconColor: "text-slate-400" },
+                                        { mode: "ANOMALY_PRIORITY", label: "Anomaly Priority & Severity", desc: "Color by Priority 1 / 2 / 3 / 4, Findings & Rectified", icon: AlertCircle, iconColor: "text-red-400" },
+                                        { mode: "FINDING_CATEGORY", label: "Finding Category", desc: "Color by Corrosion, Marine Growth, Coating, Debris, Scour", icon: Search, iconColor: "text-amber-400" },
+                                        { mode: "INSPECTION_STATUS", label: "Inspection Status", desc: "Complete vs Incomplete vs Pending", icon: Activity, iconColor: "text-emerald-400" },
+                                        { mode: "INSPECTION_TASK_TYPE", label: "Inspection Task Type", desc: "Color code by FMD, UT, Anode, GVINS", icon: SlidersHorizontal, iconColor: "text-blue-400" },
+                                        { mode: "HISTORICAL_COMPARE", label: "Historical Jobpack Compare", desc: "Compare past campaign anomalies vs present", icon: History, iconColor: "text-purple-400" }
+                                    ].map(opt => {
+                                        const IconComponent = opt.icon;
+                                        return (
+                                            <button
+                                                key={opt.mode}
+                                                onClick={() => {
+                                                    setColorMode(opt.mode as VisualizationMode);
+                                                    setOpenDropdown(null);
+                                                }}
+                                                className={cn(
+                                                    "w-full text-left p-2 rounded-lg transition-all flex flex-col border cursor-pointer",
+                                                    colorMode === opt.mode
+                                                        ? "bg-blue-600/30 border-blue-500 text-white font-bold"
+                                                        : "bg-slate-950/40 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
+                                                )}
+                                            >
+                                                <span className="font-bold text-xs flex items-center gap-1.5">
+                                                    <IconComponent className={cn("w-3.5 h-3.5 shrink-0", opt.iconColor)} />
+                                                    {opt.label}
+                                                </span>
+                                                <span className="text-[9px] text-slate-400 pl-5">{opt.desc}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
 
                                 {/* Inspection Mode Scope Filter (BOTH / ROV / DIVING) */}

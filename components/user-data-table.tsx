@@ -21,7 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow, parseISO, format } from "date-fns";
-import { Loader2, Search, User as UserIcon, Shield, Activity, Edit2, CheckSquare, Save, X, ChevronUp, ChevronDown } from "lucide-react";
+import { Loader2, Search, User as UserIcon, Shield, Activity, Edit2, CheckSquare, Save, X, ChevronUp, ChevronDown, KeyRound } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { usePresence } from "@/components/presence-provider";
@@ -30,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { UserProfileCard } from "@/components/user-profile-card";
+import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
 
 
 const AVAILABLE_MODULES = [
@@ -67,6 +68,7 @@ export function UserDataTable() {
 
     // Editing State
     const [editingUser, setEditingUser] = useState<UserData | null>(null);
+    const [resetPasswordUser, setResetPasswordUser] = useState<{ id: string; email?: string; full_name?: string } | null>(null);
     const [editRole, setEditRole] = useState<string>("");
     const [editModules, setEditModules] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
@@ -520,14 +522,30 @@ export function UserDataTable() {
                                                 </TableCell>
                                                 {isAdmin && (
                                                     <TableCell className="text-right">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => handleEditClick(user)}
-                                                            className="text-slate-400 hover:bg-blue-50 hover:text-blue-600"
-                                                        >
-                                                            <Edit2 className="h-4 w-4" />
-                                                        </Button>
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => setResetPasswordUser({
+                                                                    id: user.id,
+                                                                    email: user.email,
+                                                                    full_name: getDisplayName(user),
+                                                                })}
+                                                                className="text-slate-400 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-950/30"
+                                                                title="Reset Password & Set One-Time Password"
+                                                            >
+                                                                <KeyRound className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleEditClick(user)}
+                                                                className="text-slate-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/30"
+                                                                title="Edit Roles & Module Access"
+                                                            >
+                                                                <Edit2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
                                                     </TableCell>
                                                 )}
                                             </TableRow>
@@ -633,6 +651,13 @@ export function UserDataTable() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* Reset Password Modal */}
+            <ResetPasswordDialog
+                open={!!resetPasswordUser}
+                onOpenChange={(open) => !open && setResetPasswordUser(null)}
+                user={resetPasswordUser}
+            />
         </div>
     );
 }

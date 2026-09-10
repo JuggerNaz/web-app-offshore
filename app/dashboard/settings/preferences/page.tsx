@@ -38,6 +38,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { useUserProfile } from "@/components/user-profile-provider";
+import { toast } from "sonner";
 
 interface CompanySettingsData {
     id: number;
@@ -55,8 +57,14 @@ interface CompanySettingsData {
 }
 
 export default function SettingsPage() {
-    const { data: settingsResponse, error, isLoading } = useSWR<{ data: CompanySettingsData }>(
-        "/api/company-settings",
+    const { activeCompanyId, company } = useUserProfile();
+
+    const swrKey = activeCompanyId
+        ? `/api/company-settings?company_id=${activeCompanyId}`
+        : "/api/company-settings";
+
+    const { data: settingsResponse, error, isLoading, mutate: mutateSettings } = useSWR<{ data: CompanySettingsData }>(
+        swrKey,
         fetcher
     );
 
@@ -93,6 +101,15 @@ export default function SettingsPage() {
         }
     }, [settingsResponse]);
 
+    // Listen for companySettingsChanged event across tabs/components
+    useEffect(() => {
+        const handleSync = () => {
+            mutate(swrKey);
+        };
+        window.addEventListener("companySettingsChanged", handleSync);
+        return () => window.removeEventListener("companySettingsChanged", handleSync);
+    }, [swrKey]);
+
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -100,12 +117,14 @@ export default function SettingsPage() {
         // Validate file type
         if (!file.type.startsWith("image/")) {
             setUploadError("Please upload an image file");
+            toast.error("Please upload an image file");
             return;
         }
 
         // Validate file size (max 2MB)
         if (file.size > 2 * 1024 * 1024) {
             setUploadError("File size must be less than 2MB");
+            toast.error("File size must be less than 2MB");
             return;
         }
 
@@ -116,7 +135,11 @@ export default function SettingsPage() {
             const formData = new FormData();
             formData.append("file", file);
 
-            const response = await fetch("/api/company-settings/logo", {
+            const uploadUrl = activeCompanyId
+                ? `/api/company-settings/logo?company_id=${activeCompanyId}`
+                : "/api/company-settings/logo";
+
+            const response = await fetch(uploadUrl, {
                 method: "POST",
                 body: formData,
             });
@@ -126,14 +149,16 @@ export default function SettingsPage() {
                 throw new Error(errorData.error || "Failed to upload logo");
             }
 
-            // Refresh settings data
-            await mutate("/api/company-settings");
+            // Refresh settings data for this company
+            await mutateSettings();
 
             // Dispatch event to notify sidebar
             window.dispatchEvent(new Event("companySettingsChanged"));
+            toast.success("Company logo updated successfully!");
         } catch (error: any) {
             console.error("Error uploading logo:", error);
             setUploadError(error.message || "Failed to upload logo");
+            toast.error(error.message || "Failed to upload logo");
         } finally {
             setIsUploading(false);
         }
@@ -146,7 +171,11 @@ export default function SettingsPage() {
         setUploadError(null);
 
         try {
-            const response = await fetch("/api/company-settings/logo", {
+            const deleteUrl = activeCompanyId
+                ? `/api/company-settings/logo?company_id=${activeCompanyId}`
+                : "/api/company-settings/logo";
+
+            const response = await fetch(deleteUrl, {
                 method: "DELETE",
             });
 
@@ -154,14 +183,16 @@ export default function SettingsPage() {
                 throw new Error("Failed to remove logo");
             }
 
-            // Refresh settings data
-            await mutate("/api/company-settings");
+            // Refresh settings data for this company
+            await mutateSettings();
 
             // Dispatch event to notify sidebar
             window.dispatchEvent(new Event("companySettingsChanged"));
+            toast.success("Company logo removed successfully.");
         } catch (error: any) {
             console.error("Error removing logo:", error);
             setUploadError(error.message || "Failed to remove logo");
+            toast.error(error.message || "Failed to remove logo");
         } finally {
             setIsUploading(false);
         }
@@ -172,7 +203,11 @@ export default function SettingsPage() {
         setSaveSuccess(false);
 
         try {
-            const response = await fetch("/api/company-settings", {
+            const saveUrl = activeCompanyId
+                ? `/api/company-settings?company_id=${activeCompanyId}`
+                : "/api/company-settings";
+
+            const response = await fetch(saveUrl, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
@@ -190,21 +225,28 @@ export default function SettingsPage() {
                 }),
             });
 
+            const json = await response.json();
+
             if (!response.ok) {
-                throw new Error("Failed to save settings");
+                const errMsg = json?.error || "Failed to save settings";
+                toast.error(errMsg);
+                alert(errMsg);
+                return;
             }
 
             // Refresh settings data
-            await mutate("/api/company-settings");
+            await mutateSettings();
 
             // Dispatch event to notify sidebar
             window.dispatchEvent(new Event("companySettingsChanged"));
 
+            toast.success("Settings saved successfully!");
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 3000);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error saving settings:", error);
-            alert("Failed to save settings");
+            toast.error(error.message || "Failed to save settings");
+            alert(error.message || "Failed to save settings");
         } finally {
             setIsSaving(false);
         }

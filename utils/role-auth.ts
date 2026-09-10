@@ -155,8 +155,8 @@ export function withRole(allowedRoles: UserRole[], handler: AuthenticatedRoleHan
         return apiUnauthorized("Authentication required");
       }
 
-      // 2. Retrieve the active company ID from headers
-      const companyId = request.headers.get("x-company-id");
+      // 2. Retrieve the active company ID from headers or cookies
+      const companyId = request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
 
       // 3. Retrieve user membership & profile details
       const result = await getUserMembership(supabase, user.id, companyId);

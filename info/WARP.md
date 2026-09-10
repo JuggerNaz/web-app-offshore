@@ -133,14 +133,16 @@ import { Button } from "@/components/ui/button";
 
 ### Authentication Flow
 
-1. **Middleware**: All routes pass through `proxy.ts`, which calls `updateSession()` to maintain auth state
-2. **Protected Routes**: Dashboard layout (`app/dashboard/layout.tsx`) checks for authenticated user and redirects to home if not logged in
+1. **Middleware**: All routes pass through `proxy.ts`, which calls `updateSession()` in `utils/supabase/middleware.ts` to maintain auth state and enforce mandatory password updates (`must_change_password`).
+2. **Protected Routes**: Dashboard layout (`app/dashboard/layout.tsx`) checks for authenticated user and redirects to home if not logged in. If `must_change_password` is set, user is restricted to `/force-change-password`.
 3. **Server Actions**: Authentication actions in `app/actions.ts`:
    - `signUpAction`: User registration
-   - `signInAction`: User login
+   - `signInAction`: User login with tenant membership resolution & compulsory password change check
    - `signOutAction`: User logout
-   - `forgotPasswordAction`: Password reset
-   - `resetPasswordAction`: Password update
+   - `forgotPasswordAction`: Email-based password reset
+   - `resetPasswordAction`: Standard password update
+   - `forceChangePasswordAction`: First-login password update for temporary passwords
+4. **Admin User Password Reset**: `POST /api/admin/users/[id]/reset-password` generates one-time temporary passwords and flags accounts with `must_change_password = true`. Detailed reference in `info/PASSWORD_RESET_AND_BACKEND_USER_GUIDE.md`.
 
 ### API Route Pattern
 

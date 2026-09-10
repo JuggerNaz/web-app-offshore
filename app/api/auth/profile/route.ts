@@ -11,7 +11,7 @@ import { getUserMembership } from "@/utils/role-auth";
 export const GET = withAuth(async (request: NextRequest, { user }) => {
   try {
     const supabase = createClient() as any;
-    const companyId = request.headers.get("x-company-id");
+    const companyId = request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
 
     const result = await getUserMembership(supabase, user.id, companyId);
     if ("error" in result) {
@@ -58,7 +58,7 @@ export const PATCH = withAuth(async (request: NextRequest, { user }) => {
     }
 
     // Return the updated profile along with the memberships context
-    const companyId = request.headers.get("x-company-id");
+    const companyId = request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
     const result = await getUserMembership(supabase, user.id, companyId);
     if ("error" in result) {
       return apiForbidden(result.error);

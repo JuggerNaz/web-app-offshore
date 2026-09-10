@@ -46,7 +46,7 @@ export const updateSession = async (request: NextRequest) => {
       // Fetch user profile to check active state and login schedule constraints
       const { data: profile } = await supabase
         .from("profiles")
-        .select("is_active, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone, device_restriction_type")
+        .select("is_active, must_change_password, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone, device_restriction_type")
         .eq("id", user.data.user.id)
         .single();
 
@@ -56,6 +56,11 @@ export const updateSession = async (request: NextRequest) => {
           const redirectRes = NextResponse.redirect(new URL("/?error=inactive", request.url));
           // Clear session cookies by copying the updated headers/cookies from the client
           return redirectRes;
+        }
+
+        // Compulsory password change enforcement
+        if (profile.must_change_password || user.data.user.user_metadata?.must_change_password === true) {
+          return NextResponse.redirect(new URL("/force-change-password", request.url));
         }
 
         // 1. Device restriction token validation check

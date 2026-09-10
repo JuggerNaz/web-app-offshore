@@ -79,9 +79,9 @@ export function UserProfileProvider({
 
     try {
       const headers: HeadersInit = {};
-      const stored = typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null;
-      if (stored) {
-        headers["x-company-id"] = stored;
+      const targetId = activeCompanyId || (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null);
+      if (targetId) {
+        headers["x-company-id"] = targetId;
       }
 
       const res = await fetch("/api/auth/profile", { headers });
@@ -107,13 +107,9 @@ export function UserProfileProvider({
     try {
       setIsLoading(true);
       const headers: HeadersInit = {};
-      if (targetCompanyId) {
-        headers["x-company-id"] = targetCompanyId;
-      } else {
-        const stored = typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null;
-        if (stored) {
-          headers["x-company-id"] = stored;
-        }
+      const targetId = targetCompanyId || activeCompanyId || (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null);
+      if (targetId) {
+        headers["x-company-id"] = targetId;
       }
 
       const res = await fetch("/api/auth/profile", { headers });
@@ -146,15 +142,10 @@ export function UserProfileProvider({
     if (!initialData) {
       fetchProfile();
     } else {
-      // If we have initial data, ensure local storage matches
-      if (typeof window !== "undefined") {
-        const stored = localStorage.getItem("active_company_id");
-        if (stored && stored !== initialData.company.id) {
-          // If stored active company differs from server initial company, refetch to sync
-          fetchProfile(stored);
-        } else {
-          localStorage.setItem("active_company_id", initialData.company.id);
-        }
+      // Synchronize client localStorage with server-resolved company selection
+      if (typeof window !== "undefined" && initialData.company?.id) {
+        localStorage.setItem("active_company_id", initialData.company.id);
+        setActiveCompanyIdState(initialData.company.id);
       }
     }
 
@@ -164,13 +155,18 @@ export function UserProfileProvider({
     }, 15000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [initialData]);
 
   const setActiveCompanyId = async (companyId: string) => {
+    setActiveCompanyIdState(companyId);
     if (typeof window !== "undefined") {
       localStorage.setItem("active_company_id", companyId);
+      document.cookie = `active_company_id=${companyId}; path=/; max-age=2592000; SameSite=Lax`;
     }
     await fetchProfile(companyId);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("companySettingsChanged"));
+    }
   };
 
   const hasMinRole = (requiredRole: UserRole): boolean => {

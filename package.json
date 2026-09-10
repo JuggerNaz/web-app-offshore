@@ -16,7 +16,8 @@
     "test:coverage": "vitest run --coverage",
     "setup-storage": "node scripts/setup-storage.js",
     "test-storage": "node scripts/test-storage-url.js",
-    "sync-specs": "node scripts/sync-specs.mjs"
+    "sync-specs": "node scripts/sync-specs.mjs",
+    "reset-password": "node scripts/reset-user-password.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",
