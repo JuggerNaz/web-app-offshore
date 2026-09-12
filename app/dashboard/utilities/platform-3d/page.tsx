@@ -59,6 +59,12 @@ import { InspectionStatusDialog } from "@/components/dialogs/inspection-status-d
 import { ExternalLink } from "lucide-react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
+import {
+    getActivePlatformId,
+    setActivePlatformId,
+    loadPlatform3DSession,
+    savePlatform3DSession,
+} from "./utils/platform-3d-storage";
 
 interface Platform {
     plat_id: number;
@@ -187,9 +193,42 @@ export default function Platform3DPage() {
         }
     }, [selectedPlatform, setGlobalUrlId, setGlobalUrlType]);
 
+    const initialPlatformIdRef = useRef<number | null>(null);
+    const [initialCheckDone, setInitialCheckDone] = useState(false);
+
     // 1. Fetch Platforms
     const { data: platformsData, isLoading: isPlatformsLoading } = useSWR("/api/platform", fetcher);
     const platforms: Platform[] = useMemo(() => platformsData?.data || [], [platformsData]);
+
+    // Read initial target platform from URL or localStorage ONCE on mount
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const rawParam = params.get("platformId") || params.get("plat_id") || params.get("id");
+            if (rawParam && !isNaN(Number(rawParam))) {
+                initialPlatformIdRef.current = Number(rawParam);
+            } else {
+                const storedId = getActivePlatformId();
+                if (storedId) {
+                    initialPlatformIdRef.current = storedId;
+                }
+            }
+        }
+        setInitialCheckDone(true);
+    }, []);
+
+    // Auto-restore selected platform as soon as platforms array is populated
+    useEffect(() => {
+        if (selectedPlatform || platforms.length === 0) return;
+
+        const targetId = initialPlatformIdRef.current;
+        if (targetId) {
+            const matched = platforms.find((p) => p.plat_id === targetId);
+            if (matched) {
+                setSelectedPlatform(matched);
+            }
+        }
+    }, [platforms, selectedPlatform]);
 
     // 2. Fetch Components for Selected Platform
     const { 
@@ -308,14 +347,14 @@ export default function Platform3DPage() {
     const webapp3dData = webapp3dResponse?.data;
 
     // 4. Fetch Elevations
-    const { data: elevationsData } = useSWR(
+    const { data: elevationsData, isLoading: isElevationsLoading } = useSWR(
         selectedPlatform ? `/api/platform/elevation/${selectedPlatform.plat_id}` : null,
         fetcher
     );
     const elevations = elevationsData?.data || [];
 
     // 5. Fetch Structural Faces
-    const { data: facesData } = useSWR(
+    const { data: facesData, isLoading: isFacesLoading } = useSWR(
         selectedPlatform ? `/api/platform/faces/${selectedPlatform.plat_id}` : null,
         fetcher
     );
@@ -327,6 +366,15 @@ export default function Platform3DPage() {
         fetcher
     );
     const wincairsParams = useMemo(() => wincairsData?.data || [], [wincairsData]);
+
+    const isPlatformDataLoading = Boolean(
+        isComponentsLoading ||
+        isPlatformDetailLoading ||
+        isWebapp3dLoading ||
+        isElevationsLoading ||
+        isFacesLoading ||
+        (selectedPlatform && (!componentsData || !platformDetailData))
+    );
 
     const filteredAndSortedPlatforms = useMemo(() => {
         const rawQuery = (searchQuery || "").trim().toLowerCase();
@@ -411,9 +459,86 @@ export default function Platform3DPage() {
             .slice(0, 15);
     }, [components, componentSearchQuery]);
 
+    // Auto-restore selected component and spec open state from URL query parameter or session storage
+    useEffect(() => {
+        if (!selectedPlatform || components.length === 0) return;
+
+        let targetCompId: number | null = null;
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const rawComp = params.get("comp") || params.get("componentId");
+            if (rawComp && !isNaN(Number(rawComp))) {
+                targetCompId = Number(rawComp);
+            }
+        }
+
+        const session = loadPlatform3DSession(selectedPlatform.plat_id);
+        if (!targetCompId && session?.selectedCompId) {
+            targetCompId = Number(session.selectedCompId);
+        }
+
+        if (targetCompId && !selectedComponent) {
+            const matched = components.find(
+                (c: any) => c.id === targetCompId || c.comp_id === targetCompId
+            );
+            if (matched) {
+                setSelectedComponent(matched);
+                if (session?.isSpecOpen) {
+                    setIsSpecOpen(true);
+                }
+            }
+        }
+    }, [selectedPlatform, components, selectedComponent]);
+
+    // Synchronize URL and storage when component or spec dialog state changes
+    useEffect(() => {
+        if (typeof window === "undefined" || !selectedPlatform) return;
+        const url = new URL(window.location.href);
+
+        if (selectedComponent) {
+            url.searchParams.set("comp", String(selectedComponent.id || selectedComponent.comp_id));
+            savePlatform3DSession(selectedPlatform.plat_id, {
+                selectedCompId: selectedComponent.id,
+                isSpecOpen,
+            });
+        } else {
+            url.searchParams.delete("comp");
+            savePlatform3DSession(selectedPlatform.plat_id, {
+                selectedCompId: null,
+                isSpecOpen: false,
+            });
+        }
+        window.history.replaceState({}, "", url.toString());
+    }, [selectedPlatform, selectedComponent, isSpecOpen]);
+
     const handleSelectComponent = (comp: any) => {
         setSelectedComponent(comp);
         setIsSpecOpen(true);
+    };
+
+    const handleSelectPlatform = (p: Platform) => {
+        setSelectedPlatform(p);
+        setActivePlatformId(p.plat_id);
+        initialPlatformIdRef.current = p.plat_id;
+        if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.set("platformId", String(p.plat_id));
+            window.history.replaceState({}, "", url.toString());
+        }
+    };
+
+    const handleBackToPlatforms = () => {
+        setSelectedPlatform(null);
+        setSelectedComponent(null);
+        setIsSpecOpen(false);
+        setActivePlatformId(null);
+        initialPlatformIdRef.current = null;
+        if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("platformId");
+            url.searchParams.delete("comp");
+            window.history.replaceState({}, "", url.toString());
+        }
     };
 
     if (selectedPlatform) {
@@ -425,7 +550,7 @@ export default function Platform3DPage() {
                         <Button 
                             variant="ghost" 
                             size="icon" 
-                            onClick={() => setSelectedPlatform(null)}
+                            onClick={handleBackToPlatforms}
                             className="rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
                         >
                             <ArrowLeft className="h-5 w-5" />
@@ -598,15 +723,9 @@ export default function Platform3DPage() {
                 {/* Viewer Container */}
                 <div className="flex-1 p-6 flex gap-6 relative overflow-hidden h-[calc(100vh-130px)]">
                     <div className="flex-1 h-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] relative overflow-hidden">
-                        {(isComponentsLoading || isPlatformDetailLoading) ? (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm z-10 rounded-[2rem]">
-                                <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4" />
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Constructing Structural Mesh...</p>
-                            </div>
-                        ) : null}
-                        
                         <Structural3DViewer 
                             key={`scene-v-${sceneVersion}`}
+                            platformId={selectedPlatform.plat_id}
                             components={components} 
                             platformDetails={platformDetails}
                             elevations={elevations}
@@ -619,6 +738,7 @@ export default function Platform3DPage() {
                             webapp3dData={useWebapp3dConnection ? webapp3dData : null}
                             isInspectionMode={inspectionJobpackId !== null && inspectionFilters.length > 0}
                             selectedInspectionFilters={inspectionFilters}
+                            isLoading={isPlatformDataLoading}
                         />
                     </div>
 
@@ -765,11 +885,13 @@ export default function Platform3DPage() {
                     </div>
                 </div>
 
-                {/* Main Content Area */}
-                {isPlatformsLoading ? (
+                {/* Main View Section (Grid / Icon vs Listing) */}
+                {(isPlatformsLoading || (initialPlatformIdRef.current && !selectedPlatform)) ? (
                     <div className="flex-1 flex flex-col items-center justify-center p-20 space-y-4">
                         <div className="w-16 h-16 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
-                        <p className="text-xs font-black uppercase tracking-widest text-slate-400">Loading Fleet Library...</p>
+                        <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                            {initialPlatformIdRef.current ? "Restoring 3D Environment..." : "Loading Fleet Library..."}
+                        </p>
                     </div>
                 ) : viewMode === "card" ? (
                     /* Button / Card Grid View */
@@ -777,7 +899,7 @@ export default function Platform3DPage() {
                         {filteredAndSortedPlatforms.map((p) => (
                             <button
                                 key={p.plat_id}
-                                onClick={() => setSelectedPlatform(p)}
+                                onClick={() => handleSelectPlatform(p)}
                                 className="group text-left"
                             >
                                 <div className="relative h-[20rem] flex flex-col rounded-[2.5rem] overflow-hidden border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/50 dark:shadow-black/20 hover:shadow-2xl hover:scale-[1.02] transition-all duration-500">

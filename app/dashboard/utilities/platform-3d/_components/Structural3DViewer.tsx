@@ -6,6 +6,7 @@ import { RiserGuard } from "./RiserGuard";
 import { CaissonSupport } from "./CaissonSupport";
 import { RiserClamp } from "./RiserClamp";
 import { PileLeg } from "./PileLeg";
+import { GuideBucket } from "./GuideBucket";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
     OrbitControls,
@@ -23,9 +24,15 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, Eye, SlidersHorizontal, Layers, Palette, Filter, History, AlertCircle, Activity } from "lucide-react";
+import { Play, Box, Radio, Compass, RefreshCw, Maximize2, Search, ChevronRight, ChevronDown, Eye, SlidersHorizontal, Layers, Palette, Filter, History, AlertCircle, Activity, Loader2 } from "lucide-react";
 import { getEffectiveClockAngle, computeRiserOffsetEndpoints, generatePlatform3DCoordinates } from "@/utils/platform-3d-math";
 import { getMainLegElementSets } from "../platform-legs-recognition";
+import {
+    loadPlatform3DSession,
+    savePlatform3DSession,
+    clearPlatform3DSession,
+    type Platform3DSessionState
+} from "../utils/platform-3d-storage";
 
 interface Component3D {
     id: number;
@@ -50,6 +57,7 @@ export type VisualizationMode =
     | "HISTORICAL_COMPARE";
 
 interface Structural3DViewerProps {
+    platformId?: number | string;
     webapp3dData?: any;
     components: Component3D[];
     platformDetails?: any;
@@ -71,6 +79,7 @@ interface Structural3DViewerProps {
     selectedHistoricalCampaignId?: string | number;
     isInspectionMode?: boolean;
     selectedInspectionFilters?: string[];
+    isLoading?: boolean;
 }
 
 function parseRiserClampInfo(qId: string) {
@@ -210,9 +219,14 @@ const ComponentMesh = ({
     const isNode = (code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND") && !qIdUpper.includes("SUPP") && !qIdUpper.includes("CLP");
     const isAnode = code === "AN" || code.includes("ANOD");
     const isCaissonSupportComponent = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
-    const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupportComponent;
-    const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupportComponent;
-    const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport) || code.includes("WELD")) && !isClamp;
+    const isConductorSupport =
+        /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
+        (qIdUpper.startsWith("CB-") || qIdUpper.startsWith("GB-") || qIdUpper.startsWith("CGB-")) ||
+        (code === "CG" && qIdUpper.includes("BUCK"));
+    const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || isConductorSupport;
+    const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupportComponent && !isGuideBucket;
+    const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupportComponent && !isGuideBucket;
+    const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport) || code.includes("WELD")) && !isClamp && !isGuideBucket;
     const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS");
     const isRiser = !isAnode && !isRiserSupport && !isCaisson && (
         code === "RS" ||
@@ -224,10 +238,10 @@ const ComponentMesh = ({
     const isConductor = code === "CD" || isCaisson || code.includes("COND") || code === "CO";
 
     const defaultMeshColor = isAnode
-        ? "#F8FAFC"
+        ? "#e2e8f0"
         : isWeld
             ? "#94a3b8"
-            : isClamp
+            : (isClamp || isGuideBucket)
                 ? "#facc15"
                 : isRiser
                     ? "#334155"
@@ -305,8 +319,8 @@ const ComponentMesh = ({
 
     const quaternion = new THREE.Quaternion();
     const euler = new THREE.Euler();
-    if (isCaissonSupportComponent) {
-        // Caisson supports wrap around vertical caisson pipes, so force straight vertical alignment
+    if (isCaissonSupportComponent || isGuideBucket) {
+        // Caisson supports and Guide Buckets wrap around vertical pipes/conductors, so force straight vertical alignment
         direction = new THREE.Vector3(0, 1, 0);
         euler.set(0, 0, 0);
     } else if (length > 0.001) {
@@ -767,6 +781,73 @@ const ComponentMesh = ({
         );
     }
 
+    if (isGuideBucket) {
+        const guideBucketGroup = useMemo(() => {
+            let bucketColor = "#facc15";
+            if (isInspectionHighlighted) {
+                if (inspectionStatus === "Incomplete") bucketColor = "#d97706";
+                else if (inspectionStatus === "Completed") bucketColor = "#22c55e";
+                else bucketColor = "#334155";
+            }
+            return new GuideBucket({
+                outerRadius: (baseThickness || 0.3) / 2 + 0.08,
+                height: 0.55,
+                color: bucketColor,
+                isSelected,
+                isHovered: hovered,
+            });
+        }, [baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus]);
+
+        return (
+            <group
+                position={[position.x + ox, position.y + oy, position.z + oz]}
+                rotation={euler}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClick();
+                }}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onDoubleClick) onDoubleClick();
+                }}
+                onPointerOver={(e) => {
+                    e.stopPropagation();
+                    setHovered(true);
+                }}
+                onPointerOut={(e) => {
+                    e.stopPropagation();
+                    setHovered(false);
+                }}
+            >
+                <primitive object={guideBucketGroup} />
+
+                {/* Click target wrapper */}
+                <mesh castShadow={false} receiveShadow={false}>
+                    <cylinderGeometry args={[(baseThickness || 0.3) / 2 + 0.35, (baseThickness || 0.3) / 2 + 0.35, 0.7, 16]} />
+                    <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+
+                {showLabel && (
+                    <Html
+                        distanceFactor={15}
+                        position={[0, 0.65, 0]}
+                        center
+                        zIndexRange={[10, 0]}
+                    >
+                        <div
+                            className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected
+                                ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]"
+                                : "bg-slate-900/90 text-slate-100 border-slate-700"
+                                }`}
+                        >
+                            {labelText}
+                        </div>
+                    </Html>
+                )}
+            </group>
+        );
+    }
+
     if (isCaissonSupportComponent) {
         const caissonSupportGroup = useMemo(() => {
             let supportColor = "#facc15";
@@ -931,6 +1012,7 @@ const ComponentMesh = ({
                 <mesh
                     castShadow
                     receiveShadow
+                    rotation={[0, 0, 0]}
                     onClick={(e) => {
                         e.stopPropagation();
                         onClick();
@@ -951,8 +1033,8 @@ const ComponentMesh = ({
                     )}
                     <meshStandardMaterial
                         color={displayColor}
-                        metalness={isAnode ? 0.85 : isWeld ? 0.2 : isClamp ? 0.8 : isRiser || isConductor ? 0.75 : 0.7}
-                        roughness={isAnode ? 0.25 : isWeld ? 0.5 : isClamp ? 0.25 : isRiser || isConductor ? 0.45 : 0.3}
+                        metalness={isAnode ? 0.35 : isWeld ? 0.2 : isClamp ? 0.8 : isRiser || isConductor ? 0.75 : 0.7}
+                        roughness={isAnode ? 0.35 : isWeld ? 0.5 : isClamp ? 0.25 : isRiser || isConductor ? 0.45 : 0.3}
                         emissive={emissiveColor}
                         emissiveIntensity={emissiveInt}
                     />
@@ -975,39 +1057,55 @@ const ComponentMesh = ({
                             />
                         </mesh>
                     )}
-                    {isAnode && (
-                        <group>
-                            { }
-                            <mesh position={[0, safeMeshLength / 2 + 0.1, 0]} castShadow receiveShadow>
-                                <cylinderGeometry args={[0.025, 0.025, 0.2, 12]} />
-                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
-                            </mesh>
-                            <mesh
-                                position={[0, safeMeshLength / 2 + 0.18, -offsetDistance / 2]}
-                                rotation={[Math.PI / 2, 0, 0]}
-                                castShadow
-                                receiveShadow
-                            >
-                                <cylinderGeometry args={[0.025, 0.025, offsetDistance, 12]} />
-                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
-                            </mesh>
-                            { }
-                            <mesh position={[0, -safeMeshLength / 2 - 0.1, 0]} castShadow receiveShadow>
-                                <cylinderGeometry args={[0.025, 0.025, 0.2, 12]} />
-                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
-                            </mesh>
-                            <mesh
-                                position={[0, -safeMeshLength / 2 - 0.18, -offsetDistance / 2]}
-                                rotation={[Math.PI / 2, 0, 0]}
-                                castShadow
-                                receiveShadow
-                            >
-                                <cylinderGeometry args={[0.025, 0.025, offsetDistance, 12]} />
-                                <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.2} />
-                            </mesh>
-                        </group>
-                    )}
                 </mesh>
+
+                {isAnode && (
+                    <group>
+                        {/* Top Standoff Insert */}
+                        {/* Axial extension rod */}
+                        <mesh position={[0, safeMeshLength / 2 + 0.09, 0]} castShadow receiveShadow>
+                            <cylinderGeometry args={[0.025, 0.025, 0.18, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                        {/* Smooth corner spherical elbow */}
+                        <mesh position={[0, safeMeshLength / 2 + 0.18, 0]} castShadow receiveShadow>
+                            <sphereGeometry args={[0.025, 16, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                        {/* Standoff leg into pipe */}
+                        <mesh
+                            position={[0, safeMeshLength / 2 + 0.18, -offsetDistance / 2]}
+                            rotation={[Math.PI / 2, 0, 0]}
+                            castShadow
+                            receiveShadow
+                        >
+                            <cylinderGeometry args={[0.025, 0.025, offsetDistance, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+
+                        {/* Bottom Standoff Insert */}
+                        {/* Axial extension rod */}
+                        <mesh position={[0, -safeMeshLength / 2 - 0.09, 0]} castShadow receiveShadow>
+                            <cylinderGeometry args={[0.025, 0.025, 0.18, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                        {/* Smooth corner spherical elbow */}
+                        <mesh position={[0, -safeMeshLength / 2 - 0.18, 0]} castShadow receiveShadow>
+                            <sphereGeometry args={[0.025, 16, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                        {/* Standoff leg into pipe */}
+                        <mesh
+                            position={[0, -safeMeshLength / 2 - 0.18, -offsetDistance / 2]}
+                            rotation={[Math.PI / 2, 0, 0]}
+                            castShadow
+                            receiveShadow
+                        >
+                            <cylinderGeometry args={[0.025, 0.025, offsetDistance, 16]} />
+                            <meshStandardMaterial color={displayColor} metalness={0.35} roughness={0.35} />
+                        </mesh>
+                    </group>
+                )}
 
                 { }
                 <mesh
@@ -1231,7 +1329,7 @@ function CameraDistanceController({ onChange }: { onChange: (isClose: boolean) =
     return null;
 }
 
-function ResetViewHandler({ trigger }: { trigger: number }) {
+function ResetViewHandler({ trigger, platformId }: { trigger: number; platformId?: number | string | null }) {
     const api = useBounds();
     const isFirstRun = React.useRef(true);
 
@@ -1240,8 +1338,11 @@ function ResetViewHandler({ trigger }: { trigger: number }) {
             isFirstRun.current = false;
             return;
         }
+        if (platformId) {
+            clearPlatform3DSession(platformId);
+        }
         api.refresh().fit();
-    }, [trigger, api]);
+    }, [trigger, api, platformId]);
 
     return null;
 }
@@ -1259,9 +1360,95 @@ function CameraHeadlight({ intensity = 0.85 }: { intensity?: number }) {
     return <directionalLight ref={lightRef} intensity={intensity} />;
 }
 
+function CameraPersistenceTracker({
+    platformId,
+    initialState,
+    onRestored,
+}: {
+    platformId: number | string | null;
+    initialState: Platform3DSessionState | null;
+    onRestored?: () => void;
+}) {
+    const { camera, controls } = useThree();
+    const hasAppliedInitialRef = useRef(false);
 
+    // Apply saved camera coordinates upon mount before first paint
+    useLayoutEffect(() => {
+        if (!controls || !initialState || hasAppliedInitialRef.current) return;
+        hasAppliedInitialRef.current = true;
 
+        if (initialState.cameraPosition && initialState.controlsTarget) {
+            const [cx, cy, cz] = initialState.cameraPosition;
+            const [tx, ty, tz] = initialState.controlsTarget;
 
+            if (isFinite(cx) && isFinite(cy) && isFinite(cz)) {
+                camera.position.set(cx, cy, cz);
+            }
+            if (isFinite(tx) && isFinite(ty) && isFinite(tz)) {
+                (controls as any).target.set(tx, ty, tz);
+                camera.lookAt(tx, ty, tz);
+            }
+            camera.updateMatrixWorld(true);
+            camera.updateProjectionMatrix();
+            if (typeof (controls as any).update === 'function') {
+                (controls as any).update();
+            }
+            if (onRestored) {
+                onRestored();
+            }
+        }
+    }, [controls, camera, initialState, onRestored]);
+
+    // Attach listeners to controls to save state on user movement
+    useEffect(() => {
+        if (!controls || !platformId) return;
+
+        const orbControls = controls as any;
+        let debounceTimer: NodeJS.Timeout | null = null;
+
+        const handleControlsChange = () => {
+            const cp = camera.position;
+            const ct = orbControls.target;
+            if (
+                isFinite(cp.x) && isFinite(cp.y) && isFinite(cp.z) &&
+                isFinite(ct.x) && isFinite(ct.y) && isFinite(ct.z)
+            ) {
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    savePlatform3DSession(platformId, {
+                        cameraPosition: [cp.x, cp.y, cp.z],
+                        controlsTarget: [ct.x, ct.y, ct.z],
+                    });
+                }, 500);
+            }
+        };
+
+        const handleControlsEnd = () => {
+            const cp = camera.position;
+            const ct = orbControls.target;
+            if (
+                isFinite(cp.x) && isFinite(cp.y) && isFinite(cp.z) &&
+                isFinite(ct.x) && isFinite(ct.y) && isFinite(ct.z)
+            ) {
+                savePlatform3DSession(platformId, {
+                    cameraPosition: [cp.x, cp.y, cp.z],
+                    controlsTarget: [ct.x, ct.y, ct.z],
+                });
+            }
+        };
+
+        orbControls.addEventListener('change', handleControlsChange);
+        orbControls.addEventListener('end', handleControlsEnd);
+
+        return () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            orbControls.removeEventListener('change', handleControlsChange);
+            orbControls.removeEventListener('end', handleControlsEnd);
+        };
+    }, [controls, camera, platformId]);
+
+    return null;
+}
 
 function CameraRig({
     selectedPos,
@@ -1269,12 +1456,14 @@ function CameraRig({
     isActivated,
     isDirectClickRef,
     focusTargetPos,
+    hasSavedCameraState = false,
 }: {
     selectedPos: THREE.Vector3 | null;
     selectedCompId?: number;
     isActivated: boolean;
     isDirectClickRef: React.MutableRefObject<boolean>;
     focusTargetPos: THREE.Vector3 | null;
+    hasSavedCameraState?: boolean;
 }) {
     const { camera, controls } = useThree();
     const animRef = useRef<number | null>(null);
@@ -1333,6 +1522,11 @@ function CameraRig({
         if (prevSelectedCompIdRef.current === selectedCompId) {
             return;
         }
+        // If this is the initial render and we have a restored camera position, preserve it
+        if (prevSelectedCompIdRef.current === undefined && hasSavedCameraState) {
+            prevSelectedCompIdRef.current = selectedCompId;
+            return;
+        }
         prevSelectedCompIdRef.current = selectedCompId;
 
         if (selectedPos && controls && !focusTargetPos) {
@@ -1346,7 +1540,7 @@ function CameraRig({
                 (controls as any).update();
             }
         }
-    }, [selectedPos, selectedCompId, camera, controls, isActivated, isDirectClickRef, focusTargetPos]);
+    }, [selectedPos, selectedCompId, camera, controls, isActivated, isDirectClickRef, focusTargetPos, hasSavedCameraState]);
 
     return null;
 }
@@ -1448,10 +1642,15 @@ function InstancedComponentViewer({
                 qIdUpper.startsWith("BLD");
             const isRiserGuard = code === "RG" || code.includes("RGUARD") || code.includes("RISG");
             const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
-            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport;
-            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport;
+            const isConductorSupport =
+                /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
+                (qIdUpper.startsWith("CB-") || qIdUpper.startsWith("GB-") || qIdUpper.startsWith("CGB-")) ||
+                (code === "CG" && qIdUpper.includes("BUCK"));
+            const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || isConductorSupport;
+            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport && !isGuideBucket;
+            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport && !isGuideBucket;
 
-            const isRiser = !isRiserSupport && !isCaissonSupport && !isClamp && (
+            const isRiser = !isRiserSupport && !isCaissonSupport && !isClamp && !isGuideBucket && (
                 code === "RS" ||
                 code.includes("RISER") || code.includes("RISR") ||
                 qIdUpper.includes("RISER") || qIdUpper.includes("RISR") ||
@@ -1470,7 +1669,7 @@ function InstancedComponentViewer({
             const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE");
             const isPileLegComponent = (code === "PL" || isPile || qIdUpper.includes("PILE LEG") || qIdUpper.includes("PILE_LEG")) && !isSingleNode && (hasTwoNodes || dist > 0.001);
 
-            if (isFender || isRiserGuard || isRiser || isClamp || isCaissonSupport || isPileLegComponent) {
+            if (isFender || isRiserGuard || isRiser || isClamp || isCaissonSupport || isGuideBucket || isPileLegComponent) {
                 custom.push({ ...layout, comp, code });
                 return;
             }
@@ -1818,15 +2017,17 @@ function InstancedComponentViewer({
             const axialLen = 0.12;    // longer axial extension
             const penetration = 0.04;
             
-            // Render Main Anode Body (Box)
-            const boxQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cylDir);
+            // Render Main Anode Body (Box) - true square cross-section aligned with standoff stubs and member
+            const tangent = cylDir.clone().cross(normal).normalize();
+            const basisMatrix = new THREE.Matrix4().makeBasis(tangent, cylDir, normal);
+            const boxQuat = new THREE.Quaternion().setFromRotationMatrix(basisMatrix);
             boxMatrix.compose(pos, boxQuat, new THREE.Vector3(anodeWidth, anodeLength, anodeHeight));
             boxMesh.setMatrixAt(i, boxMatrix);
             
             const compId = item.comp?.id || item.id;
             const isSelected = selectedCompId === compId;
-            const bodyColor = isSelected ? "#f97316" : "#e2e8f0"; // light grey/zinc for anode body
-            const stubColor = isSelected ? "#f97316" : "#94a3b8"; // steel grey for steel core stubs
+            const bodyColor = isSelected ? "#f97316" : "#e2e8f0"; // light metallic silver for anode body
+            const stubColor = isSelected ? "#f97316" : "#e2e8f0"; // light metallic silver for stubs matching anode body
             
             color.set(getInspectionColor(item, bodyColor));
             boxMesh.setColorAt(i, color);
@@ -1872,9 +2073,9 @@ function InstancedComponentViewer({
             stubMesh.setMatrixAt(stubIndex++, stubMatrix);
             stubMesh.setColorAt(stubIndex - 1, color);
             
-            // Elbow Joint Spheres 1 & 2 (Sphere nodes at corner bend)
+            // Elbow Joint Spheres 1 & 2 (Smooth spherical corner elbows bridging axial & radial stubs)
             const elbowQuat = new THREE.Quaternion();
-            const elbowScale = new THREE.Vector3(stubRadius * 1.3, stubRadius * 1.3, stubRadius * 1.3);
+            const elbowScale = new THREE.Vector3(stubRadius, stubRadius, stubRadius);
             
             const elbow1Matrix = new THREE.Matrix4().compose(corner1, elbowQuat, elbowScale);
             elbowMesh.setMatrixAt(elbowIndex++, elbow1Matrix);
@@ -1982,7 +2183,7 @@ function InstancedComponentViewer({
                     onPointerOut={() => setHoveredComp(null)}
                 >
                     <boxGeometry args={[1, 1, 1]} />
-                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
+                    <meshStandardMaterial metalness={0.35} roughness={0.35} />
                 </instancedMesh>
             )}
 
@@ -1992,8 +2193,8 @@ function InstancedComponentViewer({
                     ref={anodeStubRef}
                     args={[undefined, undefined, anodes.length * 4]}
                 >
-                    <cylinderGeometry args={[1, 1, 1, 12]} />
-                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
+                    <cylinderGeometry args={[1, 1, 1, 16]} />
+                    <meshStandardMaterial metalness={0.35} roughness={0.35} />
                 </instancedMesh>
             )}
 
@@ -2003,8 +2204,8 @@ function InstancedComponentViewer({
                     ref={anodeElbowRef}
                     args={[undefined, undefined, anodes.length * 2]}
                 >
-                    <torusGeometry args={[0.08, 0.05, 8, 12, Math.PI / 2]} />
-                    <meshStandardMaterial metalness={0.05} roughness={0.4} />
+                    <sphereGeometry args={[1, 16, 16]} />
+                    <meshStandardMaterial metalness={0.35} roughness={0.35} />
                 </instancedMesh>
             )}
 
@@ -2709,6 +2910,7 @@ function getComponentColorByMode(
 }
 
 export function Structural3DViewer({
+    platformId,
     components: rawComponents,
     platformDetails,
     elevations = [],
@@ -2728,12 +2930,36 @@ export function Structural3DViewer({
     activeColorMode: externalColorMode = "DEFAULT",
     selectedHistoricalCampaignId: externalCampaignId = "ALL",
     isInspectionMode: externalIsInspectionMode = false,
-    selectedInspectionFilters: externalSelectedInspectionFilters = ["Pending", "Completed", "Incomplete"]
+    selectedInspectionFilters: externalSelectedInspectionFilters = ["Pending", "Completed", "Incomplete"],
+    isLoading = false
 }: Structural3DViewerProps) {
     const isWorkspace = Boolean(
         isInspectionWorkspace || 
         compactMode || 
         (currentRecords && currentRecords.length > 0)
+    );
+
+    const activePlatformId = useMemo(() => {
+        return (
+            platformId ||
+            platformDetails?.plat_id ||
+            platformDetails?.id ||
+            platformDetails?.structure_id ||
+            webapp3dData?.structure_id ||
+            null
+        );
+    }, [platformId, platformDetails, webapp3dData]);
+
+    const initialSession = useMemo(() => {
+        if (!activePlatformId) return null;
+        return loadPlatform3DSession(activePlatformId);
+    }, [activePlatformId]);
+
+    const hasSavedCameraState = Boolean(
+        initialSession?.cameraPosition &&
+        initialSession?.controlsTarget &&
+        Array.isArray(initialSession.cameraPosition) &&
+        Array.isArray(initialSession.controlsTarget)
     );
     const wincairsParamsMap = useMemo(() => {
         const map = new Map<number, any>();
@@ -2753,7 +2979,7 @@ export function Structural3DViewer({
             const code = (c.code || "").trim().toUpperCase();
             const qIdUpper = (c.q_id || "").toUpperCase();
 
-            // Whitelist riser supports/clamps ΓÇö never exclude them
+            // Whitelist riser supports/clamps — never exclude them
             const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM");
 
             if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) {
@@ -2796,18 +3022,18 @@ export function Structural3DViewer({
     useEffect(() => {
         setSelectedInspectionFilters(externalSelectedInspectionFilters);
     }, [externalSelectedInspectionFilters]);
-    const [showGrid, setShowGrid] = useState(true);
+    const [showGrid, setShowGrid] = useState(() => initialSession?.showGrid ?? true);
     const [resetTrigger, setResetTrigger] = useState(0);
-    const [showWater, setShowWater] = useState(true);
-    const [showWeldNumbering, setShowWeldNumbering] = useState(true);
-    const [showElevations, setShowElevations] = useState(true);
+    const [showWater, setShowWater] = useState(() => initialSession?.showWater ?? true);
+    const [showWeldNumbering, setShowWeldNumbering] = useState(() => initialSession?.showWeldNumbering ?? true);
+    const [showElevations, setShowElevations] = useState(() => initialSession?.showElevations ?? true);
     const [isCameraClose, setIsCameraClose] = useState(false);
-    const [selectedElevations, setSelectedElevations] = useState<number[]>([]);
-    const [selectedFaces, setSelectedFaces] = useState<string[]>([]);
+    const [selectedElevations, setSelectedElevations] = useState<number[]>(() => initialSession?.selectedElevations ?? []);
+    const [selectedFaces, setSelectedFaces] = useState<string[]>(() => initialSession?.selectedFaces ?? []);
     const [searchQuery, setSearchQuery] = useState("");
     const [showSearchDropdown, setShowSearchDropdown] = useState(false);
     const [openDropdown, setOpenDropdown] = useState<"elevation" | "face" | "display" | "inspection" | "colormap" | null>(null);
-    const [colorMode, setColorMode] = useState<VisualizationMode>(externalColorMode);
+    const [colorMode, setColorMode] = useState<VisualizationMode>(() => (initialSession?.colorMode as VisualizationMode) ?? externalColorMode);
     const [selectedCampaignId, setSelectedCampaignId] = useState<string | number>(externalCampaignId);
     const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<string | null>(null);
     const [libraryColors, setLibraryColors] = useState<Record<string, string>>({});
@@ -2825,6 +3051,21 @@ export function Structural3DViewer({
             return newList;
         });
     };
+
+    // Sync state changes to storage
+    useEffect(() => {
+        if (!activePlatformId) return;
+        savePlatform3DSession(activePlatformId, {
+            showGrid,
+            showWater,
+            showWeldNumbering,
+            showElevations,
+            selectedElevations,
+            selectedFaces,
+            colorMode,
+            selectedCompId: selectedCompId || null,
+        });
+    }, [activePlatformId, showGrid, showWater, showWeldNumbering, showElevations, selectedElevations, selectedFaces, colorMode, selectedCompId]);
 
     // Fetch and aggregate jobpacks strictly by structure_id registered in the jobpack (Inspection Workspace only)
     useEffect(() => {
@@ -3066,10 +3307,11 @@ export function Structural3DViewer({
     useEffect(() => {
         if (externalCampaignId) setSelectedCampaignId(externalCampaignId);
     }, [externalCampaignId]);
-    const [isActivated, setIsActivated] = useState(false);
+    const [isActivated, setIsActivated] = useState<boolean>(() => Boolean(isWorkspace || selectedCompId));
     const [isActivating, setIsActivating] = useState(false);
 
     const handleActivate = () => {
+        if (isLoading) return;
         setIsActivating(true);
         setTimeout(() => {
             setIsActivated(true);
@@ -3159,9 +3401,16 @@ export function Structural3DViewer({
 
             const isPile = code === "PL" || code === "PILE" || code === "P" || qIdUpper.includes("PILE") || dbQIdUpper.includes("PILE");
             const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
-            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport;
-            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport;
-            const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport && !isClamp) || code.includes("WELD")) && !isClamp;
+            const isConductorSupport =
+                /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
+                /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(dbQIdUpper) ||
+                (qIdUpper.startsWith("CB-") || qIdUpper.startsWith("GB-") || qIdUpper.startsWith("CGB-")) ||
+                (dbQIdUpper.startsWith("CB-") || dbQIdUpper.startsWith("GB-") || dbQIdUpper.startsWith("CGB-")) ||
+                (code === "CG" && qIdUpper.includes("BUCK"));
+            const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || dbQIdUpper.includes("BUCKET") || isConductorSupport;
+            const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupport && !isGuideBucket;
+            const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupport && !isGuideBucket;
+            const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport && !isClamp) || code.includes("WELD")) && !isClamp && !isGuideBucket;
 
             const compMd = comp.metadata || dbItem.metadata || {};
             const sLegStr = (comp.s_leg || compMd.s_leg || dbItem.s_leg || "").toString().trim().toUpperCase();
@@ -3182,7 +3431,7 @@ export function Structural3DViewer({
             if (inspectionStatus === "Incomplete") inspectionColor = "#d97706"; // Dark Yellow
 
             const weldColor = isWeld ? "#cbd5e1" : null;
-            const clampColor = isClamp ? "#facc15" : null;
+            const clampColor = (isClamp || isGuideBucket) ? "#facc15" : null;
             const finalColor = isInspectionMode ? dbItem.inspection_color : (clampColor || weldColor || dbItem.color_hex || "#64748b");
 
             let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
@@ -3576,10 +3825,17 @@ export function Structural3DViewer({
                     /* DEFER ACTIVATION / INITIAL PLACEHOLDER */
                     <div className="relative z-10 flex flex-col items-center justify-center space-y-8 max-w-xl text-center p-4">
                         {/* Top Decorative Tag */}
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] shadow-sm shadow-blue-500/5 animate-pulse">
-                            <Compass className="w-3.5 h-3.5 stroke-[2] text-blue-400 animate-[spin_8s_linear_infinite]" />
-                            3D Modeling Utility Ready
-                        </div>
+                        {isLoading ? (
+                            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[9px] font-black text-amber-500 dark:text-amber-400 uppercase tracking-[0.3em] shadow-sm shadow-amber-500/5">
+                                <Loader2 className="w-3.5 h-3.5 stroke-[2.5] text-amber-500 dark:text-amber-400 animate-spin" />
+                                Syncing Platform Data...
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] shadow-sm shadow-blue-500/5 animate-pulse">
+                                <Compass className="w-3.5 h-3.5 stroke-[2] text-blue-400 animate-[spin_8s_linear_infinite]" />
+                                3D Modeling Utility Ready
+                            </div>
+                        )}
 
                         {/* Title & Info */}
                         <div className="space-y-3">
@@ -3595,25 +3851,43 @@ export function Structural3DViewer({
                         {/* Telemetry Stats Grid */}
                         <div className="grid grid-cols-3 gap-6 w-full max-w-md py-4 px-6 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 backdrop-blur-sm shadow-inner">
                             <div className="flex flex-col items-center justify-center text-center">
-                                <span className="text-xl font-black text-blue-400 leading-none mb-1">
-                                    {components.length}
-                                </span>
+                                {isLoading && components.length === 0 ? (
+                                    <div className="h-6 flex items-center justify-center mb-1">
+                                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <span className={cn("text-xl font-black text-blue-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                        {components.length}
+                                    </span>
+                                )}
                                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
                                     Assets
                                 </span>
                             </div>
-                            <div className="flex flex-col items-center justify-center text-center border-x border-slate-800/80">
-                                <span className="text-xl font-black text-indigo-400 leading-none mb-1">
-                                    {availableElevations.length}
-                                </span>
+                            <div className="flex flex-col items-center justify-center text-center border-x border-slate-200 dark:border-slate-800/80">
+                                {isLoading && availableElevations.length === 0 ? (
+                                    <div className="h-6 flex items-center justify-center mb-1">
+                                        <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <span className={cn("text-xl font-black text-indigo-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                        {availableElevations.length}
+                                    </span>
+                                )}
                                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
                                     Elevations
                                 </span>
                             </div>
                             <div className="flex flex-col items-center justify-center text-center">
-                                <span className="text-xl font-black text-emerald-400 leading-none mb-1">
-                                    {availableFaces.length}
-                                </span>
+                                {isLoading && availableFaces.length === 0 ? (
+                                    <div className="h-6 flex items-center justify-center mb-1">
+                                        <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <span className={cn("text-xl font-black text-emerald-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                        {availableFaces.length}
+                                    </span>
+                                )}
                                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
                                     Faces
                                 </span>
@@ -3621,23 +3895,43 @@ export function Structural3DViewer({
                         </div>
 
                         {/* Action Trigger Card */}
-                        <button
-                            onClick={handleActivate}
-                            className="group relative flex flex-col items-center justify-center p-6 bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] border border-orange-400/30 rounded-2xl shadow-lg hover:shadow-blue-500/20 transition-all duration-300 w-full max-w-sm overflow-hidden"
-                        >
-                            <div className="absolute inset-0 bg-radial-gradient from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        {isLoading ? (
+                            <button
+                                disabled
+                                type="button"
+                                className="relative flex flex-col items-center justify-center p-6 bg-slate-100 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700/60 rounded-2xl shadow-inner w-full max-w-sm cursor-not-allowed opacity-80 select-none transition-all duration-300"
+                            >
+                                <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600/50 text-slate-500 dark:text-slate-300 mb-3 shadow-inner">
+                                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                                </div>
 
-                            <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 border border-white/20 text-white mb-3 group-hover:scale-110 transition-transform duration-300 shadow-md">
-                                <Play className="w-5 h-5 fill-current text-white stroke-[1.5]" />
-                            </div>
+                                <span className="relative z-10 text-xs font-black uppercase tracking-[0.25em] text-slate-700 dark:text-slate-200">
+                                    Loading Platform Model...
+                                </span>
+                                <span className="relative z-10 text-[9px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-widest mt-1">
+                                    Fetching structural telemetry
+                                </span>
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={handleActivate}
+                                className="group relative flex flex-col items-center justify-center p-6 bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] border border-blue-400/30 rounded-2xl shadow-lg hover:shadow-blue-500/20 transition-all duration-300 w-full max-w-sm overflow-hidden cursor-pointer"
+                            >
+                                <div className="absolute inset-0 bg-radial-gradient from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                            <span className="relative z-10 text-xs font-black uppercase tracking-[0.25em] text-white">
-                                Load 3D Platform Model
-                            </span>
-                            <span className="relative z-10 text-[9px] font-bold text-blue-200 uppercase tracking-widest mt-1 opacity-80">
-                                Click to initialize GPU rendering
-                            </span>
-                        </button>
+                                <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 border border-white/20 text-white mb-3 group-hover:scale-110 transition-transform duration-300 shadow-md">
+                                    <Play className="w-5 h-5 fill-current text-white stroke-[1.5]" />
+                                </div>
+
+                                <span className="relative z-10 text-xs font-black uppercase tracking-[0.25em] text-white">
+                                    Load 3D Platform Model
+                                </span>
+                                <span className="relative z-10 text-[9px] font-bold text-blue-200 uppercase tracking-widest mt-1 opacity-80">
+                                    Click to initialize GPU rendering
+                                </span>
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -3648,6 +3942,12 @@ export function Structural3DViewer({
 
     return (
         <div className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative rounded-3xl overflow-hidden shadow-2xl">
+            {isLoading && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2 bg-slate-900/90 dark:bg-slate-900/95 backdrop-blur-md border border-blue-500/30 rounded-2xl shadow-xl animate-in fade-in zoom-in-95 duration-200">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">Syncing Platform 3D Data...</span>
+                </div>
+            )}
             <div className="relative z-0 w-full h-full">
                 <Canvas
                 shadows="soft"
@@ -3663,9 +3963,14 @@ export function Structural3DViewer({
             >
                 <color attach="background" args={["#ffffff"]} />
                 <fog attach="fog" args={["#ffffff", 40, 220]} />
-                <PerspectiveCamera makeDefault position={[45, 45, 45]} fov={45} />
-                <CameraRig selectedPos={selectedPos} selectedCompId={selectedCompId} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} />
+                <PerspectiveCamera
+                    makeDefault
+                    position={initialSession?.cameraPosition && Array.isArray(initialSession.cameraPosition) ? initialSession.cameraPosition : [45, 45, 45]}
+                    fov={45}
+                />
+                <CameraRig selectedPos={selectedPos} selectedCompId={selectedCompId} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} hasSavedCameraState={hasSavedCameraState} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
+                <CameraPersistenceTracker platformId={activePlatformId} initialState={initialSession} />
 
                 <ambientLight intensity={0.45} />
                 <hemisphereLight intensity={0.35} color="#e2e8f0" groundColor="#334155" />
@@ -3689,8 +3994,8 @@ export function Structural3DViewer({
                 <CameraHeadlight intensity={0.4} />
 
 
-                <Bounds fit clip margin={1.0}>
-                    <ResetViewHandler trigger={resetTrigger} />
+                <Bounds fit={!hasSavedCameraState} clip margin={1.0}>
+                    <ResetViewHandler trigger={resetTrigger} platformId={activePlatformId} />
                     <CameraDistanceController onChange={setIsCameraClose} />
                     <SelectToZoom>
                         {/* Elevation Level Planes & Markers */}
@@ -3913,6 +4218,7 @@ export function Structural3DViewer({
                                 {colorMode === "INSPECTION_TASK_TYPE" && "Task Type"}
                                 {colorMode === "HISTORICAL_COMPARE" && "Historical Compare"}
                             </span>
+                            <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", openDropdown === "colormap" && "rotate-180")} />
                         </Button>
 
                         {openDropdown === "colormap" && (
@@ -4076,131 +4382,6 @@ export function Structural3DViewer({
                     </div>
                 )}
 
-                {/* Inspection Filter (OFF) - Hidden in Inspection Workspace */}
-                {!isWorkspace && (
-                    <div className="relative">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setOpenDropdown(openDropdown === "inspection" ? null : "inspection")}
-                            className={cn(
-                                "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
-                                compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
-                                isInspectionMode
-                                    ? "border-purple-400 text-purple-600 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                                    : "border-slate-200 text-slate-500"
-                            )}
-                            title="Inspection Mode Filter"
-                        >
-                            <Eye className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                            <span>{compactMode ? (isInspectionMode ? `(${selectedInspectionFilters.length})` : "OFF") : `Inspection ${isInspectionMode ? `(${selectedInspectionFilters.length}/3)` : "OFF"} Γû╝`}</span>
-                        </Button>
-
-                        {openDropdown === "inspection" && (
-                            <div className="absolute right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-4 w-72 flex flex-col gap-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                                        Inspection Mode
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                        {selectedInspectionFilters.length < 3 && (
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
-                                                    setIsInspectionMode(true);
-                                                }}
-                                                className="text-[9px] font-black uppercase text-purple-600 hover:text-purple-800 transition-colors"
-                                            >
-                                                Select All
-                                            </button>
-                                        )}
-                                        <label className="flex items-center cursor-pointer">
-                                            <div className="relative">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only"
-                                                    checked={isInspectionMode}
-                                                    onChange={(e) => {
-                                                        const nextState = e.target.checked;
-                                                        setIsInspectionMode(nextState);
-                                                        if (nextState && selectedInspectionFilters.length === 0) {
-                                                            setSelectedInspectionFilters(["NOT_INSPECTED", "NO_ANOMALY", "HAS_ANOMALY"]);
-                                                        }
-                                                    }}
-                                                />
-                                                <div className={`block w-8 h-5 rounded-full ${isInspectionMode ? 'bg-purple-500' : 'bg-slate-200'}`}></div>
-                                                <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition ${isInspectionMode ? 'transform translate-x-3' : ''}`}></div>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-1.5 py-1">
-                                    {/* Not Inspected Checkbox */}
-                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors border border-transparent hover:border-slate-100">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedInspectionFilters.includes("NOT_INSPECTED")}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                if (!isInspectionMode) setIsInspectionMode(true);
-                                                if (checked) {
-                                                    setSelectedInspectionFilters((prev) => [...prev, "NOT_INSPECTED"]);
-                                                } else {
-                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NOT_INSPECTED"));
-                                                }
-                                            }}
-                                            className="h-4 w-4 rounded border-slate-300 text-slate-600 focus:ring-purple-500 accent-slate-600"
-                                        />
-                                        <div className="w-2.5 h-2.5 rounded-full bg-slate-400 border border-slate-500 shrink-0" />
-                                        <span className="text-xs font-bold text-slate-700">Not Inspected</span>
-                                    </label>
-
-                                    {/* Inspected (No Anomaly) Checkbox */}
-                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-emerald-50/60 cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedInspectionFilters.includes("NO_ANOMALY")}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                if (!isInspectionMode) setIsInspectionMode(true);
-                                                if (checked) {
-                                                    setSelectedInspectionFilters((prev) => [...prev, "NO_ANOMALY"]);
-                                                } else {
-                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "NO_ANOMALY"));
-                                                }
-                                            }}
-                                            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 accent-emerald-600"
-                                        />
-                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] border border-emerald-600 shrink-0" />
-                                        <span className="text-xs font-bold text-emerald-700">Inspected (No Anomaly)</span>
-                                    </label>
-
-                                    {/* Inspected (Has Anomaly) Checkbox */}
-                                    <label className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50/80 cursor-pointer transition-colors border border-transparent hover:border-red-100">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedInspectionFilters.includes("HAS_ANOMALY")}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                if (!isInspectionMode) setIsInspectionMode(true);
-                                                if (checked) {
-                                                    setSelectedInspectionFilters((prev) => [...prev, "HAS_ANOMALY"]);
-                                                } else {
-                                                    setSelectedInspectionFilters((prev) => prev.filter((f) => f !== "HAS_ANOMALY"));
-                                                }
-                                            }}
-                                            className="h-4 w-4 rounded border-red-400 text-red-600 focus:ring-red-500 accent-red-600"
-                                        />
-                                        <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] border border-red-600 shrink-0 animate-pulse" />
-                                        <span className="text-xs font-bold text-red-700">Inspected (Has Anomaly)</span>
-                                    </label>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
                 {/* Elevation Filter */}
                 <div className="relative">
                     <Button
@@ -4208,7 +4389,7 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "elevation" ? null : "elevation")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
+                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1.5",
                             compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
                             selectedElevations.length > 0
                                 ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
@@ -4217,7 +4398,8 @@ export function Structural3DViewer({
                         title="Filter Elevations"
                     >
                         <Layers className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        <span>{compactMode ? (selectedElevations.length > 0 ? `(${selectedElevations.length})` : "Elv") : `Elevation ${selectedElevations.length > 0 ? `(${selectedElevations.length})` : ""} Γû╝`}</span>
+                        <span>{compactMode ? (selectedElevations.length > 0 ? `(${selectedElevations.length})` : "Elv") : `Elevation ${selectedElevations.length > 0 ? `(${selectedElevations.length})` : ""}`}</span>
+                        <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", openDropdown === "elevation" && "rotate-180")} />
                     </Button>
 
                     {openDropdown === "elevation" && (
@@ -4287,7 +4469,7 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "face" ? null : "face")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1",
+                            "bg-white/90 backdrop-blur-md transition-all font-black uppercase tracking-widest flex items-center gap-1.5",
                             compactMode ? "h-8 px-2 rounded-lg text-[9px]" : "h-9 px-4 rounded-xl text-[10px]",
                             selectedFaces.length > 0
                                 ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
@@ -4296,7 +4478,8 @@ export function Structural3DViewer({
                         title="Filter Structural Faces"
                     >
                         <Compass className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        <span>{compactMode ? (selectedFaces.length > 0 ? `(${selectedFaces.length})` : "Face") : `Face ${selectedFaces.length > 0 ? `(${selectedFaces.length})` : ""} Γû╝`}</span>
+                        <span>{compactMode ? (selectedFaces.length > 0 ? `(${selectedFaces.length})` : "Face") : `Face ${selectedFaces.length > 0 ? `(${selectedFaces.length})` : ""}`}</span>
+                        <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", openDropdown === "face" && "rotate-180")} />
                     </Button>
 
                     {openDropdown === "face" && (
@@ -4365,7 +4548,7 @@ export function Structural3DViewer({
                         size="sm"
                         onClick={() => setOpenDropdown(openDropdown === "display" ? null : "display")}
                         className={cn(
-                            "bg-white/90 backdrop-blur-md border transition-all font-black uppercase tracking-widest flex items-center justify-center",
+                            "bg-white/90 backdrop-blur-md border transition-all font-black uppercase tracking-widest flex items-center justify-center gap-1.5",
                             compactMode ? "h-8 w-8 rounded-lg px-0" : "h-9 px-4 rounded-xl text-[10px]",
                             openDropdown === "display"
                                 ? "border-orange-400 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.15)]"
@@ -4374,7 +4557,8 @@ export function Structural3DViewer({
                         title="Display Settings"
                     >
                         <SlidersHorizontal className={compactMode ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        {!compactMode && <span className="ml-1">Display Γû╝</span>}
+                        {!compactMode && <span>Display</span>}
+                        {!compactMode && <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", openDropdown === "display" && "rotate-180")} />}
                     </Button>
 
                     {openDropdown === "display" && (

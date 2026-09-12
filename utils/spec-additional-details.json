@@ -1,6 +1,16 @@
 {
     "data": [
         {
+            "code": "cb",
+            "componentType": "cb_comp",
+            "additionalDataTemplate": {
+                "cgud_typ": "",
+                "fitg_typ": "",
+                "no_slots": "",
+                "del": false
+            }
+        },
+        {
             "code": "cf",
             "componentType": "cf_comp",
             "additionalDataTemplate": {
