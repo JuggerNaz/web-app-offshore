@@ -3,9 +3,10 @@ import { NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { GET } from "./route";
 
-// Bypass auth: withAuth becomes identity so GET is the raw handler.
+// Bypass auth: both wrappers become identity so GET is the raw handler.
 vi.mock("@/utils/with-auth", () => ({
   withAuth: (handler: any) => handler,
+  withOptionalAuth: (handler: any) => handler,
 }));
 
 vi.mock("@/utils/supabase/server", () => ({
