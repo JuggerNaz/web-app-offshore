@@ -359,6 +359,7 @@ const COMPONENT_TYPE_FULL_NAMES: Record<string, string> = {
   "CL": "Clamp",
   "CS": "Conductor Support",
   "CF": "Conductor Guide Frame",
+  "CB": "Conductor / Caisson Guides",
   "FD": "Fender",
   "HD": "Horizontal Diagonal Member",
   "HM": "Horizontal Member",

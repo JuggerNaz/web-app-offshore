@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useUserRole } from "@/utils/hooks/use-user-role";
 import { UserRole } from "@/utils/role-auth-base";
 import { InviteDialog } from "./invite-dialog";
+import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
 import {
   Table,
   TableBody,
@@ -32,7 +33,8 @@ import {
   Ban,
   UserCheck,
   Shield,
-  Save
+  Save,
+  KeyRound
 } from "lucide-react";
 import {
   Dialog,
@@ -64,7 +66,7 @@ const AVAILABLE_MODULES = [
 ];
 
 export default function UserManagementPage() {
-  const { profile: currentProfile, activeCompanyId } = useUserRole();
+  const { profile: currentProfile, activeCompanyId, role } = useUserRole();
   const [members, setMembers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -74,6 +76,7 @@ export default function UserManagementPage() {
 
   // Access Configuration Dialog States
   const [editingMember, setEditingMember] = useState<any | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<any | null>(null);
   const [editSystemRole, setEditSystemRole] = useState<string>("User");
   const [editModules, setEditModules] = useState<string[]>([]);
   const [editRestrictionType, setEditRestrictionType] = useState<string>("always");
@@ -495,6 +498,23 @@ export default function UserManagementPage() {
                               size="sm"
                               variant="ghost"
                               disabled={isPending}
+                              onClick={() => setResetPasswordUser({
+                                id: member.id,
+                                email: user.email,
+                                full_name: user.full_name,
+                              })}
+                              className="h-8 rounded-lg text-blue-500 hover:text-blue-600 hover:bg-blue-500/10"
+                              title="Reset Password & Set One-Time Password"
+                            >
+                              <KeyRound className="h-3.5 w-3.5 mr-1" />
+                              Reset Pass
+                            </Button>
+                          )}
+                          {member.is_active && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={isPending}
                               onClick={() => handleOpenAccessDialog(member)}
                               className="h-8 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
                             >
@@ -536,11 +556,20 @@ export default function UserManagementPage() {
         )}
       </div>
 
-      {/* Invite Member modal */}
+      {/* Invite/Create Member modal */}
       <InviteDialog
         open={inviteDialogOpen}
         onOpenChange={setInviteDialogOpen}
         onUserInvited={handleUserInvited}
+        activeCompanyId={activeCompanyId}
+        isSuperAdmin={role === "super_admin"}
+      />
+
+      {/* Reset Password Modal */}
+      <ResetPasswordDialog
+        open={!!resetPasswordUser}
+        onOpenChange={(open) => !open && setResetPasswordUser(null)}
+        user={resetPasswordUser}
         activeCompanyId={activeCompanyId}
       />
 

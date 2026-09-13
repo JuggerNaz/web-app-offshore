@@ -144,6 +144,7 @@ const COMPONENT_FULL_NAMES: Record<string, string> = {
   "CD": "CONDUCTOR",
   "CE": "CRATER",
   "CF": "CONDUCTOR GUIDE FRAME",
+  "CB": "CONDUCTOR / CAISSON GUIDES",
   "CG": "CONDUCTOR / CAISSON GUIDES",
   "CH": "ANCHOR CHAINS",
   "CL": "CLAMP",

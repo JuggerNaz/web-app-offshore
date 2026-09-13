@@ -72,7 +72,7 @@ export const generateSeabedSurveyReport = async (
                     const cDep = idraw.crater_depth || idraw.craterDepth || '';
                     const cDepUnit = idraw.crater_depth_unit || idraw.craterDepthUnit || 'm';
                     if (cDia || cDep) {
-                        const parts = [];
+                        const parts: string[] = [];
                         if (cDia) parts.push(`Dia: ${cDia}${cDiaUnit}`);
                         if (cDep) parts.push(`Depth: ${cDep}${cDepUnit}`);
                         sizeDisplay = parts.join(', ');
@@ -95,7 +95,7 @@ export const generateSeabedSurveyReport = async (
                         const d = idraw.size_diameter || idraw.diameter || '';
                         const du = idraw.size_diameter_unit || idraw.diameterUnit || 'm';
                         
-                        const parts = [];
+                        const parts: string[] = [];
                         if (l) parts.push(`L:${l}${lu}`);
                         if (w) parts.push(`W:${w}${wu}`);
                         if (h) parts.push(`H:${h}${hu}`);

@@ -1104,7 +1104,7 @@ export default function InspectionRecordingDialog({
             sentence1 = "Visual inspection completed";
         }
 
-        const whereParts = [];
+        const whereParts: string[] = [];
         if (orientationProp && formData[orientationProp.name]) whereParts.push(`at ${formData[orientationProp.name]} o'clock`);
         if (commonData.elevation) whereParts.push(`at EL ${commonData.elevation}m`);
         if (commonData.fpKp) whereParts.push(`at ${commonData.fpKp}`);

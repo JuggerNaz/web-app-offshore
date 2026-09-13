@@ -226,7 +226,7 @@ export default function Spec1Pipeline({ data }: Props) {
     ?.filter((c: any) => c.code?.toLowerCase() === "pp" && (c.metadata?.start_kp != null || c.metadata?.end_kp != null))
     .sort((a: any, b: any) => Number(a.metadata?.start_kp || 0) - Number(b.metadata?.start_kp || 0)) || [];
 
-  const spanRows = [];
+  const spanRows: any[] = [];
   for (const comp of ppComponents) {
     const startKP = comp.metadata?.start_kp !== undefined ? comp.metadata.start_kp : 0;
     const endKP = comp.metadata?.end_kp !== undefined ? comp.metadata.end_kp : 0;

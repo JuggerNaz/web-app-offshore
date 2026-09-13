@@ -27,7 +27,7 @@ export const POST = withAuth(
 
       connection = await getOracleConnection(config);
 
-      let jobpacks = [];
+      let jobpacks: any[] = [];
       // Progressive fallback queries for fetching jobpack details
       // Tables: workpl (INSPNO only, no STR_ID!), job_vessel (INSPNO, V_NAME, START_DATE), taskstr (STR_ID+INSPNO), sow_insp (STR_ID+INSPNO)
       const jobpackQueries = [
@@ -90,7 +90,7 @@ export const POST = withAuth(
       }
 
       // Query allinspid for INSP_TYPE counts to determine ROV/Diving inspection data presence
-      let typeCounts = [];
+      let typeCounts: any[] = [];
       try {
         const typeResult = await connection.execute(
           `SELECT INSPNO, INSP_TYPE, COUNT(*) as REC_COUNT 

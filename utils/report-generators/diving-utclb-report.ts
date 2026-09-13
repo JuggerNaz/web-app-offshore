@@ -166,7 +166,7 @@ export const generateDivingUTCLBReport = async (
             const serialNo = d.serial_number || "—";
             const calBlock = d.calib_block ?? d.calibration_block ?? d.cal_block ?? "—";
             
-            const probeParts = [];
+            const probeParts: any[] = [];
             if (d.probe) probeParts.push(d.probe);
             if (d.probe_size) probeParts.push(d.probe_size);
             if (d.probe_frequency) probeParts.push(d.probe_frequency);

@@ -71,7 +71,7 @@ export const GET = withTenant(async (request, { companyId, params }) => {
                 .eq("source_id", structureId)
                 .eq("source_type", "platform_structure_image") as any;
 
-            const legs = [];
+            const legs: any[] = [];
             const legsCount = platform.plegs || 0;
             for (let i = 1; i <= Math.min(legsCount, 20); i++) {
                 const legName = platform[`leg_t${i}`];

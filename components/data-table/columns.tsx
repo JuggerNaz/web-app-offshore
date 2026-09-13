@@ -673,7 +673,7 @@ export function JobpackActions({ row }: { row: any }) {
       }
 
       const withReportNums = sows.filter((sow: any) => sow.report_numbers && sow.report_numbers.length > 0);
-      let selectedSow = null;
+      let selectedSow: any = null;
       if (withReportNums.length > 0) {
         withReportNums.sort((a: any, b: any) => (a.structure_title || "").localeCompare(b.structure_title || ""));
         selectedSow = withReportNums[0];

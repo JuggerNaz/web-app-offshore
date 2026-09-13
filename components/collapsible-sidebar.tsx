@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 
 import { useUserRole } from "@/utils/hooks/use-user-role";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 export function CollapsibleSidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -19,6 +20,7 @@ export function CollapsibleSidebar() {
   const [companyName, setCompanyName] = useState("OFFSHORE");
   const [departmentName, setDepartmentName] = useState("Data Management");
   const { role, modules } = useUserRole();
+  const { activeCompanyId, company } = useUserProfile();
 
   const isModuleAllowed = (moduleName: string) => {
     if (role === "super_admin") return true;
@@ -29,25 +31,37 @@ export function CollapsibleSidebar() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const response = await fetch("/api/company-settings");
-        if (response.ok) {
-          const { data } = await response.json();
-          if (data.logo_url) {
-            setCompanyLogo(data.logo_url);
-          }
-          if (data.company_name) {
-            setCompanyName(data.company_name);
-          }
-          if (data.department_name) {
-            setDepartmentName(data.department_name);
-          }
+        const url = activeCompanyId
+          ? `/api/company-settings?company_id=${activeCompanyId}&t=${Date.now()}`
+          : `/api/company-settings?t=${Date.now()}`;
+
+        const response = await fetch(url, {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+            ...(activeCompanyId ? { "x-company-id": activeCompanyId } : {}),
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const { data } = await response.json();
+        setCompanyLogo(data?.logo_url || null);
+        if (data?.company_name) {
+          setCompanyName(data.company_name);
+        } else if (company?.name) {
+          setCompanyName(company.name);
+        }
+        if (data?.department_name) {
+          setDepartmentName(data.department_name);
         }
       } catch (error) {
         console.error("Error loading company settings:", error);
       }
     };
 
-    // Load on mount
+    // Load on mount and whenever activeCompanyId changes
     loadSettings();
 
     // Listen for settings changes
@@ -56,7 +70,7 @@ export function CollapsibleSidebar() {
     return () => {
       window.removeEventListener("companySettingsChanged", loadSettings);
     };
-  }, []);
+  }, [activeCompanyId, company]);
 
   const toggleSidebar = () => {
     setIsCollapsed(!isCollapsed);
@@ -90,10 +104,12 @@ export function CollapsibleSidebar() {
                 isCollapsed ? "h-10 w-10" : "h-16 w-16"
               )}>
                 <Image
+                  key={companyLogo}
                   src={companyLogo}
                   alt="Company Logo"
                   width={isCollapsed ? 40 : 64}
                   height={isCollapsed ? 40 : 64}
+                  unoptimized
                   className="object-contain w-full h-full"
                 />
               </div>

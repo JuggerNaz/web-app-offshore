@@ -37,6 +37,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -265,7 +266,11 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
       { id: 'status', label: 'Status', fixed: true },
       ...columnSettings.filter(c => {
         if (!c.visible) return false;
-        if (isPipeline && (c.id === 'type' || c.id === 'component')) return false;
+        if (isPipeline) {
+          if (c.id === 'type' || c.id === 'component') return false;
+        } else {
+          if (c.id === 'event_name' || c.id === 'event_type' || c.id === 'event_position') return false;
+        }
         return true;
       })
     ];
@@ -714,7 +719,10 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 tapeId={tapeId}
                 vidState={vidState}
                 onChangeTaskClick={() => setShowTaskSelector(true)}
-                onChangeComponentClick={() => setShowCompSelector(true)}
+                onChangeComponentClick={() => {
+                  setShowCompSelector(true);
+                  toast.info("Select a component from the list to change the QID for this inspection.");
+                }}
                 isEditing={!!editingRecordId}
                 onDeleteRecord={() => editingRecordId && handleDeleteRecord(editingRecordId)}
                 onPrintReport={() => {
@@ -1007,13 +1015,17 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 </Badge>
                               </td>
                             );
-                          case 'component':
+                          case 'component': {
+                            const compObj = r.structure_components || allComps?.find((c: any) => c.id === r.component_id || c.raw?.id === r.component_id || (c.q_id && c.q_id === r.component_qid));
+                            const qid = r.structure_components?.q_id || r.structure_components?.name || compObj?.q_id || compObj?.name || compObj?.raw?.q_id || compObj?.raw?.name || r.component_qid || r.component_name || r.component?.q_id || r.component?.name || r.q_id || r.inspection_data?.component_qid || r.inspection_data?.component || r.inspection_data?.q_id || r.inspection_data?.component_name || r.inspection_data?.qid || r.inspection_data?.comp_name || (r.component_type === "PP" ? (r.inspection_data?.pipe_name || r.inspection_data?.pipeline_name || "Pipeline Main Line") : '-');
+                            const compCode = r.component_type || r.structure_components?.code || compObj?.raw?.code || compObj?.code || compObj?.type || r.inspection_data?.component_type || '-';
                             return (
                               <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
-                                <div className="font-bold text-sm text-slate-800 dark:text-slate-100">{r.structure_components?.q_id || '-'}</div>
-                                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
+                                <div className="font-bold text-sm text-slate-800 dark:text-slate-100">{qid}</div>
+                                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">{compCode}</div>
                               </td>
                             );
+                          }
                           case 'elev': {
                             const kpVal = r.fp_kp ?? r.kp ?? r.inspection_data?.fp_kp ?? r.inspection_data?.kp ?? r.inspection_data?.kp_value;
                             return (
@@ -1341,13 +1353,17 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                     </Badge>
                                   </td>
                                 );
-                              case 'component':
-                                return (
-                                  <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
-                                    <div className="font-bold text-sm text-slate-800 dark:text-slate-100">{r.structure_components?.q_id || '-'}</div>
-                                    <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">{r.component_type || r.structure_components?.code || '-'}</div>
-                                  </td>
-                                );
+                               case 'component': {
+                                 const compObj = r.structure_components || allComps?.find((c: any) => c.id === r.component_id || c.raw?.id === r.component_id || (c.q_id && c.q_id === r.component_qid));
+                                 const qid = r.structure_components?.q_id || r.structure_components?.name || compObj?.q_id || compObj?.name || compObj?.raw?.q_id || compObj?.raw?.name || r.component_qid || r.component_name || r.component?.q_id || r.component?.name || r.q_id || r.inspection_data?.component_qid || r.inspection_data?.component || r.inspection_data?.q_id || r.inspection_data?.component_name || r.inspection_data?.qid || r.inspection_data?.comp_name || (r.component_type === "PP" ? (r.inspection_data?.pipe_name || r.inspection_data?.pipeline_name || "Pipeline Main Line") : '-');
+                                 const compCode = r.component_type || r.structure_components?.code || compObj?.raw?.code || compObj?.code || compObj?.type || r.inspection_data?.component_type || '-';
+                                 return (
+                                   <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
+                                     <div className="font-bold text-sm text-slate-800 dark:text-slate-100">{qid}</div>
+                                     <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">{compCode}</div>
+                                   </td>
+                                 );
+                               }
                               case 'elev': {
                                 const kpVal = r.fp_kp ?? r.kp ?? r.inspection_data?.fp_kp ?? r.inspection_data?.kp ?? r.inspection_data?.kp_value;
                                 return (

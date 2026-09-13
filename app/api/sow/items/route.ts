@@ -146,8 +146,8 @@ export const PUT = withTenant(async (request, { companyId }) => {
             );
         }
 
-        const results = [];
-        const errors = [];
+        const results: any[] = [];
+        const errors: any[] = [];
 
         for (const item of items) {
             const { id, ...updateData } = item;

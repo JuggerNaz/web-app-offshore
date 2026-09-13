@@ -873,7 +873,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             const isPrimary = ["HM", "HOM", "HD", "HDM", "VM", "VD", "VDM", "LG", "LEG"].includes(code);
 
             if (!isNode && !isPrimary) {
-                const isPrimaryFallback = ["CF", "CG", "CD", "CO", "CA"].includes(code);
+                const isPrimaryFallback = ["CF", "CB", "CG", "CD", "CO", "CA"].includes(code);
                 processNode(
                     md.s_node,
                     md.s_leg,
@@ -1077,6 +1077,89 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             });
         }
 
+        const getConductorPositionAtElv = (conductorComp: any, targetY: number): THREE.Vector3 => {
+            const cMd = conductorComp?.metadata || {};
+            const condName = (conductorComp?.q_id || "").toUpperCase();
+            const numMatch = condName.match(/\d+/);
+            const condNum = numMatch ? parseInt(numMatch[0], 10) : null;
+
+            // 1. Check matching CGF (Conductor Guide Frame) components
+            if (condNum !== null) {
+                const matchingCgfs = components.filter((other) => {
+                    const oCode = (other.code || "").toUpperCase();
+                    const oQId = (other.q_id || "").toUpperCase();
+                    const isCgf = oCode === "CF" || oQId.includes("CGF");
+                    if (!isCgf) return false;
+                    const oMatch = oQId.match(/(?:CGF|CF|COND|CD)[-_ ]*0*(\d+)/i) || oQId.match(/\d+/);
+                    return oMatch ? parseInt(oMatch[1] || oMatch[0], 10) === condNum : false;
+                });
+
+                const cgfMidpoints: { elv: number; midpoint: THREE.Vector3 }[] = [];
+                matchingCgfs.forEach((cgf) => {
+                    const cgfMd = cgf.metadata || {};
+                    const sPos = lookupNode(cgfMd.s_node, cgfMd.s_leg);
+                    const fPos = lookupNode(cgfMd.f_node, cgfMd.f_leg);
+                    if (sPos && fPos) {
+                        const midpoint = new THREE.Vector3(
+                            (sPos.x + fPos.x) / 2,
+                            (sPos.y + fPos.y) / 2,
+                            (sPos.z + fPos.z) / 2
+                        );
+                        const elv = sanitizeElevation(cgfMd.elv_1 || cgfMd.elv_2 || sPos.y);
+                        cgfMidpoints.push({ elv, midpoint });
+                    }
+                });
+
+                if (cgfMidpoints.length > 0) {
+                    cgfMidpoints.sort((a, b) => b.elv - a.elv);
+                    if (cgfMidpoints.length === 1) {
+                        return new THREE.Vector3(cgfMidpoints[0].midpoint.x, targetY, cgfMidpoints[0].midpoint.z);
+                    }
+                    let p1 = cgfMidpoints[0];
+                    let p2 = cgfMidpoints[cgfMidpoints.length - 1];
+                    for (let i = 0; i < cgfMidpoints.length - 1; i++) {
+                        if (targetY <= cgfMidpoints[i].elv && targetY >= cgfMidpoints[i + 1].elv) {
+                            p1 = cgfMidpoints[i];
+                            p2 = cgfMidpoints[i + 1];
+                            break;
+                        }
+                    }
+                    const denom = p1.elv - p2.elv;
+                    const factor = Math.abs(denom) > 0.001 ? (p1.elv - targetY) / denom : 0;
+                    const x = p1.midpoint.x + (p2.midpoint.x - p1.midpoint.x) * factor;
+                    const z = p1.midpoint.z + (p2.midpoint.z - p1.midpoint.z) * factor;
+                    return new THREE.Vector3(x, targetY, z);
+                }
+            }
+
+            // 2. Check conductor start and end nodes
+            const sNodePos = cMd.s_node ? lookupNode(cMd.s_node, cMd.s_leg) : null;
+            const fNodePos = cMd.f_node ? lookupNode(cMd.f_node, cMd.f_leg) : null;
+            if (sNodePos && fNodePos && Math.abs(fNodePos.y - sNodePos.y) > 0.001) {
+                const t = (targetY - sNodePos.y) / (fNodePos.y - sNodePos.y);
+                const pt = sNodePos.clone().lerp(fNodePos, Math.max(0, Math.min(1, t)));
+                return new THREE.Vector3(pt.x, targetY, pt.z);
+            }
+            if (sNodePos) {
+                return new THREE.Vector3(sNodePos.x, targetY, sNodePos.z);
+            }
+            if (fNodePos) {
+                return new THREE.Vector3(fNodePos.x, targetY, fNodePos.z);
+            }
+
+            // 3. Check _webapp3d
+            if (conductorComp?._webapp3d?.start_x !== undefined) {
+                return new THREE.Vector3(
+                    Number(conductorComp._webapp3d.start_x),
+                    targetY,
+                    Number(conductorComp._webapp3d.start_z)
+                );
+            }
+
+            // 4. Fallback
+            return new THREE.Vector3(0, targetY, 0);
+        };
+
         const pendingAttachments: typeof components = [];
         const pendingCaissons: typeof components = [];
         const pendingSpanAccessories: { component: any; sNode: THREE.Vector3; fNode: THREE.Vector3 }[] =
@@ -1183,7 +1266,12 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             const isWeld = code === "WN" || code === "WP" || code.includes("WELD");
             const isClamp = code === "CL" || code.includes("CLAM");
             const isPile = code === "PL" || code === "PILE" || qIdUpper.includes("PILE");
-            const isPointAccessory = isAnode || isWeld || isClamp;
+            const isConductorSupport =
+                /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
+                (qIdUpper.startsWith("CB-") || qIdUpper.startsWith("GB-") || qIdUpper.startsWith("CGB-")) ||
+                (code === "CG" && qIdUpper.includes("BUCK"));
+            const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || isConductorSupport;
+            const isPointAccessory = isAnode || isWeld || isClamp || isGuideBucket;
 
             let thickness = 0.15;
             if (code.includes("LG")) thickness = 0.48;
@@ -1266,6 +1354,87 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     thickness = 0.2;
                     resolved = true;
                 }
+            } else if (isGuideBucket) {
+                const sNodeStr = String(md.s_node || md.start_node || "").trim().toUpperCase();
+                const fNodeStr = String(md.f_node || md.end_node || "").trim().toUpperCase();
+                const sLegStr = String(md.s_leg || md.leg || "").trim().toUpperCase();
+                const fLegStr = String(md.f_leg || md.leg || "").trim().toUpperCase();
+
+                const sNodePos = sNodeStr ? (lookupNode(sNodeStr, sLegStr) || lookupNode(sNodeStr, undefined)) : null;
+                const fNodePos = fNodeStr ? (lookupNode(fNodeStr, fLegStr) || lookupNode(fNodeStr, undefined)) : null;
+
+                let targetY: number;
+                if (md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== "") {
+                    targetY = sanitizeElevation(md.elv_1);
+                } else if (md.depth) {
+                    targetY = -parseFloat(md.depth) / 10;
+                } else {
+                    const elvMatch = qIdUpper.match(/(?:SUPP|GB|CGB|BUCKET|GUIDE|CLP)[-_ ]*(\+|-)?\s*(\d+(?:\.\d+)?)M?/i);
+                    if (elvMatch && elvMatch[2]) {
+                        const rawElv = parseFloat(elvMatch[2]);
+                        const sign = elvMatch[1] === "+" ? 1 : -1;
+                        const candidate = sign * Math.abs(rawElv);
+                        targetY = sanitizeElevation(candidate);
+                        if (elvValues.length > 0) {
+                            let closest = elvValues[0];
+                            let minDist = Math.abs(elvValues[0] - targetY);
+                            for (const e of elvValues) {
+                                const dist = Math.abs(e - targetY);
+                                if (dist < minDist) {
+                                    minDist = dist;
+                                    closest = e;
+                                }
+                            }
+                            if (minDist < 5.0) targetY = closest;
+                        }
+                    } else {
+                        targetY = sNodePos?.y ?? fNodePos?.y ?? maxElv;
+                    }
+                }
+
+                if (sNodePos && fNodePos && sNodeStr !== fNodeStr) {
+                    // Midpoint of start and end node
+                    start.set((sNodePos.x + fNodePos.x) / 2, targetY, (sNodePos.z + fNodePos.z) / 2);
+                } else if (sNodePos || fNodePos) {
+                    // Straightforward on the node
+                    const nPos = (sNodePos || fNodePos)!;
+                    start.set(nPos.x, targetY, nPos.z);
+                } else {
+                    // Locate parent conductor either via associated_comp_id or QID match
+                    let parentComp: any = null;
+                    if (md.associated_comp_id) {
+                        parentComp = components.find((other) => String(other.id) === String(md.associated_comp_id));
+                    }
+                    if (!parentComp) {
+                        const condMatch = qIdUpper.match(/^(?:CD|COND|CONDUCTOR)[-_ ]*0*(\d+)/i);
+                        if (condMatch) {
+                            const condNum = parseInt(condMatch[1], 10);
+                            parentComp = components.find((other) => {
+                                const oCode = (other.code || "").toUpperCase();
+                                const oQ = (other.q_id || "").toUpperCase();
+                                const isCond = oCode === "CD" || oQ.includes("COND") || oQ.startsWith("CD");
+                                if (!isCond) return false;
+                                const oMatch = oQ.match(/^(?:CD|COND|CONDUCTOR)[-_ ]*0*(\d+)/i) || oQ.match(/\d+/);
+                                return oMatch ? parseInt(oMatch[1] || oMatch[0], 10) === condNum : false;
+                            });
+                        }
+                    }
+
+                    if (parentComp) {
+                        const condPos = getConductorPositionAtElv(parentComp, targetY);
+                        start.copy(condPos);
+                    } else if (sLegStr) {
+                        const coords = getLegCoordsAtElv(sLegStr, targetY);
+                        start.set(coords.x, targetY, coords.z);
+                    } else {
+                        start.set(0, targetY, 0);
+                    }
+                }
+
+                end.copy(start).add(new THREE.Vector3(0, 0.5, 0));
+                thickness = 0.35;
+                resolved = true;
+                intermediateLayouts.set(c.id, { component: c, start, end, thickness });
             } else if (md.associated_comp_id && code !== "VM") {
                 if (code !== "WN") {
                     pendingAttachments.push(c);
@@ -1848,6 +2017,39 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
             const parentLayout = intermediateLayouts.get(parentId);
             if (!parentLayout) {
+                const pComp = components.find((o) => o.id === parentId);
+                const pCode = (pComp?.code || "").toUpperCase();
+                const pQId = (pComp?.q_id || "").toUpperCase();
+                const isConductorParent = pCode === "CD" || pQId.includes("COND");
+
+                if (isConductorParent && pComp) {
+                    children.forEach((c) => {
+                        const md = c.metadata || {};
+                        const cQIdUpper = (c.q_id || "").toUpperCase();
+                        let targetY: number;
+                        if (md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== "") {
+                            targetY = sanitizeElevation(md.elv_1);
+                        } else if (md.depth) {
+                            targetY = -parseFloat(md.depth) / 10;
+                        } else {
+                            const elvMatch = cQIdUpper.match(/(?:SUPP|GB|CGB|BUCKET|GUIDE|CLP)[-_ ]*(\+|-)?\s*(\d+(?:\.\d+)?)M?/i);
+                            if (elvMatch && elvMatch[2]) {
+                                const rawElv = parseFloat(elvMatch[2]);
+                                const sign = elvMatch[1] === "+" ? 1 : -1;
+                                targetY = sanitizeElevation(sign * Math.abs(rawElv));
+                            } else {
+                                targetY = maxElv;
+                            }
+                        }
+
+                        const condPos = getConductorPositionAtElv(pComp, targetY);
+                        const start = condPos.clone();
+                        const end = start.clone().add(new THREE.Vector3(0, 0.5, 0));
+                        intermediateLayouts.set(c.id, { component: c, start, end, thickness: 0.35 });
+                    });
+                    return;
+                }
+
                 children.forEach((c) => {
                     let start = new THREE.Vector3();
                     const layer = Math.floor(unattachedIndex / 16);
@@ -1921,6 +2123,45 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
                 const cCode = (c.code || "").toUpperCase();
                 const cQId = (c.q_id || "").toUpperCase();
+                const isChildGuideBucket =
+                    cCode === "CB" ||
+                    cQId.includes("BUCKET") ||
+                    cQId.includes("GUIDE BUCKET") ||
+                    /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(cQId) ||
+                    (cQId.startsWith("CB-") || cQId.startsWith("GB-") || cQId.startsWith("CGB-"));
+                if (isChildGuideBucket) {
+                    const sNodeStr = String(md.s_node || md.start_node || "").trim().toUpperCase();
+                    const fNodeStr = String(md.f_node || md.end_node || "").trim().toUpperCase();
+                    const sLegStr = String(md.s_leg || md.leg || "").trim().toUpperCase();
+                    const fLegStr = String(md.f_leg || md.leg || "").trim().toUpperCase();
+
+                    const sNodePos = sNodeStr ? (lookupNode(sNodeStr, sLegStr) || lookupNode(sNodeStr, undefined)) : null;
+                    const fNodePos = fNodeStr ? (lookupNode(fNodeStr, fLegStr) || lookupNode(fNodeStr, undefined)) : null;
+                    const targetY = md.elv_1 !== undefined && md.elv_1 !== null && md.elv_1 !== ""
+                        ? sanitizeElevation(md.elv_1)
+                        : (md.depth ? -parseFloat(md.depth) / 10 : pStart.y);
+
+                    if (sNodePos && fNodePos && sNodeStr !== fNodeStr) {
+                        start.set((sNodePos.x + fNodePos.x) / 2, targetY, (sNodePos.z + fNodePos.z) / 2);
+                    } else if (sNodePos || fNodePos) {
+                        const nPos = (sNodePos || fNodePos)!;
+                        start.set(nPos.x, targetY, nPos.z);
+                    } else {
+                        // Center along parent conductor
+                        if (Math.abs(pEnd.y - pStart.y) > 0.001) {
+                            const t = (targetY - pStart.y) / (pEnd.y - pStart.y);
+                            start.copy(pStart).lerp(pEnd, Math.max(0, Math.min(1, t)));
+                        } else {
+                            start.copy(pStart);
+                            start.setY(targetY);
+                        }
+                    }
+                    end.copy(start).add(new THREE.Vector3(0, 0.5, 0));
+                    thickness = pThickness * 1.35;
+                    intermediateLayouts.set(c.id, { component: c, start, end, thickness });
+                    return;
+                }
+
                 const isChildCaissonSupport = cCode === "WP" || cCode === "CL" || cQId.includes("SUPP") || cQId.includes("CLP");
                 const suppMidpoint = isChildCaissonSupport ? resolveSupportWeldPosition(c) : null;
 
@@ -2076,13 +2317,16 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             const numMatch = condName.match(/\d+/);
             if (!numMatch) return;
             const indexStr = numMatch[0];
+            const condNum = parseInt(indexStr, 10);
 
             // Find all CGF (Conductor Guide Frame) components that match this index
             const matchingCgfs = components.filter(other => {
                 const otherCode = (other.code || "").toUpperCase();
                 const otherQId = (other.q_id || "").toUpperCase();
                 const isCgf = otherCode === "CF" || otherQId.includes("CGF");
-                return isCgf && otherQId.includes(indexStr);
+                if (!isCgf) return false;
+                const oMatch = otherQId.match(/(?:CGF|CF|COND|CD)[-_ ]*0*(\d+)/i) || otherQId.match(/\d+/);
+                return oMatch ? parseInt(oMatch[1] || oMatch[0], 10) === condNum : otherQId.includes(indexStr);
             });
 
             // Map CGFs to their elevations and midpoints

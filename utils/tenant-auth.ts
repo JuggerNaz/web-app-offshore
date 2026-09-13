@@ -53,7 +53,9 @@ export function withTenant(handler: TenantHandler) {
         return apiUnauthorized("Authentication required");
       }
 
-      const companyId = request.headers.get("x-company-id");
+      const url = new URL(request.url);
+      const queryCompanyId = url.searchParams.get("company_id");
+      const companyId = queryCompanyId || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
 
       const result = await getUserMembership(supabase, user.id, companyId);
       if ("error" in result) {
@@ -92,7 +94,9 @@ export function withTenantLight(handler: TenantPartialHandler) {
         return apiUnauthorized("Authentication required");
       }
 
-      const companyId = request.headers.get("x-company-id");
+      const url = new URL(request.url);
+      const queryCompanyId = url.searchParams.get("company_id");
+      const companyId = queryCompanyId || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
 
       let resolvedCompanyId = companyId;
 

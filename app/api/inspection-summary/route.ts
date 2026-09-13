@@ -118,7 +118,7 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // ─── 2. SOW ITEMS ─────────────────────────────────────────────────────
         let allSowItems: any[] = [];
-        let itemsErr = null;
+        let itemsErr: any = null;
         if (resolvedSowId) {
             const { data: itemsData, error: err } = await (supabase as any)
                 .from("u_sow_items")
@@ -1237,6 +1237,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             "CL": "Clamp",
             "CS": "Conductor Support",
             "CF": "Conductor Guide Frame",
+            "CB": "Conductor / Caisson Guides",
             "FD": "Fender",
             "HD": "Horizontal Diagonal Member",
             "HM": "Horizontal Member",
@@ -1687,7 +1688,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                                 : `${elv1}`)
                             : null;
 
-                        let inspectionElev = null;
+                        let inspectionElev: any = null;
                         if (r.inspection_data && typeof r.inspection_data === 'object') {
                             const keys = Object.keys(r.inspection_data);
                             const targetKey = keys.find(k => {
@@ -1770,7 +1771,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                                 : `${elv1}`)
                             : null;
 
-                        let inspectionElev = null;
+                        let inspectionElev: any = null;
                         if (r.inspection_data && typeof r.inspection_data === 'object') {
                             const keys = Object.keys(r.inspection_data);
                             const targetKey = keys.find(k => {
