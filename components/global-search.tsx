@@ -274,7 +274,7 @@ export function GlobalSearch() {
             </DialogDescription>
           </div>
 
-          <CommandPrimitive className="flex h-full w-full flex-col overflow-hidden rounded-[2rem]">
+          <CommandPrimitive shouldFilter={false} className="flex h-full w-full flex-col overflow-hidden rounded-[2rem]">
             {/* Top Search Input Box */}
             <div className="relative flex flex-col border-b border-slate-100 dark:border-slate-800/80 bg-gradient-to-b from-slate-50/80 to-white dark:from-slate-900/60 dark:to-slate-950 p-4 gap-3">
               <div className="flex items-center px-3">
@@ -355,17 +355,19 @@ export function GlobalSearch() {
                 </div>
               )}
 
-              <CommandPrimitive.Empty className={cn("py-16 text-center text-sm", loading && "hidden")}>
-                <div className="flex flex-col items-center gap-3">
-                  <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                    <Search className="h-8 w-8 text-slate-400" />
-                  </div>
-                  <div>
-                    <p className="text-slate-700 dark:text-slate-200 font-bold text-base">No results found for &quot;{query}&quot;</p>
-                    <p className="text-xs text-slate-400 mt-1">Try searching for an inspection type like <code className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-mono">RMGI</code>, <code className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-mono">GVI</code>, <code className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-mono">UTWT</code> or Platform Title</p>
+              {!loading && query.length >= 2 && filteredResults.length === 0 && (
+                <div className="py-16 text-center text-sm">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                      <Search className="h-8 w-8 text-slate-400" />
+                    </div>
+                    <div>
+                      <p className="text-slate-700 dark:text-slate-200 font-bold text-base">No results found for &quot;{query}&quot;</p>
+                      <p className="text-xs text-slate-400 mt-1">Try searching for an inspection type like <code className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-mono">RMGI</code>, <code className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-mono">GVI</code>, <code className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-mono">UTWT</code> or Platform Title</p>
+                    </div>
                   </div>
                 </div>
-              </CommandPrimitive.Empty>
+              )}
 
               {(() => {
                 if (filteredResults.length === 0) return null;
