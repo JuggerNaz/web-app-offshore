@@ -15,9 +15,14 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   const paginationParams = getPaginationParams(request);
   const { searchParams } = new URL(request.url);
   const fieldId = searchParams.get("field");
+  const companyId = searchParams.get("company_id") || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
 
   // Build query with count for pagination metadata
-  let query = supabase.from("u_pipeline").select("*", { count: "exact" }).order("title");
+  let query = (supabase as any).from("u_pipeline").select("*", { count: "exact" }).order("title");
+
+  if (companyId) {
+    query = query.eq("company_id", companyId);
+  }
 
   // Filter by field if provided
   if (fieldId) {
@@ -27,20 +32,26 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   // Apply pagination
   query = applyPagination(query, paginationParams);
 
-  const { data, error, count } = await query;
+  const { data, error, count } = (await query) as any;
 
   if (error) {
     return handleSupabaseError(error, "Failed to fetch pipelines");
   }
 
-  // Fetch all oil fields to resolve names efficiently
-  const { data: allFields } = await supabase
+  // Fetch oil fields for this tenant to resolve names efficiently
+  let fieldsQuery = (supabase as any)
     .from("u_lib_list")
     .select("lib_id, lib_desc")
     .eq("lib_code", "OILFIELD")
     .or("lib_delete.is.null,lib_delete.neq.1");
 
-  const fieldMap = new Map((allFields || []).map(f => [f.lib_id.toString(), f.lib_desc]));
+  if (companyId) {
+    fieldsQuery = fieldsQuery.eq("company_id", companyId);
+  }
+
+  const { data: allFields } = (await fieldsQuery) as any;
+
+  const fieldMap = new Map((allFields || []).map((f: any) => [f.lib_id.toString(), f.lib_desc]));
 
   // Attach field names
   const pipelinesWithFields = (data || []).map(pipeline => ({
@@ -61,6 +72,10 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
 export const POST = withAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const body = await request.json();
+  const companyId = request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value || body.company_id;
+  if (companyId && !body.company_id) {
+    body.company_id = companyId;
+  }
 
   // Determine starting candidate ID
   const requestedId = Number(body.pipe_id);

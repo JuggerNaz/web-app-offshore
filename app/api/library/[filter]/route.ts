@@ -7,15 +7,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = createClient();
   const { filter } = await params;
   const decodedFilter = decodeURIComponent(filter);
+  const companyId = request.nextUrl.searchParams.get("company_id") || 
+    request.headers.get("x-company-id") || 
+    request.cookies.get("active_company_id")?.value;
 
   // Check if multiple codes requested (comma-separated) - preserve legacy behavior
   if (decodedFilter.includes(",")) {
     const codes = decodedFilter.split(",");
-    const { data, error } = await supabase
-      .from("u_lib_list")
+    let query = supabase
+      .from("u_lib_list" as any)
       .select()
       .in("lib_code", codes)
       .or("lib_delete.is.null,lib_delete.neq.1");
+
+    if (companyId) {
+      query = query.eq("company_id", companyId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       if (error.code === "PGRST116") {
@@ -32,9 +41,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // Single code logic (New Feature Requirement)
   // Fetch items for specific master code, hiding hidden items, sorting by value
   let query = supabase
-    .from("u_lib_list")
+    .from("u_lib_list" as any)
     .select("*")
     .eq("lib_code", decodedFilter);
+
+  if (companyId) {
+    query = query.eq("company_id", companyId);
+  }
 
   if (!includeDeleted) {
     query = query.or("lib_delete.is.null,lib_delete.neq.1");
@@ -146,6 +159,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { filter } = await params;
   const body = await request.json();
   const decodedFilter = decodeURIComponent(filter);
+  const companyId = request.headers.get("x-company-id") || 
+    request.cookies.get("active_company_id")?.value || 
+    body.company_id;
 
   // Get current user for cr_user
   const { data: { user } } = await supabase.auth.getUser();
@@ -158,12 +174,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Value/Code cannot exceed 12 characters." }, { status: 400 });
     }
 
-    const { data: existing } = await supabase
+    let existingQuery = (supabase as any)
       .from("u_lib_list")
       .select("*")
       .eq("lib_code", decodedFilter)
-      .eq("lib_id", libId)
-      .maybeSingle();
+      .eq("lib_id", libId);
+
+    if (companyId) {
+      existingQuery = existingQuery.eq("company_id", companyId);
+    }
+
+    const { data: existing }: any = await existingQuery.maybeSingle();
 
     if (existing) {
       // lib_delete is set to any non-null value when soft-deleted (1, "1", "Y", etc.)
@@ -177,13 +198,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           workunit: '000',
           cr_user: user?.email || user?.id || 'system',
           lib_delete: null,
+          ...(companyId ? { company_id: companyId } : {}),
         };
 
-        const { data: updated, error: updateError } = await supabase
+        let updateQuery = (supabase as any)
           .from("u_lib_list")
           .update(updatePayload)
           .eq("lib_code", decodedFilter)
-          .eq("lib_id", libId)
+          .eq("lib_id", libId);
+
+        if (companyId) {
+          updateQuery = updateQuery.eq("company_id", companyId);
+        }
+
+        const { data: updated, error: updateError } = await updateQuery
           .select()
           .single();
 
@@ -198,16 +226,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
   }
 
-  // Inject lib_code, workunit, cr_user and ensure lib_delete is null
+  // Inject lib_code, workunit, cr_user, company_id and ensure lib_delete is null
   const payload = {
     ...body,
     lib_code: decodedFilter,
     workunit: '000',
     cr_user: user?.email || user?.id || 'system',
     lib_delete: null,
+    ...(companyId ? { company_id: companyId } : {}),
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("u_lib_list")
     .insert(payload)
     .select()

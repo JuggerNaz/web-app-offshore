@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
+import { cookies } from "next/headers";
 
 export type SearchResult = {
   id: string | number;
@@ -27,7 +28,7 @@ export type SearchResult = {
   incompleteCount?: number;
 };
 
-export async function searchGlobal(query: string): Promise<SearchResult[]> {
+export async function searchGlobal(query: string, activeCompanyId?: string): Promise<SearchResult[]> {
   if (!query || query.length < 2) return [];
 
   const supabase = createClient();
@@ -35,12 +36,33 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   const lowerQuery = trimmedQuery.toLowerCase();
   const upperQuery = trimmedQuery.toUpperCase();
 
+  // Resolve active tenant company_id
+  let companyId = activeCompanyId;
+  if (!companyId) {
+    try {
+      const cookieStore = await cookies();
+      companyId = cookieStore.get("active_company_id")?.value;
+    } catch {}
+  }
+
   // NLP: Intent Detection Patterns
   const legsMatch = query.match(/(\d+)\s*legs?/i);
   const qidMatch = query.match(/qid\s*:?\s*(\d+)/i) || query.match(/^(\d{4,})$/); // Direct digits or "qid: 123"
   const priorityMatch = query.match(/p\s*(\d)/i) || query.match(/priority\s*(\d)/i);
 
   // Fetch structures, inspection types, and component master definitions in parallel
+  let structQ = (supabase as any).from("structure").select("str_id, str_type");
+  let platInfoQ = (supabase as any).from("platform").select("plat_id, title");
+  let pipeInfoQ = (supabase as any).from("u_pipeline").select("pipe_id, title");
+  let inspTypeQ = (supabase as any).from("inspection_type").select("code, name");
+  let compTypeQ = (supabase as any).from("components").select("code, name, descrip");
+
+  if (companyId) {
+    structQ = structQ.eq("company_id", companyId);
+    platInfoQ = platInfoQ.eq("company_id", companyId);
+    pipeInfoQ = pipeInfoQ.eq("company_id", companyId);
+  }
+
   const [
     { data: structures },
     { data: platformsInfo },
@@ -48,11 +70,11 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
     { data: allInspTypes },
     { data: allCompTypes }
   ] = await Promise.all([
-    (supabase as any).from("structure").select("str_id, str_type"),
-    (supabase as any).from("platform").select("plat_id, title"),
-    (supabase as any).from("u_pipeline").select("pipe_id, title"),
-    (supabase as any).from("inspection_type").select("code, name"),
-    (supabase as any).from("components").select("code, name, descrip")
+    structQ,
+    platInfoQ,
+    pipeInfoQ,
+    inspTypeQ,
+    compTypeQ
   ]);
 
   const structureTypeMap = new Map<number, string>();
@@ -111,6 +133,10 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
     try {
       let platformQuery = (supabase as any).from("platform").select("plat_id, title, plegs, ptype");
       
+      if (companyId) {
+        platformQuery = platformQuery.eq("company_id", companyId);
+      }
+
       if (legsMatch) {
         platformQuery = platformQuery.eq("plegs", parseInt(legsMatch[1]));
       } else if (qidMatch) {
@@ -119,7 +145,7 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
         platformQuery = platformQuery.ilike("title", `%${trimmedQuery}%`);
       }
 
-      const { data: platforms } = await platformQuery.limit(5);
+      const { data: platforms } = await platformQuery.limit(10);
       return (platforms || []).map((p: any) => ({
         id: p.plat_id,
         title: p.title,
@@ -137,11 +163,16 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   // 2. Pipeline Search
   const pipelinePromise = (async () => {
     try {
-      const { data: pipelines } = await (supabase as any)
+      let pipelineQuery = (supabase as any)
         .from("u_pipeline")
         .select("pipe_id, title, ptype")
-        .ilike("title", `%${trimmedQuery}%`)
-        .limit(5);
+        .ilike("title", `%${trimmedQuery}%`);
+
+      if (companyId) {
+        pipelineQuery = pipelineQuery.eq("company_id", companyId);
+      }
+
+      const { data: pipelines } = await pipelineQuery.limit(10);
 
       return (pipelines || []).map((p: any) => ({
         id: p.pipe_id,
@@ -160,11 +191,16 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   // 3. Jobpack Search
   const jobpackPromise = (async () => {
     try {
-      const { data: jobpacks } = await (supabase as any)
+      let jobpackQuery = (supabase as any)
         .from("jobpack")
         .select("id, name, metadata")
-        .or(`name.ilike.%${trimmedQuery}%, metadata->>job_no.ilike.%${trimmedQuery}%`)
-        .limit(5);
+        .or(`name.ilike.%${trimmedQuery}%, metadata->>job_no.ilike.%${trimmedQuery}%`);
+
+      if (companyId) {
+        jobpackQuery = jobpackQuery.eq("company_id", companyId);
+      }
+
+      const { data: jobpacks } = await jobpackQuery.limit(10);
 
       return (jobpacks || []).map((j: any) => {
         const metadata = j.metadata as any;
@@ -194,11 +230,16 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
         compConditions.push(`code.in.(${matchedCompCodes.join(",")})`);
       }
 
-      const { data: components } = await (supabase as any)
+      let compQuery = (supabase as any)
         .from("structure_components")
         .select("id, q_id, id_no, code, structure_id")
-        .or(compConditions.join(","))
-        .limit(25);
+        .or(compConditions.join(","));
+
+      if (companyId) {
+        compQuery = compQuery.eq("company_id", companyId);
+      }
+
+      const { data: components } = await compQuery.limit(25);
 
       return (components || []).map((c: any) => {
         const type = structureTypeMap.get(c.structure_id) || "platform";
@@ -228,16 +269,22 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
   const inspectionPromise = (async () => {
     try {
       // Find matching platform/pipeline IDs
-      const platQuery = (supabase as any).from("platform").select("plat_id").ilike("title", `%${trimmedQuery}%`);
-      const pipeQuery = (supabase as any).from("u_pipeline").select("pipe_id").ilike("title", `%${trimmedQuery}%`);
-      // Find matching jobpacks
-      const jpQuery = (supabase as any).from("jobpack").select("id").ilike("name", `%${trimmedQuery}%`);
-      // Find matching component QIDs, ID_Nos, or matching component codes
+      let platQuery = (supabase as any).from("platform").select("plat_id").ilike("title", `%${trimmedQuery}%`);
+      let pipeQuery = (supabase as any).from("u_pipeline").select("pipe_id").ilike("title", `%${trimmedQuery}%`);
+      let jpQuery = (supabase as any).from("jobpack").select("id").ilike("name", `%${trimmedQuery}%`);
+      
       const compConditionList = [`q_id.ilike.%${trimmedQuery}%`, `id_no.ilike.%${trimmedQuery}%`];
       if (matchedCompCodes.length > 0) {
         compConditionList.push(`code.in.(${matchedCompCodes.join(",")})`);
       }
-      const compQuery = (supabase as any).from("structure_components").select("id").or(compConditionList.join(",")).limit(150);
+      let compQuery = (supabase as any).from("structure_components").select("id").or(compConditionList.join(",")).limit(150);
+
+      if (companyId) {
+        platQuery = platQuery.eq("company_id", companyId);
+        pipeQuery = pipeQuery.eq("company_id", companyId);
+        jpQuery = jpQuery.eq("company_id", companyId);
+        compQuery = compQuery.eq("company_id", companyId);
+      }
 
       const [platRes, pipeRes, jpRes, compRes] = await Promise.all([
         platQuery,
@@ -277,7 +324,7 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
 
       const orFilter = conditions.join(",");
 
-      const { data: inspections } = await (supabase as any)
+      let inspRecordsQuery = (supabase as any)
         .from("insp_records")
         .select(`
           insp_id, 
@@ -298,6 +345,12 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
         .or(orFilter)
         .order("inspection_date", { ascending: false })
         .limit(200);
+
+      if (companyId) {
+        inspRecordsQuery = inspRecordsQuery.eq("company_id", companyId);
+      }
+
+      const { data: inspections } = await inspRecordsQuery;
 
       if (!inspections || inspections.length === 0) return [];
 
@@ -400,12 +453,18 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
           fallbackConditions.push(`inspection_type_code.in.(${matchedInspTypeCodes.join(",")})`);
         }
 
-        const { data: inspections } = await (supabase as any)
+        let fallbackQuery = (supabase as any)
           .from("insp_records")
           .select("insp_id, inspection_type_code, status, inspection_date, jobpack_id, structure_id, sow_report_no, rov_job_id, dive_job_id, has_anomaly, component_id")
           .or(fallbackConditions.join(","))
           .order("inspection_date", { ascending: false })
           .limit(200);
+
+        if (companyId) {
+          fallbackQuery = fallbackQuery.eq("company_id", companyId);
+        }
+
+        const { data: inspections } = await fallbackQuery;
 
         if (!inspections || inspections.length === 0) return [];
 
@@ -524,6 +583,10 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
           insp_records:inspection_id(jobpack_id, structure_id, sow_report_no, inspection_type_code, rov_job_id, component_id)
         `);
       
+      if (companyId) {
+        anomalyQuery = anomalyQuery.eq("company_id", companyId);
+      }
+
       if (anomalyConditions.length > 0) {
         anomalyQuery = anomalyQuery.or(anomalyConditions.join(","));
       }

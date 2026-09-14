@@ -22,24 +22,29 @@ export default async function SelectTenantPage({
   const user = userData.user;
 
   // Fetch active memberships and company data
-  const { data: memberships, error: membershipError } = await (supabase as any)
+  const { data: rawMemberships, error: membershipError } = await (supabase as any)
     .from("company_memberships")
     .select(`
       id,
       role,
       is_active,
       company_id,
-      company:companies!company_id(id, name, slug, logo_url)
+      company:companies!company_id(id, name, slug, logo_url, is_active)
     `)
     .eq("user_id", user.id)
     .eq("is_active", true);
 
-  if (membershipError || !memberships || memberships.length === 0) {
+  // Exclude any memberships belonging to deactivated organizations
+  const memberships = (rawMemberships || []).filter((m: any) => {
+    return m.is_active && m.company && m.company.is_active !== false && m.company.is_active !== 0;
+  });
+
+  if (membershipError || memberships.length === 0) {
     await supabase.auth.signOut();
     return redirect("/sign-in?error=" + encodeURIComponent("No active organization memberships found."));
   }
 
-  // If user only has 1 membership, auto-route to dashboard
+  // If user only has 1 active membership, auto-route to dashboard
   if (memberships.length === 1) {
     const singleCompanyId = memberships[0].company_id;
     const cookieStore = await cookies();

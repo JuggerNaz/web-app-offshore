@@ -17,6 +17,9 @@ export async function GET(
     try {
         const supabase = await createClient();
         const { lib_code } = await params;
+        const companyId = request.nextUrl.searchParams.get("company_id") || 
+          request.headers.get("x-company-id") || 
+          request.cookies.get("active_company_id")?.value;
 
         console.log("Received lib_code:", lib_code);
 
@@ -31,30 +34,46 @@ export async function GET(
         }
 
         // Fetch code_1 options (exclude soft-deleted items)
-        const code1Query = await supabase
+        let q1 = supabase
             .from("u_lib_list" as any)
             .select("lib_id, lib_desc")
             .eq("lib_code", config.code1_lib)
-            .or("lib_delete.is.null,lib_delete.eq.0")
-            .order("lib_id");
+            .or("lib_delete.is.null,lib_delete.eq.0");
+
+        if (companyId) {
+            q1 = q1.eq("company_id", companyId);
+        }
+
+        const code1Query = await q1.order("lib_id");
 
         if (code1Query.error) throw code1Query.error;
 
         // Fetch code_2 options (exclude soft-deleted items)
-        const code2Query = await supabase
+        let q2 = supabase
             .from("u_lib_list" as any)
             .select("lib_id, lib_desc")
             .eq("lib_code", config.code2_lib)
-            .or("lib_delete.is.null,lib_delete.eq.0")
-            .order("lib_id");
+            .or("lib_delete.is.null,lib_delete.eq.0");
+
+        if (companyId) {
+            q2 = q2.eq("company_id", companyId);
+        }
+
+        const code2Query = await q2.order("lib_id");
 
         if (code2Query.error) throw code2Query.error;
 
         // Fetch master names for labels from u_lib_mast table
-        const mastersQuery = await supabase
+        let mastersQ = supabase
             .from("u_lib_mast" as any)
             .select("lib_code, lib_name")
             .in("lib_code", [config.code1_lib, config.code2_lib]);
+
+        if (companyId) {
+            mastersQ = mastersQ.eq("company_id", companyId);
+        }
+
+        const mastersQuery = await mastersQ;
 
         if (mastersQuery.error) {
             console.error("Error fetching masters:", mastersQuery.error);

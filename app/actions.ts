@@ -123,17 +123,23 @@ export const selectTenantAction = async (formData: FormData) => {
     return redirect("/select-tenant");
   }
 
-  // Verify that the user has an active membership in this company
-  const { data: membership, error } = await supabase
+  // Verify that the user has an active membership in this company and the organization is active
+  const { data: membership, error } = await (supabase as any)
     .from("company_memberships")
-    .select("company_id")
+    .select("company_id, is_active, company:companies!company_id(id, is_active)")
     .eq("user_id", userRes.data.user.id)
     .eq("company_id", companyId)
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error || !membership) {
-    return encodedRedirect("error", "/select-tenant", "You do not have active access to this organization.");
+  if (
+    error || 
+    !membership || 
+    !membership.company || 
+    membership.company.is_active === false || 
+    membership.company.is_active === 0
+  ) {
+    return encodedRedirect("error", "/select-tenant", "This organization is inactive or you do not have active access.");
   }
 
   const cookieStore = await cookies();

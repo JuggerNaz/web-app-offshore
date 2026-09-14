@@ -101,16 +101,29 @@ export function withTenantLight(handler: TenantPartialHandler) {
       let resolvedCompanyId = companyId;
 
       if (!resolvedCompanyId) {
-        const { data: membership } = await (supabase as any)
+        const { data: memberships } = await (supabase as any)
           .from("company_memberships")
-          .select("company_id")
+          .select("company_id, company:companies!company_id(is_active)")
           .eq("user_id", user.id)
           .eq("is_active", true)
-          .order("updated_at", { ascending: false })
-          .limit(1)
+          .order("updated_at", { ascending: false });
+
+        const activeMembership = (memberships || []).find(
+          (m: any) => m.is_active && m.company && m.company.is_active !== false && m.company.is_active !== 0
+        );
+
+        resolvedCompanyId = activeMembership?.company_id || undefined;
+      } else {
+        // Verify that the requested companyId is actually active
+        const { data: comp } = await (supabase as any)
+          .from("companies")
+          .select("id, is_active")
+          .eq("id", resolvedCompanyId)
           .maybeSingle();
 
-        resolvedCompanyId = membership?.company_id || undefined;
+        if (comp && (comp.is_active === false || comp.is_active === 0)) {
+          return apiForbidden("Organization is inactive");
+        }
       }
 
       if (!resolvedCompanyId) {

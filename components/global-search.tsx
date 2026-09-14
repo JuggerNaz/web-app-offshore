@@ -36,6 +36,7 @@ import {
   type ReportTemplateOption,
 } from "@/lib/search-report-generator";
 import { toast } from "sonner";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 type CategoryFilter = "ALL" | "INSPECTIONS" | "ASSETS" | "JOBPACKS" | "ANOMALIES" | "COMPONENTS";
 
@@ -45,6 +46,7 @@ export function GlobalSearch() {
   const [results, setResults] = React.useState<SearchResult[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [activeCategory, setActiveCategory] = React.useState<CategoryFilter>("ALL");
+  const { activeCompanyId } = useUserProfile();
   const router = useRouter();
 
   // Print / template picker state
@@ -108,14 +110,14 @@ export function GlobalSearch() {
     }
     setLoading(true);
     try {
-      const data = await searchGlobal(val);
+      const data = await searchGlobal(val, activeCompanyId || undefined);
       setResults(data);
     } catch (err) {
       console.error("Search error:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeCompanyId]);
 
   const onSelect = (url: string) => {
     setOpen(false);

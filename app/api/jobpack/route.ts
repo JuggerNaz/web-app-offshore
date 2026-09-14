@@ -5,23 +5,31 @@ import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth, withOptionalAuth } from "@/utils/with-auth";
 
-let serverJobpackCache: { data: any[]; timestamp: number } | null = null;
+let serverJobpackCache = new Map<string, { data: any[]; timestamp: number }>();
 const JOBPACK_CACHE_TTL_MS = 60 * 1000; // 60s
 
-async function getAllJobpacksCached(supabase: any) {
+async function getAllJobpacksCached(supabase: any, companyId?: string) {
+  const cacheKey = companyId || "global";
   const now = Date.now();
-  if (serverJobpackCache && now - serverJobpackCache.timestamp < JOBPACK_CACHE_TTL_MS) {
-    return serverJobpackCache.data;
+  const cached = serverJobpackCache.get(cacheKey);
+  if (cached && now - cached.timestamp < JOBPACK_CACHE_TTL_MS) {
+    return cached.data;
   }
-  const { data, error } = await supabase
+  let query = supabase
     .from("jobpack")
     .select("*")
     .order("id", { ascending: false });
 
-  if (error || !data) {
-    return serverJobpackCache?.data || [];
+  if (companyId) {
+    query = query.eq("company_id", companyId);
   }
-  serverJobpackCache = { data, timestamp: now };
+
+  const { data, error } = await query;
+
+  if (error || !data) {
+    return cached?.data || [];
+  }
+  serverJobpackCache.set(cacheKey, { data, timestamp: now });
   return data;
 }
 
@@ -31,6 +39,8 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
   const paginationParams = getPaginationParams(request);
 
   const url = new URL(request.url);
+  const companyId = url.searchParams.get("company_id") || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
+
   if (!url.searchParams.has("pageSize") && !url.searchParams.has("limit")) {
     paginationParams.pageSize = 1000;
     paginationParams.offset = (paginationParams.page - 1) * paginationParams.pageSize;
@@ -58,16 +68,21 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
 
   // --- Single jobpack by ID (includes full metadata) ---
   if (singleIdParam) {
-    const allJps = await getAllJobpacksCached(supabase);
+    const allJps = await getAllJobpacksCached(supabase, companyId);
     const found = allJps.find((jp: any) => Number(jp.id) === Number(singleIdParam));
     if (found) {
       return NextResponse.json({ data: found });
     }
-    const { data, error } = await (supabase as any)
+    let singleQuery = (supabase as any)
       .from("jobpack")
       .select("*")
-      .eq("id", Number(singleIdParam))
-      .single();
+      .eq("id", Number(singleIdParam));
+
+    if (companyId) {
+      singleQuery = singleQuery.eq("company_id", companyId);
+    }
+
+    const { data, error } = await singleQuery.single();
     if (error) return handleSupabaseError(error, "Failed to fetch jobpack");
     return NextResponse.json({ data });
   }
@@ -75,11 +90,17 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
   // --- Jobpacks with inspection data (checked BEFORE the structure path so
   // has_inspection=true&structure_id=… keeps the inspection-filtered semantics) ---
   if (hasInspection) {
-    const [diveRes, rovRes, recRes] = await Promise.all([
-      (supabase as any).from("insp_dive_jobs").select("jobpack_id").not("jobpack_id", "is", null),
-      (supabase as any).from("insp_rov_jobs").select("jobpack_id").not("jobpack_id", "is", null),
-      (supabase as any).from("insp_records").select("jobpack_id").not("jobpack_id", "is", null),
-    ]);
+    let diveQ = (supabase as any).from("insp_dive_jobs").select("jobpack_id").not("jobpack_id", "is", null);
+    let rovQ = (supabase as any).from("insp_rov_jobs").select("jobpack_id").not("jobpack_id", "is", null);
+    let recQ = (supabase as any).from("insp_records").select("jobpack_id").not("jobpack_id", "is", null);
+
+    if (companyId) {
+      diveQ = diveQ.eq("company_id", companyId);
+      rovQ = rovQ.eq("company_id", companyId);
+      recQ = recQ.eq("company_id", companyId);
+    }
+
+    const [diveRes, rovRes, recRes] = await Promise.all([diveQ, rovQ, recQ]);
 
     let allIds = new Set<number>();
     (diveRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
@@ -91,6 +112,10 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
         .from("u_sow")
         .select("jobpack_id")
         .not("jobpack_id", "is", null);
+
+      if (companyId) {
+        sowQuery = sowQuery.eq("company_id", companyId);
+      }
 
       if (structureIdParam && structureTitleParam) {
         sowQuery = sowQuery.or(`structure_id.eq.${structureIdParam},structure_title.eq."${structureTitleParam}"`);
@@ -112,7 +137,7 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
       return apiPaginated([], createPaginationMeta(paginationParams, 0));
     }
 
-    const allJps = await getAllJobpacksCached(supabase);
+    const allJps = await getAllJobpacksCached(supabase, companyId);
     const filtered = allJps.filter((jp: any) => allIds.has(Number(jp.id)));
     const sorted = sortByDate(filtered);
     return apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length));
@@ -125,7 +150,7 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     const validNum = !isNaN(sIdNum) && rawSIdStr !== "";
 
     // 1. Find jobpack IDs from relational tables in parallel
-    const sowQuery = validNum
+    let sowQuery = validNum
       ? (structureTitleParam
           ? (supabase as any).from("u_sow").select("jobpack_id").or(`structure_id.eq.${sIdNum},structure_title.eq."${structureTitleParam}"`).not("jobpack_id", "is", null)
           : (supabase as any).from("u_sow").select("jobpack_id").eq("structure_id", sIdNum).not("jobpack_id", "is", null))
@@ -133,22 +158,29 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
           ? (supabase as any).from("u_sow").select("jobpack_id").eq("structure_title", structureTitleParam).not("jobpack_id", "is", null)
           : Promise.resolve({ data: [] }));
 
-    const recQuery = validNum
+    let recQuery = validNum
       ? (supabase as any).from("insp_records").select("jobpack_id").eq("structure_id", sIdNum).not("jobpack_id", "is", null)
       : Promise.resolve({ data: [] });
-    const diveQuery = validNum
+    let diveQuery = validNum
       ? (supabase as any).from("insp_dive_jobs").select("jobpack_id").eq("structure_id", sIdNum).not("jobpack_id", "is", null)
       : Promise.resolve({ data: [] });
-    const rovQuery = validNum
+    let rovQuery = validNum
       ? (supabase as any).from("insp_rov_jobs").select("jobpack_id").eq("structure_id", sIdNum).not("jobpack_id", "is", null)
       : Promise.resolve({ data: [] });
+
+    if (companyId) {
+      if (typeof sowQuery.eq === "function") sowQuery = sowQuery.eq("company_id", companyId);
+      if (typeof recQuery.eq === "function") recQuery = recQuery.eq("company_id", companyId);
+      if (typeof diveQuery.eq === "function") diveQuery = diveQuery.eq("company_id", companyId);
+      if (typeof rovQuery.eq === "function") rovQuery = rovQuery.eq("company_id", companyId);
+    }
 
     const [sowJps, recJps, diveJps, rovJps, allJobpacks] = await Promise.all([
       sowQuery,
       recQuery,
       diveQuery,
       rovQuery,
-      getAllJobpacksCached(supabase),
+      getAllJobpacksCached(supabase, companyId),
     ]);
 
     const matchedJpIds = new Set<number>();
@@ -206,6 +238,10 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     .select("id, name, status, created_at, updated_at, company_id")
     .order("id", { ascending: false });
 
+  if (companyId) {
+    query = query.eq("company_id", companyId);
+  }
+
   query = applyPagination(query, paginationParams);
 
   const { data, error, count } = await query;
@@ -223,7 +259,12 @@ export const POST = withAuth(async (request: NextRequest, { user }: { user: any 
   const supabase = createClient();
   const body = await request.json();
 
-  serverJobpackCache = null; // Invalidate cache on new jobpack creation
+  serverJobpackCache.clear(); // Invalidate cache on new jobpack creation
+
+  const companyId = request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value || body.company_id;
+  if (companyId && !body.company_id) {
+    body.company_id = companyId;
+  }
 
   const { data, error } = await (supabase as any)
     .from("jobpack")
