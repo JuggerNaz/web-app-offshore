@@ -111,8 +111,10 @@ export function ComponentSpecDialog({
   const isCreateMode = mode === "create";
   const [isEditing, setIsEditing] = useState(false);
   const isEditMode = isEditing;
-  const [structureId] = useAtom(urlId);
-  const [pageType] = useAtom(urlType);
+  const [atomStructureId] = useAtom(urlId);
+  const [atomPageType] = useAtom(urlType);
+  const structureId = component?.structure_id || atomStructureId;
+  const pageType = atomPageType || (component?.code?.toLowerCase() === 'pp' ? 'pipeline' : 'platform');
   const [isSaving, setIsSaving] = useState(false);
 
   const effectiveCode =
@@ -1233,6 +1235,15 @@ export function ComponentSpecDialog({
         mutate(`/api/structure-components/${structureId}`);
       }
 
+      if (structureId && pageType === "platform") {
+        try {
+          await fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" });
+          mutate(`/api/platform/webapp-3d/${structureId}`);
+        } catch (err) {
+          console.error("Failed to resync 3D cache:", err);
+        }
+      }
+
       toast("Component created successfully");
       onOpenChange(false);
 
@@ -1369,6 +1380,15 @@ export function ComponentSpecDialog({
         mutate(listKey);
       } else {
         mutate(`/api/structure-components/${structureId}`);
+      }
+
+      if (structureId && pageType === "platform") {
+        try {
+          await fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" });
+          mutate(`/api/platform/webapp-3d/${structureId}`);
+        } catch (err) {
+          console.error("Failed to resync 3D cache:", err);
+        }
       }
 
       toast("Component updated successfully", { position: "bottom-right" });
@@ -3760,6 +3780,15 @@ export function ComponentSpecDialog({
                     });
                     setViewAssocId(newId);
                     if (listKey) mutate(listKey);
+                    if (structureId && pageType === "platform") {
+                      fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" })
+                        .then(() => {
+                          mutate(`/api/platform/webapp-3d/${structureId}`);
+                        })
+                        .catch((err) => {
+                          console.error("Failed to resync 3D cache:", err);
+                        });
+                    }
                     toast.success(newId ? "Association saved successfully" : "Association cleared");
                   } catch (err) {
                     console.error("Failed to save association:", err);
@@ -4031,29 +4060,19 @@ export function ComponentSpecDialog({
                 {isSaving ? "Saving..." : "Create Component"}
               </Button>
             ) : isEditMode ? (
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsEditing(false)}
-                  className={cn("rounded-xl font-bold px-6 h-11", inline && "h-10 px-5 text-xs")}
-                >
-                  Cancel Edit
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleUpdate}
-                  disabled={isSaving}
-                  className={cn("rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]", inline && "h-10 px-6 text-xs")}
-                >
-                  {isSaving ? (
-                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  {isSaving ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
+              <Button
+                type="button"
+                onClick={handleUpdate}
+                disabled={isSaving}
+                className={cn("rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]", inline && "h-10 px-6 text-xs")}
+              >
+                {isSaving ? (
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
             ) : (
               <Button
                 type="button"

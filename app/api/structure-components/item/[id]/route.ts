@@ -20,6 +20,8 @@ export const PATCH = withAuth(
     { params }: { params: Promise<{ id: string }>; user: any }
   ) => {
     const supabase = createClient();
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const adminSupabase = useAdmin ? createAdminClient() : supabase;
     const { id } = await params;
     const body =
       (await request.json().catch(() => ({}))) as StructureComponentUpdate;
@@ -44,8 +46,8 @@ export const PATCH = withAuth(
     }
 
     if (data?.structure_id) {
-      // Trigger asynchronous 3D coordinates recalculation for this structure
-      syncWebapp3D(supabase, data.structure_id).catch((err) => {
+      // Trigger synchronous 3D coordinates recalculation for this structure
+      await syncWebapp3D(adminSupabase, data.structure_id).catch((err) => {
         console.error("[3D Sync Error]", err);
       });
     }
@@ -65,6 +67,7 @@ export const DELETE = withAuth(
   ) => {
     const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabase = useAdmin ? createAdminClient() : createClient();
+    const adminSupabase = supabase;
     const { id } = await params;
 
     const componentId = Number(id);
@@ -75,6 +78,13 @@ export const DELETE = withAuth(
       );
     }
 
+    // Fetch existing component first to get its structure_id for 3D synchronization
+    const { data: existingComp } = await supabase
+      .from("structure_components")
+      .select("structure_id")
+      .eq("id", componentId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from("structure_components")
       .delete()
@@ -84,9 +94,12 @@ export const DELETE = withAuth(
       return handleSupabaseError(error, "Failed to delete structure component");
     }
 
-    // We need to fetch the structure_id to sync 3D properly, but since it's deleted we should have fetched it beforehand.
-    // However, the client doesn't pass it. Let's just return success for now.
-    // In a robust implementation, we'd fetch the structure_id before deleting.
+    if (existingComp?.structure_id) {
+      await syncWebapp3D(adminSupabase, existingComp.structure_id).catch((err) => {
+        console.error("[3D Sync Error on DELETE]", err);
+      });
+    }
+
     return apiSuccess({ success: true });
   }
 );

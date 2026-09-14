@@ -2507,20 +2507,25 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 export async function syncWebapp3D(supabase: any, structureId: number) {
   try {
     // 1. Fetch Platform Details
-    const { data: platformDetails } = await supabase
-      .from("u_lib_list")
+    const { data: platformDetails } = await (supabase as any)
+      .from("platform")
       .select("*")
-      .eq("structure_id", structureId)
-      .single();
+      .eq("plat_id", structureId)
+      .maybeSingle();
+
+    if (!platformDetails) {
+      console.warn(`[syncWebapp3D] No platform found with plat_id: ${structureId}`);
+      return;
+    }
 
     // 2. Fetch Elevations
-    const { data: elevations } = await supabase
+    const { data: elevations } = await (supabase as any)
       .from("platform_elevation")
       .select("*")
       .eq("plat_id", structureId);
 
     // 3. Fetch Faces
-    const { data: faces } = await supabase
+    const { data: faces } = await (supabase as any)
       .from("platform_faces")
       .select("*")
       .eq("plat_id", structureId);
@@ -2533,7 +2538,7 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
     while (hasMore) {
       const from = page * pageSize;
       const to = from + pageSize - 1;
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("structure_components")
         .select("*")
         .eq("structure_id", structureId)
@@ -2555,27 +2560,28 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
     const excludeCodes = ["IT", "FV", "HS", "GP", "PG", "PC", "RC", "RB", "SD", "FA"];
     const components = (rawComponents || [])
       .filter((c: any) => {
-          const code = (c.code || "").trim().toUpperCase();
-          const qIdUpper = (c.q_id || "").toUpperCase();
-          const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP");
-          if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) return false;
-          if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) return false;
-          if (code === "WN") {
-              const md = c.metadata || c;
-              const sNode = (md.s_node || "").toString().trim().toUpperCase();
-              const fNode = (md.f_node || "").toString().trim().toUpperCase();
-              if (sNode && fNode && sNode !== fNode) return false;
-          }
+        const code = (c.code || "").trim().toUpperCase();
+        const qIdUpper = (c.q_id || "").toUpperCase();
+        const isRiserSupport = qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM");
+        if ((excludeCodes.includes(code) || code.startsWith("FA") || code.includes("FACE")) && !isRiserSupport) return false;
+        if (qIdUpper.startsWith("FACE") || /^FACE[\s\-]/i.test(qIdUpper)) return false;
+        if (code === "WN") {
+          const md = c.metadata || c;
+          const sNode = (md.s_node || "").toString().trim().toUpperCase();
+          const fNode = (md.f_node || "").toString().trim().toUpperCase();
+          const hasAssociation = !!(md.associated_comp_id || md.associated_member || md.associated_comp || md.parent_id);
+          if (sNode && fNode && sNode !== fNode && !hasAssociation) return false;
+        }
 
-          if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) return false;
-          if (qIdUpper.endsWith("TERM")) return false;
-          return true;
+        if (/^FEND\s+\d+-SUPP-/i.test(qIdUpper)) return false;
+        if (qIdUpper.endsWith("TERM")) return false;
+        return true;
       })
       .map((c: any) => ({
-          ...c.metadata,
-          ...c,
-          qid: c.q_id,
-          type: c.code,
+        ...c.metadata,
+        ...c,
+        qid: c.q_id,
+        type: c.code,
       }));
 
     // 5. Generate coordinates
@@ -2589,9 +2595,10 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
     if (!componentLayouts || componentLayouts.length === 0) return;
 
     // 6. Delete old and Upsert new webapp_3d
-    await supabase.from("webapp_3d").delete().eq("structure_id", structureId);
+    await (supabase as any).from("webapp_3d").delete().eq("structure_id", structureId);
     
     const insertData = componentLayouts.map((m: any) => {
+      const c = m.component || m;
       const startX = m.start?.x ?? m.start?.[0] ?? m.position?.[0] ?? 0;
       const startY = m.start?.y ?? m.start?.[1] ?? m.position?.[1] ?? 0;
       const startZ = m.start?.z ?? m.start?.[2] ?? m.position?.[2] ?? 0;
@@ -2601,15 +2608,10 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
       const posX = (startX + endX) / 2;
       const posY = (startY + endY) / 2;
       const posZ = (startZ + endZ) / 2;
+      const compIdVal = String(c.id || m.id || `${c.q_id || "COMP"}-${Math.random()}`);
       return {
         structure_id: structureId,
-        component_id: m.id,
-        start_x: startX,
-        start_y: startY,
-        start_z: startZ,
-        end_x: endX,
-        end_y: endY,
-        end_z: endZ,
+        component_id: compIdVal,
         pos_x: posX,
         pos_y: posY,
         pos_z: posZ,
@@ -2619,13 +2621,24 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
         scale_x: m.scale?.[0] || 1,
         scale_y: m.scale?.[1] || 1,
         scale_z: m.scale?.[2] || 1,
-        shape_type: m.shape || (startX === endX && startY === endY && startZ === endZ ? "sphere" : "cylinder"),
-        dimensions: { length: m.length, radius: m.thickness, offset: m.offsetDistance },
+        shape_type: m.shape || m.shape_type || (startX === endX && startY === endY && startZ === endZ ? "sphere" : "cylinder"),
+        dimensions: { length: m.length, radius: m.thickness || 0.3, offset: m.offsetDistance, thickness: m.thickness || 0.3 },
         color_hex: m.color || null,
         material_type: "steel",
         opacity: 1.0,
         visibility_flag: true,
         has_geometry_issue: false,
+        custom_props: {
+          q_id: c.q_id || m.q_id || null,
+          code: c.code || m.code || null,
+          comp_id: c.id || c.comp_id || null,
+        },
+        start_x: startX,
+        start_y: startY,
+        start_z: startZ,
+        end_x: endX,
+        end_y: endY,
+        end_z: endZ,
       };
     });
 
@@ -2633,10 +2646,13 @@ export async function syncWebapp3D(supabase: any, structureId: number) {
     const chunkSize = 500;
     for (let i = 0; i < insertData.length; i += chunkSize) {
       const chunk = insertData.slice(i, i + chunkSize);
-      await supabase.from("webapp_3d").insert(chunk);
+      const { error: insErr } = await (supabase as any).from("webapp_3d").insert(chunk);
+      if (insErr) {
+        console.error(`[syncWebapp3D] Insert error on chunk ${i}:`, insErr);
+      }
     }
     
-    console.log(`Successfully synced ${insertData.length} 3D components for structure ${structureId}`);
+    console.log(`[syncWebapp3D] Successfully synced ${insertData.length} 3D components for structure ${structureId}`);
   } catch (err) {
     console.error("Error syncing webapp_3d:", err);
   }

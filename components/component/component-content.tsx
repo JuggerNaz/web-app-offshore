@@ -93,6 +93,18 @@ export default function ComponentContent() {
 
   const [integrityModalOpen, setIntegrityModalOpen] = useState(false);
 
+  const resync3D = async (targetStructureId?: number) => {
+    const idToSync = targetStructureId || structureId;
+    if (idToSync && pageType === "platform") {
+      try {
+        await fetch(`/api/platform/webapp-3d/${idToSync}?resync=true`, { method: "POST" });
+        mutate(`/api/platform/webapp-3d/${idToSync}`);
+      } catch (err) {
+        console.error("Failed to resync 3D cache:", err);
+      }
+    }
+  };
+
   const getHighestPriorityAnomalyColor = (anomalies: any[]) => {
     if (!anomalies || anomalies.length === 0) return null;
     const hasP1 = anomalies.some(a => ["1", "P1", "HIGH", "CRITICAL"].includes((a.priority_code || a.priority || "").toUpperCase()));
@@ -303,6 +315,7 @@ export default function ComponentContent() {
       });
 
       if (apiUrl) mutate(apiUrl);
+      await resync3D(comp.structure_id);
       setCurrentPage(1);
       toast.success("Component duplicated successfully");
     } catch (error) {
@@ -319,6 +332,7 @@ export default function ComponentContent() {
         method: "DELETE",
       });
       if (apiUrl) mutate(apiUrl);
+      await resync3D();
       setDeleteId(null);
     } catch (error) {
       console.error("Delete failed", error);
@@ -708,6 +722,7 @@ export default function ComponentContent() {
                                     body: JSON.stringify({ is_deleted: !comp.is_deleted }),
                                   });
                                   if (apiUrl) mutate(apiUrl);
+                                  resync3D(comp.structure_id);
                                 } catch (error) {
                                   console.error("Action failed", error);
                                 }
@@ -849,6 +864,7 @@ export default function ComponentContent() {
               body: JSON.stringify({ is_deleted: !comp.is_deleted }),
             });
             if (apiUrl) mutate(apiUrl);
+            await resync3D(comp.structure_id);
             toast.success(comp.is_deleted ? "Component restored" : "Component archived");
           } catch (error) {
             console.error("Action failed", error);

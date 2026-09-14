@@ -9,6 +9,7 @@ export interface Platform3DSessionState {
   cameraPosition: [number, number, number];
   controlsTarget: [number, number, number];
   cameraDistance?: number;
+  cameraZoom?: number;
   selectedCompId?: number | null;
   isSpecOpen?: boolean;
   selectedElevations?: number[];

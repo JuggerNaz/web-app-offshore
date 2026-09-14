@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
@@ -303,6 +303,8 @@ export const POST = withAuth(
     { params, user }: { params: Promise<{ structure_id: string }>; user: any }
   ) => {
     const supabase = createClient();
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const adminSupabase = useAdmin ? createAdminClient() : supabase;
     const { structure_id } = await params;
     const body = await request.json();
 
@@ -324,8 +326,8 @@ export const POST = withAuth(
       return handleSupabaseError(error, "Failed to create structure component");
     }
 
-    // Trigger asynchronous 3D coordinates recalculation for this structure
-    syncWebapp3D(supabase, structureIdNumber).catch((err) => {
+    // Trigger synchronous 3D coordinates recalculation for this structure
+    await syncWebapp3D(adminSupabase, structureIdNumber).catch((err) => {
       console.error("[3D Sync Error]", err);
     });
 
