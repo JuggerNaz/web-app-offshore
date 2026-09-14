@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -268,6 +269,7 @@ export async function POST(request: NextRequest) {
                         inspection_name: type.name,
                         status,
                         report_number: recordReportNo,
+                        company_id: companyId,
                         created_by: 'Correction Tool',
                         updated_at: new Date().toISOString()
                     });
@@ -290,4 +292,4 @@ export async function POST(request: NextRequest) {
         console.error("[SOW Correction API] Error:", error);
         return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
     }
-}
+});

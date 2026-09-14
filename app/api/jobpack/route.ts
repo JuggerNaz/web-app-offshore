@@ -4,6 +4,8 @@ import { getPaginationParams, createPaginationMeta, applyPagination } from "@/ut
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth, withOptionalAuth } from "@/utils/with-auth";
+import { withTenant, TenantContext } from "@/utils/tenant-auth";
+import { getUserMembership } from "@/utils/role-auth";
 
 let serverJobpackCache = new Map<string, { data: any[]; timestamp: number }>();
 const JOBPACK_CACHE_TTL_MS = 60 * 1000; // 60s
@@ -39,7 +41,14 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
   const paginationParams = getPaginationParams(request);
 
   const url = new URL(request.url);
-  const companyId = url.searchParams.get("company_id") || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
+  let companyId = url.searchParams.get("company_id") || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
+
+  if (!companyId && user?.id) {
+    const membershipRes = await getUserMembership(supabase, user.id);
+    if (!("error" in membershipRes) && membershipRes.company?.id) {
+      companyId = membershipRes.company.id;
+    }
+  }
 
   if (!url.searchParams.has("pageSize") && !url.searchParams.has("limit")) {
     paginationParams.pageSize = 1000;
@@ -255,16 +264,14 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
   return apiPaginated(data || [], pagination);
 });
 
-export const POST = withAuth(async (request: NextRequest, { user }: { user: any }) => {
+export const POST = withTenant(async (request: NextRequest, { user, companyId }: TenantContext) => {
   const supabase = createClient();
   const body = await request.json();
 
   serverJobpackCache.clear(); // Invalidate cache on new jobpack creation
 
-  const companyId = request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value || body.company_id;
-  if (companyId && !body.company_id) {
-    body.company_id = companyId;
-  }
+  // Always guarantee company_id is populated from active tenant context
+  body.company_id = body.company_id || companyId;
 
   const { data, error } = await (supabase as any)
     .from("jobpack")

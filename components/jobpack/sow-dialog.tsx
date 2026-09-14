@@ -13,7 +13,7 @@ import {
     Download, Copy, Save, Info, MoreHorizontal, Activity, BarChart3, PieChart,
     ChevronRightSquare, KanbanSquare, Sliders, Waves, PlaneTakeoff, Zap,
     Anchor, Target, Eye, Navigation, Box, ClipboardCheck, BarChart, RefreshCw, ArrowUpDown,
-    ChevronUp, Edit2
+    ChevronUp, Edit2, RotateCcw, CheckSquare, SlidersHorizontal, Compass, Hash
 } from "lucide-react";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SOW, SOWItem, ReportNumber, InspectionStatus } from "@/types/sow";
@@ -115,6 +115,17 @@ export function SOWDialog({
     const [selectedInspectionFilter, setSelectedInspectionFilter] = useState<number | 'all'>('all');
     // Track report number renames so we can cascade to DB on save
     const [pendingRenames, setPendingRenames] = useState<Array<{ oldNo: string; newNo: string }>>([]);
+
+    // Multi-attribute Asset Filters
+    const [filterFace, setFilterFace] = useState<string>("all");
+    const [filterNode, setFilterNode] = useState<string>("");
+    const [filterLeg, setFilterLeg] = useState<string>("");
+    const [filterCompType, setFilterCompType] = useState<string>("all");
+    const [filterMinElevation, setFilterMinElevation] = useState<string>("");
+    const [filterMaxElevation, setFilterMaxElevation] = useState<string>("");
+    const [filterTopUnd, setFilterTopUnd] = useState<string>("all");
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(true);
+    const [bulkApplyInspId, setBulkApplyInspId] = useState<number | 'all'>('all');
 
     const activeReport = activeReportNumber || 'null';
 
@@ -502,8 +513,104 @@ export function SOWDialog({
         return selectedItems.has(`${activeReport}:${compId}:${typeId}:${s}:${e}`);
     };
 
+    const componentsToFilter = useMemo(() => {
+        return liveComponents.length > 0 ? liveComponents : components;
+    }, [liveComponents, components]);
+
+    const uniqueFaces = useMemo(() => {
+        const set = new Set<string>();
+        componentsToFilter.forEach(c => {
+            const face = c.face || (c as any).face_code || (c as any).side || (c as any).row_face || (c as any).face_id;
+            if (face && String(face).trim()) set.add(String(face).trim());
+        });
+        return Array.from(set).sort();
+    }, [componentsToFilter]);
+
+    const uniqueCompTypes = useMemo(() => {
+        const set = new Set<string>();
+        componentsToFilter.forEach(c => {
+            const t = c.type || (c as any).code || (c as any).component_type;
+            if (t && String(t).trim()) set.add(String(t).trim());
+        });
+        return Array.from(set).sort();
+    }, [componentsToFilter]);
+
+    const hasActiveFilters = Boolean(
+        componentSearch.trim() ||
+        filterFace !== "all" ||
+        filterCompType !== "all" ||
+        filterTopUnd !== "all" ||
+        filterNode.trim() ||
+        filterLeg.trim() ||
+        filterMinElevation.trim() ||
+        filterMaxElevation.trim() ||
+        scopeStatusFilter !== "all" ||
+        selectedInspectionFilter !== "all" ||
+        hideArchived
+    );
+
+    const handleResetAllFilters = () => {
+        setComponentSearch("");
+        setFilterFace("all");
+        setFilterCompType("all");
+        setFilterTopUnd("all");
+        setFilterNode("");
+        setFilterLeg("");
+        setFilterMinElevation("");
+        setFilterMaxElevation("");
+        setScopeStatusFilter("all");
+        setSelectedInspectionFilter("all");
+        setHideArchived(false);
+    };
+
+    const handleBulkApplyInspectionToFiltered = (inspId: number | 'all', select: boolean) => {
+        if (!activeReportNumber || readOnly) {
+            toast.error("Please select an active SOW Report first");
+            return;
+        }
+        const targetInspections = inspId === 'all'
+            ? validInspections
+            : validInspections.filter(it => it.id === inspId);
+
+        if (targetInspections.length === 0) return;
+
+        let modifiedCount = 0;
+        setSelectedItems(prev => {
+            const next = new Set(prev);
+            activeComponents.forEach(comp => {
+                const isArchived = Boolean((comp as any)?.is_deleted || (comp as any)?.is_archived || (comp as any)?.archived);
+                if (select && isArchived && hideArchived) return;
+
+                const ranges = getComponentRanges(comp);
+                ranges.forEach(r => {
+                    targetInspections.forEach(it => {
+                        const key = `${activeReport}:${comp.id}:${it.id}:${r.start}:${r.end}`;
+                        if (select) {
+                            if (!next.has(key)) {
+                                next.add(key);
+                                modifiedCount++;
+                            }
+                        } else {
+                            if (next.has(key)) {
+                                next.delete(key);
+                                modifiedCount++;
+                            }
+                        }
+                    });
+                });
+            });
+            return next;
+        });
+
+        const inspLabel = targetInspections.length > 1 ? 'all inspections' : targetInspections[0].name;
+        toast.success(
+            select
+                ? `Bulk Added "${inspLabel}" to ${activeComponents.length} component(s)`
+                : `Bulk Removed "${inspLabel}" from ${activeComponents.length} component(s)`
+        );
+    };
+
     const activeComponents = useMemo(() => {
-        const componentsToFilter = liveComponents.length > 0 ? liveComponents : components;
         let filtered = componentsToFilter.filter(c => {
             // 1. Hide Archived components option
             if (hideArchived) {
@@ -511,12 +618,67 @@ export function SOWDialog({
                 if (isArchived) return false;
             }
 
-            // 2. Smart Search by QID, Type, Code, Nodes, Legs, Elevation, and Inspection task names/codes
+            // 2. Face / Row Filter
+            if (filterFace !== "all") {
+                const cFace = String(c.face || (c as any).face_code || (c as any).side || (c as any).row_face || (c as any).face_id || "").toUpperCase();
+                if (cFace !== filterFace.toUpperCase()) return false;
+            }
+
+            // 3. Component Type Filter
+            if (filterCompType !== "all") {
+                const cType = String(c.type || (c as any).code || (c as any).component_type || "").toUpperCase();
+                if (cType !== filterCompType.toUpperCase()) return false;
+            }
+
+            // 4. Topside / Underwater Filter
+            if (filterTopUnd !== "all") {
+                const cTopUnd = String(c.top_und || (c as any).location || "").toUpperCase();
+                if (filterTopUnd === "TOPSIDE" && !cTopUnd.includes("T") && !cTopUnd.includes("TOP")) return false;
+                if (filterTopUnd === "UNDERWATER" && !cTopUnd.includes("U") && !cTopUnd.includes("SUB")) return false;
+            }
+
+            // 5. Node Number Filter
+            if (filterNode.trim()) {
+                const n = filterNode.trim().toUpperCase();
+                const sNode = String(c.s_node || "").toUpperCase();
+                const fNode = String(c.f_node || "").toUpperCase();
+                if (!sNode.includes(n) && !fNode.includes(n)) return false;
+            }
+
+            // 6. Leg Name Filter
+            if (filterLeg.trim()) {
+                const l = filterLeg.trim().toUpperCase();
+                const sLeg = String(c.s_leg || "").toUpperCase();
+                const fLeg = String(c.f_leg || "").toUpperCase();
+                if (!sLeg.includes(l) && !fLeg.includes(l)) return false;
+            }
+
+            // 7. Elevation Range Filter
+            const elv1 = c.elv_1 != null ? Number(c.elv_1) : null;
+            const elv2 = c.elv_2 != null ? Number(c.elv_2) : null;
+            const minElv = elv1 !== null && elv2 !== null ? Math.min(elv1, elv2) : (elv1 ?? elv2);
+            const maxElv = elv1 !== null && elv2 !== null ? Math.max(elv1, elv2) : (elv1 ?? elv2);
+
+            if (filterMinElevation.trim() !== "") {
+                const minVal = parseFloat(filterMinElevation);
+                if (!isNaN(minVal)) {
+                    if (maxElv === null || maxElv < minVal) return false;
+                }
+            }
+            if (filterMaxElevation.trim() !== "") {
+                const maxVal = parseFloat(filterMaxElevation);
+                if (!isNaN(maxVal)) {
+                    if (minElv === null || minElv > maxVal) return false;
+                }
+            }
+
+            // 8. Smart Universal Search
             let matchesSearch = true;
             if (componentSearch) {
                 const s = componentSearch.toLowerCase().trim();
                 const matchesQidOrCode = [
-                    c.qid, c.type, c.code, (c as any).component_code, (c as any).component_type,
+                    c.qid, c.type, (c as any).code, (c as any).component_code, (c as any).component_type,
+                    c.face, (c as any).face_code, (c as any).side, (c as any).row_face, (c as any).face_id, (c as any).member_type, (c as any).description,
                     c.s_node, c.f_node, c.s_leg, c.f_leg, c.top_und, c.comp_group,
                     c.elv_1?.toString(), c.elv_2?.toString()
                 ].some(val => val && String(val).toLowerCase().includes(s));
@@ -532,7 +694,7 @@ export function SOWDialog({
             }
             if (!matchesSearch) return false;
             
-            // 3. Combined Status Filter & Inspection Type Filter
+            // 9. Combined Status Filter & Inspection Type Filter
             let matchesStatus = true;
             const inspectionsToCheck = selectedInspectionFilter === 'all' 
                 ? validInspections 
@@ -574,7 +736,6 @@ export function SOWDialog({
                 });
             } else if (scopeStatusFilter === 'all') {
                 if (selectedInspectionFilter !== 'all') {
-                    // Combine condition: show components that have assignments or field records for selectedInspectionFilter
                     matchesStatus = inspectionsToCheck.some(it => {
                         const ranges = getComponentRanges(c);
                         return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) || getItemStatus(c.id, it.id, r.start, r.end) !== 'pending');
@@ -606,7 +767,7 @@ export function SOWDialog({
             if (valA > valB) return compSortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [liveComponents, components, componentSearch, scopeStatusFilter, selectedInspectionFilter, validInspections, compSortConfig, selectedItems, componentSplitByElevation, componentBreakpoints, hideArchived]);
+    }, [componentsToFilter, componentSearch, filterFace, filterCompType, filterTopUnd, filterNode, filterLeg, filterMinElevation, filterMaxElevation, scopeStatusFilter, selectedInspectionFilter, validInspections, compSortConfig, selectedItems, componentSplitByElevation, componentBreakpoints, hideArchived]);
 
     // ── ACTIONS ──
     const handleAddReportNumber = () => {
@@ -1270,55 +1431,90 @@ export function SOWDialog({
 
                 <div className="flex-1 flex overflow-hidden relative">
                     {/* LEFT FILTERS */}
-                    <div className={cn("flex flex-col bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 transition-all shrink-0 h-full overflow-y-auto custom-scrollbar", isSidebarCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-[290px]")}>
-                        <div className="p-4 space-y-4">
-                            <div className="flex items-center gap-2"><Search className="h-4 w-4 text-blue-600 dark:text-blue-400" /><h3 className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">Inventory Filters</h3></div>
+                    <div className={cn("flex flex-col bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 transition-all shrink-0 h-full overflow-y-auto custom-scrollbar", isSidebarCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-[310px]")}>
+                        <div className="p-3.5 space-y-3.5">
+                            {/* Title & Reset */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <SlidersHorizontal className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                    <h3 className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">Inventory Filters</h3>
+                                </div>
+                                {hasActiveFilters && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleResetAllFilters}
+                                        className="h-6 px-2 text-[9px] font-black text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg flex items-center gap-1"
+                                        title="Reset all search and filter conditions"
+                                    >
+                                        <RotateCcw className="h-2.5 w-2.5" /> Reset
+                                    </Button>
+                                )}
+                            </div>
                             
-                            <div className="relative"><Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" /><Input placeholder="Search asset attributes..." value={componentSearch} onChange={e => setComponentSearch(e.target.value)} className="pl-8 h-9 rounded-xl bg-slate-50 dark:bg-slate-800 border-none text-[11px] font-bold shadow-inner text-slate-900 dark:text-slate-100" /></div>
+                            {/* Universal Search Input */}
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                                <Input 
+                                    placeholder="Search QID, type, node, leg, face..." 
+                                    value={componentSearch} 
+                                    onChange={e => setComponentSearch(e.target.value)} 
+                                    className="pl-8 pr-7 h-8.5 rounded-xl bg-slate-50 dark:bg-slate-800 border-none text-[11px] font-bold shadow-inner text-slate-900 dark:text-slate-100 placeholder:text-slate-400" 
+                                />
+                                {componentSearch && (
+                                    <button 
+                                        onClick={() => setComponentSearch("")} 
+                                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                            </div>
                             
-                            <div className="space-y-2">
+                            {/* FILTER BY STATUS */}
+                            <div className="space-y-1.5">
                                 <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filter By Status</h4>
                                 
                                 <div className="grid grid-cols-2 gap-1.5">
-                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'all' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'all' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'all'} onChange={() => setScopeStatusFilter('all')} className="sr-only" />
                                         <Layers className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                                         <span className="truncate">All</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'selected' ? "bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'selected' ? "bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'selected'} onChange={() => setScopeStatusFilter('selected')} className="sr-only" />
                                         <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
                                         <span className="truncate">Selected</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'pending' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'pending' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'pending'} onChange={() => setScopeStatusFilter('pending')} className="sr-only" />
                                         <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                                         <span className="truncate">Pending</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'completed' ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'completed' ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'completed'} onChange={() => setScopeStatusFilter('completed')} className="sr-only" />
                                         <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                                         <span className="truncate">Inspected</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'incomplete' ? "bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'incomplete' ? "bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'incomplete'} onChange={() => setScopeStatusFilter('incomplete')} className="sr-only" />
                                         <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                                         <span className="truncate">Incomplete</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'anomaly' ? "bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'anomaly' ? "bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'anomaly'} onChange={() => setScopeStatusFilter('anomaly')} className="sr-only" />
                                         <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
                                         <span className="truncate">Anomalies</span>
                                     </label>
                                 </div>
 
-                                <div className="pt-2">
-                                    <label className="flex items-center justify-between p-2 rounded-xl border border-purple-100 dark:border-purple-900/40 bg-purple-50/40 dark:bg-purple-950/20 cursor-pointer hover:bg-purple-50/70 transition-colors">
+                                <div className="pt-1">
+                                    <label className="flex items-center justify-between p-1.5 px-2 rounded-xl border border-purple-100 dark:border-purple-900/40 bg-purple-50/40 dark:bg-purple-950/20 cursor-pointer hover:bg-purple-50/70 transition-colors">
                                         <div className="flex items-center gap-2">
                                             <div className="h-2 w-2 rounded-full bg-purple-500 shrink-0" />
                                             <span className="text-[10px] font-black text-purple-900 dark:text-purple-200">Hide Archived QIDs</span>
@@ -1332,7 +1528,139 @@ export function SOWDialog({
                                     </label>
                                 </div>
                             </div>
+
+                            {/* SMART ASSET ATTRIBUTE FILTERS (ELEVATION, FACE, NODES, LEGS, TYPE, LOCATION) */}
+                            <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Compass className="h-3 w-3 text-blue-500" /> Spatial & Asset Attributes
+                                    </h4>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                                        className="text-[9px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                                    >
+                                        {showAdvancedFilters ? "Collapse" : "Expand"}
+                                    </button>
+                                </div>
+
+                                <div className={cn("space-y-2.5 transition-all", !showAdvancedFilters && "hidden")}>
+                                    {/* Face / Row & Component Type Grid */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Face / Row</label>
+                                            <Select value={filterFace} onValueChange={setFilterFace}>
+                                                <SelectTrigger className="w-full h-8 rounded-lg bg-slate-50 dark:bg-slate-800 border-none text-[10px] font-black shadow-inner">
+                                                    <SelectValue placeholder="All Faces" />
+                                                </SelectTrigger>
+                                                <SelectContent className="max-h-[220px]">
+                                                    <SelectItem value="all" className="text-[10px] font-black uppercase">All Faces</SelectItem>
+                                                    {uniqueFaces.map(f => (
+                                                        <SelectItem key={f} value={f} className="text-[10px] font-bold">Face {f}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Comp Type</label>
+                                            <Select value={filterCompType} onValueChange={setFilterCompType}>
+                                                <SelectTrigger className="w-full h-8 rounded-lg bg-slate-50 dark:bg-slate-800 border-none text-[10px] font-black shadow-inner">
+                                                    <SelectValue placeholder="All Types" />
+                                                </SelectTrigger>
+                                                <SelectContent className="max-h-[220px]">
+                                                    <SelectItem value="all" className="text-[10px] font-black uppercase">All Types</SelectItem>
+                                                    {uniqueCompTypes.map(t => (
+                                                        <SelectItem key={t} value={t} className="text-[10px] font-bold">{t}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {/* Location: Topside vs Underwater */}
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Location Scope</label>
+                                        <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg text-[9px] font-black">
+                                            <button
+                                                type="button"
+                                                onClick={() => setFilterTopUnd("all")}
+                                                className={cn("py-1 rounded-md transition-all text-center", filterTopUnd === "all" ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs" : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200")}
+                                            >
+                                                All
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFilterTopUnd("TOPSIDE")}
+                                                className={cn("py-1 rounded-md transition-all text-center", filterTopUnd === "TOPSIDE" ? "bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs" : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200")}
+                                            >
+                                                Topside
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFilterTopUnd("UNDERWATER")}
+                                                className={cn("py-1 rounded-md transition-all text-center", filterTopUnd === "UNDERWATER" ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs" : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200")}
+                                            >
+                                                Subsea
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Elevation Range Bounds */}
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Elevation Range (m)</label>
+                                            {(filterMinElevation || filterMaxElevation) && (
+                                                <button onClick={() => { setFilterMinElevation(""); setFilterMaxElevation(""); }} className="text-[8px] text-rose-500 font-bold hover:underline">Clear</button>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Input 
+                                                type="number" 
+                                                placeholder="Min (e.g. -20)" 
+                                                value={filterMinElevation} 
+                                                onChange={e => setFilterMinElevation(e.target.value)} 
+                                                className="h-7 text-[10px] font-bold px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border-none shadow-inner text-slate-900 dark:text-slate-100" 
+                                            />
+                                            <Input 
+                                                type="number" 
+                                                placeholder="Max (e.g. 5)" 
+                                                value={filterMaxElevation} 
+                                                onChange={e => setFilterMaxElevation(e.target.value)} 
+                                                className="h-7 text-[10px] font-bold px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border-none shadow-inner text-slate-900 dark:text-slate-100" 
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Node & Leg Name Filters */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                                <Hash className="h-2.5 w-2.5 text-blue-500" /> Node Number
+                                            </label>
+                                            <Input 
+                                                placeholder="e.g. 101, N4" 
+                                                value={filterNode} 
+                                                onChange={e => setFilterNode(e.target.value)} 
+                                                className="h-7 text-[10px] font-bold px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border-none shadow-inner text-slate-900 dark:text-slate-100" 
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                                <Anchor className="h-2.5 w-2.5 text-emerald-500" /> Leg Name
+                                            </label>
+                                            <Input 
+                                                placeholder="e.g. A1, B2, L1" 
+                                                value={filterLeg} 
+                                                onChange={e => setFilterLeg(e.target.value)} 
+                                                className="h-7 text-[10px] font-bold px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border-none shadow-inner text-slate-900 dark:text-slate-100" 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             
+                            {/* FILTER BY INSPECTION TYPE */}
                             <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                                 <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                                     <ListFilter className="h-3 w-3 text-blue-500" /> Filter By Inspection
@@ -1341,7 +1669,7 @@ export function SOWDialog({
                                     value={selectedInspectionFilter.toString()} 
                                     onValueChange={(v) => setSelectedInspectionFilter(v === 'all' ? 'all' : Number(v))}
                                 >
-                                    <SelectTrigger className="w-full h-9 rounded-xl bg-slate-50 dark:bg-slate-800 border-none text-[11px] font-black shadow-inner focus:ring-0 focus:ring-offset-0 text-slate-900 dark:text-slate-100">
+                                    <SelectTrigger className="w-full h-8.5 rounded-xl bg-slate-50 dark:bg-slate-800 border-none text-[11px] font-black shadow-inner focus:ring-0 focus:ring-offset-0 text-slate-900 dark:text-slate-100">
                                         <SelectValue placeholder="Select Inspection Type..." />
                                     </SelectTrigger>
                                     <SelectContent className="max-h-[300px] dark:bg-slate-900 dark:border-slate-800">
@@ -1389,7 +1717,7 @@ export function SOWDialog({
 
                                 <Button 
                                     variant="outline" 
-                                    className="w-full h-8 rounded-xl border-dashed border-slate-200 dark:border-slate-800 text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-blue-500 hover:border-blue-500 dark:hover:text-blue-400 dark:hover:border-blue-400 mt-2 transition-all flex items-center justify-center gap-1.5"
+                                    className="w-full h-7.5 rounded-xl border-dashed border-slate-200 dark:border-slate-800 text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-blue-500 hover:border-blue-500 dark:hover:text-blue-400 dark:hover:border-blue-400 mt-1 transition-all flex items-center justify-center gap-1.5"
                                     onClick={() => setShowAddInspectionDialog(true)}
                                     disabled={readOnly}
                                 >
@@ -1397,12 +1725,73 @@ export function SOWDialog({
                                 </Button>
                             </div>
 
-                            <div className="p-4 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-inner">
-                                <div className="h-9 w-9 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-1.5">
-                                    <Navigation className="h-4 w-4 text-blue-500 dark:text-blue-400"/>
+                            {/* ⚡ BULK INSPECTION ASSIGNMENT CARD */}
+                            <div className="p-3 bg-gradient-to-br from-blue-500/10 via-indigo-500/5 to-cyan-500/10 dark:from-blue-950/40 dark:via-indigo-950/20 dark:to-cyan-950/40 rounded-2xl border border-blue-200/60 dark:border-blue-800/60 space-y-2 shadow-xs">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="h-5 w-5 rounded-md bg-blue-600 flex items-center justify-center text-white shadow-xs">
+                                            <Zap className="h-3 w-3" />
+                                        </div>
+                                        <span className="text-[10px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">Bulk Scope Action</span>
+                                    </div>
+                                    <Badge variant="outline" className="text-[8px] font-black bg-blue-100/80 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 border-none px-1.5 py-0.5">
+                                        {activeComponents.length} comps
+                                    </Badge>
                                 </div>
-                                <div className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">{activeComponents.length}</div>
-                                <div className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center mt-0.5 leading-tight">Active Component Library</div>
+                                <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                    Apply or remove inspection scopes for all currently filtered components.
+                                </p>
+
+                                <Select 
+                                    value={bulkApplyInspId.toString()} 
+                                    onValueChange={(v) => setBulkApplyInspId(v === 'all' ? 'all' : Number(v))}
+                                >
+                                    <SelectTrigger className="w-full h-7.5 rounded-lg bg-white dark:bg-slate-900 border border-blue-100 dark:border-blue-900 text-[10px] font-black text-slate-900 dark:text-slate-100">
+                                        <SelectValue placeholder="Select scope type..." />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-[220px]">
+                                        <SelectItem value="all" className="text-[10px] font-black uppercase text-blue-600">✨ All Inspection Types</SelectItem>
+                                        {validInspections.map(it => (
+                                            <SelectItem key={it.id} value={it.id.toString()} className="text-[10px] font-bold">
+                                                [{it.code}] {it.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                                    <Button
+                                        size="sm"
+                                        onClick={() => handleBulkApplyInspectionToFiltered(bulkApplyInspId, true)}
+                                        disabled={readOnly || activeComponents.length === 0}
+                                        className="h-7 text-[9px] font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-xs flex items-center justify-center gap-1"
+                                    >
+                                        <Check className="h-3 w-3" /> Select All ({activeComponents.length})
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleBulkApplyInspectionToFiltered(bulkApplyInspId, false)}
+                                        disabled={readOnly || activeComponents.length === 0}
+                                        className="h-7 text-[9px] font-black border-slate-300 dark:border-slate-700 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg shadow-xs flex items-center justify-center gap-1"
+                                    >
+                                        <X className="h-3 w-3" /> Remove Scope
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* ACTIVE LIBRARY COUNTER */}
+                            <div className="p-3 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-inner">
+                                <div className="h-7 w-7 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-1">
+                                    <Navigation className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400"/>
+                                </div>
+                                <div className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">
+                                    {activeComponents.length}
+                                    <span className="text-[11px] font-medium text-slate-400 ml-1">/ {componentsToFilter.length}</span>
+                                </div>
+                                <div className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center mt-0.5 leading-tight">
+                                    {hasActiveFilters ? "Filtered Active Library" : "Total Component Library"}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1410,9 +1799,22 @@ export function SOWDialog({
                     {/* MAIN WORKSPACE */}
                     <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
                         <div className="px-6 py-2 border-b border-slate-50 dark:border-slate-900 flex justify-between items-center bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm z-30 gap-4 flex-wrap">
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 flex-wrap">
                                 <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}>{isSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" /> : <PanelLeftClose className="h-5 w-5 text-slate-400 dark:text-slate-600" />}</Button>
                                 <Badge className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900 font-black text-[9px] tracking-widest px-3 py-1.5 rounded-full uppercase">Project Strategy Grid</Badge>
+                                
+                                {hasActiveFilters && (
+                                    <div className="flex items-center gap-1.5 bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 px-2.5 py-1 rounded-full text-[9px] font-bold text-blue-700 dark:text-blue-300">
+                                        <span>Showing {activeComponents.length} of {componentsToFilter.length} comps</span>
+                                        <button 
+                                            onClick={handleResetAllFilters} 
+                                            className="text-rose-500 hover:text-rose-700 font-black ml-1 flex items-center gap-0.5"
+                                            title="Clear active filters"
+                                        >
+                                            <X className="h-2.5 w-2.5" /> Clear
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* MATRIX LEGEND */}
@@ -1490,32 +1892,29 @@ export function SOWDialog({
                                                 });
 
                                                 return (
-                                                    <th key={it.id} className={cn("p-0 border-b border-slate-50 dark:border-slate-800 min-w-[85px] h-64 relative group transition-all duration-300 overflow-hidden", styles.light, "dark:bg-slate-900/40")}>
-                                                        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/[0.02] dark:to-white/[0.02]" />
-                                                        
-                                                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 opacity-0 group-hover:opacity-100 transition-all duration-300 transform group-hover:translate-y-1">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={allSelectedInType && activeComponents.length > 0} 
-                                                                onChange={e => handleBulkSelect(it.id, e.target.checked)}
-                                                                disabled={!activeReportNumber || readOnly}
-                                                                className={cn(
-                                                                    "h-6 w-6 rounded-lg border-2 accent-current transition-all shadow-lg cursor-pointer",
-                                                                    styles.text
-                                                                )}
-                                                            />
-                                                        </div>
-
-                                                        <div className="absolute inset-0 flex flex-col justify-end p-3 pointer-events-none">
-                                                            <div className="flex flex-col items-center gap-2">
-                                                                <span className={cn("text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-xs", styles.light, styles.text, styles.border, "border bg-white/80 dark:bg-slate-900/80 backdrop-blur-xs")}>
-                                                                    {it.mode}
-                                                                </span>
-                                                                <div className="h-44 flex items-center justify-center my-1">
-                                                                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-200 tracking-tight whitespace-nowrap -rotate-90 origin-center block uppercase max-w-[170px] truncate drop-shadow-2xs">
-                                                                        {it.name}
-                                                                    </span>
-                                                                </div>
+                                                    <th key={it.id} className="p-3 text-center border-r border-b border-slate-50 dark:border-slate-800 min-w-[150px] bg-[#fbfcff] dark:bg-slate-900 transition-colors">
+                                                        <div className="flex flex-col items-center justify-center gap-1 px-1">
+                                                            <div className="flex items-center gap-1.5 justify-center w-full">
+                                                                <span className={cn("text-[11px] font-black truncate max-w-[130px]", styles.text)} title={it.name}>{it.name}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Badge className={cn("text-[8px] font-black h-4 px-1.5 rounded uppercase tracking-wider text-white shadow-xs", styles.bg)}>
+                                                                    {it.code}
+                                                                </Badge>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={readOnly}
+                                                                    onClick={() => handleBulkApplyInspectionToFiltered(it.id, !allSelectedInType)}
+                                                                    className={cn(
+                                                                        "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded transition-colors",
+                                                                        allSelectedInType
+                                                                            ? "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 hover:bg-rose-100"
+                                                                            : "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100"
+                                                                    )}
+                                                                    title={allSelectedInType ? "Deselect all filtered components for this inspection" : "Select all filtered components for this inspection"}
+                                                                >
+                                                                    {allSelectedInType ? "Clear All" : "Select All"}
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     </th>
@@ -1528,6 +1927,11 @@ export function SOWDialog({
                                         const ranges = getComponentRanges(comp);
                                         const total = ranges.length;
                                         const isArchived = Boolean((comp as any)?.is_deleted || (comp as any)?.is_archived || (comp as any)?.archived);
+                                        const compFace = comp.face || (comp as any).face_code || (comp as any).side || (comp as any).row_face || (comp as any).face_id;
+                                        const compNodes = comp.s_node || comp.f_node ? `${comp.s_node || '?'}${comp.f_node ? ` → ${comp.f_node}` : ''}` : null;
+                                        const compLegs = comp.s_leg || comp.f_leg ? `${comp.s_leg || '?'}${comp.f_leg ? `/${comp.f_leg}` : ''}` : null;
+                                        const compTopUnd = comp.top_und || (comp as any).location;
+
                                         return ranges.map((range, idx) => (
                                             <tr key={`${comp.id}-${range.start}-${range.end}`} className={cn("group transition-colors", isArchived ? "bg-purple-50/30 dark:bg-purple-950/10 hover:bg-purple-50/60 dark:hover:bg-purple-950/20" : "hover:bg-slate-50/80 dark:hover:bg-slate-900/30")}>
                                                 <td className={cn("p-2.5 border-r border-slate-50 dark:border-slate-800 sticky left-0 z-30 transition-colors", isArchived ? "bg-purple-50/40 dark:bg-slate-950 group-hover:bg-purple-50/70 dark:group-hover:bg-slate-900" : "bg-white dark:bg-slate-950 group-hover:bg-slate-50 dark:group-hover:bg-slate-900")}>
@@ -1590,6 +1994,32 @@ export function SOWDialog({
                                                                 </button>
                                                             )}
                                                         </div>
+
+                                                        {/* Spatial Attributes Metadata Tags (Face, Nodes, Legs, Top/Subsea) */}
+                                                        {idx === 0 && (compFace || compNodes || compLegs || compTopUnd) && (
+                                                            <div className="flex items-center gap-1 flex-wrap text-[8px] font-bold text-slate-400 dark:text-slate-500">
+                                                                {compFace && (
+                                                                    <span className="px-1 py-0.2 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded border border-blue-100 dark:border-blue-900/50">
+                                                                        F:{compFace}
+                                                                    </span>
+                                                                )}
+                                                                {compNodes && (
+                                                                    <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-800 rounded font-mono">
+                                                                        N:{compNodes}
+                                                                    </span>
+                                                                )}
+                                                                {compLegs && (
+                                                                    <span className="px-1 py-0.2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded border border-emerald-100 dark:border-emerald-900/50">
+                                                                        L:{compLegs}
+                                                                    </span>
+                                                                )}
+                                                                {compTopUnd && (
+                                                                    <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-800 rounded uppercase">
+                                                                        {String(compTopUnd).startsWith("T") ? "Top" : "Sub"}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
 
                                                         {/* Sub-line: Range label */}
                                                         <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-tighter">

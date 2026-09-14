@@ -166,22 +166,45 @@ export const POST = withTenant(async (request, { companyId }) => {
         } = body;
 
         if (id) {
-            const { data, error } = await (supabase as any)
+            let { data, error } = await (supabase as any)
                 .from("u_sow")
                 .update({
                     structure_type,
                     structure_title,
                     report_numbers,
                     metadata,
+                    company_id: companyId,
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", id)
                 .eq("company_id", companyId)
                 .select()
-                .single();
+                .maybeSingle();
 
-            if (error) {
-                return NextResponse.json({ error: error.message }, { status: 400 });
+            if (!data) {
+                const { data: retryData, error: retryError } = await (supabase as any)
+                    .from("u_sow")
+                    .update({
+                        structure_type,
+                        structure_title,
+                        report_numbers,
+                        metadata,
+                        company_id: companyId,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", id)
+                    .is("company_id", null)
+                    .select()
+                    .maybeSingle();
+
+                if (retryData) {
+                    data = retryData;
+                    error = null;
+                }
+            }
+
+            if (error || !data) {
+                return NextResponse.json({ error: error?.message || "Failed to update SOW" }, { status: 400 });
             }
 
             return NextResponse.json({ data });

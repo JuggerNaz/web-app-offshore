@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withTenant } from "@/utils/tenant-auth";
 
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const body = await request.json();
@@ -167,4 +168,4 @@ export async function POST(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});

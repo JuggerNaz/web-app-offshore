@@ -11,12 +11,16 @@ export const GET = withTenant(async (request, { companyId }) => {
         const itemId = searchParams.get("id");
 
         if (itemId) {
-            const { data, error } = await (supabase as any)
+            let query = (supabase as any)
                 .from("u_sow_items")
                 .select("*")
-                .eq("id", itemId)
-                .eq("company_id", companyId)
-                .single();
+                .eq("id", itemId);
+
+            if (companyId) {
+                query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+
+            const { data, error } = await query.maybeSingle();
 
             if (error) {
                 return NextResponse.json({ error: error.message }, { status: 400 });
@@ -26,12 +30,16 @@ export const GET = withTenant(async (request, { companyId }) => {
         }
 
         if (sowId) {
-            const { data, error } = await (supabase as any)
+            let query = (supabase as any)
                 .from("u_sow_items")
                 .select("*")
-                .eq("sow_id", sowId)
-                .eq("company_id", companyId)
-                .order("component_qid", { ascending: true });
+                .eq("sow_id", sowId);
+
+            if (companyId) {
+                query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+
+            const { data, error } = await query.order("component_qid", { ascending: true });
 
             if (error) {
                 return NextResponse.json({ error: error.message }, { status: 400 });
@@ -74,7 +82,7 @@ export const POST = withTenant(async (request, { companyId }) => {
         } = body;
 
         if (id) {
-            const { data, error } = await (supabase as any)
+            let { data, error } = await (supabase as any)
                 .from("u_sow_items")
                 .update({
                     component_qid,
@@ -86,15 +94,43 @@ export const POST = withTenant(async (request, { companyId }) => {
                     status,
                     notes,
                     report_number,
+                    company_id: companyId,
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", id)
                 .eq("company_id", companyId)
                 .select()
-                .single();
+                .maybeSingle();
 
-            if (error) {
-                return NextResponse.json({ error: error.message }, { status: 400 });
+            if (!data) {
+                const { data: retryData, error: retryError } = await (supabase as any)
+                    .from("u_sow_items")
+                    .update({
+                        component_qid,
+                        component_type,
+                        inspection_code,
+                        inspection_name,
+                        elevation_required,
+                        elevation_data,
+                        status,
+                        notes,
+                        report_number,
+                        company_id: companyId,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", id)
+                    .is("company_id", null)
+                    .select()
+                    .maybeSingle();
+
+                if (retryData) {
+                    data = retryData;
+                    error = null;
+                }
+            }
+
+            if (error || !data) {
+                return NextResponse.json({ error: error?.message || "Failed to update SOW item" }, { status: 400 });
             }
 
             return NextResponse.json({ data });
@@ -157,19 +193,41 @@ export const PUT = withTenant(async (request, { companyId }) => {
                 continue;
             }
 
-            const { data, error } = await (supabase as any)
+            let { data, error } = await (supabase as any)
                 .from("u_sow_items")
                 .update({
                     ...updateData,
+                    company_id: companyId,
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", id)
                 .eq("company_id", companyId)
                 .select()
-                .single();
+                .maybeSingle();
 
-            if (error) {
-                errors.push({ item, error: error.message });
+            if (!data) {
+                const { data: retryData, error: retryError } = await (supabase as any)
+                    .from("u_sow_items")
+                    .update({
+                        ...updateData,
+                        company_id: companyId,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", id)
+                    .is("company_id", null)
+                    .select()
+                    .maybeSingle();
+
+                if (retryData) {
+                    data = retryData;
+                    error = null;
+                } else if (retryError) {
+                    error = retryError;
+                }
+            }
+
+            if (error || !data) {
+                errors.push({ item, error: error?.message || "Not found" });
             } else {
                 results.push(data);
             }
