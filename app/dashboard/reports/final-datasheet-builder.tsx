@@ -32,7 +32,7 @@ const TOC_SECTIONS = [
   { id: 1, name: "Structure Configuration", templates: [
       { id: "structure-summary", name: "Structure Summary Report", mode: "General" },
       { id: "component-catalog", name: "Component Catalogue", mode: "General" },
-      { id: "technical-specs", name: "Technical Specifications", mode: "General" },
+      { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" },
       { id: "component-spec", name: "Component Data Sheet", mode: "General" }
   ]},
   { id: 2, name: "General Visual Inspection", templates: [

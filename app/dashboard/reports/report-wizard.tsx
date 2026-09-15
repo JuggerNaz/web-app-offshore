@@ -204,7 +204,7 @@ export const REPORT_TEMPLATES = {
 const TOC_SECTIONS = [
   { id: 1, name: "Structure Configuration", templates: [
       { id: "structure-summary", name: "Structure Summary Report", mode: "General" },
-      { id: "technical-specs", name: "Technical Specifications", mode: "General" }
+      { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" }
   ]},
   { id: 2, name: "General Visual Inspection", templates: [
       { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
