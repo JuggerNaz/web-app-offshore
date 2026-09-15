@@ -445,27 +445,36 @@ export const generateDivingRRISIReport = async (
                 d.setFontSize(7.5); d.setFont("helvetica", "bold"); d.setTextColor(...colors.navy);
                 d.text(`${typeConfig.sketchTitle} (${parentQid})`, sx + (sw / 2), sy + 5, { align: 'center' });
 
-                // Scale bounds
+                // Scale bounds & Elevation processing
                 const elevs = recordsInGroup.map(r => parseFloat(r.elevation ?? r.verification_depth ?? r.inspection_data?.verification_depth ?? r.inspection_data?.elevation ?? 0)).filter(e => !isNaN(e));
                 const maxElev = elevs.length > 0 ? Math.max(...elevs, 5) : 5;
                 const minElev = elevs.length > 0 ? Math.min(...elevs, platformDepth - 5) : platformDepth;
 
-                const topY = sy + 15;
-                const mudlineY = sy + 125;
-                const bottomY = sy + 138;
-                const drawH = mudlineY - topY;
+                const suspRec = recordsInGroup.find(r => r.inspection_data?.suspension_gap || r.description?.toLowerCase().includes('suspension'));
+                const suspGap = suspRec ? parseFloat(suspRec.inspection_data?.suspension_gap || 0) : 0;
+                const mudTouchDist = suspRec ? parseFloat(suspRec.inspection_data?.mud_touch_distance || 15) : 0;
 
-                const elevToY = (elev: number) => {
-                    const ratio = (maxElev - elev) / (maxElev - platformDepth || 1);
-                    return topY + (ratio * drawH);
-                };
-
-                const pipeCenterX = sx + (sw * 0.35);
                 const rWidth = 8;
                 const bRadius = 10;
+                const bottomElev = platformDepth;
+                const mudlineElev = platformDepth - suspGap;
+
+                const sMax = Math.max(maxElev + 2, 5);
+                const sMin = Math.min(mudlineElev - 10, -40);
+                const eRange = sMax - sMin;
+
+                const gTopY = sy + 15;
+                const gMudlineY = gTopY + 115;
+                const elevToY = (elev: number) => gTopY + ((sMax - elev) / eRange) * (gMudlineY - gTopY);
+
+                const pipeCenterX = sx + (sw * 0.35);
+                const pipeY = elevToY(bottomElev);
+                const mudY = elevToY(mudlineElev) + (rWidth / 2);
+                const isITube = targetPrefix === 'I';
+                const bY = isITube ? pipeY : elevToY(bottomElev + bRadius);
 
                 // 1. Sea Level Line (0m)
-                if (maxElev >= 0 && minElev <= 0) {
+                if (sMax >= 0 && sMin <= 0) {
                     const seaY = elevToY(0);
                     d.setDrawColor(...colors.seaLevel); d.setLineWidth(0.4);
                     d.line(sx + 4, seaY, sx + sw - 4, seaY);
@@ -474,11 +483,30 @@ export const generateDivingRRISIReport = async (
                 }
 
                 // 2. Seabed Mudline Line
-                const seabedY = elevToY(platformDepth);
-                d.setDrawColor(...colors.mudline); d.setLineWidth(0.8);
-                d.line(sx + 4, seabedY, sx + sw - 4, seabedY);
-                d.setFontSize(6); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
-                d.text(`SEABED MUDLINE (${platformDepth.toFixed(1)}m)`, sx + 5, seabedY - 1.5);
+                d.setDrawColor(...colors.mudline); d.setLineWidth(1.2);
+                if (suspGap === 0) {
+                    d.line(sx + 4, mudY, sx + sw - 4, mudY);
+                    d.setFontSize(6); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
+                    d.text(`SEABED / MUDLINE (${platformDepth.toFixed(1)}m)`, sx + 5, mudY - 2.5);
+                } else {
+                    const startMudY = mudY;
+                    const endMudY = pipeY + (rWidth / 2);
+                    const touchMudX = pipeCenterX + bRadius + (mudTouchDist * (sw / 60));
+                    d.line(sx + 4, startMudY, pipeCenterX - 10, startMudY);
+                    let lx = pipeCenterX - 10; let ly = startMudY;
+                    const segs = 20;
+                    for (let j = 1; j <= segs; j++) {
+                        const t = j / segs;
+                        const tx = Math.pow(1 - t, 2) * (pipeCenterX - 10) + 2 * (1 - t) * t * pipeCenterX + Math.pow(t, 2) * touchMudX;
+                        const ty = Math.pow(1 - t, 2) * startMudY + 2 * (1 - t) * t * endMudY + Math.pow(t, 2) * endMudY;
+                        d.line(lx, ly, tx, ty);
+                        lx = tx; ly = ty;
+                    }
+                    d.line(lx, ly, sx + sw - 4, ly);
+                    d.setFontSize(6); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
+                    d.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 5, { align: 'center' });
+                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 5, startMudY - 2.5);
+                }
 
                 // Helper pipe cylinder renderer
                 const drawPipeSegment = (x1: number, y1: number, x2: number, y2: number) => {
@@ -488,8 +516,6 @@ export const generateDivingRRISIReport = async (
                 };
 
                 // 3. Pipe Geometry (Straight Pipe for I-Tube based on ELV_2; Curved bend for Riser & J-Tube)
-                const isITube = targetPrefix === 'I';
-
                 if (isITube) {
                     // Find I-Tube Terminator / End Elevation (elv_2 / ELV_2)
                     let itubeEndElev = platformDepth;
@@ -510,15 +536,15 @@ export const generateDivingRRISIReport = async (
                         itubeEndElev = Math.min(...elevs);
                     }
 
-                    const pipeTopY = elevToY(maxElev);
+                    const pipeTopY = elevToY(sMax);
                     const pipeBottomY = elevToY(itubeEndElev);
                     
                     // Draw vertical straight pipe
                     drawPipeSegment(pipeCenterX, pipeTopY, pipeCenterX, pipeBottomY);
 
                     // ── Draw Oval Grill Terminal at Pipe End ──
-                    const rx = rWidth / 2; // 4mm radius matches exact pipe width
-                    const ry = 2.5;        // 2.5mm vertical radius for 3D oval perspective
+                    const rx = rWidth / 2;
+                    const ry = 2.5;
 
                     // 1. Oval Base Fill
                     d.setFillColor(180, 195, 210);
@@ -527,11 +553,9 @@ export const generateDivingRRISIReport = async (
                     // 2. Grill Mesh Bars (Vertical & Horizontal Grid)
                     d.setDrawColor(...colors.navy);
                     d.setLineWidth(0.35);
-                    // Vertical grill bars
                     d.line(pipeCenterX - 2, pipeBottomY - 1.8, pipeCenterX - 2, pipeBottomY + 1.8);
                     d.line(pipeCenterX, pipeBottomY - 2.5, pipeCenterX, pipeBottomY + 2.5);
                     d.line(pipeCenterX + 2, pipeBottomY - 1.8, pipeCenterX + 2, pipeBottomY + 1.8);
-                    // Horizontal grill bar
                     d.line(pipeCenterX - 3.8, pipeBottomY, pipeCenterX + 3.8, pipeBottomY);
 
                     // 3. Oval Outer Rim Border
@@ -547,22 +571,20 @@ export const generateDivingRRISIReport = async (
                     d.setFontSize(5.5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
                     d.text(`TERMINATOR GRILL (${itubeEndElev.toFixed(1)}m)`, pipeCenterX + rx + 7, pipeBottomY + 1.5);
                 } else {
-                    // Riser & J-Tube Column + 90-degree curved bottom bend & horizontal pipeline
-                    const bendStartY = seabedY;
-                    const pipeTopY = elevToY(maxElev);
-                    drawPipeSegment(pipeCenterX, pipeTopY, pipeCenterX, bendStartY);
+                    // Vertical Riser down to bY (which is bRadius meters above bottomElev)
+                    const pipeTopY = elevToY(sMax);
+                    drawPipeSegment(pipeCenterX, pipeTopY, pipeCenterX, bY);
 
                     const bendEndX = pipeCenterX + bRadius;
-                    const bendEndY = bendStartY + bRadius;
 
                     const drawCurveSegment = (color: [number, number, number], width: number, offset: number) => {
-                        const segs = 15;
+                        const segs = 20;
                         let lx = pipeCenterX + offset;
-                        let ly = bendStartY;
+                        let ly = bY;
                         const cx = pipeCenterX + offset;
-                        const cy = bendStartY;
+                        const cy = bY;
                         const ex = bendEndX;
-                        const ey = bendEndY + offset;
+                        const ey = pipeY + offset;
                         d.setDrawColor(...color); d.setLineWidth(width);
                         for (let j = 1; j <= segs; j++) {
                             const t = j / segs;
@@ -575,23 +597,23 @@ export const generateDivingRRISIReport = async (
 
                     drawCurveSegment([120, 130, 150], rWidth, 0);
                     drawCurveSegment([160, 175, 195], rWidth * 0.7, 0);
-                    drawCurveSegment([220, 230, 240], rWidth * 0.25, -1);
+                    drawCurveSegment([220, 230, 240], rWidth * 0.25, -rWidth * 0.15);
 
-                    // Horizontal Pipeline extending right
+                    // Horizontal Pipeline extending right sitting on the seabed
                     const pipeRightX = sx + sw - 6;
-                    d.setLineWidth(rWidth); d.setDrawColor(120, 130, 150); d.line(bendEndX, bendEndY, pipeRightX, bendEndY);
-                    d.setLineWidth(rWidth * 0.7); d.setDrawColor(160, 175, 195); d.line(bendEndX, bendEndY, pipeRightX, bendEndY);
-                    d.setLineWidth(rWidth * 0.25); d.setDrawColor(220, 230, 240); d.line(bendEndX, bendEndY - 1, pipeRightX, bendEndY - 1);
+                    d.setLineWidth(rWidth); d.setDrawColor(120, 130, 150); d.line(bendEndX, pipeY, pipeRightX, pipeY);
+                    d.setLineWidth(rWidth * 0.7); d.setDrawColor(160, 175, 195); d.line(bendEndX, pipeY, pipeRightX, pipeY);
+                    d.setLineWidth(rWidth * 0.25); d.setDrawColor(220, 230, 240); d.line(bendEndX, pipeY - rWidth * 0.15, pipeRightX, pipeY - rWidth * 0.15);
 
                     d.setFontSize(5.5); d.setTextColor(100, 115, 130); d.setFont("helvetica", "bold");
-                    d.text("PIPELINE BEND", bendEndX + 2, bendEndY + 6);
+                    d.text("PIPELINE", bendEndX + 2, pipeY + 6);
                 }
 
                 // 5. Elevation Scale Ticks
                 d.setDrawColor(180, 190, 205); d.setLineWidth(0.2);
-                for (let e = Math.floor(maxElev); e >= Math.ceil(platformDepth); e -= 5) {
+                for (let e = Math.floor(sMax); e >= sMin; e -= 5) {
                     const ty = elevToY(e);
-                    if (ty >= topY && ty <= bottomY) {
+                    if (ty >= gTopY && ty <= gMudlineY + 15) {
                         d.line(pipeCenterX - 10, ty, pipeCenterX - 5, ty);
                         d.setFontSize(5.5); d.setFont("helvetica", "normal"); d.setTextColor(100, 115, 130);
                         d.text(`${e}m`, pipeCenterX - 11, ty + 1.5, { align: 'right' });
@@ -608,7 +630,7 @@ export const generateDivingRRISIReport = async (
                     if (elevRaw == null || isNaN(parseFloat(String(elevRaw)))) return;
                     const elev = parseFloat(elevRaw);
                     const py = elevToY(elev);
-                    if (py < topY || py > bottomY) return;
+                    if (py < gTopY || py > gMudlineY + 15) return;
 
                     const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
                     const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));

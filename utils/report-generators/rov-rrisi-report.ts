@@ -244,8 +244,9 @@ export const generateROVRRISIReport = async (
             doc.text(`${typeConfig.label} QID: ${riser?.q_id || 'Unknown'}`, margin + 5, currentY + 5);
             currentY += 10;
 
-            const gW = contentWidth * 0.40; const dW = contentWidth * 0.60;
-            const gX = margin; const dX = margin + gW;
+            const gW = contentWidth * 0.38; const dW = contentWidth * 0.60;
+            const gX = margin; const dX = margin + gW + 4;
+            const isPF = config.printFriendly;
 
             // --- Elev Processing ---
             const rMeta = riser?.metadata || {};
@@ -260,43 +261,62 @@ export const generateROVRRISIReport = async (
             const bottomElev = designEnd;
             const mudlineElev = designEnd - suspGap;
 
-            const gTopY = currentY + 15;
-            const gMudlineY = gTopY + 140;
-
             const sMax = Math.max(designStart + 2, 5);
             const sMin = Math.min(mudlineElev - 10, -40);
             const eRange = sMax - sMin;
+
+            const gTopY = currentY + 15;
+            const gMudlineY = gTopY + 115;
             const eToY = (e: number) => gTopY + ((sMax - e) / eRange) * (gMudlineY - gTopY);
 
-            const cX = gX + (gW / 2) - 10;
+            // Sketch Card Panel
+            const sketchH = 145;
+            doc.setDrawColor(...colors.border); doc.setLineWidth(0.3);
+            doc.setFillColor(isPF ? 255 : 252, isPF ? 255 : 253, isPF ? 255 : 254);
+            doc.rect(gX, currentY, gW, sketchH, 'FD');
+
+            doc.setFontSize(7.5); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.navy);
+            doc.text(`${typeConfig.label} SKETCH (${riser?.q_id || 'Unknown'})`, gX + (gW / 2), currentY + 5, { align: 'center' });
+
+            const pipeCenterX = gX + (gW * 0.35);
+            const cX = pipeCenterX;
             const pipeY = eToY(bottomElev); 
             const mudY = eToY(mudlineElev) + (rWidth / 2);
             const isStraight = rType === 'I';
             const bY = isStraight ? pipeY : eToY(bottomElev + bRadius);
 
-            // --- Draw Mudline ---
+            // 1. Sea Level Line (0m)
+            if (sMax >= 0 && sMin <= 0) {
+                const seaY = eToY(0);
+                doc.setDrawColor(59, 130, 246); doc.setLineWidth(0.4);
+                doc.line(gX + 4, seaY, gX + gW - 4, seaY);
+                doc.setFontSize(6); doc.setTextColor(59, 130, 246); doc.setFont("helvetica", "bold");
+                doc.text("SEA LEVEL (0.00m)", gX + 5, seaY - 1.5);
+            }
+
+            // 2. Seabed Mudline Line
             doc.setDrawColor(...colors.mudline); doc.setLineWidth(1.2);
             if (suspGap === 0) {
-                doc.line(gX, mudY, gX + gW, mudY);
-                doc.setFontSize(7); doc.setTextColor(...colors.mudline); 
-                doc.text("SEABED / MUDLINE", gX + 2, mudY - 3, { align: 'left' });
+                doc.line(gX + 4, mudY, gX + gW - 4, mudY);
+                doc.setFontSize(6); doc.setTextColor(...colors.mudline); doc.setFont("helvetica", "bold");
+                doc.text(`SEABED / MUDLINE (${bottomElev.toFixed(1)}m)`, gX + 5, mudY - 2.5);
             } else {
                 const startMudY = mudY;
                 const endMudY = pipeY + (rWidth / 2);
-                const touchMudX = cX + bRadius + (mudTouchDist * (gW / 60));
-                doc.line(gX, startMudY, cX - 10, startMudY);
-                let lx = cX - 10; let ly = startMudY;
+                const touchMudX = pipeCenterX + bRadius + (mudTouchDist * (gW / 60));
+                doc.line(gX + 4, startMudY, pipeCenterX - 10, startMudY);
+                let lx = pipeCenterX - 10; let ly = startMudY;
                 const segs = 20;
                 for (let j = 1; j <= segs; j++) {
                     const t = j / segs;
-                    const tx = Math.pow(1 - t, 2) * (cX - 10) + 2 * (1 - t) * t * cX + Math.pow(t, 2) * touchMudX;
+                    const tx = Math.pow(1 - t, 2) * (pipeCenterX - 10) + 2 * (1 - t) * t * pipeCenterX + Math.pow(t, 2) * touchMudX;
                     const ty = Math.pow(1 - t, 2) * startMudY + 2 * (1 - t) * t * endMudY + Math.pow(t, 2) * endMudY;
                     doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
                 }
-                doc.line(lx, ly, gX + gW, ly);
-                doc.setFontSize(7); doc.setTextColor(...colors.mudline); 
-                doc.text(`SUSPENSION (${suspGap}m)`, cX, startMudY + 5, { align: 'center' });
-                doc.text("SEABED", gX + 2, startMudY - 3, { align: 'left' });
+                doc.line(lx, ly, gX + gW - 4, ly);
+                doc.setFontSize(6); doc.setTextColor(...colors.mudline); doc.setFont("helvetica", "bold");
+                doc.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 5, { align: 'center' });
+                doc.text(`SEABED (${bottomElev.toFixed(1)}m)`, gX + 5, startMudY - 2.5);
             }
 
             // --- Draw Riser ---
