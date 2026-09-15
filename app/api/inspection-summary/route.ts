@@ -1237,6 +1237,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             "CL": "Clamp",
             "CS": "Conductor Support",
             "CF": "Conductor Guide Frame",
+            "CB": "Conductor / Caisson Guides",
             "FD": "Fender",
             "HD": "Horizontal Diagonal Member",
             "HM": "Horizontal Member",
