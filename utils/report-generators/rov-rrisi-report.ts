@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -70,57 +70,117 @@ export const generateROVRRISIReport = async (
             const compCode = (r.structure_components?.code || "").toUpperCase();
             
             if (rType === 'R') {
-                // Strict Riser Filter: RRISI only + Prefix R only + NOT RISG
-                return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
+                return (typeCode === 'RRISI' || typeCode === 'RISER' || typeCode === 'CPSURV' || typeCode === 'MBINS') &&
+                       (qid.startsWith('R') || compCode === 'RS' || compCode === 'CL') &&
+                       !qid.startsWith('RISG');
+            } else if (rType === 'J') {
+                return (typeCode === 'JTISI' || typeCode === 'JTUBE' || typeCode === 'CPSURV' || typeCode === 'MBINS') &&
+                       (qid.startsWith('J') || compCode === 'JT');
+            } else if (rType === 'I') {
+                return (typeCode === 'ITISI' || typeCode === 'ITUBE' || typeCode === 'CPSURV' || typeCode === 'MBINS') &&
+                       (qid.startsWith('I') || compCode === 'IT');
             }
-            return qid.startsWith(typeConfig.prefix);
+            return false;
         });
 
-        if (filteredRecords.length === 0) {
-            console.warn(`No matching records found for ${typeConfig.title}`);
-        }
+        // Helper to check if a component is a primary parent Riser / J-Tube / I-Tube
+        const isParentComp = (c: any, type: 'R' | 'J' | 'I') => {
+            if (!c) return false;
+            const qid = (c.q_id || '').toUpperCase();
+            const code = (c.code || '').toUpperCase();
+            if (qid.includes('SUPP') || qid.includes('CLAMP') || qid.includes('ANODE') || qid.includes('FLANGE') || qid.includes('WELD') || qid.includes('RISG')) {
+                return false;
+            }
+            if (c.metadata?.associated_comp_id) {
+                return false;
+            }
+            if (type === 'R') {
+                return code === 'RS' || code === 'RISER' || /^R(?:IS)?[ -]*\d+[A-Z]?$/i.test(qid);
+            }
+            if (type === 'J') {
+                return code === 'JT' || code === 'JTUBE' || /^J(?:TUBE)?[ -]*\d+[A-Z]?$/i.test(qid);
+            }
+            if (type === 'I') {
+                return code === 'IT' || code === 'ITUBE' || /^I(?:TUBE)?[ -]*\d+[A-Z]?$/i.test(qid);
+            }
+            return false;
+        };
 
+        // Fetch all components to build a complete QID map for grouping
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
         const compRegistry = new Map<number, any>();
-        const qidToId = new Map<string, number>();
+        const parentCompMap = new Map<string, number>();
+
         if (allComps) {
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
-                qidToId.set(c.q_id.toUpperCase(), c.id);
-                const m = c.q_id.match(/R[IS-]*(\d+)/i) || c.q_id.match(/J[IS-]*(\d+)/i) || c.q_id.match(/I[IS-]*(\d+)/i);
-                if (m) qidToId.set(m[1], c.id);
+                if (isParentComp(c, rType)) {
+                    parentCompMap.set(c.q_id.toUpperCase(), c.id);
+                    if (rType === 'R') {
+                        const m = c.q_id.match(/R(?:IS)?[ -]*(\d+[A-Z]?)/i);
+                        if (m) parentCompMap.set(m[1].toUpperCase(), c.id);
+                    } else if (rType === 'J') {
+                        const m = c.q_id.match(/J(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
+                        if (m) parentCompMap.set(m[1].toUpperCase(), c.id);
+                    } else if (rType === 'I') {
+                        const m = c.q_id.match(/I(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
+                        if (m) parentCompMap.set(m[1].toUpperCase(), c.id);
+                    }
+                }
             });
         }
 
+        // Group records by parent component
         const risersMap = new Map<number, { riserComp: any, records: any[] }>();
         const unassigned: any[] = [];
+
         filteredRecords.forEach(r => {
             const comp = r.structure_components;
             if (!comp) return;
             let rid: number | null = null;
-            if (comp.code === 'RS') rid = comp.id;
-            else if (comp.metadata?.associated_comp_id) rid = Number(comp.metadata.associated_comp_id);
-            else {
-                const q = (comp.q_id || '').toUpperCase(); 
-                const m = q.match(/R[IS-]*(\d+)/i) || q.match(/J[IS-]*(\d+)/i) || q.match(/I[IS-]*(\d+)/i);
-                if (m && qidToId.has(m[1])) rid = qidToId.get(m[1])!;
-                else if (qidToId.has(q)) rid = qidToId.get(q)!;
+            if (isParentComp(comp, rType)) {
+                rid = comp.id;
+            } else if (comp.metadata?.associated_comp_id && compRegistry.has(Number(comp.metadata.associated_comp_id))) {
+                rid = Number(comp.metadata.associated_comp_id);
+            } else {
+                const q = (comp.q_id || '').toUpperCase();
+                let m: RegExpMatchArray | null = null;
+                if (rType === 'R') m = q.match(/R(?:IS)?[ -]*(\d+[A-Z]?)/i);
+                else if (rType === 'J') m = q.match(/J(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
+                else if (rType === 'I') m = q.match(/I(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
+
+                if (m && parentCompMap.has(m[1].toUpperCase())) {
+                    rid = parentCompMap.get(m[1].toUpperCase())!;
+                } else if (parentCompMap.has(q)) {
+                    rid = parentCompMap.get(q)!;
+                }
             }
             if (rid) {
-                if (!risersMap.has(rid)) risersMap.set(rid, { riserComp: compRegistry.get(rid) || comp, records: [] });
+                if (!risersMap.has(rid)) {
+                    risersMap.set(rid, { riserComp: compRegistry.get(rid) || comp, records: [] });
+                }
                 risersMap.get(rid)!.records.push(r);
-            } else unassigned.push(r);
+            } else {
+                unassigned.push(r);
+            }
         });
 
         if (unassigned.length > 0) {
-            if (risersMap.size === 1) Array.from(risersMap.values())[0].records.push(...unassigned);
-            else risersMap.set(0, { riserComp: { q_id: 'Miscellaneous' }, records: unassigned });
+            if (risersMap.size === 1) {
+                Array.from(risersMap.values())[0].records.push(...unassigned);
+            } else {
+                risersMap.set(0, { riserComp: { q_id: 'Miscellaneous' }, records: unassigned });
+            }
         }
 
         const groups = Array.from(risersMap.values()).sort((a, b) => {
             const qA = a.riserComp?.q_id || ''; const qB = b.riserComp?.q_id || '';
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
+
+        if (groups.length === 0 && config.returnBlob) {
+            return null;
+        }
 
         // ── 2. Rendering ────────────────────────────────────────────────────────
         let coLogo: any = null; let ctLogo: any = null;
@@ -475,7 +535,6 @@ export const generateROVRRISIReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${typeConfig.file}_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
     } catch (e) { console.error("ROV Tube Report Error", e); throw e; }
 };

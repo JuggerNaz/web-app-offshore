@@ -354,7 +354,7 @@ export const generateBlankInspectionReport = async (
     templateTitle: string,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | null | void> => {
     try {
         const headerData = {
             jobpackName: ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",

@@ -229,10 +229,8 @@ const TOC_SECTIONS = [
       { id: "rov-rcasn-sketch-report", name: "Caisson Survey (Sketch) Report (ROV)", mode: "ROV" },
       { id: "diving-dcasn-uw-report", name: "Caisson Inspection Underwater (Diving)", mode: "Diving" },
       { id: "diving-dcasn-ts-report", name: "Caisson Inspection Above Water (Diving)", mode: "Diving" },
-      { id: "diving-dcasn-report", name: "Caisson Inspection (Diving)", mode: "Diving" },
       { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater (Diving)", mode: "Diving" },
       { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water (Diving)", mode: "Diving" },
-      { id: "diving-dcond-report", name: "Conductor Inspection (Diving)", mode: "Diving" },
       { id: "diving-item-report", name: "Item Inspection Report (Diving)", mode: "Diving" },
       { id: "diving-bsins-report", name: "Bolted Support Inspection (Diving)", mode: "Diving" }
   ]},

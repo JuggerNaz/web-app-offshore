@@ -25,7 +25,7 @@ interface ReportConfig {
 }
 
 /**
- * Diving Conductor Topside Report (Portrait)
+ * Conductor Inspection Topside Report (Diving)
  * Grouped by parent Conductor (CD) component.
  * Filters for elevations >= 0.
  * Compiles GVINS, CVINS, CPSURV, UTWTK.
@@ -35,9 +35,9 @@ export const generateDivingDCONDTSReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | null | void> => {
     const supabase = createClient();
-    console.log("[Diving Conductor TS Report] Starting generation", { recordsCount: records?.length, config });
+    console.log("[generateDivingDCONDTSReport] Starting generation", { recordsCount: records?.length, config });
 
     try {
         const doc = new jsPDF({ orientation: "portrait" });
@@ -57,14 +57,12 @@ export const generateDivingDCONDTSReport = async (
             finding: [124, 58, 237] as [number, number, number],
         };
 
-        // Filter records: elevation >= 0 and type in [GVINS, CVINS, CPSURV, UTWTK]
+        // Filter records
         const filteredRecords = records.filter(r => {
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
             const validTypes = ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'];
             if (!validTypes.includes(typeCode)) return false;
-
-            const elevationVal = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0);
-            return elevationVal >= 0;
+            const elevationVal = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0); return elevationVal >= 0;
         });
 
         // Pre-load logos
@@ -106,7 +104,7 @@ export const generateDivingDCONDTSReport = async (
             d.setFontSize(8.5); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
             d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text("Conductor Inspection Topside Diving", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.text("Conductor Inspection Topside Report (Diving)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
@@ -148,7 +146,7 @@ export const generateDivingDCONDTSReport = async (
             return startY + ROW_H * 2 + 4;
         };
 
-        // Grouping logic (group by Conductor - code CD)
+        // Grouping logic (strictly group by Conductor - CD)
         const compRegistry = new Map<number, any>();
         const qidRegistry = new Map<string, any>();
         allComps?.forEach(c => {
@@ -156,10 +154,15 @@ export const generateDivingDCONDTSReport = async (
             qidRegistry.set(c.q_id.toUpperCase(), c);
         });
 
-        const getGroupKey = (r: any): string => {
+        const getGroupKey = (r: any): string | null => {
             const comp = r.structure_components || r.component || {};
             const metadata = comp.metadata || {};
             const qid = (comp.q_id || "Unknown").toUpperCase();
+
+            // Explicit exclusion: Caisson, Riser, Boatlanding, Weld nodes are NOT Conductor
+            if (qid.startsWith("CS") || qid.startsWith("SG") || qid.startsWith("WN") || qid.startsWith("RIS") || qid.startsWith("BL")) {
+                return null;
+            }
 
             const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
             let parentQid = metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id;
@@ -173,15 +176,15 @@ export const generateDivingDCONDTSReport = async (
                 const pId = meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id;
                 const typeCode = (c.code || "").toUpperCase();
 
-                if (typeCode === "CD" && !pId) return c.q_id;
-                return findUltimateCDParent(pId, depth + 1) || (typeCode === "CD" ? c.q_id : null);
+                if (["CD", "CON", "COND", "CONDUCTOR"].includes(typeCode) && !pId) return c.q_id;
+                return findUltimateCDParent(pId, depth + 1) || (["CD", "CON", "COND", "CONDUCTOR"].includes(typeCode) ? c.q_id : null);
             };
 
             const ultimateParent = findUltimateCDParent(parentId || comp.id);
             if (ultimateParent) return ultimateParent;
-            if (parentQid) return parentQid;
+            if (parentQid && (parentQid.toUpperCase().startsWith("CD") || parentQid.toUpperCase().startsWith("CON"))) return parentQid;
 
-            if (qid.startsWith("CD")) {
+            if (qid.startsWith("CD") || qid.startsWith("CON")) {
                 let bestMatch = "";
                 allComps?.forEach(c => {
                     const cCode = (c.code || "").toUpperCase();
@@ -189,35 +192,39 @@ export const generateDivingDCONDTSReport = async (
                     const cMeta = c.metadata || {};
                     const cpId = cMeta.associated_comp_id || cMeta.parent_id || cMeta.comp_id_parent || cMeta.parent_comp_id || cMeta.associated_id;
 
-                    if (cCode === "CD" && !cpId && qid.startsWith(cQid) && cQid.length > bestMatch.length) {
+                    if (["CD", "CON", "COND", "CONDUCTOR"].includes(cCode) && !cpId && qid.startsWith(cQid) && cQid.length > bestMatch.length) {
                         bestMatch = c.q_id;
                     }
                 });
                 if (bestMatch) return bestMatch;
             }
 
-            const match = qid.match(/^(CD-[^-_ ]+)/i);
+            const match = qid.match(/^(CD-[^-_ ]+|CON-[^-_ ]+|COND-[^-_ ]+)/i);
             if (match) return match[1];
 
-            return (comp.code || "").toUpperCase() === "CD" ? qid : "General";
+            const cCode = (comp.code || comp.metadata?.type || "").toUpperCase();
+            const cName = (comp.comp_name || comp.name || "").toUpperCase();
+            const isCD = ["CD", "CON", "COND", "CONDUCTOR", "CU", "CD_GUARD"].includes(cCode) || 
+                         qid.startsWith("CD") || qid.startsWith("CON") || qid.startsWith("CU") || cName.includes("CONDUCTOR");
+
+            return isCD ? qid : null;
         };
 
         const conductorGroups: Record<string, any[]> = {};
         filteredRecords.forEach(r => {
-            const key = getGroupKey(r).toUpperCase();
-            if (!conductorGroups[key]) conductorGroups[key] = [];
-            conductorGroups[key].push(r);
+            const key = getGroupKey(r);
+            if (!key) return; // Skip non-conductor records (e.g. caissons or weld nodes)
+            const keyUpper = key.toUpperCase();
+            if (!conductorGroups[keyUpper]) conductorGroups[keyUpper] = [];
+            conductorGroups[keyUpper].push(r);
         });
 
         const sortedConductorQids = Object.keys(conductorGroups).sort((a, b) => {
-            if (a === "General") return 1;
-            if (b === "General") return -1;
-            return a.localeCompare(b);
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
         });
 
-        if (sortedConductorQids.length === 0 && filteredRecords.length > 0) {
-            conductorGroups["General"] = filteredRecords;
-            sortedConductorQids.push("General");
+        if (sortedConductorQids.length === 0) {
+            if (config.returnBlob) return null as any;
         }
 
         const formatFindings = (r: any) => {
@@ -291,386 +298,230 @@ export const generateDivingDCONDTSReport = async (
             let currentY = startY;
 
             // Sub-header for Conductor QID
-            if (conductorQid && conductorQid !== "General") {
+            if (conductorQid) {
                 const subH = 6;
                 doc.setFillColor(...colors.navy);
                 doc.rect(margin, currentY, contentWidth, subH, "F");
                 doc.setTextColor(255);
                 doc.setFontSize(8); doc.setFont("helvetica", "bold");
                 doc.text(`CONDUCTOR QID: ${conductorQid}`, margin + 4, currentY + 4.2);
-                currentY += subH + 4;
+                currentY += subH + 2;
             }
 
-            // Separate records by inspection type
-            const gvinsRecs = groupRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'GVINS');
-            const cvinsRecs = groupRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'CVINS');
-            const cpsurvRecs = groupRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'CPSURV');
-            const utwtkRecs = groupRecords.filter(r => ['UTWTK', 'DUTWT'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
+            const recsGVINS = groupRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'GVINS');
+            const recsCVINS = groupRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'CVINS');
+            const recsCPSURV = groupRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || '').toUpperCase() === 'CPSURV');
+            const recsUTWTK = groupRecords.filter(r => ['UTWTK', 'DUTWT'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
 
-            const isPF = config.printFriendly;
+            const checkPageBreak = (neededHeight: number) => {
+                if (currentY + neededHeight > pageHeight - 35) {
+                    doc.addPage();
+                    drawPageHeader(doc);
+                    currentY = drawContextRow(doc, margin + HEADER_H + 2, groupRecords);
+                    return true;
+                }
+                return false;
+            };
 
-            // 1. GVINS Block
-            if (gvinsRecs.length > 0) {
-                // Section Header
-                doc.setTextColor(...colors.navy);
+            const drawSectionHeader = (title: string) => {
+                checkPageBreak(12);
                 doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-                doc.text("General Visual Inspection (GVINS)", margin, currentY);
-                currentY += 2.5;
+                doc.setTextColor(...colors.navy);
+                doc.text(title, margin, currentY + 4);
+                currentY += 6;
+            };
 
-                const body = gvinsRecs.map((r, idx) => {
-                    const d = r.inspection_data || {};
-                    const qid = r.structure_components?.q_id || r.component?.q_id || "—";
-                    const elev = r.elevation ?? d.elevation ?? "—";
-                    const diveNo = r.insp_dive_jobs?.job_no || r.dive_job_id || "—";
-                    const coatCond = d.coating_condition ?? "—";
-                    const compCond = d.component_condition ?? "—";
-                    const mg = (d.marine_growth ?? [
-                        d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
-                        d.marine_growth_soft ? `Soft: ${d.marine_growth_soft}` : ''
-                    ].filter(Boolean).join(', ')) || "—";
-
-                    return [
-                        String(idx + 1),
-                        qid,
-                        String(elev),
-                        String(diveNo),
-                        String(coatCond),
-                        String(compCond),
-                        String(mg),
-                        formatFindings(r)
-                    ];
-                });
-
+            // 1. GVINS
+            if (recsGVINS.length > 0) {
+                drawSectionHeader("General Visual Inspection (GVINS)");
                 autoTable(doc, {
                     startY: currentY,
-                    margin: { left: margin, right: margin, bottom: config.showSignatures !== false ? 35 : 15 },
-                    head: [[
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Coating Condition", styles: { halign: "center", valign: "middle" } },
-                        { content: "Component Condition", styles: { halign: "center", valign: "middle" } },
-                        { content: "Marine Growth %", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings", styles: { halign: "center", valign: "middle" } }
-                    ]],
-                    body,
+                    margin: { left: margin, right: margin },
+                    head: [["Item No.", "QID", "Elevation (m)", "Dive No.", "Coating Condition", "Component Condition", "Marine Growth %", "Findings"]],
+                    body: recsGVINS.map((r, i) => {
+                        const d = r.inspection_data || {};
+                        const el = r.elevation ?? d.elevation ?? "—";
+                        const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
+                        const mg = d.marine_growth_pct ? `${d.marine_growth_pct}%` : (d.marine_growth_coverage || d.marine_growth || "—");
+                        return [
+                            i + 1,
+                            r.structure_components?.q_id || r.component?.q_id || "N/A",
+                            el,
+                            diveNo,
+                            d.coating_condition || "—",
+                            d.component_condition || "—",
+                            mg,
+                            formatFindings(r)
+                        ];
+                    }),
                     theme: "grid",
-                    headStyles: {
-                        fillColor: isPF ? [255, 255, 255] : colors.navy,
-                        textColor: isPF ? colors.navy : [255, 255, 255],
-                        fontSize: 7,
-                        fontStyle: "bold",
-                    },
-                    styles: {
-                        fontSize: 6.5,
-                        cellPadding: 1.5,
-                        textColor: colors.text,
-                        lineColor: colors.border,
-                        overflow: "linebreak",
-                    },
+                    headStyles: { fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center" },
+                    bodyStyles: { fontSize: 6.5, textColor: colors.text },
                     columnStyles: {
-                        0: { cellWidth: 8, halign: "center" },
-                        1: { cellWidth: 20 },
-                        2: { cellWidth: 15, halign: "center" },
-                        3: { cellWidth: 15, halign: "center" },
+                        0: { cellWidth: 12, halign: "center" },
+                        1: { cellWidth: 28 },
+                        2: { cellWidth: 18, halign: "center" },
+                        3: { cellWidth: 16, halign: "center" },
+                        4: { cellWidth: 22 },
+                        5: { cellWidth: 22 },
+                        6: { cellWidth: 22 },
+                        7: { cellWidth: "auto" }
+                    },
+                    didParseCell: (data) => {
+                        if (data.section === "body") applyCellColoring(data, recsGVINS[data.row.index]);
+                    }
+                });
+                currentY = (doc as any).lastAutoTable.finalY + 4;
+            }
+
+            // 2. CVINS
+            if (recsCVINS.length > 0) {
+                drawSectionHeader("Close Visual Inspection (CVINS)");
+                autoTable(doc, {
+                    startY: currentY,
+                    margin: { left: margin, right: margin },
+                    head: [["Item No.", "QID", "Elevation (m)", "Dive No.", "Coating Condition", "Component Condition", "Debris / Corrosion", "Findings"]],
+                    body: recsCVINS.map((r, i) => {
+                        const d = r.inspection_data || {};
+                        const el = r.elevation ?? d.elevation ?? "—";
+                        const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
+                        const debris = d.debris_type || d.corrosion_type || d.debris_desc || "—";
+                        return [
+                            i + 1,
+                            r.structure_components?.q_id || r.component?.q_id || "N/A",
+                            el,
+                            diveNo,
+                            d.coating_condition || "—",
+                            d.component_condition || "—",
+                            debris,
+                            formatFindings(r)
+                        ];
+                    }),
+                    theme: "grid",
+                    headStyles: { fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center" },
+                    bodyStyles: { fontSize: 6.5, textColor: colors.text },
+                    columnStyles: {
+                        0: { cellWidth: 12, halign: "center" },
+                        1: { cellWidth: 28 },
+                        2: { cellWidth: 18, halign: "center" },
+                        3: { cellWidth: 16, halign: "center" },
+                        4: { cellWidth: 24 },
+                        5: { cellWidth: 24 },
+                        6: { cellWidth: 24 },
+                        7: { cellWidth: "auto" }
+                    },
+                    didParseCell: (data) => {
+                        if (data.section === "body") applyCellColoring(data, recsCVINS[data.row.index]);
+                    }
+                });
+                currentY = (doc as any).lastAutoTable.finalY + 4;
+            }
+
+            // 3. CPSURV
+            if (recsCPSURV.length > 0) {
+                drawSectionHeader("CP Survey (CPSURV)");
+                autoTable(doc, {
+                    startY: currentY,
+                    margin: { left: margin, right: margin },
+                    head: [["Item No.", "QID", "Elevation (m)", "Dive No.", "CP Reading", "Anode Condition", "Marine Growth %", "Findings"]],
+                    body: recsCPSURV.map((r, i) => {
+                        const d = r.inspection_data || {};
+                        const el = r.elevation ?? d.elevation ?? "—";
+                        const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
+                        const cp = d.cp_rdg ? `${d.cp_rdg} mV` : (d.cp_reading ? `${d.cp_reading} mV` : "—");
+                        const mg = d.marine_growth_pct ? `${d.marine_growth_pct}%` : (d.marine_growth || "—");
+                        return [
+                            i + 1,
+                            r.structure_components?.q_id || r.component?.q_id || "N/A",
+                            el,
+                            diveNo,
+                            cp,
+                            d.anode_condition || "—",
+                            mg,
+                            formatFindings(r)
+                        ];
+                    }),
+                    theme: "grid",
+                    headStyles: { fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center" },
+                    bodyStyles: { fontSize: 6.5, textColor: colors.text },
+                    columnStyles: {
+                        0: { cellWidth: 12, halign: "center" },
+                        1: { cellWidth: 28 },
+                        2: { cellWidth: 18, halign: "center" },
+                        3: { cellWidth: 16, halign: "center" },
                         4: { cellWidth: 22, halign: "center" },
-                        5: { cellWidth: 22, halign: "center" },
-                        6: { cellWidth: 20, halign: "center" },
+                        5: { cellWidth: 22 },
+                        6: { cellWidth: 22 },
                         7: { cellWidth: "auto" }
                     },
                     didParseCell: (data) => {
-                        if (data.section === "body") {
-                            const r = gvinsRecs[data.row.index];
-                            applyCellColoring(data, r);
-                        }
-                    },
-                    didDrawPage: (data) => {
-                        if (data.pageNumber > 1) drawPageHeader(doc);
+                        if (data.section === "body") applyCellColoring(data, recsCPSURV[data.row.index]);
                     }
                 });
-
-                currentY = (doc as any).lastAutoTable.finalY + 8;
+                currentY = (doc as any).lastAutoTable.finalY + 4;
             }
 
-            // 2. CVINS Block
-            if (cvinsRecs.length > 0) {
-                if (currentY > pageHeight - 35) { doc.addPage(); drawPageHeader(doc); currentY = margin + HEADER_H + 10; }
-                // Section Header
-                doc.setTextColor(...colors.navy);
-                doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-                doc.text("Close Visual Inspection (CVINS)", margin, currentY);
-                currentY += 2.5;
-
-                const body = cvinsRecs.map((r, idx) => {
-                    const d = r.inspection_data || {};
-                    const qid = r.structure_components?.q_id || r.component?.q_id || "—";
-                    const elev = r.elevation ?? d.elevation ?? "—";
-                    const diveNo = r.insp_dive_jobs?.job_no || r.dive_job_id || "—";
-                    const coatCond = d.coating_condition ?? "—";
-                    const compCond = d.component_condition ?? "—";
-                    const debCorr = d.debris ?? d.debris_material ?? d.corrosion ?? "—";
-
-                    return [
-                        String(idx + 1),
-                        qid,
-                        String(elev),
-                        String(diveNo),
-                        String(coatCond),
-                        String(compCond),
-                        String(debCorr),
-                        formatFindings(r)
-                    ];
-                });
-
+            // 4. UTWTK
+            if (recsUTWTK.length > 0) {
+                drawSectionHeader("UT Wall Thickness (UTWTK)");
                 autoTable(doc, {
                     startY: currentY,
-                    margin: { left: margin, right: margin, bottom: config.showSignatures !== false ? 35 : 15 },
-                    head: [[
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Coating Condition", styles: { halign: "center", valign: "middle" } },
-                        { content: "Component Condition", styles: { halign: "center", valign: "middle" } },
-                        { content: "Debris / Corrosion", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings", styles: { halign: "center", valign: "middle" } }
-                    ]],
-                    body,
-                    theme: "grid",
-                    headStyles: {
-                        fillColor: isPF ? [255, 255, 255] : colors.navy,
-                        textColor: isPF ? colors.navy : [255, 255, 255],
-                        fontSize: 7,
-                        fontStyle: "bold",
-                    },
-                    styles: {
-                        fontSize: 6.5,
-                        cellPadding: 1.5,
-                        textColor: colors.text,
-                        lineColor: colors.border,
-                        overflow: "linebreak",
-                    },
-                    columnStyles: {
-                        0: { cellWidth: 8, halign: "center" },
-                        1: { cellWidth: 20 },
-                        2: { cellWidth: 15, halign: "center" },
-                        3: { cellWidth: 15, halign: "center" },
-                        4: { cellWidth: 22, halign: "center" },
-                        5: { cellWidth: 22, halign: "center" },
-                        6: { cellWidth: 20, halign: "center" },
-                        7: { cellWidth: "auto" }
-                    },
-                    didParseCell: (data) => {
-                        if (data.section === "body") {
-                            const r = cvinsRecs[data.row.index];
-                            applyCellColoring(data, r);
-                        }
-                    },
-                    didDrawPage: (data) => {
-                        if (data.pageNumber > 1) drawPageHeader(doc);
-                    }
-                });
-
-                currentY = (doc as any).lastAutoTable.finalY + 8;
-            }
-
-            // 3. CPSURV Block
-            if (cpsurvRecs.length > 0) {
-                if (currentY > pageHeight - 35) { doc.addPage(); drawPageHeader(doc); currentY = margin + HEADER_H + 10; }
-                // Section Header
-                doc.setTextColor(...colors.navy);
-                doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-                doc.text("CP Survey (CPSURV)", margin, currentY);
-                currentY += 2.5;
-
-                const body = cpsurvRecs.map((r, idx) => {
-                    const d = r.inspection_data || {};
-                    const qid = r.structure_components?.q_id || r.component?.q_id || "—";
-                    const elev = r.elevation ?? d.elevation ?? "—";
-                    const diveNo = r.insp_dive_jobs?.job_no || r.dive_job_id || "—";
-                    const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-                    const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
-                    const additionalCPs = additionals
-                        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
-                        .filter((val: any) => val !== "" && val !== null && val !== undefined);
-
-                    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
-                    const cpDisplay = cpList.length > 0
-                        ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
-                        : "—";
-                    const anodeCond = d.anode_condition ?? d.component_condition ?? "—";
-                    const mg = (d.marine_growth ?? [
-                        d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
-                        d.marine_growth_soft ? `Soft: ${d.marine_growth_soft}` : ''
-                    ].filter(Boolean).join(', ')) || "—";
-
-                    return [
-                        String(idx + 1),
-                        qid,
-                        String(elev),
-                        String(diveNo),
-                        String(cpDisplay),
-                        String(anodeCond),
-                        String(mg),
-                        formatFindings(r)
-                    ];
-                });
-
-                autoTable(doc, {
-                    startY: currentY,
-                    margin: { left: margin, right: margin, bottom: config.showSignatures !== false ? 35 : 15 },
-                    head: [[
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "CP Reading", styles: { halign: "center", valign: "middle" } },
-                        { content: "Anode Condition", styles: { halign: "center", valign: "middle" } },
-                        { content: "Marine Growth %", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings", styles: { halign: "center", valign: "middle" } }
-                    ]],
-                    body,
-                    theme: "grid",
-                    headStyles: {
-                        fillColor: isPF ? [255, 255, 255] : colors.navy,
-                        textColor: isPF ? colors.navy : [255, 255, 255],
-                        fontSize: 7,
-                        fontStyle: "bold",
-                    },
-                    styles: {
-                        fontSize: 6.5,
-                        cellPadding: 1.5,
-                        textColor: colors.text,
-                        lineColor: colors.border,
-                        overflow: "linebreak",
-                    },
-                    columnStyles: {
-                        0: { cellWidth: 8, halign: "center" },
-                        1: { cellWidth: 20 },
-                        2: { cellWidth: 15, halign: "center" },
-                        3: { cellWidth: 15, halign: "center" },
-                        4: { cellWidth: 20, halign: "center" },
-                        5: { cellWidth: 22, halign: "center" },
-                        6: { cellWidth: 22, halign: "center" },
-                        7: { cellWidth: "auto" }
-                    },
-                    didParseCell: (data) => {
-                        if (data.section === "body") {
-                            const r = cpsurvRecs[data.row.index];
-                            applyCellColoring(data, r);
-                        }
-                    },
-                    didDrawPage: (data) => {
-                        if (data.pageNumber > 1) drawPageHeader(doc);
-                    }
-                });
-
-                currentY = (doc as any).lastAutoTable.finalY + 8;
-            }
-
-            // 4. UTWTK Block
-            if (utwtkRecs.length > 0) {
-                if (currentY > pageHeight - 35) { doc.addPage(); drawPageHeader(doc); currentY = margin + HEADER_H + 10; }
-                // Section Header
-                doc.setTextColor(...colors.navy);
-                doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-                doc.text("UT Wall Thickness (UTWTK)", margin, currentY);
-                currentY += 2.5;
-
-                const body = utwtkRecs.map((r, idx) => {
-                    const d = r.inspection_data || {};
-                    const qid = r.structure_components?.q_id || r.component?.q_id || "—";
-                    const elev = r.elevation ?? d.elevation ?? "—";
-                    const diveNo = r.insp_dive_jobs?.job_no || r.dive_job_id || "—";
-
-                    const getRd = (val: any, unit: any) => (val !== undefined && val !== null && val !== "") ? `${val} ${unit || 'mm'}` : "-";
-                    const rd12 = getRd(d.ut_12_o_clock, d.ut_12_o_clock_unit);
-                    const rd3 = getRd(d.ut_3_o_clock, d.ut_3_o_clock_unit);
-                    const rd6 = getRd(d.ut_6_o_clock, d.ut_6_o_clock_unit);
-                    const rd9 = getRd(d.ut_9_o_clock, d.ut_9_o_clock_unit);
-                    const nominal = d.nominal_thickness !== undefined && d.nominal_thickness !== null && d.nominal_thickness !== ""
-                        ? `${d.nominal_thickness} ${d.nominal_thickness_unit || 'mm'}`
-                        : "—";
-
-                    return [
-                        String(idx + 1),
-                        qid,
-                        String(elev),
-                        String(diveNo),
-                        rd12,
-                        rd3,
-                        rd6,
-                        rd9,
-                        nominal,
-                        formatFindings(r)
-                    ];
-                });
-
-                autoTable(doc, {
-                    startY: currentY,
-                    margin: { left: margin, right: margin, bottom: config.showSignatures !== false ? 35 : 15 },
+                    margin: { left: margin, right: margin },
                     head: [
                         [
-                            { content: "Item No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                            { content: "QID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                            { content: "Elevation (m)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                            { content: "Dive No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                            { content: "Thickness Readings (o'clock)", colSpan: 4, styles: { halign: 'center' } },
-                            { content: "Nominal Thickness", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                            { content: "Findings", rowSpan: 2, styles: { halign: "center", valign: "middle" } }
+                            { content: "Item No.", rowSpan: 2, styles: { valign: "middle" } },
+                            { content: "QID", rowSpan: 2, styles: { valign: "middle" } },
+                            { content: "Elevation (m)", rowSpan: 2, styles: { valign: "middle" } },
+                            { content: "Dive No.", rowSpan: 2, styles: { valign: "middle" } },
+                            { content: "Thickness Readings (o'clock)", colSpan: 4, styles: { halign: "center" } },
+                            { content: "Nominal Thickness", rowSpan: 2, styles: { valign: "middle" } },
+                            { content: "Findings", rowSpan: 2, styles: { valign: "middle" } }
                         ],
-                        [
-                            { content: "12", styles: { halign: "center" } },
-                            { content: "3", styles: { halign: "center" } },
-                            { content: "6", styles: { halign: "center" } },
-                            { content: "9", styles: { halign: "center" } }
-                        ]
+                        ["12", "3", "6", "9"]
                     ],
-                    body,
+                    body: recsUTWTK.map((r, i) => {
+                        const d = r.inspection_data || {};
+                        const el = r.elevation ?? d.elevation ?? "—";
+                        const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
+                        const nom = d.nominal_thickness || d.nominal_thk || d.nom_thick || "—";
+                        return [
+                            i + 1,
+                            r.structure_components?.q_id || r.component?.q_id || "N/A",
+                            el,
+                            diveNo,
+                            d.t1 || d.reading_12 || "-",
+                            d.t2 || d.reading_3 || "-",
+                            d.t3 || d.reading_6 || "-",
+                            d.t4 || d.reading_9 || "-",
+                            nom,
+                            formatFindings(r)
+                        ];
+                    }),
                     theme: "grid",
-                    headStyles: {
-                        fillColor: isPF ? [255, 255, 255] : colors.navy,
-                        textColor: isPF ? colors.navy : [255, 255, 255],
-                        fontSize: 7,
-                        fontStyle: "bold",
-                    },
-                    styles: {
-                        fontSize: 6.5,
-                        cellPadding: 1.5,
-                        textColor: colors.text,
-                        lineColor: colors.border,
-                        overflow: "linebreak",
-                    },
+                    headStyles: { fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center" },
+                    bodyStyles: { fontSize: 6.5, textColor: colors.text },
                     columnStyles: {
-                        0: { cellWidth: 8, halign: "center" },
-                        1: { cellWidth: 20 },
-                        2: { cellWidth: 15, halign: "center" },
-                        3: { cellWidth: 15, halign: "center" },
-                        4: { cellWidth: 12, halign: "center" },
-                        5: { cellWidth: 12, halign: "center" },
-                        6: { cellWidth: 12, halign: "center" },
-                        7: { cellWidth: 12, halign: "center" },
-                        8: { cellWidth: 16, halign: "center" },
+                        0: { cellWidth: 12, halign: "center" },
+                        1: { cellWidth: 28 },
+                        2: { cellWidth: 18, halign: "center" },
+                        3: { cellWidth: 16, halign: "center" },
+                        4: { cellWidth: 11, halign: "center" },
+                        5: { cellWidth: 11, halign: "center" },
+                        6: { cellWidth: 11, halign: "center" },
+                        7: { cellWidth: 11, halign: "center" },
+                        8: { cellWidth: 18, halign: "center" },
                         9: { cellWidth: "auto" }
                     },
                     didParseCell: (data) => {
-                        if (data.section === "body") {
-                            const r = utwtkRecs[data.row.index];
-                            applyCellColoring(data, r);
-                        }
-                    },
-                    didDrawPage: (data) => {
-                        if (data.pageNumber > 1) drawPageHeader(doc);
+                        if (data.section === "body") applyCellColoring(data, recsUTWTK[data.row.index]);
                     }
                 });
-
-                currentY = (doc as any).lastAutoTable.finalY + 8;
+                currentY = (doc as any).lastAutoTable.finalY + 4;
             }
 
-            // Draw Footer and Signatory Section
-            const finalY = (doc as any).lastAutoTable?.finalY ?? currentY;
+            // Signatures
             if (config.showSignatures !== false) {
+                const finalY = currentY;
                 let sigY = pageHeight - 38;
                 if (finalY > sigY - 10) {
                     doc.addPage();
@@ -678,7 +529,7 @@ export const generateDivingDCONDTSReport = async (
                     sigY = pageHeight - 38;
                 }
                 const sigW = contentWidth / 3;
-                const drawSigFooter = (label: string, lx: number, person?: { name?: string; date?: string }) => {
+                const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                     doc.rect(lx, sigY, sigW - 4, 18);
                     if (!config.printFriendly) {
@@ -692,44 +543,22 @@ export const generateDivingDCONDTSReport = async (
                     doc.text(label, lx + 2, sigY + 3.5);
                     doc.setTextColor(...colors.text); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
                     doc.text("Name:", lx + 2, sigY + 10);
-                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
+                    if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                     doc.text("Date:", lx + 2, sigY + 13.5);
-                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
+                    if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                     doc.text("Signature:", lx + 2, sigY + 17);
                 };
-                drawSigFooter("PREPARED BY", margin, config?.preparedBy);
-                drawSigFooter("REVIEWED BY", margin + sigW, config?.reviewedBy);
-                drawSigFooter("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
-            }
-
-            // Footer Bottom Text
-            const pageCount = (doc as any).internal.getNumberOfPages();
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
-                doc.setTextColor(...colors.text);
-                doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
-                doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
-                doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Conductor Inspection Topside Diving  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
-                    margin, pageHeight - 6
-                );
-                if (config.showPageNumbers !== false) {
-                    doc.text(`Page ${i}`, margin + contentWidth, pageHeight - 6, { align: "right" });
-                }
+                drawSig("PREPARED BY", margin, config?.preparedBy);
+                drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+                drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
             }
         });
 
-        console.log("[Diving Conductor TS Report] Generation complete, returnBlob:", config?.returnBlob);
-        if (config?.returnBlob !== false) {
-            applyWatermarkAndSignaturesGlobal(doc, config);
-            return doc.output("blob");
-        }
-
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`Conductor_Inspection_Topside_Diving_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        if (config.returnBlob) return doc.output("blob");
+        doc.save(`Diving_Conductor_Inspection_Topside_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
-        console.error("[Diving Conductor TS Report] Error:", err);
+        console.error("[generateDivingDCONDTSReport] Error:", err);
         throw err;
     }
 };

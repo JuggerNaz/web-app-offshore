@@ -37,7 +37,7 @@ export const generateROVRRISIDetailReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | null | void> => {
     const supabase = createClient();
     console.log("[ROV Riser Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
@@ -75,33 +75,55 @@ export const generateROVRRISIDetailReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
+        // Helper to check if a component is a primary parent Riser
+        const isParentRiserComp = (c: any) => {
+            if (!c) return false;
+            const qid = (c.q_id || '').toUpperCase();
+            const code = (c.code || '').toUpperCase();
+            if (qid.includes('SUPP') || qid.includes('CLAMP') || qid.includes('ANODE') || qid.includes('FLANGE') || qid.includes('WELD') || qid.includes('RISG')) {
+                return false;
+            }
+            if (c.metadata?.associated_comp_id) {
+                return false;
+            }
+            return code === 'RS' || code === 'RISER' || /^R(?:IS)?[ -]*\d+[A-Z]?$/i.test(qid);
+        };
+
         // Fetch all components to build a complete QID map for grouping
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
         const compRegistry = new Map<number, any>();
-        const qidToId = new Map<string, number>();
+        const parentCompMap = new Map<string, number>();
+
         if (allComps) {
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
-                qidToId.set(c.q_id.toUpperCase(), c.id);
-                const m = c.q_id.match(/R[IS-]*(\d+)/i);
-                if (m) qidToId.set(m[1], c.id);
+                if (isParentRiserComp(c)) {
+                    parentCompMap.set(c.q_id.toUpperCase(), c.id);
+                    const m = c.q_id.match(/R(?:IS)?[ -]*(\d+[A-Z]?)/i);
+                    if (m) parentCompMap.set(m[1].toUpperCase(), c.id);
+                }
             });
         }
 
-        // Group records by parent Riser component (RS)
+        // Group records by parent Riser component
         const risersMap = new Map<number, { riserComp: any, records: any[] }>();
         const unassigned: any[] = [];
         filteredRecords.forEach(r => {
             const comp = r.structure_components;
             if (!comp) return;
             let rid: number | null = null;
-            if (comp.code === 'RS') rid = comp.id;
-            else if (comp.metadata?.associated_comp_id) rid = Number(comp.metadata.associated_comp_id);
-            else {
+            if (isParentRiserComp(comp)) {
+                rid = comp.id;
+            } else if (comp.metadata?.associated_comp_id && compRegistry.has(Number(comp.metadata.associated_comp_id))) {
+                rid = Number(comp.metadata.associated_comp_id);
+            } else {
                 const q = (comp.q_id || '').toUpperCase();
-                const m = q.match(/R[IS-]*(\d+)/i);
-                if (m && qidToId.has(m[1])) rid = qidToId.get(m[1])!;
-                else if (qidToId.has(q)) rid = qidToId.get(q)!;
+                const m = q.match(/R(?:IS)?[ -]*(\d+[A-Z]?)/i);
+                if (m && parentCompMap.has(m[1].toUpperCase())) {
+                    rid = parentCompMap.get(m[1].toUpperCase())!;
+                } else if (parentCompMap.has(q)) {
+                    rid = parentCompMap.get(q)!;
+                }
             }
             if (rid) {
                 if (!risersMap.has(rid)) risersMap.set(rid, { riserComp: compRegistry.get(rid) || comp, records: [] });
@@ -119,6 +141,10 @@ export const generateROVRRISIDetailReport = async (
             const qB = b.riserComp?.q_id || '';
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
+
+        if (groups.length === 0 && config.returnBlob) {
+            return null;
+        }
 
         const HEADER_H = 24;
 

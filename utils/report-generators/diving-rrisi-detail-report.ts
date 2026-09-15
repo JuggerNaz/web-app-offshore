@@ -82,8 +82,8 @@ export const generateDivingRRISIDetailReport = async (
                 const qidUpper = qid.toUpperCase();
 
                 const isRsCode = code === 'RS' || code === 'RISER' || code === 'JT' || code === 'IT' || code === 'I-TUBE' || code === 'J-TUBE';
-                const isParentCandidate = isRsCode && qidUpper.startsWith(targetPrefix) && 
-                    (targetPrefix !== 'R' || !qidUpper.startsWith('RISG'));
+                const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(c.metadata?.associated_comp_id);
+                const isParentCandidate = isRsCode && !isSubComp && qidUpper.startsWith(targetPrefix);
 
                 if (isParentCandidate && qid) {
                     parentCompsMap.set(c.id, c);
@@ -101,8 +101,8 @@ export const generateDivingRRISIDetailReport = async (
             const qidUpper = qid.toUpperCase();
 
             const isRsCode = cCode === 'RS' || cCode === 'RISER' || cCode === 'JT' || cCode === 'IT' || cCode === 'I-TUBE' || cCode === 'J-TUBE';
-            const isParentCandidate = isRsCode && qidUpper.startsWith(targetPrefix) && 
-                (targetPrefix !== 'R' || !qidUpper.startsWith('RISG'));
+            const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(comp.metadata?.associated_comp_id || r.metadata?.associated_comp_id);
+            const isParentCandidate = isRsCode && !isSubComp && qidUpper.startsWith(targetPrefix);
 
             if (isParentCandidate && qid) {
                 if (cId && !parentCompsMap.has(cId)) {
