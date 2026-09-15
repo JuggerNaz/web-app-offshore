@@ -49,8 +49,8 @@ export const GET = withAuth(
       } else if (viewFilter === "show_all" || showAll) {
         // Don't filter is_deleted
       } else {
-        // Default: show only active components
-        query = query.eq("is_deleted", false);
+        // Default: show only active components (handle NULLs safely in SQL)
+        query = query.or("is_deleted.is.null,is_deleted.eq.false");
       }
 
       // Apply code filter if provided and not "ALL COMPONENTS"

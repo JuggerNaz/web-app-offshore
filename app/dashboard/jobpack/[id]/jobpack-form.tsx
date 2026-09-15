@@ -370,7 +370,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
     const structureKey = searchParams.get("structure");
 
     if (tab === "sow" && selectedStructures.length > 0) {
-      let structure = null;
+      let structure: any = null;
       if (structureKey) {
         structure = selectedStructures.find(
           (s) => `${s.type}-${s.id}` === structureKey

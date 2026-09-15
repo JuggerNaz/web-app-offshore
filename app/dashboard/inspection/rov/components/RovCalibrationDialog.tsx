@@ -82,7 +82,7 @@ export default function RovCalibrationDialog({
                 .eq("lib_code", "EQUP_TYP")
                 .order("lib_desc");
             if (!error && data) {
-                const uniqueOpts = Array.from(new Set(data.map(d => d.lib_desc).filter(Boolean)));
+                const uniqueOpts: string[] = Array.from(new Set(data.map((d: any) => d.lib_desc).filter(Boolean) as string[]));
                 setEquipmentOptions(uniqueOpts);
             }
         };

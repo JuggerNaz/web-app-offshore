@@ -100,7 +100,7 @@ export default function ROVInspectionForm({
 
         try {
             // Capture ROV data snapshot if auto-capture enabled
-            let rovDataSnapshot = null;
+            let rovDataSnapshot: any = null;
             if (rovJob?.auto_capture_data) {
                 rovDataSnapshot = {
                     depth_meters: 125.5,

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createAdminClient } from "@/utils/supabase/server";
+import { createAdminClient, createClient } from "@/utils/supabase/server";
 import { withRole } from "@/utils/role-auth";
 import {
   apiSuccess,
@@ -57,12 +57,32 @@ export const PATCH = withRole(
     try {
       const { id } = await params;
       const json = await request.json();
-      const adminClient = createAdminClient();
+      
+      let clientToUse: any;
+      try {
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          clientToUse = createAdminClient();
+        } else {
+          clientToUse = createClient();
+        }
+      } catch {
+        clientToUse = createClient();
+      }
 
       const updates: Record<string, any> = {};
       const allowedFields = [
         "name",
         "slug",
+        "serial_no",
+        "registration_no",
+        "tax_id",
+        "company_email",
+        "contact_person",
+        "contact_phone",
+        "address",
+        "country",
+        "start_date",
+        "end_date",
         "description",
         "logo_url",
         "is_active",
@@ -83,12 +103,24 @@ export const PATCH = withRole(
 
       updates.updated_at = new Date().toISOString();
 
-      const { data, error } = await (adminClient as any)
+      let { data, error } = await clientToUse
         .from("companies")
         .update(updates)
         .eq("id", id)
         .select()
         .single();
+
+      if (error && error.message?.includes("row-level security")) {
+        const sessionClient = createClient() as any;
+        const fallback = await sessionClient
+          .from("companies")
+          .update(updates)
+          .eq("id", id)
+          .select()
+          .single();
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (error) {
         console.error(
@@ -98,7 +130,7 @@ export const PATCH = withRole(
         if (error.code === "23505") {
           return apiBadRequest("An organization with this slug already exists");
         }
-        return apiError("Failed to update organization", 500);
+        return apiError("Failed to update organization: " + error.message, 500);
       }
 
       if (!data) {
@@ -106,9 +138,9 @@ export const PATCH = withRole(
       }
 
       return apiSuccess(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("[PATCH /api/admin/organizations/[id]] Error:", error);
-      return apiError("Internal server error", 500);
+      return apiError("Internal server error: " + (error?.message || "unknown"), 500);
     }
   }
 );

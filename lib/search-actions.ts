@@ -188,7 +188,7 @@ export async function searchGlobal(query: string): Promise<SearchResult[]> {
       const matchedJobpackIds = jpRes.data?.map((j: any) => j.id) || [];
       const matchedComponentIds = compRes.data?.map((c: any) => c.id) || [];
 
-      const conditions = [];
+      const conditions: string[] = [];
       conditions.push(`inspection_type_code.ilike.%${query}%`);
       conditions.push(`description.ilike.%${query}%`);
       conditions.push(`status.ilike.%${query}%`);

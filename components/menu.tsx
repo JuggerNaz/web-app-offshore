@@ -25,6 +25,7 @@ import {
   Building2,
   Laptop,
   User as UserIcon,
+  ArrowRightLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -218,6 +219,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           isModuleAllowed("Anomalies & Findings") ||
           isModuleAllowed("Smart Query") ||
           isModuleAllowed("QA-QC") ||
+          isModuleAllowed("Interface") ||
           isModuleAllowed("Oracle Migration")) && (
           <div className="space-y-1">
             {!isCollapsed && (
@@ -306,6 +308,15 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
                 label="QA-QC"
                 icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
                 text="QA-QC"
+              />
+            )}
+            {isModuleAllowed("Interface") && (
+              <MenuLink
+                href="/dashboard/utilities/interface"
+                isCollapsed={isCollapsed}
+                label="Interface"
+                icon={<ArrowRightLeft className="h-[18px] w-[18px] text-cyan-500" />}
+                text="Interface"
               />
             )}
           </div>

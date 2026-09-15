@@ -99,3 +99,23 @@ sequenceDiagram
 *   `POST /api/admin/devices`: Registers a new device. Returns the generated secret token.
 *   `PATCH /api/admin/devices/[id]`: Toggles `is_active` status.
 *   `DELETE /api/admin/devices/[id]`: Revokes and deletes a device registration.
+
+---
+
+## 5. Multi-Tenant User Creation & Login-Time Tenant Selection Blueprint
+
+### A. Direct User Provisioning (Without Email/SMTP)
+*   **Creation Flow**: Admins / Super Admins can directly create a user account by specifying:
+    *   `email`, `full_name`, `designation`, and a `default_password` (or auto-generated temporary password).
+    *   Multi-tenant assignment matrix: select one or more companies and pick the specific role (`super_admin`, `company_admin`, `manager`, `inspector`, `viewer`) for each company.
+*   **Backend Execution**: Backend calls `supabaseAdmin.auth.admin.createUser({ email, password, email_confirm: true })`, upserts `profiles`, and inserts rows into `company_memberships` for each assigned company.
+*   **Password Management**: Credentials can be copied directly by the admin to share with the user; the user can update their password at any time via user profile settings.
+
+### B. Login & Tenant Selection Workflow
+1.  **Credential Authentication**: User submits Email + Password at `/sign-in`.
+2.  **Membership Resolution**: System inspects all active `company_memberships` for the authenticated `user_id`:
+    *   **Single Tenant (1 Company)**: Automatically set `active_company_id` cookie and redirect directly to `/dashboard`.
+    *   **Multi-Tenant (>1 Companies)**: Redirect to `/select-tenant` workspace selection screen displaying each company with its branding and the user's role in that specific tenant.
+    *   **Selection Action**: Upon selecting a workspace, `active_company_id` is persisted (cookie + client state), and user enters `/dashboard`.
+3.  **Cross-Tenant Scoping**: All downstream API routes, CRUD operations, and Row-Level Security (RLS) policies enforce scoping using the active `company_id`.
+

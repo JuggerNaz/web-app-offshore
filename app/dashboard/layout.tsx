@@ -7,10 +7,12 @@ import { ROVConnectionProvider } from "@/components/rov-connection-provider";
 import { UserProfileProvider } from "@/components/user-profile-provider";
 import { getUserMembership } from "@/utils/role-auth";
 
+import { cookies } from "next/headers";
+
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
-  let user = null;
+  let user: any = null;
   try {
     const { data } = await supabase.auth.getUser();
     user = data?.user;
@@ -26,7 +28,9 @@ export default async function Layout({ children }: { children: React.ReactNode }
   let deactivationError: string | null = null;
 
   try {
-    const result = await getUserMembership(supabase, user.id);
+    const cookieStore = await cookies();
+    const activeCompanyId = cookieStore.get("active_company_id")?.value;
+    const result = await getUserMembership(supabase, user.id, activeCompanyId);
     if (result) {
       if ("error" in result) {
         const isDeactivated = result.error === "User profile is inactive" || result.error === "No active company memberships found";

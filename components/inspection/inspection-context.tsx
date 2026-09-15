@@ -126,7 +126,7 @@ export function InspectionProvider({ children, initialData }: { children: ReactN
             state.evidence.frameCount > 0 ||
             state.evidence.videoCaptured;
 
-        const missingFields = [];
+        const missingFields: string[] = [];
         if (!componentValid) missingFields.push("Component ID");
         if (!state.observationType) missingFields.push("Observation Type");
         if (!state.description) missingFields.push("Description");

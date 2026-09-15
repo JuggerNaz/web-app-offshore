@@ -18,6 +18,7 @@ CREATE VIEW v_smart_query_structures AS
 SELECT 
   s.str_id as id,
   s.str_type,
+  COALESCE(p.company_id, pl.company_id, s.company_id) as company_id,
   COALESCE(p.title, pl.title) as title,
   COALESCE(p.pfield, pl.pfield) as pfield,
   COALESCE(p.pdesc, pl.pdesc) as pdesc,
@@ -46,6 +47,7 @@ LEFT JOIN u_pipeline pl ON s.str_id = pl.pipe_id;
 CREATE VIEW v_smart_query_components AS
 SELECT 
   c.*,
+  s.company_id,
   s.title as structure_name,
   s.pfield as structure_field,
   s.ptype as structure_spec_type,

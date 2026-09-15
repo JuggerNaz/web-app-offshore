@@ -2,7 +2,7 @@
 
 import { encodedRedirect } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/server";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getUserMembership } from "@/utils/role-auth";
 
@@ -57,7 +57,7 @@ export const signInAction = async (formData: FormData) => {
     return encodedRedirect("error", errorRedirect ?? "/sign-in", error.message);
   }
 
-  // Intercept and prevent login for deactivated users
+  // Intercept and prevent login for deactivated users & check tenant count
   const user = signInData?.user;
   if (user) {
     try {
@@ -66,14 +66,40 @@ export const signInAction = async (formData: FormData) => {
         // Programmatically sign out to clear active session cookie
         await supabase.auth.signOut();
 
-        const isDeactivated = result.error === "User profile is inactive" || result.error === "No active company memberships found";
+        const isDeactivated =
+          result.error === "User profile is inactive" ||
+          result.error === "No active company memberships found";
         const errorMsg = isDeactivated
-          ? "Your account has been deactivated. Please contact your administrator."
+          ? "Your account is inactive or has no active organization memberships. Please contact your administrator."
           : `Access Denied: ${result.error}`;
 
         return encodedRedirect("error", errorRedirect ?? "/sign-in", errorMsg);
       }
+
+      const cookieStore = await cookies();
+
+      // Check if user is required to change their temporary password
+      if (result.profile?.must_change_password || user.user_metadata?.must_change_password === true) {
+        return redirect("/force-change-password");
+      }
+
+      // If user has access to multiple active companies, send to /select-tenant
+      if (result.memberships && result.memberships.length > 1) {
+        return redirect("/select-tenant");
+      }
+
+      // Single active tenant: auto-set cookie and proceed to dashboard
+      if (result.company?.id) {
+        cookieStore.set("active_company_id", result.company.id, {
+          path: "/",
+          maxAge: 60 * 60 * 24 * 30,
+          sameSite: "lax",
+        });
+      }
     } catch (dbError: any) {
+      if (dbError?.digest?.startsWith("NEXT_REDIRECT")) {
+        throw dbError;
+      }
       console.error("Error verifying user status during sign-in:", dbError);
       await supabase.auth.signOut();
       return encodedRedirect("error", errorRedirect ?? "/sign-in", "An error occurred during verification. Please try again.");
@@ -81,6 +107,43 @@ export const signInAction = async (formData: FormData) => {
   }
 
   return redirect("/dashboard");
+};
+
+export const selectTenantAction = async (formData: FormData) => {
+  const companyId = formData.get("companyId") as string;
+  const redirectUrl = (formData.get("redirectUrl") as string) || "/dashboard";
+  const supabase = createClient();
+
+  const userRes = await supabase.auth.getUser();
+  if (!userRes.data?.user) {
+    return redirect("/sign-in");
+  }
+
+  if (!companyId) {
+    return redirect("/select-tenant");
+  }
+
+  // Verify that the user has an active membership in this company
+  const { data: membership, error } = await supabase
+    .from("company_memberships")
+    .select("company_id")
+    .eq("user_id", userRes.data.user.id)
+    .eq("company_id", companyId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error || !membership) {
+    return encodedRedirect("error", "/select-tenant", "You do not have active access to this organization.");
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set("active_company_id", companyId, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+    sameSite: "lax",
+  });
+
+  return redirect(redirectUrl);
 };
 
 export const forgotPasswordAction = async (formData: FormData) => {
@@ -113,6 +176,65 @@ export const forgotPasswordAction = async (formData: FormData) => {
   );
 };
 
+export const forceChangePasswordAction = async (formData: FormData) => {
+  const supabase = createClient();
+
+  const password = formData.get("password") as string;
+  const confirmPassword = formData.get("confirmPassword") as string;
+
+  if (!password || !confirmPassword) {
+    return encodedRedirect(
+      "error",
+      "/force-change-password",
+      "Password and confirm password are required"
+    );
+  }
+
+  if (password.length < 8) {
+    return encodedRedirect(
+      "error",
+      "/force-change-password",
+      "New password must be at least 8 characters long"
+    );
+  }
+
+  if (password !== confirmPassword) {
+    return encodedRedirect(
+      "error",
+      "/force-change-password",
+      "Passwords do not match"
+    );
+  }
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    return encodedRedirect("error", "/sign-in", "Session expired. Please sign in again.");
+  }
+
+  // Update password and clear must_change_password in user metadata
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: password,
+    data: {
+      must_change_password: false,
+    },
+  });
+
+  if (updateError) {
+    return encodedRedirect("error", "/force-change-password", updateError.message || "Failed to update password");
+  }
+
+  // Clear must_change_password in profiles table
+  await (supabase as any)
+    .from("profiles")
+    .update({
+      must_change_password: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userData.user.id);
+
+  return redirect("/dashboard");
+};
+
 export const resetPasswordAction = async (formData: FormData) => {
   const supabase = createClient();
 
@@ -120,26 +242,49 @@ export const resetPasswordAction = async (formData: FormData) => {
   const confirmPassword = formData.get("confirmPassword") as string;
 
   if (!password || !confirmPassword) {
-    encodedRedirect(
+    return encodedRedirect(
       "error",
       "/protected/reset-password",
       "Password and confirm password are required"
     );
   }
 
-  if (password !== confirmPassword) {
-    encodedRedirect("error", "/protected/reset-password", "Passwords do not match");
+  if (password.length < 8) {
+    return encodedRedirect(
+      "error",
+      "/protected/reset-password",
+      "New password must be at least 8 characters long"
+    );
   }
+
+  if (password !== confirmPassword) {
+    return encodedRedirect("error", "/protected/reset-password", "Passwords do not match");
+  }
+
+  const { data: userData } = await supabase.auth.getUser();
 
   const { error } = await supabase.auth.updateUser({
     password: password,
+    data: {
+      must_change_password: false,
+    },
   });
 
   if (error) {
-    encodedRedirect("error", "/protected/reset-password", "Password update failed");
+    return encodedRedirect("error", "/protected/reset-password", "Password update failed: " + error.message);
   }
 
-  encodedRedirect("success", "/protected/reset-password", "Password updated");
+  if (userData?.user) {
+    await (supabase as any)
+      .from("profiles")
+      .update({
+        must_change_password: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userData.user.id);
+  }
+
+  return encodedRedirect("success", "/protected/reset-password", "Password updated successfully");
 };
 
 export const signOutAction = async () => {

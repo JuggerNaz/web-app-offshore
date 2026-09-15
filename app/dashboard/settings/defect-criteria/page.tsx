@@ -634,7 +634,7 @@ export default function DefectCriteriaPage() {
                                                                 const rgb = priorityColor?.code_2 ? `rgb(${priorityColor.code_2})` : undefined;
 
                                                                 // Calculate text color for contrast if color exists
-                                                                let textColor = undefined;
+                                                                let textColor: any = undefined;
                                                                 if (priorityColor?.code_2) {
                                                                     const parts = priorityColor.code_2.split(',').map((p: string) => parseInt(p.trim()));
                                                                     if (parts.length === 3) {
