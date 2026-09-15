@@ -216,6 +216,10 @@ export const generateROVCaissonGuardReport = async (
             return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: 'base' });
         });
 
+        if (sortedParentIds.length === 0) {
+            if (config.returnBlob) return null as any;
+        }
+
         const buildRow = (r: any, idx: number): string[] => {
             const d   = r.inspection_data || {};
             const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";

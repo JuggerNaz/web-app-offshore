@@ -289,8 +289,7 @@ export const generateROVRiserGuardReport = async (
         });
 
         if (sortedParentKeys.length === 0) {
-            // If no RG records found, but we have some records, we might want to show a blank state or throw
-            // But per request, we only filter RG.
+            if (config.returnBlob) return null as any;
         }
 
         const buildRow = (r: any, idx: number): string[] => {

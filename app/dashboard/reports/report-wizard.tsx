@@ -31,7 +31,7 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
-import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
+import { isBLRecord, isSGRecord, isCURecord, isRGRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -5557,11 +5557,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                
-                const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-                const isRGVI = typeCode === "RGVI";
-
-                return sowMatches && jobPackMatches && isRGVI;
+                const isRG = isRGRecord(r);
+                return sowMatches && jobPackMatches && isRG;
             });
 
             if (!rgRecords || rgRecords.length === 0) {
@@ -5592,7 +5589,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     rgRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, structureId: Number(selections.structureId) } as any
+                    { 
+                        ...reportConfig, 
+                        returnBlob,
+                        structureId: Number(selections.structureId),
+                        jobPackId: Number(selections.jobPackId)
+                    } as any
                 );
             } catch (error) {
                 console.error("Riser Guard Generator Error:", error);
@@ -5634,7 +5636,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                return sowMatches && jobPackMatches;
+                const isSG = isSGRecord(r);
+                return sowMatches && jobPackMatches && isSG;
             });
 
             if (!sgRecords || sgRecords.length === 0) {
@@ -5665,7 +5668,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     sgRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, structureId: Number(selections.structureId) } as any
+                    { 
+                        ...reportConfig, 
+                        returnBlob,
+                        structureId: Number(selections.structureId),
+                        jobPackId: Number(selections.jobPackId)
+                    } as any
                 );
             } catch (error) {
                 console.error("Caisson Guard Generator Error:", error);
@@ -5707,7 +5715,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                return sowMatches && jobPackMatches;
+                const isCU = isCURecord(r);
+                return sowMatches && jobPackMatches && isCU;
             });
 
             if (!cuRecords || cuRecords.length === 0) {
@@ -5738,7 +5747,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     cuRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, structureId: Number(selections.structureId) } as any
+                    { 
+                        ...reportConfig, 
+                        returnBlob,
+                        structureId: Number(selections.structureId),
+                        jobPackId: Number(selections.jobPackId)
+                    } as any
                 );
             } catch (error) {
                 console.error("Conductor Guard Generator Error:", error);

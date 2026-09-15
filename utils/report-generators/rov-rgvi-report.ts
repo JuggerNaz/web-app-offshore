@@ -102,7 +102,7 @@ export const generateROVRGVIReport = async (
             d.setFontSize(8.5);   d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10.5, { align: "center" });
             d.setFontSize(11);  d.setFont("helvetica", "bold");
-            d.text("Riser Guard Inspection Report (ROV)",                    margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.text("General Visual Inspection Report (ROV)",                 margin + contentWidth / 2, margin + 16.5, { align: "center" });
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 21, { align: "center" });
         };
@@ -294,7 +294,7 @@ export const generateROVRGVIReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Riser Guard Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  General Visual Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
