@@ -114,12 +114,23 @@ export function StepResults({ category, selectedFields, computedFields, data, co
                       <td className="px-3 py-2 text-xs text-slate-400 font-mono">{page * pageSize + rowIdx + 1}</td>
                       {columns.map(col => {
                         const val = row[col.key];
+                        const isDateKey = col.key.endsWith("_date") || col.key.endsWith("_at") || ["inst_date", "start_date", "end_date", "disc_date", "inspection_date"].includes(col.key);
+                        let formattedVal = val;
+                        if (isDateKey && val && typeof val === "string" && val.length >= 10 && !isNaN(Date.parse(val))) {
+                          if (val.includes("T")) {
+                            const d = new Date(val);
+                            const datePart = d.toISOString().split("T")[0];
+                            const timePart = d.toTimeString().split(" ")[0].substring(0, 5);
+                            formattedVal = timePart !== "00:00" ? `${datePart} ${timePart}` : datePart;
+                          }
+                        }
+
                         return (
                           <td key={col.key} className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[200px] truncate whitespace-nowrap">
-                            {val === null || val === undefined ? <span className="text-slate-300 italic">—</span>
-                              : typeof val === "boolean" ? <Badge variant={val ? "default" : "outline"} className="text-[10px]">{val ? "Yes" : "No"}</Badge>
-                              : typeof val === "object" ? <span className="text-xs font-mono text-slate-400">{JSON.stringify(val).substring(0, 50)}...</span>
-                              : String(val)}
+                            {formattedVal === null || formattedVal === undefined || formattedVal === "" ? <span className="text-slate-300 italic">—</span>
+                              : typeof formattedVal === "boolean" ? <Badge variant={formattedVal ? "default" : "outline"} className="text-[10px]">{formattedVal ? "Yes" : "No"}</Badge>
+                              : typeof formattedVal === "object" ? <span className="text-xs font-mono text-slate-400">{JSON.stringify(formattedVal).substring(0, 50)}...</span>
+                              : String(formattedVal)}
                           </td>
                         );
                       })}

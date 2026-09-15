@@ -105,6 +105,12 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       { key: "oper_press", label: "Operating Pressure", dataType: "text", description: "Operating pressure (Pipeline)" },
       { key: "plength", label: "Pipeline Length", dataType: "text", description: "Total pipeline length" },
       { key: "line_diam", label: "Line Diameter", dataType: "text", description: "Pipeline line diameter" },
+
+      // Audit User & Date Fields
+      { key: "cr_user", label: "Create User", dataType: "text", description: "User who created the record" },
+      { key: "cr_date", label: "Create Date", dataType: "date", description: "Record creation date" },
+      { key: "md_user", label: "Modified User", dataType: "text", description: "User who last modified the record" },
+      { key: "md_date", label: "Modified Date", dataType: "date", description: "Record last modification date" },
     ],
   },
   {
@@ -134,6 +140,12 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       { key: "end_node", label: "End Node", dataType: "text", description: "End node number" },
       { key: "elevation1", label: "Elevation 1", dataType: "text", description: "Starting elevation" },
       { key: "elevation2", label: "Elevation 2", dataType: "text", description: "Ending elevation" },
+
+      // Audit User & Date Fields
+      { key: "created_by", label: "Create User", dataType: "text", description: "User who created the component" },
+      { key: "created_at", label: "Create Date", dataType: "date", description: "Component creation date" },
+      { key: "modified_by", label: "Modified User", dataType: "text", description: "User who last modified the component" },
+      { key: "updated_at", label: "Modified Date", dataType: "date", description: "Component last modification date" },
     ],
   },
   {
@@ -154,6 +166,12 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       { key: "start_date", label: "Start Date", dataType: "date", description: "Planned start date" },
       { key: "end_date", label: "End Date", dataType: "date", description: "Planned end date" },
       { key: "work_unit", label: "Work Unit", dataType: "text", description: "Work unit identifier" },
+
+      // Audit User & Date Fields
+      { key: "created_by", label: "Create User", dataType: "text", description: "User who created the job pack" },
+      { key: "created_at", label: "Create Date", dataType: "date", description: "Job pack creation date" },
+      { key: "modified_by", label: "Modified User", dataType: "text", description: "User who last modified the job pack" },
+      { key: "updated_at", label: "Modified Date", dataType: "date", description: "Job pack last modification date" },
     ],
   },
   {
@@ -172,6 +190,12 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       { key: "total_items", label: "Total Items", dataType: "number", description: "Total SOW items" },
       { key: "completed_items", label: "Completed Items", dataType: "number", description: "Completed SOW items" },
       { key: "incomplete_items", label: "Incomplete Items", dataType: "number", description: "Incomplete SOW items" },
+
+      // Audit User & Date Fields
+      { key: "created_by", label: "Create User", dataType: "text", description: "User who created the SOW" },
+      { key: "created_at", label: "Create Date", dataType: "date", description: "SOW creation date" },
+      { key: "updated_by", label: "Modified User", dataType: "text", description: "User who last modified the SOW" },
+      { key: "updated_at", label: "Modified Date", dataType: "date", description: "SOW last modification date" },
     ],
   },
   {
@@ -228,6 +252,12 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       { key: "calib_block", label: "Calibration Block", dataType: "text", description: "UT calibration block" },
       { key: "serial_number", label: "Serial Number", dataType: "text", description: "Equipment serial number" },
       { key: "calib_equipment_type", label: "Equipment Type", dataType: "text", description: "Calibration equipment" },
+
+      // Audit User & Date Fields
+      { key: "cr_user", label: "Create User", dataType: "text", description: "User who created the inspection record" },
+      { key: "cr_date", label: "Create Date", dataType: "date", description: "Record creation date" },
+      { key: "md_user", label: "Modified User", dataType: "text", description: "User who last modified the inspection record" },
+      { key: "md_date", label: "Modified Date", dataType: "date", description: "Record last modification date" },
     ],
   },
   {
@@ -258,6 +288,12 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       { key: "priority_code", label: "Priority", dataType: "text", description: "P1, P2, P3, etc." },
       { key: "defect_description", label: "Defect Description", dataType: "text", description: "Detailed defect description" },
       { key: "recommended_action", label: "Recommended Action", dataType: "text", description: "Recommended corrective action" },
+
+      // Audit User & Date Fields
+      { key: "cr_user", label: "Create User", dataType: "text", description: "User who created the anomaly" },
+      { key: "cr_date", label: "Create Date", dataType: "date", description: "Anomaly creation date" },
+      { key: "md_user", label: "Modified User", dataType: "text", description: "User who last modified the anomaly" },
+      { key: "md_date", label: "Modified Date", dataType: "date", description: "Anomaly last modification date" },
     ],
   },
   {
@@ -282,6 +318,12 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
 
       { key: "disc_date", label: "Observation Date", dataType: "date", description: "Date of observation" },
       { key: "defect_description", label: "Finding Description", dataType: "text", description: "Observation details" },
+
+      // Audit User & Date Fields
+      { key: "cr_user", label: "Create User", dataType: "text", description: "User who created the finding" },
+      { key: "cr_date", label: "Create Date", dataType: "date", description: "Finding creation date" },
+      { key: "md_user", label: "Modified User", dataType: "text", description: "User who last modified the finding" },
+      { key: "md_date", label: "Modified Date", dataType: "date", description: "Finding last modification date" },
     ],
   },
   {
@@ -306,6 +348,12 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
 
       { key: "inspection_type_code", label: "Inspection Type", dataType: "text", description: "Planned inspection type" },
       { key: "incomplete_reason", label: "Reason", dataType: "text", description: "Reason for incomplete status" },
+
+      // Audit User & Date Fields
+      { key: "cr_user", label: "Create User", dataType: "text", description: "User who created the record" },
+      { key: "cr_date", label: "Create Date", dataType: "date", description: "Record creation date" },
+      { key: "md_user", label: "Modified User", dataType: "text", description: "User who last modified the record" },
+      { key: "md_date", label: "Modified Date", dataType: "date", description: "Record last modification date" },
     ],
   },
 ];
@@ -371,6 +419,15 @@ const FIELD_ALIASES: Record<string, string[]> = {
   inst_date: ["installed", "installation"],
   line_diam: ["diameter", "diam"],
   structure_name: ["platform name", "structure"],
+  cr_user: ["created by", "create user", "creator", "created user"],
+  created_by: ["created by", "create user", "creator", "created user"],
+  cr_date: ["created date", "create date", "created at", "creation date"],
+  created_at: ["created date", "create date", "created at", "creation date"],
+  md_user: ["modified by", "modified user", "updated by", "updater"],
+  modified_by: ["modified by", "modified user", "updated by", "updater"],
+  updated_by: ["modified by", "modified user", "updated by", "updater"],
+  md_date: ["modified date", "modified at", "updated date", "updated at"],
+  updated_at: ["modified date", "modified at", "updated date", "updated at"],
 };
 
 export function parseNaturalLanguage(input: string, availableFields: FieldDef[]): ConditionRule[] {

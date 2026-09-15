@@ -11,6 +11,50 @@ import { withTenant } from "@/utils/tenant-auth";
 
 const MAX_ROWS = 10000;
 
+const USER_FIELDS = new Set([
+  "cr_user",
+  "md_user",
+  "created_by",
+  "modified_by",
+  "updated_by",
+  "approved_by",
+  "reviewed_by",
+  "closed_by",
+  "rectified_by",
+  "amended_by",
+]);
+
+async function getUserMap(supabase: any): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, email, full_name");
+
+    if (profiles && Array.isArray(profiles)) {
+      for (const p of profiles) {
+        const name = (p.full_name && p.full_name.trim()) || (p.email ? p.email.split("@")[0] : "");
+        if (!name) continue;
+
+        if (p.id) {
+          map.set(String(p.id), name);
+          map.set(String(p.id).toLowerCase(), name);
+        }
+        if (p.email) {
+          map.set(String(p.email), name);
+          map.set(String(p.email).toLowerCase(), name);
+          const prefix = p.email.split("@")[0];
+          map.set(prefix, name);
+          map.set(prefix.toLowerCase(), name);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[SmartQuery] Error loading user profiles:", err);
+  }
+  return map;
+}
+
 export const POST = withTenant(async (request, { companyId }) => {
   try {
     const supabase = await createClient();
@@ -42,9 +86,15 @@ export const POST = withTenant(async (request, { companyId }) => {
       return NextResponse.json({ error: "No valid fields selected" }, { status: 400 });
     }
 
+    // Structures view might not have md_user/md_date in all schema versions; query safely
+    const dbSelectFields = (category === "structures")
+      ? selectFields.filter(f => f !== "md_user" && f !== "md_date")
+      : selectFields;
+    const finalDbFields = dbSelectFields.length > 0 ? dbSelectFields : ["id"];
+
     let query = (supabase as any)
       .from(catDef.table)
-      .select(selectFields.join(","), { count: "exact" });
+      .select(finalDbFields.join(","), { count: "exact" });
 
     // Apply company scoping safely depending on the view schema
     if (companyId) {
@@ -267,7 +317,33 @@ export const POST = withTenant(async (request, { companyId }) => {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    let results = data || [];
+    let results: Record<string, any>[] = (data || []).map((row: any) => {
+      const item = { ...row };
+      if (category === "structures") {
+        if (selectFields.includes("md_user") && item.md_user === undefined) item.md_user = null;
+        if (selectFields.includes("md_date") && item.md_date === undefined) item.md_date = null;
+      }
+      return item;
+    });
+
+    // Resolve user IDs / usernames / emails to User Full Names for display
+    const activeUserCols = selectFields.filter(f => USER_FIELDS.has(f));
+    if (activeUserCols.length > 0 && results.length > 0) {
+      const userMap = await getUserMap(supabase);
+      for (const row of results) {
+        for (const col of activeUserCols) {
+          const rawVal = row[col];
+          if (rawVal && typeof rawVal === "string") {
+            const trimmed = rawVal.trim();
+            const resolved = userMap.get(trimmed) || userMap.get(trimmed.toLowerCase());
+            if (resolved) {
+              row[col] = resolved;
+            }
+          }
+        }
+      }
+    }
+
     if (computedFields && computedFields.length > 0) {
       results = results.map((row: any) => {
         const enriched = { ...row };
