@@ -394,7 +394,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     // Filter state for inspection reports
     const [inspectionFilters, setInspectionFilters] = useState<{ structure_id: number; sow_report_no: string }[]>([]);
 
-    // Fetch inspection filters when jobpack is selected and it's an inspection template
+    // Fetch inspection filters when jobpack is selected and it's an inspection template (for structure badges)
     useEffect(() => {
         if (selections.jobPackId && isInspectionTemplate) {
             fetch(`/api/reports/inspection-filters?jobpack_id=${selections.jobPackId}`)
@@ -436,41 +436,83 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     // Fetch SOW Reports when JobPack and Structure are selected
     useEffect(() => {
-        if (selections.jobPackId && selections.structureId && getCurrentTemplate()?.requires.includes("sow_report")) {
-            if (isInspectionTemplate) {
-                // If inspection template, ONLY show SOW reports that have actual inspection data for this structure
-                const validSows = inspectionFilters
-                    .filter(f => f.structure_id.toString() === selections.structureId && f.sow_report_no)
-                    .map(f => f.sow_report_no);
-                const uniqueSows = Array.from(new Set(validSows));
-                setAvailableSowReports(uniqueSows);
-                setIsLoadingSowReports(false);
-                if (uniqueSows.length > 0 && !selections.sowReportNo) {
-                    setSelections(prev => ({ ...prev, sowReportNo: uniqueSows[0] }));
-                }
-            } else {
-                setIsLoadingSowReports(true);
-                fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.data) {
-                            const numbers = data.data.report_numbers?.map((r: any) => r.number || r) || [];
-                            setAvailableSowReports(numbers);
-                            if (numbers.length > 0 && !selections.sowReportNo) {
-                                setSelections(prev => ({ ...prev, sowReportNo: numbers[0] }));
-                            }
-                        } else {
-                            setAvailableSowReports([]);
-                        }
-                    })
-                    .catch(err => {
-                        console.error("Error fetching SOW reports:", err);
-                        setAvailableSowReports([]);
-                    })
-                    .finally(() => setIsLoadingSowReports(false));
-            }
+        if (!selections.jobPackId || !selections.structureId || selections.structureId === "all" || !getCurrentTemplate()?.requires.includes("sow_report")) {
+            setAvailableSowReports([]);
+            setIsLoadingSowReports(false);
+            return;
         }
-    }, [selections.jobPackId, selections.structureId, selections.templateId, isInspectionTemplate, inspectionFilters]);
+
+        let isCurrent = true;
+        setAvailableSowReports([]);
+        setIsLoadingSowReports(true);
+
+        if (isInspectionTemplate) {
+            fetch(`/api/reports/inspection-filters?jobpack_id=${selections.jobPackId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (!isCurrent) return;
+                    if (data.success && data.data) {
+                        const filters = data.data;
+                        setInspectionFilters(filters);
+                        const validSows = filters
+                            .filter((f: any) => f.structure_id?.toString() === selections.structureId && f.sow_report_no)
+                            .map((f: any) => f.sow_report_no);
+                        const uniqueSows = Array.from(new Set(validSows)) as string[];
+                        setAvailableSowReports(uniqueSows);
+                        if (uniqueSows.length > 0) {
+                            setSelections(prev => ({ ...prev, sowReportNo: uniqueSows[0] }));
+                        } else {
+                            setSelections(prev => ({ ...prev, sowReportNo: "" }));
+                        }
+                    } else {
+                        setInspectionFilters([]);
+                        setAvailableSowReports([]);
+                        setSelections(prev => ({ ...prev, sowReportNo: "" }));
+                    }
+                })
+                .catch(err => {
+                    if (!isCurrent) return;
+                    console.error("Error fetching inspection filters:", err);
+                    setInspectionFilters([]);
+                    setAvailableSowReports([]);
+                    setSelections(prev => ({ ...prev, sowReportNo: "" }));
+                })
+                .finally(() => {
+                    if (isCurrent) setIsLoadingSowReports(false);
+                });
+        } else {
+            fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (!isCurrent) return;
+                    if (data.data) {
+                        const numbers = data.data.report_numbers?.map((r: any) => r.number || r) || [];
+                        setAvailableSowReports(numbers);
+                        if (numbers.length > 0) {
+                            setSelections(prev => ({ ...prev, sowReportNo: numbers[0] }));
+                        } else {
+                            setSelections(prev => ({ ...prev, sowReportNo: "" }));
+                        }
+                    } else {
+                        setAvailableSowReports([]);
+                        setSelections(prev => ({ ...prev, sowReportNo: "" }));
+                    }
+                })
+                .catch(err => {
+                    if (!isCurrent) return;
+                    console.error("Error fetching SOW reports:", err);
+                    setAvailableSowReports([]);
+                    setSelections(prev => ({ ...prev, sowReportNo: "" }));
+                })
+                .finally(() => {
+                    if (isCurrent) setIsLoadingSowReports(false);
+                });
+        }
+
+        return () => {
+            isCurrent = false;
+        };
+    }, [selections.jobPackId, selections.structureId, selections.templateId, isInspectionTemplate]);
 
     // Update Report Prefix in General Info when SOW Report No changes (or when switching templates)
     useEffect(() => {
@@ -622,6 +664,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
+        setAvailableSowReports([]);
+        if (keepJobPack) {
+            setIsLoadingSowReports(true);
+        }
         setSelections({
             ...selections,
             structureId,
@@ -991,7 +1037,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                                 <div
                                                     key={jp.id}
                                                     ref={isSelected ? (el) => { if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } : undefined}
-                                                    onClick={() => setSelections({ ...selections, jobPackId: jp.id.toString(), componentId: "", sowReportNo: "" })}
+                                                    onClick={() => {
+                                                        setAvailableSowReports([]);
+                                                        setIsLoadingSowReports(true);
+                                                        setSelections({ ...selections, jobPackId: jp.id.toString(), componentId: "", sowReportNo: "" });
+                                                    }}
                                                     className={`
                                                         p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
                                                         ${isSelected
@@ -1028,7 +1078,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 {!selections.jobPackId ? (
                                     <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a job pack first</div>
                                 ) : isLoadingSowReports ? (
-                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">Loading reports...</div>
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10 flex flex-col items-center justify-center gap-2">
+                                        <div className="h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                                        <span className="text-xs">Loading report numbers...</span>
+                                    </div>
                                 ) : availableSowReports.length === 0 ? (
                                     <div className="p-4 text-sm text-center text-muted-foreground mt-10">No report numbers found</div>
                                 ) : (
