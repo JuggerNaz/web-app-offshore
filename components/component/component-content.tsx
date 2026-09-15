@@ -92,6 +92,7 @@ export default function ComponentContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("ALL COMPONENTS");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [categorySearch, setCategorySearch] = useState("");
   const [isListOpen, setIsListOpen] = useState(true);
   const [viewArchived, setViewArchived] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -631,7 +632,7 @@ export default function ComponentContent() {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between px-2">
               <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                 {viewArchived ? "Archived Categories" : "Component Categories"}
@@ -649,52 +650,92 @@ export default function ComponentContent() {
                 </button>
               )}
             </div>
-            <div className="flex flex-col gap-1 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+
+            {/* Category Search Input */}
+            <div className="relative group px-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+              <input
+                type="text"
+                placeholder="Search type (e.g. AN, CL)..."
+                value={categorySearch}
+                onChange={(e) => setCategorySearch(e.target.value)}
+                className="w-full h-8 pl-8 pr-7 text-xs font-medium bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400"
+              />
+              {categorySearch && (
+                <button
+                  type="button"
+                  onClick={() => setCategorySearch("")}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  title="Clear filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1 max-h-[45vh] overflow-y-auto pr-2 custom-scrollbar">
               {isLoadingTypes ? (
                 <div className="px-2 py-4 space-y-3">
                   {[1, 2, 3, 4].map(i => <div key={i} className="h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse w-full" />)}
                 </div>
-              ) : (
-                componentTypes
+              ) : (() => {
+                const filteredTypes = componentTypes
                   .filter((type) => {
                     if (pageType === 'pipeline') return type.pipe === 1;
                     if (pageType === 'platform') return type.plat === 1;
                     return true;
                   })
-                  .map((type) => {
-                    const isSelected = selectedCode === type.code;
-                    return (
-                      <button
-                        key={type.id}
-                        onClick={() => handleTypeClick(type.name, type.code)}
-                        className={cn(
-                          "flex items-center justify-between gap-3 w-full text-left text-xs font-bold py-2.5 px-3 rounded-xl transition-all",
-                          isSelected
-                            ? viewArchived
-                              ? "bg-rose-600 text-white shadow-lg shadow-rose-500/20"
-                              : "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                            : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className={cn(
-                            "h-2 w-2 rounded-full shrink-0",
-                            isSelected ? "bg-white" : "bg-slate-300 dark:bg-slate-700"
-                          )} />
-                          <span className="truncate">{type.name}</span>
-                        </div>
-                        <span className={cn(
-                          "text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded",
-                          isSelected
-                            ? "bg-white/20 text-white"
-                            : "bg-slate-200/60 dark:bg-slate-800 text-slate-400"
-                        )}>
-                          {type.code}
-                        </span>
-                      </button>
-                    );
-                  })
-              )}
+                  .filter((type) => {
+                    if (!categorySearch.trim()) return true;
+                    const q = categorySearch.trim().toLowerCase();
+                    const nameMatch = (type.name || "").toLowerCase().includes(q);
+                    const codeMatch = (type.code || "").toLowerCase().includes(q);
+                    const descMatch = (type.descrip || "").toLowerCase().includes(q);
+                    return nameMatch || codeMatch || descMatch;
+                  });
+
+                if (filteredTypes.length === 0) {
+                  return (
+                    <div className="px-3 py-6 text-center text-xs text-slate-400">
+                      No types match "{categorySearch}"
+                    </div>
+                  );
+                }
+
+                return filteredTypes.map((type) => {
+                  const isSelected = selectedCode === type.code;
+                  return (
+                    <button
+                      key={type.id}
+                      onClick={() => handleTypeClick(type.name, type.code)}
+                      className={cn(
+                        "flex items-center justify-between gap-3 w-full text-left text-xs font-bold py-2.5 px-3 rounded-xl transition-all",
+                        isSelected
+                          ? viewArchived
+                            ? "bg-rose-600 text-white shadow-lg shadow-rose-500/20"
+                            : "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                          : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={cn(
+                          "h-2 w-2 rounded-full shrink-0",
+                          isSelected ? "bg-white" : "bg-slate-300 dark:bg-slate-700"
+                        )} />
+                        <span className="truncate">{type.name}</span>
+                      </div>
+                      <span className={cn(
+                        "text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0",
+                        isSelected
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-200/60 dark:bg-slate-800 text-slate-400"
+                      )}>
+                        {type.code}
+                      </span>
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
