@@ -185,9 +185,18 @@ export default function ComponentContent() {
   );
   const allComponentsLookup: Component[] = allComponentsData?.data || [];
 
-  const getLinkedQId = (associated_comp_id: number | null | undefined): string | null => {
+  const getLinkedQId = (associated_comp_id: number | string | null | undefined): string | null => {
     if (!associated_comp_id) return null;
-    return allComponentsLookup.find((c) => c.id === associated_comp_id)?.q_id || null;
+    const num = Number(associated_comp_id);
+    const str = String(associated_comp_id);
+    const match = allComponentsLookup.find(
+      (c) =>
+        (!isNaN(num) && c.id === num) ||
+        (!isNaN(num) && (c as any).comp_id === num) ||
+        String(c.id) === str ||
+        c.q_id === str
+    );
+    return match?.q_id || null;
   };
 
   const incompleteComponentsCount = useMemo(() => {
@@ -598,10 +607,24 @@ export default function ComponentContent() {
                           <span className="font-black text-slate-900 dark:text-white tracking-tight">{comp.q_id}</span>
                           {comp.metadata?.associated_comp_id && (() => {
                             const linkedQId = getLinkedQId(comp.metadata.associated_comp_id);
+                            if (linkedQId) {
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200/70 dark:border-teal-700/50 w-fit"
+                                  title={`Linked to parent component: ${linkedQId}`}
+                                >
+                                  <Link2 className="h-3.5 w-3.5 shrink-0" />
+                                  {linkedQId}
+                                </span>
+                              );
+                            }
                             return (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200/70 dark:border-teal-700/50 w-fit">
-                                <Link2 className="h-3.5 w-3.5 shrink-0" />
-                                {linkedQId || "Linked"}
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200/70 dark:border-amber-700/50 w-fit"
+                                title={`Linked ID #${comp.metadata.associated_comp_id} was not found on this platform`}
+                              >
+                                <Link2 className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                                Link Missing (#{comp.metadata.associated_comp_id})
                               </span>
                             );
                           })()}
