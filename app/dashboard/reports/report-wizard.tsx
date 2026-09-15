@@ -208,27 +208,15 @@ const TOC_SECTIONS = [
   ]},
   { id: 2, name: "General Visual Inspection", templates: [
       { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
-      { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", mode: "Diving" },
-      { id: "diving-item-report", name: "Item Inspection Report (Diving)", mode: "Diving" },
-      { id: "diving-itmain-report", name: "Item Maintenance Inspection Report (Diving)", mode: "Diving" },
-      { id: "diving-bsins-report", name: "Bolted Support Inspection (Diving)", mode: "Diving" },
-      { id: "diving-cvins-report", name: "Close Visual Inspection (Diving)", mode: "Diving" },
-      { id: "diving-clean-report", name: "Cleaning Inspection (Diving)", mode: "Diving" },
-      { id: "diving-mpins-report", name: "Magnetic Particle Inspection (Diving)", mode: "Diving" },
-      { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", mode: "Diving" },
-      { id: "diving-acfmc-report", name: "ACFM Inspection (Diving)", mode: "Diving" },
-      { id: "diving-plco-report", name: "Coating Damage Inspection (Diving)", mode: "Diving" },
-      { id: "diving-anmain-report", name: "Anode Maintenance Inspection Report (Diving)", mode: "Diving" },
-      { id: "rov-rwdi-report", name: "Water Depth Inspection Report (ROV)", mode: "ROV" },
-      { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }
+      { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", mode: "Diving" }
   ]},
-
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
       { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },
       { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 4, name: "Flooded Member Detection", templates: [
-      { id: "fmd-report", name: "FMD Survey Report (ROV)", mode: "ROV" }
+      { id: "fmd-report", name: "FMD Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-fmd-report", name: "FMD Survey Report (Diving)", mode: "Diving" }
   ]},
   { id: 5, name: "Attachment Inspection (Conductor, Caisson, Boatlanding)", templates: [
       { id: "rov-rcond-report", name: "Conductor Survey Report (ROV)", mode: "ROV" },
@@ -244,7 +232,9 @@ const TOC_SECTIONS = [
       { id: "diving-dcasn-report", name: "Caisson Inspection (Diving)", mode: "Diving" },
       { id: "diving-dcond-uw-report", name: "Conductor Inspection Underwater (Diving)", mode: "Diving" },
       { id: "diving-dcond-ts-report", name: "Conductor Inspection Above Water (Diving)", mode: "Diving" },
-      { id: "diving-dcond-report", name: "Conductor Inspection (Diving)", mode: "Diving" }
+      { id: "diving-dcond-report", name: "Conductor Inspection (Diving)", mode: "Diving" },
+      { id: "diving-item-report", name: "Item Inspection Report (Diving)", mode: "Diving" },
+      { id: "diving-bsins-report", name: "Bolted Support Inspection (Diving)", mode: "Diving" }
   ]},
   { id: 6, name: "Riser Inspection", templates: [
       { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
@@ -252,11 +242,14 @@ const TOC_SECTIONS = [
       { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
       { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", mode: "ROV" },
       { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", mode: "ROV" },
-      { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", mode: "ROV" }
+      { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-rrisi-report", name: "Riser Inspection (Sketch) Report (Diving)", mode: "Diving" },
+      { id: "diving-rrisi-detail-report", name: "Riser Inspection Report (Diving)", mode: "Diving" }
   ]},
   { id: 7, name: "Splashzone Inspection", templates: [
       { id: "szci-report", name: "Splash Zone Inspection Report (ROV)", mode: "ROV" },
-      { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", mode: "Diving" }
+      { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", mode: "Diving" },
+      { id: "diving-plco-report", name: "Coating Damage Inspection (Diving)", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
       { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", mode: "ROV" },
@@ -269,7 +262,9 @@ const TOC_SECTIONS = [
       { id: "diving-mgi-report", name: "Marine Growth Inspection Graph Report (Diving)", mode: "Diving" }
   ]},
   { id: 10, name: "Base Level Survey (Scour Survey)", templates: [
-      { id: "rov-scour-report", name: "Scour Survey Report (ROV)", mode: "ROV" }
+      { id: "rov-scour-report", name: "Scour Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-rwdi-report", name: "Water Depth Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 11, name: "Pipeline Navigation & Seabed Event Survey", templates: [
       { id: "pipeline-event-sketch-report", name: "Pipeline Event List Sketch Report", mode: "General" },
@@ -282,14 +277,23 @@ const TOC_SECTIONS = [
       { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 12, name: "Specified Node Inspection", templates: [
-      { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", mode: "ROV" }
+      { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", mode: "ROV" },
+      { id: "diving-cvins-report", name: "Close Visual Inspection (Diving)", mode: "Diving" },
+      { id: "diving-mpins-report", name: "Magnetic Particle Inspection (Diving)", mode: "Diving" },
+      { id: "diving-acfmc-report", name: "ACFM Inspection (Diving)", mode: "Diving" }
   ] },
   { id: 13, name: "Additional Wall Thickness Inspection", templates: [
       { id: "utwt-report", name: "UT Thickness Report (ROV)", mode: "ROV" },
+      { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", mode: "Diving" },
       { id: "diving-utclb-report", name: "UT Calibration Report (Diving)", mode: "Diving" }
   ]},
-  { id: 14, name: "Maintenance", templates: [] },
-  { id: 15, name: "Cleaning Inspection", templates: [] },
+  { id: 14, name: "Maintenance", templates: [
+      { id: "diving-itmain-report", name: "Item Maintenance Inspection Report (Diving)", mode: "Diving" },
+      { id: "diving-anmain-report", name: "Anode Maintenance Inspection Report (Diving)", mode: "Diving" }
+  ]},
+  { id: 15, name: "Cleaning Inspection", templates: [
+      { id: "diving-clean-report", name: "Cleaning Inspection (Diving)", mode: "Diving" }
+  ]},
   { id: 16, name: "Photography", templates: [
       { id: "rov-photo-report", name: "Photography Report (ROV)", mode: "ROV" },
       { id: "rov-photo-log-report", name: "Photography Log Report (ROV)", mode: "ROV" }
