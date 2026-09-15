@@ -264,8 +264,7 @@ const TOC_SECTIONS = [
       { id: "rov-rwdi-report", name: "Water Depth Inspection Report (ROV)", mode: "ROV" },
       { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }
   ]},
-  { id: 11, name: "Pipeline Navigation & Seabed Event Survey", templates: [
-      { id: "pipeline-event-sketch-report", name: "Pipeline Event List Sketch Report", mode: "General" },
+  { id: 11, name: "Seabed Survey", templates: [
       { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
       { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", mode: "General" },
       { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", mode: "General" },
