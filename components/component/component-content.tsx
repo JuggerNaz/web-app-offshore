@@ -1,17 +1,47 @@
-"use client";
-
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronRight, ChevronDown, MoreVertical, Plus, Search, Filter, Archive, Hash, Calendar, Box, Activity, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Link2, Paperclip, AlertCircle, ChevronsLeft, ChevronLeft, ChevronsRight, ShieldAlert, AlertTriangle } from "lucide-react";
+import {
+  ChevronRight,
+  ChevronDown,
+  MoreVertical,
+  Plus,
+  Search,
+  Filter,
+  Archive,
+  Hash,
+  Calendar,
+  Box,
+  Activity,
+  Trash2,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Link2,
+  Paperclip,
+  AlertCircle,
+  ChevronsLeft,
+  ChevronLeft,
+  ChevronsRight,
+  ShieldAlert,
+  AlertTriangle,
+  SlidersHorizontal,
+  X,
+  RotateCcw,
+  Check,
+  Sparkles,
+  Layers,
+  CheckCircle2,
+} from "lucide-react";
 import { DeleteConfirmDialog } from "../dialogs/delete-confirm-dialog";
 import { cn } from "@/lib/utils";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
@@ -64,6 +94,8 @@ export default function ComponentContent() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [isListOpen, setIsListOpen] = useState(true);
   const [viewArchived, setViewArchived] = useState(false);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [viewFilter, setViewFilter] = useState("default"); // default, show_all, findings, anomaly
   const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -78,6 +110,23 @@ export default function ComponentContent() {
   const [isLoadingTypes, setIsLoadingTypes] = useState(true);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const searchParams = useSearchParams();
+
+  // Advanced Filters State
+  const [advFilters, setAdvFilters] = useState({
+    node: "",
+    leg: "",
+    minElv: "",
+    maxElv: "",
+    kpMin: "",
+    kpMax: "",
+    depthMin: "",
+    depthMax: "",
+    associationStatus: "all", // all, linked, unlinked, missing
+    inspectionStatus: "all", // all, has_inspections, no_inspections
+    anomalyStatus: "all", // all, has_anomalies, p1_critical, no_anomalies
+    integrityStatus: "all", // all, incomplete, complete
+    typeCode: "all", // all or specific code
+  });
 
   // Modal states for Inspections, Anomalies, Attachments, and Component Integrity
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
@@ -141,13 +190,19 @@ export default function ComponentContent() {
     fetchComponentTypes();
   }, []);
 
-  // Fetch structure components based on structure_id and selected code
+  // Fetch structure components based on structure_id, selected code, and archived preference
   const apiUrl = structureId
     ? (() => {
       const params = new URLSearchParams();
       if (selectedCode) params.set("code", selectedCode);
-      if (viewArchived) params.set("archived", "true");
-      if (viewFilter !== "default") params.set("view_filter", viewFilter);
+      if (viewArchived) {
+        params.set("archived", "true");
+      } else if (includeArchived || viewFilter === "show_all") {
+        params.set("show_all", "true");
+      }
+      if (viewFilter !== "default" && viewFilter !== "show_all") {
+        params.set("view_filter", viewFilter);
+      }
       const query = params.toString();
       return `/api/structure-components/${structureId}${query ? `?${query}` : ""}`;
     })()
@@ -180,7 +235,7 @@ export default function ComponentContent() {
 
   // Full unfiltered component list for resolving associated Q IDs
   const { data: allComponentsData } = useSWR(
-    structureId ? `/api/structure-components/${structureId}` : null,
+    structureId ? `/api/structure-components/${structureId}?show_all=true` : null,
     fetcher
   );
   const allComponentsLookup: Component[] = allComponentsData?.data || [];
@@ -204,21 +259,207 @@ export default function ComponentContent() {
     return components.filter((comp: Component) => getMissingIntegrityFields(comp, isPipe).length > 0).length;
   }, [components, pageType]);
 
-  // Filter components by search query and type relevancy
-  const filteredComponents = components.filter((comp: Component) => {
-    const matchesSearch = comp.q_id.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // Filter based on component type's pipe/plat if we have the types loaded
-    if (componentTypes.length > 0 && (pageType === 'pipeline' || pageType === 'platform')) {
-      const typeDef = componentTypes.find((t) => t.code === comp.code);
-      if (typeDef) {
-        if (pageType === 'pipeline' && typeDef.pipe !== 1) return false;
-        if (pageType === 'platform' && typeDef.plat !== 1) return false;
+  // Count active advanced filters
+  const activeAdvFilterCount = useMemo(() => {
+    let count = 0;
+    if (advFilters.node.trim()) count++;
+    if (advFilters.leg.trim()) count++;
+    if (advFilters.minElv.trim()) count++;
+    if (advFilters.maxElv.trim()) count++;
+    if (advFilters.kpMin.trim()) count++;
+    if (advFilters.kpMax.trim()) count++;
+    if (advFilters.depthMin.trim()) count++;
+    if (advFilters.depthMax.trim()) count++;
+    if (advFilters.associationStatus !== "all") count++;
+    if (advFilters.inspectionStatus !== "all") count++;
+    if (advFilters.anomalyStatus !== "all") count++;
+    if (advFilters.integrityStatus !== "all") count++;
+    if (advFilters.typeCode !== "all") count++;
+    return count;
+  }, [advFilters]);
+
+  const resetAllFilters = () => {
+    setSearchQuery("");
+    setAdvFilters({
+      node: "",
+      leg: "",
+      minElv: "",
+      maxElv: "",
+      kpMin: "",
+      kpMax: "",
+      depthMin: "",
+      depthMax: "",
+      associationStatus: "all",
+      inspectionStatus: "all",
+      anomalyStatus: "all",
+      integrityStatus: "all",
+      typeCode: "all",
+    });
+    setIncludeArchived(false);
+    setViewFilter("default");
+  };
+
+  // Smart Multi-Field Search & Advanced Filtering
+  const filteredComponents = useMemo(() => {
+    return components.filter((comp: Component) => {
+      // 1. Text Search Query (Global Search across multiple fields)
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        const m = comp.metadata || {};
+        const linkedQId = m.associated_comp_id ? (getLinkedQId(m.associated_comp_id) || "") : "";
+        
+        const searchableText = [
+          comp.q_id,
+          comp.id_no,
+          comp.code,
+          m.description,
+          m.s_node,
+          m.f_node,
+          m.s_leg,
+          m.f_leg,
+          m.elv_1 !== undefined ? String(m.elv_1) : null,
+          m.elv_2 !== undefined ? String(m.elv_2) : null,
+          m.face,
+          m.level,
+          m.comp_group,
+          m.kp !== undefined ? String(m.kp) : null,
+          m.start_kp !== undefined ? String(m.start_kp) : null,
+          m.end_kp !== undefined ? String(m.end_kp) : null,
+          m.depth !== undefined ? String(m.depth) : null,
+          m.easting !== undefined ? String(m.easting) : null,
+          m.northing !== undefined ? String(m.northing) : null,
+          linkedQId,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        if (!searchableText.includes(query)) {
+          return false;
+        }
       }
-    }
-    
-    return matchesSearch;
-  });
+
+      // 2. Component Type / Code filter from advanced filters
+      if (advFilters.typeCode !== "all" && comp.code !== advFilters.typeCode) {
+        return false;
+      }
+
+      // 3. Node Filter
+      if (advFilters.node.trim()) {
+        const nQ = advFilters.node.trim().toLowerCase();
+        const sNode = String(comp.metadata?.s_node || "").toLowerCase();
+        const fNode = String(comp.metadata?.f_node || "").toLowerCase();
+        if (!sNode.includes(nQ) && !fNode.includes(nQ)) {
+          return false;
+        }
+      }
+
+      // 4. Leg Filter
+      if (advFilters.leg.trim()) {
+        const lQ = advFilters.leg.trim().toLowerCase();
+        const sLeg = String(comp.metadata?.s_leg || "").toLowerCase();
+        const fLeg = String(comp.metadata?.f_leg || "").toLowerCase();
+        if (!sLeg.includes(lQ) && !fLeg.includes(lQ)) {
+          return false;
+        }
+      }
+
+      // 5. Elevation Range Filter
+      if (advFilters.minElv.trim()) {
+        const min = Number(advFilters.minElv);
+        const elv1 = comp.metadata?.elv_1 !== undefined && comp.metadata?.elv_1 !== null ? Number(comp.metadata.elv_1) : NaN;
+        const elv2 = comp.metadata?.elv_2 !== undefined && comp.metadata?.elv_2 !== null ? Number(comp.metadata.elv_2) : NaN;
+        if (!isNaN(min)) {
+          const maxVal = Math.max(isNaN(elv1) ? -Infinity : elv1, isNaN(elv2) ? -Infinity : elv2);
+          if (maxVal < min) return false;
+        }
+      }
+      if (advFilters.maxElv.trim()) {
+        const max = Number(advFilters.maxElv);
+        const elv1 = comp.metadata?.elv_1 !== undefined && comp.metadata?.elv_1 !== null ? Number(comp.metadata.elv_1) : NaN;
+        const elv2 = comp.metadata?.elv_2 !== undefined && comp.metadata?.elv_2 !== null ? Number(comp.metadata.elv_2) : NaN;
+        if (!isNaN(max)) {
+          const minVal = Math.min(isNaN(elv1) ? Infinity : elv1, isNaN(elv2) ? Infinity : elv2);
+          if (minVal > max) return false;
+        }
+      }
+
+      // 6. Pipeline KP Range
+      if (advFilters.kpMin.trim()) {
+        const kpMin = Number(advFilters.kpMin);
+        const kp = Number(comp.metadata?.kp ?? comp.metadata?.start_kp ?? NaN);
+        if (!isNaN(kpMin) && !isNaN(kp) && kp < kpMin) return false;
+      }
+      if (advFilters.kpMax.trim()) {
+        const kpMax = Number(advFilters.kpMax);
+        const kp = Number(comp.metadata?.kp ?? comp.metadata?.end_kp ?? NaN);
+        if (!isNaN(kpMax) && !isNaN(kp) && kp > kpMax) return false;
+      }
+
+      // 7. Depth Range
+      if (advFilters.depthMin.trim()) {
+        const dMin = Number(advFilters.depthMin);
+        const depth = Number(comp.metadata?.depth ?? NaN);
+        if (!isNaN(dMin) && !isNaN(depth) && depth < dMin) return false;
+      }
+      if (advFilters.depthMax.trim()) {
+        const dMax = Number(advFilters.depthMax);
+        const depth = Number(comp.metadata?.depth ?? NaN);
+        if (!isNaN(dMax) && !isNaN(depth) && depth > dMax) return false;
+      }
+
+      // 8. Association Status Filter
+      if (advFilters.associationStatus !== "all") {
+        const assocId = comp.metadata?.associated_comp_id;
+        const linkedQId = assocId ? getLinkedQId(assocId) : null;
+        if (advFilters.associationStatus === "linked") {
+          if (!assocId || !linkedQId) return false;
+        } else if (advFilters.associationStatus === "unlinked") {
+          if (assocId) return false;
+        } else if (advFilters.associationStatus === "missing") {
+          if (!assocId || linkedQId) return false; // only show broken links
+        }
+      }
+
+      // 9. Inspection Status Filter
+      if (advFilters.inspectionStatus !== "all") {
+        const hasInspections = Boolean(comp.inspections && comp.inspections.length > 0);
+        if (advFilters.inspectionStatus === "has_inspections" && !hasInspections) return false;
+        if (advFilters.inspectionStatus === "no_inspections" && hasInspections) return false;
+      }
+
+      // 10. Anomaly Status Filter
+      if (advFilters.anomalyStatus !== "all") {
+        const anomalies = comp.anomalies || [];
+        const hasAnomalies = anomalies.length > 0;
+        if (advFilters.anomalyStatus === "has_anomalies" && !hasAnomalies) return false;
+        if (advFilters.anomalyStatus === "no_anomalies" && hasAnomalies) return false;
+        if (advFilters.anomalyStatus === "p1_critical") {
+          const hasP1 = anomalies.some(a => ["1", "P1", "HIGH", "CRITICAL"].includes((a.priority_code || a.priority || "").toUpperCase()));
+          if (!hasP1) return false;
+        }
+      }
+
+      // 11. Integrity Status Filter
+      if (advFilters.integrityStatus !== "all") {
+        const isPipe = pageType === "pipeline";
+        const missingFields = getMissingIntegrityFields(comp, isPipe);
+        if (advFilters.integrityStatus === "incomplete" && missingFields.length === 0) return false;
+        if (advFilters.integrityStatus === "complete" && missingFields.length > 0) return false;
+      }
+
+      // 12. Plat / Pipe compatibility check
+      if (componentTypes.length > 0 && (pageType === 'pipeline' || pageType === 'platform')) {
+        const typeDef = componentTypes.find((t) => t.code === comp.code);
+        if (typeDef) {
+          if (pageType === 'pipeline' && typeDef.pipe !== 1) return false;
+          if (pageType === 'platform' && typeDef.plat !== 1) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [components, searchQuery, advFilters, allComponentsLookup, componentTypes, pageType]);
 
   const sortedComponents = [...filteredComponents].sort((a, b) => {
     if (!sortConfig) return 0;
@@ -270,7 +511,7 @@ export default function ComponentContent() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, viewFilter, selectedCode, pageSize]);
+  }, [searchQuery, viewFilter, selectedCode, pageSize, includeArchived, advFilters, viewArchived]);
 
   const getComponentName = (code: string | null) => {
     if (!code) return null;
@@ -345,8 +586,6 @@ export default function ComponentContent() {
   };
 
   const handleTypeClick = (typeName: string | null, typeCode: string | null) => {
-    setViewArchived(false);
-    setViewFilter("default");
     setSelectedType(typeName || "ALL COMPONENTS");
     setSelectedCode(typeCode);
     setCurrentPage(1);
@@ -358,29 +597,58 @@ export default function ComponentContent() {
       <div className="w-72 flex-shrink-0 flex flex-col gap-6 sticky top-0 self-start">
         <div className="bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 flex flex-col gap-6 h-full shadow-sm">
           <div className="space-y-4">
-            <h3 className="px-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Component Sections</h3>
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Component Sections</h3>
+              {viewArchived && (
+                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800">
+                  Archived Mode
+                </span>
+              )}
+            </div>
             <div className="flex flex-col gap-1">
               <FilterButton
                 active={!viewArchived && selectedType === "ALL COMPONENTS"}
-                onClick={() => handleTypeClick("ALL COMPONENTS", null)}
+                onClick={() => {
+                  setViewArchived(false);
+                  setSelectedType("ALL COMPONENTS");
+                  setSelectedCode(null);
+                  setCurrentPage(1);
+                }}
                 icon={<Box className="h-4 w-4" />}
                 label="All Components"
               />
               <FilterButton
-                active={viewArchived}
+                active={viewArchived && selectedType === "ARCHIVED"}
                 onClick={() => {
                   setViewArchived(true);
                   setSelectedType("ARCHIVED");
                   setSelectedCode(null);
+                  setCurrentPage(1);
                 }}
-                icon={<Archive className="h-4 w-4" />}
-                label="Archived Items"
+                icon={<Archive className="h-4 w-4 text-rose-500" />}
+                label="Archived Items (All)"
               />
             </div>
           </div>
 
           <div className="space-y-4">
-            <h3 className="px-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Component Categories</h3>
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                {viewArchived ? "Archived Categories" : "Component Categories"}
+              </h3>
+              {selectedCode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCode(null);
+                    setSelectedType(viewArchived ? "ARCHIVED" : "ALL COMPONENTS");
+                  }}
+                  className="text-[10px] font-bold text-blue-500 hover:text-blue-600 dark:hover:text-blue-400"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             <div className="flex flex-col gap-1 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
               {isLoadingTypes ? (
                 <div className="px-2 py-4 space-y-3">
@@ -393,24 +661,39 @@ export default function ComponentContent() {
                     if (pageType === 'platform') return type.plat === 1;
                     return true;
                   })
-                  .map((type) => (
-                    <button
-                      key={type.id}
-                      onClick={() => handleTypeClick(type.name, type.code)}
-                      className={cn(
-                        "flex items-center gap-3 w-full text-left text-xs font-bold py-2.5 px-3 rounded-xl transition-all",
-                        selectedType === type.name && !viewArchived
-                          ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                          : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                      )}
-                    >
-                      <div className={cn(
-                        "h-2 w-2 rounded-full",
-                        selectedType === type.name && !viewArchived ? "bg-white" : "bg-slate-300 dark:bg-slate-700"
-                      )} />
-                      <span className="truncate">{type.name}</span>
-                    </button>
-                  ))
+                  .map((type) => {
+                    const isSelected = selectedCode === type.code;
+                    return (
+                      <button
+                        key={type.id}
+                        onClick={() => handleTypeClick(type.name, type.code)}
+                        className={cn(
+                          "flex items-center justify-between gap-3 w-full text-left text-xs font-bold py-2.5 px-3 rounded-xl transition-all",
+                          isSelected
+                            ? viewArchived
+                              ? "bg-rose-600 text-white shadow-lg shadow-rose-500/20"
+                              : "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                            : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={cn(
+                            "h-2 w-2 rounded-full shrink-0",
+                            isSelected ? "bg-white" : "bg-slate-300 dark:bg-slate-700"
+                          )} />
+                          <span className="truncate">{type.name}</span>
+                        </div>
+                        <span className={cn(
+                          "text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded",
+                          isSelected
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-200/60 dark:bg-slate-800 text-slate-400"
+                        )}>
+                          {type.code}
+                        </span>
+                      </button>
+                    );
+                  })
               )}
             </div>
           </div>
@@ -418,20 +701,83 @@ export default function ComponentContent() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col gap-6 min-w-0">
+      <div className="flex-1 flex flex-col gap-5 min-w-0">
         {/* Header & Controls */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-80 group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-              <Input
-                placeholder="Search by Q ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-11 pl-10 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
-              />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Left Controls: Global Search + Include Archived + Advanced Filter Toggle */}
+            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[300px]">
+              {/* Smart Global Search Bar */}
+              <div className="relative flex-1 min-w-[200px] max-w-md group">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <Input
+                  placeholder="Smart search (Q ID, System ID, node, leg, elv, desc)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-11 pl-10 pr-9 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-blue-500/20 shadow-sm text-xs font-medium"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    title="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Include Archived Checkbox Toggle (Visible when browsing categories or live mode) */}
+              {!viewArchived && (
+                <label
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 h-11 rounded-xl border transition-all cursor-pointer select-none shrink-0 shadow-sm",
+                    includeArchived
+                      ? "bg-rose-500/10 border-rose-500/40 text-rose-600 dark:text-rose-300"
+                      : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900"
+                  )}
+                  title="Show both active and archived components across categories"
+                >
+                  <Checkbox
+                    checked={includeArchived}
+                    onCheckedChange={(checked) => setIncludeArchived(Boolean(checked))}
+                    className="h-4 w-4 rounded-md border-slate-400 data-[state=checked]:bg-rose-600 data-[state=checked]:border-rose-600 data-[state=checked]:text-white"
+                  />
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <Archive className={cn("h-3.5 w-3.5 shrink-0", includeArchived ? "text-rose-500" : "text-slate-400")} />
+                    <span className="whitespace-nowrap">Include Archived</span>
+                  </div>
+                </label>
+              )}
+
+              {/* Advanced Filters Button */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className={cn(
+                  "h-11 px-3.5 rounded-xl text-xs font-bold gap-2 transition-all shadow-sm border shrink-0",
+                  showAdvancedFilters || activeAdvFilterCount > 0
+                    ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:text-white"
+                    : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900"
+                )}
+              >
+                <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Advanced Filters</span>
+                {activeAdvFilterCount > 0 && (
+                  <span className={cn(
+                    "px-1.5 py-0.5 rounded-full text-[10px] font-black",
+                    showAdvancedFilters || activeAdvFilterCount > 0 ? "bg-white text-blue-600" : "bg-blue-600 text-white"
+                  )}>
+                    {activeAdvFilterCount}
+                  </span>
+                )}
+              </Button>
             </div>
-            <div className="flex items-center gap-4 px-2">
+
+            {/* Right Controls: Filter preset, Add button, Integrity audit, Records count */}
+            <div className="flex items-center gap-3 shrink-0">
               <div className="flex items-center gap-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap">Filter</Label>
                 <Select value={viewFilter} onValueChange={(val) => {
@@ -443,59 +789,367 @@ export default function ComponentContent() {
                     setViewArchived(false);
                   }
                 }}>
-                  <SelectTrigger className="h-11 w-[160px] rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 font-bold text-xs">
+                  <SelectTrigger className="h-11 w-[140px] rounded-xl border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 font-bold text-xs">
                     <SelectValue placeholder="Filter" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
-                    <SelectItem value="default" className="text-xs font-bold py-2.5">Default</SelectItem>
-                    <SelectItem value="show_all" className="text-xs font-bold py-2.5">Show All</SelectItem>
-                    <SelectItem value="findings" className="text-xs font-bold py-2.5">Findings</SelectItem>
-                    <SelectItem value="anomaly" className="text-xs font-bold py-2.5">Anomaly</SelectItem>
+                    <SelectItem value="default" className="text-xs font-bold py-2">Default</SelectItem>
+                    <SelectItem value="show_all" className="text-xs font-bold py-2">Show All</SelectItem>
+                    <SelectItem value="findings" className="text-xs font-bold py-2">Findings</SelectItem>
+                    <SelectItem value="anomaly" className="text-xs font-bold py-2">Anomaly</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <Button
                 onClick={handleAddNewComponent}
-                className="h-11 px-6 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold shadow-lg hover:opacity-90 transition-all gap-2"
+                className="h-11 px-5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold shadow-lg hover:opacity-90 transition-all gap-2"
               >
                 <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Add Component</span>
+                <span className="hidden md:inline">Add Component</span>
               </Button>
 
-              <div className="flex flex-col items-center gap-1.5 shrink-0">
-                <Button
-                  onClick={() => setIntegrityModalOpen(true)}
-                  variant="outline"
-                  title="Component Integrity Audit"
+              <Button
+                onClick={() => setIntegrityModalOpen(true)}
+                variant="outline"
+                title="Component Integrity Audit"
+                className={cn(
+                  "h-11 px-3.5 rounded-xl font-bold text-xs gap-2 transition-all shadow-sm border shrink-0",
+                  incompleteComponentsCount > 0
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                )}
+              >
+                <AlertTriangle className={cn("h-4 w-4 shrink-0", incompleteComponentsCount > 0 ? "text-amber-500 animate-pulse" : "text-slate-400")} />
+                <span
                   className={cn(
-                    "h-11 px-3.5 rounded-xl font-bold text-xs gap-2 transition-all shadow-sm border",
+                    "px-1.5 py-0.5 rounded-full text-[10px] font-black",
                     incompleteComponentsCount > 0
-                      ? "border-amber-500/40 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20"
-                      : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                      ? "bg-amber-500 text-slate-950"
+                      : "bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                   )}
                 >
-                  <AlertTriangle className={cn("h-5 w-5 shrink-0", incompleteComponentsCount > 0 ? "text-amber-500 animate-pulse" : "text-slate-400")} />
-                  <span
-                    className={cn(
-                      "px-2 py-0.5 rounded-full text-[11px] font-black",
-                      incompleteComponentsCount > 0
-                        ? "bg-amber-500 text-slate-950"
-                        : "bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-                    )}
-                  >
-                    {incompleteComponentsCount}
-                  </span>
-                </Button>
-                <div className="px-3 py-0.5 bg-slate-100 dark:bg-slate-800/50 rounded-full whitespace-nowrap">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    {sortedComponents.length} Records
-                  </span>
-                </div>
+                  {incompleteComponentsCount}
+                </span>
+              </Button>
+
+              <div className={cn(
+                "px-3 py-1.5 rounded-xl border text-[11px] font-black uppercase tracking-wider whitespace-nowrap",
+                viewArchived
+                  ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                  : "bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+              )}>
+                {sortedComponents.length} {viewArchived ? "Archived" : "Records"}
               </div>
             </div>
           </div>
+
+          {/* Advanced Filter Drawer / Panel */}
+          {showAdvancedFilters && (
+            <div className="bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-lg space-y-4 animate-in fade-in-50 duration-200">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-blue-500" />
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                    Smart & Advanced Filters
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeAdvFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAdvFilters({
+                        node: "",
+                        leg: "",
+                        minElv: "",
+                        maxElv: "",
+                        kpMin: "",
+                        kpMax: "",
+                        depthMin: "",
+                        depthMax: "",
+                        associationStatus: "all",
+                        inspectionStatus: "all",
+                        anomalyStatus: "all",
+                        integrityStatus: "all",
+                        typeCode: "all",
+                      })}
+                      className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Reset Fields
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedFilters(false)}
+                    className="h-7 w-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {/* Type Code */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Component Type</Label>
+                  <Select
+                    value={advFilters.typeCode}
+                    onValueChange={(val) => setAdvFilters((prev) => ({ ...prev, typeCode: val }))}
+                  >
+                    <SelectTrigger className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold">
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
+                      <SelectItem value="all" className="text-xs font-bold">All Types</SelectItem>
+                      {componentTypes.map((t) => (
+                        <SelectItem key={t.id} value={t.code || ""} className="text-xs font-bold">
+                          {t.name} ({t.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Nodes */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Node (Start or End)</Label>
+                  <Input
+                    placeholder="e.g. 1205, 2110..."
+                    value={advFilters.node}
+                    onChange={(e) => setAdvFilters((prev) => ({ ...prev, node: e.target.value }))}
+                    className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium"
+                  />
+                </div>
+
+                {/* Legs */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Leg (Start or End)</Label>
+                  <Input
+                    placeholder="e.g. A2, B2..."
+                    value={advFilters.leg}
+                    onChange={(e) => setAdvFilters((prev) => ({ ...prev, leg: e.target.value }))}
+                    className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium"
+                  />
+                </div>
+
+                {/* Elevation Range */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Elevation Range (m)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="Min (e.g. -30)"
+                      value={advFilters.minElv}
+                      onChange={(e) => setAdvFilters((prev) => ({ ...prev, minElv: e.target.value }))}
+                      className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium"
+                    />
+                    <span className="text-slate-400 text-xs">to</span>
+                    <Input
+                      placeholder="Max (e.g. 0)"
+                      value={advFilters.maxElv}
+                      onChange={(e) => setAdvFilters((prev) => ({ ...prev, maxElv: e.target.value }))}
+                      className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Association Status */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Association / Parent Link</Label>
+                  <Select
+                    value={advFilters.associationStatus}
+                    onValueChange={(val) => setAdvFilters((prev) => ({ ...prev, associationStatus: val }))}
+                  >
+                    <SelectTrigger className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
+                      <SelectItem value="all" className="text-xs font-bold">All Items</SelectItem>
+                      <SelectItem value="linked" className="text-xs font-bold">Linked to Parent</SelectItem>
+                      <SelectItem value="unlinked" className="text-xs font-bold">Unlinked (No Parent)</SelectItem>
+                      <SelectItem value="missing" className="text-xs font-bold">Broken Link (Target Missing)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Inspection Status */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inspections</Label>
+                  <Select
+                    value={advFilters.inspectionStatus}
+                    onValueChange={(val) => setAdvFilters((prev) => ({ ...prev, inspectionStatus: val }))}
+                  >
+                    <SelectTrigger className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
+                      <SelectItem value="all" className="text-xs font-bold">All Inspections</SelectItem>
+                      <SelectItem value="has_inspections" className="text-xs font-bold">Has Inspection Records</SelectItem>
+                      <SelectItem value="no_inspections" className="text-xs font-bold">No Inspection Data</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Anomaly Status */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Anomalies</Label>
+                  <Select
+                    value={advFilters.anomalyStatus}
+                    onValueChange={(val) => setAdvFilters((prev) => ({ ...prev, anomalyStatus: val }))}
+                  >
+                    <SelectTrigger className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
+                      <SelectItem value="all" className="text-xs font-bold">All Items</SelectItem>
+                      <SelectItem value="has_anomalies" className="text-xs font-bold">Has Anomalies</SelectItem>
+                      <SelectItem value="p1_critical" className="text-xs font-bold">P1 Critical Anomalies</SelectItem>
+                      <SelectItem value="no_anomalies" className="text-xs font-bold">No Anomalies</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Integrity Status */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Specification Integrity</Label>
+                  <Select
+                    value={advFilters.integrityStatus}
+                    onValueChange={(val) => setAdvFilters((prev) => ({ ...prev, integrityStatus: val }))}
+                  >
+                    <SelectTrigger className="h-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-800 bg-slate-950">
+                      <SelectItem value="all" className="text-xs font-bold">All Items</SelectItem>
+                      <SelectItem value="incomplete" className="text-xs font-bold text-amber-500">Incomplete Specs (Missing Fields)</SelectItem>
+                      <SelectItem value="complete" className="text-xs font-bold text-emerald-500">Complete Specs</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Active Filter Chips Row */}
+          {(searchQuery || activeAdvFilterCount > 0 || includeArchived || viewFilter !== "default") && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Active Filters:</span>
+              
+              {searchQuery && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  Search: "{searchQuery}"
+                  <button type="button" onClick={() => setSearchQuery("")} className="hover:text-blue-900 dark:hover:text-white">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {includeArchived && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                  <Archive className="h-3 w-3" />
+                  Including Archived Items
+                  <button type="button" onClick={() => setIncludeArchived(false)} className="hover:text-rose-900 dark:hover:text-white">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {advFilters.typeCode !== "all" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  Type: {advFilters.typeCode}
+                  <button type="button" onClick={() => setAdvFilters(p => ({ ...p, typeCode: "all" }))}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {advFilters.node && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  Node: {advFilters.node}
+                  <button type="button" onClick={() => setAdvFilters(p => ({ ...p, node: "" }))}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {advFilters.leg && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  Leg: {advFilters.leg}
+                  <button type="button" onClick={() => setAdvFilters(p => ({ ...p, leg: "" }))}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {(advFilters.minElv || advFilters.maxElv) && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  Elv: {advFilters.minElv || "∞"} to {advFilters.maxElv || "∞"} m
+                  <button type="button" onClick={() => setAdvFilters(p => ({ ...p, minElv: "", maxElv: "" }))}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {advFilters.associationStatus !== "all" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                  Assoc: {advFilters.associationStatus}
+                  <button type="button" onClick={() => setAdvFilters(p => ({ ...p, associationStatus: "all" }))}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {advFilters.anomalyStatus !== "all" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                  Anomaly: {advFilters.anomalyStatus}
+                  <button type="button" onClick={() => setAdvFilters(p => ({ ...p, anomalyStatus: "all" }))}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              {advFilters.integrityStatus !== "all" && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                  Integrity: {advFilters.integrityStatus}
+                  <button type="button" onClick={() => setAdvFilters(p => ({ ...p, integrityStatus: "all" }))}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="text-xs font-bold text-red-500 hover:text-red-600 dark:hover:text-red-400 underline ml-2 cursor-pointer"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Viewing Archived Notification Banner */}
+        {viewArchived && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300">
+            <div className="flex items-center gap-2.5">
+              <Archive className="h-4 w-4 text-rose-500 shrink-0" />
+              <span className="text-xs font-bold">
+                Viewing Archived Components {selectedCode ? `for Category: ${selectedType}` : "(All Categories)"} ({sortedComponents.length} items)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setViewArchived(false);
+                setSelectedType("ALL COMPONENTS");
+                setSelectedCode(null);
+              }}
+              className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline shrink-0"
+            >
+              Switch to Live Components
+            </button>
+          </div>
+        )}
 
         {/* Data Table Container */}
         <div className="bg-white dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-black/20 overflow-hidden relative">
@@ -534,14 +1188,21 @@ export default function ComponentContent() {
                       className={cn(
                         "group border-b border-slate-50 dark:border-slate-800 transition-all cursor-pointer",
                         comp.is_deleted
-                          ? "bg-red-50/60 hover:bg-red-100/60 dark:bg-rose-950/20 dark:hover:bg-rose-950/30"
+                          ? "bg-rose-50/50 hover:bg-rose-100/60 dark:bg-rose-950/25 dark:hover:bg-rose-950/40 border-l-4 border-l-rose-500"
                           : "hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
                       )}
                       onClick={() => handleRowClick(comp)}
                     >
                       <td className="px-4 py-4 align-middle">
                         <div className="flex items-center gap-3">
-                          {comp.has_attachment ? (
+                          {comp.is_deleted ? (
+                            <div
+                              className="h-8 w-8 rounded-lg bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center text-rose-600 dark:text-rose-400 border border-rose-300/80 dark:border-rose-800/80 shadow-sm shrink-0"
+                              title="Archived Component"
+                            >
+                              <Archive className="h-4 w-4" />
+                            </div>
+                          ) : comp.has_attachment ? (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -549,17 +1210,22 @@ export default function ComponentContent() {
                                 setSelectedComponentForAttachment(comp);
                                 setAttachmentModalOpen(true);
                               }}
-                              className="h-8 w-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 flex items-center justify-center text-emerald-500 hover:text-emerald-400 transition-all cursor-pointer shadow-sm border border-emerald-500/30"
+                              className="h-8 w-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 flex items-center justify-center text-emerald-500 hover:text-emerald-400 transition-all cursor-pointer shadow-sm border border-emerald-500/30 shrink-0"
                               title="View Component & Inspection Attachments"
                             >
                               <Paperclip className="h-4 w-4" />
                             </button>
                           ) : (
-                            <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:text-blue-500 transition-colors">
+                            <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:text-blue-500 transition-colors shrink-0">
                               <Hash className="h-4 w-4" />
                             </div>
                           )}
-                          <span className="font-mono text-[11px] font-bold text-slate-500 leading-tight">{comp.id_no}</span>
+                          <span className={cn(
+                            "font-mono text-[11px] font-bold leading-tight",
+                            comp.is_deleted ? "text-rose-700/90 dark:text-rose-300/90" : "text-slate-500"
+                          )}>
+                            {comp.id_no}
+                          </span>
                           
                           {/* Inspection & Anomaly Icons */}
                           <div className="flex gap-1 ml-1" onClick={(e) => e.stopPropagation()}>
@@ -604,7 +1270,20 @@ export default function ComponentContent() {
                       </td>
                       <td className="px-4 py-4 align-middle">
                         <div className="flex flex-col gap-1.5">
-                          <span className="font-black text-slate-900 dark:text-white tracking-tight">{comp.q_id}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={cn(
+                              "font-black tracking-tight",
+                              comp.is_deleted ? "text-rose-950 dark:text-rose-200" : "text-slate-900 dark:text-white"
+                            )}>
+                              {comp.q_id}
+                            </span>
+                            {comp.is_deleted && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300/80 dark:border-rose-700 shadow-sm">
+                                <Archive className="h-3 w-3 shrink-0" />
+                                Archived
+                              </span>
+                            )}
+                          </div>
                           {comp.metadata?.associated_comp_id && (() => {
                             const linkedQId = getLinkedQId(comp.metadata.associated_comp_id);
                             if (linkedQId) {
@@ -631,7 +1310,12 @@ export default function ComponentContent() {
                         </div>
                       </td>
                       <td className="px-4 py-4 align-middle">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
+                        <span className={cn(
+                          "inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider",
+                          comp.is_deleted
+                            ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/40"
+                            : "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                        )}>
                           {comp.code || "---"}
                         </span>
                       </td>
