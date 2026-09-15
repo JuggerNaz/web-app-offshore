@@ -129,7 +129,24 @@ export const generateWorkScopeReport = async (
             doc.rect(0, 0, pageWidth, 28, "F");
         }
 
-        // Logo
+        // Contractor Logo (Left)
+        let contractorLogoUrl = (config as any)?.contractorLogoUrl || (config as any)?.contractorLogo;
+        if (!contractorLogoUrl && ((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac)) {
+            try {
+                const cDetails = await fetchContractorDetails(((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac));
+                if (cDetails?.logoUrl) contractorLogoUrl = cDetails.logoUrl;
+            } catch (e) {}
+        }
+        if (contractorLogoUrl) {
+            try {
+                const contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl);
+                if (contractorLogoData) {
+                    drawLogo(doc, contractorLogoData, 16, 16, 8, 5, 'left', 'center');
+                }
+            } catch (e) {}
+        }
+
+        // Company Logo (Right)
         if (companySettings?.logo_url) {
             try {
                 const logoData = await loadLogoWithTransparency(companySettings.logo_url);
@@ -144,28 +161,25 @@ export const generateWorkScopeReport = async (
 
         // Company & Dept
         doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
-
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.text(companySettings?.department_name || "Engineering Department", 10, 14);
-
-        // Title
         doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
-        doc.text("WORK SCOPE REPORT", 10, 20);
+        doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
 
-        doc.setFontSize(7);
+        doc.setFontSize(8.5);
         doc.setFont("helvetica", "normal");
-        // Platform removed from header as per request
-        // Report Number in Header
+        doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
+
+        // Title - SAME size as Company Title
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.text("WORK SCOPE REPORT", pageWidth / 2, 17.5, { align: "center" });
+
+        // Report Number in Header - Centered below Title
         if (config?.reportNoPrefix) {
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
             doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-            doc.text(`${config.reportNoPrefix}-${config.reportYear}`, pageWidth - 10, 24, { align: "right" });
+            doc.text(`Report: ${config.reportNoPrefix}-${config.reportYear}`, pageWidth / 2, 22.5, { align: "center" });
         }
     };
 

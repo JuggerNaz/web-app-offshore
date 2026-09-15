@@ -241,10 +241,10 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     return apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length));
   }
 
-  // --- Default listing: lean (NO metadata) to avoid timeouts ---
+  // --- Default listing: includes metadata for plantype, tasktype, structures, and dates ---
   let query = (supabase as any)
     .from("jobpack")
-    .select("id, name, status, created_at, updated_at, company_id")
+    .select("id, name, status, metadata, created_at, updated_at, company_id")
     .order("id", { ascending: false });
 
   if (companyId) {

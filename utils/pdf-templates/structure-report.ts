@@ -309,24 +309,19 @@ export const getStructureReportHTML = async (data: StructureReportData): Promise
 <body>
   <div class="page">
     <!-- Header -->
-    <div class="report-header">
-      <div class="company-info">
-        <div class="company-name">${header.companyName}</div>
-        ${header.departmentName ? `<div class="department-name">${header.departmentName}</div>` : ''}
-        ${header.serialNo ? `<div class="serial-no">Serial No: ${header.serialNo}</div>` : ''}
+    <div class="report-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 3px solid #2563eb; margin-bottom: 30px;">
+      <div style="width: 120px;"></div>
+      <div style="flex: 1; text-align: center;">
+        <div class="company-name" style="font-size: 18px; font-weight: bold; color: #1e40af; margin-bottom: 4px;">${header.companyName || 'Company Name'}</div>
+        ${header.departmentName ? `<div class="department-name" style="font-size: 13px; color: #64748b; margin-bottom: 4px;">${header.departmentName}</div>` : ''}
+        <div style="font-size: 18px; font-weight: bold; color: #1e293b; margin-top: 6px;">Structure Report</div>
+        <div style="font-size: 13px; color: #64748b; margin-top: 2px;">${data.str_name}</div>
+        ${header.serialNo ? `<div class="serial-no" style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Serial No: ${header.serialNo}</div>` : ''}
       </div>
-      <div class="report-meta">
-        ${header.companyLogo ? `<img src="${header.companyLogo}" alt="Company Logo" class="company-logo" style="margin-bottom: 10px;">` : ''}
-        <div><strong>Report Type:</strong> Structure Report</div>
-        <div><strong>Generated:</strong> ${header.generatedDate}</div>
-        <div><strong>Time:</strong> ${header.generatedTime}</div>
+      <div style="width: 120px; text-align: right;">
+        ${header.companyLogo ? `<img src="${header.companyLogo}" alt="Company Logo" class="company-logo">` : ''}
       </div>
     </div>
-    
-    <!-- Title -->
-    <div class="report-title">
-      <h1>Structure Report</h1>
-      <div class="subtitle">${data.str_name}</div>
     </div>
     
     <!-- Structure Photo -->

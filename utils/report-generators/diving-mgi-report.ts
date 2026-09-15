@@ -84,12 +84,12 @@ export const generateDivingMGIReport = async (
 
             // Text
             const textCenterX = margin + (contentWidth / 2);
-            d.setFontSize(10); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', textCenterX, margin + 8, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', textCenterX, margin + 13, { align: 'center' });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`Marine Growth Inspection Graph Report (Diving)`, textCenterX, margin + 20, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', textCenterX, margin + 6, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', textCenterX, margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(`Marine Growth Inspection Graph Report (Diving)`, textCenterX, margin + 16.5, { align: 'center' });
         };
 
         const drawContextBox = (d: jsPDF, y: number) => {

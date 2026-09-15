@@ -741,16 +741,16 @@ async function generateCustomFallbackBlank(
         doc.setTextColor(255);
     }
 
-    if (companyLogo) drawLogo(doc, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
+    if (companyLogo) drawLogo(doc, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
 
-    doc.setFontSize(9); doc.setFont("helvetica", "bold");
-    doc.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-    doc.setFontSize(7); doc.setFont("helvetica", "normal");
-    doc.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10, { align: "center" });
     doc.setFontSize(11); doc.setFont("helvetica", "bold");
-    doc.text(`${templateTitle}`, margin + contentWidth / 2, margin + 17, { align: "center" });
-    doc.setFontSize(7.5); doc.setFont("helvetica", "normal");
-    doc.text(`Report No: ${config?.reportNoPrefix || "____________________"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            doc.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
+    doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
+            doc.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+    doc.setFontSize(11); doc.setFont("helvetica", "bold");
+    doc.text(`${templateTitle}`, margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+    doc.setFontSize(8); doc.setFont("helvetica", "normal");
+    doc.text(`Report No: ${config?.reportNoPrefix || "____________________"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
 
     const ROW_H = 7;
     const startY = margin + HEADER_H + 4;

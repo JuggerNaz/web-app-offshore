@@ -663,7 +663,7 @@ export const generatePipelineDefectSummaryReport = async (
     const margin = 12;
     const contentWidth = pageWidth - margin * 2; // 273mm
     const isPrintFriendly = config.printFriendly === true;
-    const headerH = 14;
+    const headerH = 22;
 
     // Report Number standard formatting
     const defaultPrefix = isFindingsReport ? "FSR-PL" : "DSR-PL";
@@ -696,17 +696,24 @@ export const generatePipelineDefectSummaryReport = async (
         }
 
         const titleX = sx + contentWidth / 2;
-        const reportTitle = isFindingsReport ? "FINDING SUMMARY REPORT (PIPELINE)" : "DEFECT SUMMARY REPORT (PIPELINE)";
-        d.setFont("helvetica", "bold");
-        d.setFontSize(13);
         d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
-        d.text(reportTitle, titleX, sy + 6, { align: "center" });
+        d.setFont("helvetica", "bold");
+        d.setFontSize(11);
+        const compDesc = (companySettings.company_name || contractorName || "NASQUEST RESOURCES SDN BHD").toUpperCase();
+        d.text(compDesc, titleX, sy + 6, { align: "center" });
 
         d.setFont("helvetica", "normal");
         d.setFontSize(8.5);
-        d.setTextColor(isPrintFriendly ? 70 : 200, isPrintFriendly ? 70 : 200, isPrintFriendly ? 70 : 200);
-        const compDesc = companySettings.company_name || contractorName || "NASQUEST RESOURCES SDN BHD";
-        d.text(compDesc.toUpperCase(), titleX, sy + 11.5, { align: "center" });
+        d.text(companySettings.department_name || "Technical Inspection Division", titleX, sy + 10.5, { align: "center" });
+
+        d.setFont("helvetica", "bold");
+        d.setFontSize(11);
+        const reportTitle = isFindingsReport ? "FINDING SUMMARY REPORT (PIPELINE)" : "DEFECT SUMMARY REPORT (PIPELINE)";
+        d.text(reportTitle, titleX, sy + 16.5, { align: "center" });
+
+        d.setFont("helvetica", "normal");
+        d.setFontSize(8);
+        d.text(`Report No: ${reportNo}`, titleX, sy + 21, { align: "center" });
 
         if (clientLogo) {
             drawLogo(d, clientLogo, logoMaxW, logoMaxH, sx + contentWidth - logoMaxW - logoPad, sy + logoPad, "right", "center");

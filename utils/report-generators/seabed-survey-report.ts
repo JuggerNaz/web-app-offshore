@@ -167,14 +167,14 @@ export const generateSeabedSurveyReport = async (
         if (clientLogo)     drawLogo(d, clientLogo,     16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
         if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
 
-        d.setFontSize(10); d.setFont("helvetica", "bold");
+        d.setFontSize(11); d.setFont("helvetica", "bold");
         d.text((companySettings.company_name || 'OFFSHORE INSPECTION DIVISION').toUpperCase(), margin + (contentWidth/2), margin + 6, { align: 'center' });
-        d.setFontSize(8); d.setFont("helvetica", "normal");
-        d.text(companySettings.department_name || companySettings.departmentName || 'Engineering & Technical Division', margin + (contentWidth/2), margin + 11, { align: 'center' });
+        d.setFontSize(8.5); d.setFont("helvetica", "normal");
+        d.text(companySettings.department_name || companySettings.departmentName || 'Engineering & Technical Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
         
-        d.setFontSize(13); d.setFont("helvetica", "bold");
+        d.setFontSize(11); d.setFont("helvetica", "bold");
         const titleType = itemTypeFilter && itemTypeFilter.toLowerCase() !== 'all' ? itemTypeFilter.toUpperCase() : "GENERAL";
-        d.text(`SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+        d.text(`SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
     };
 
     const drawSubHeader = (d: jsPDF, y: number) => {

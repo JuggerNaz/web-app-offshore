@@ -251,16 +251,7 @@ export const generateDefectAnomalyReport = async (
             drawLogo(doc, contractorLogo, logoSize, logoSize, logoX, startY + logoPadding, 'center', 'center');
         }
 
-        if (contractorName) {
-            doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(6); // Smaller font
-
-            const textY = startY + logoPadding + logoSize + 3;
-            const maxNameWidth = 40;
-            const nameLines = doc.splitTextToSize(contractorName, maxNameWidth);
-            doc.text(nameLines, logoCenterX, textY, { align: "center" });
-        }
+        
 
         // --- Right Side: Client Logo ---
         if (clientLogo) {
@@ -271,23 +262,23 @@ export const generateDefectAnomalyReport = async (
         // Print-Friendly: Dark text on white. Normal: White text on dark blue.
         doc.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
 
-        // Company Name
+        // Company Name - SAME size as Report Title
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
+        doc.setFontSize(11);
         const companyName = (companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase();
-        doc.text(companyName, pageWidth / 2, startY + 8, { align: "center" });
+        doc.text(companyName, pageWidth / 2, startY + 7.5, { align: "center" });
 
-        // Department
+        // Department (Sub-header) - slightly increased font size
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
+        doc.setFontSize(8.5);
         const deptName = companySettings.departmentName || "Technical Inspection Division";
         doc.text(deptName, pageWidth / 2, startY + 12, { align: "center" });
 
-        // Report Title
+        // Report Title - SAME size as Company Title
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(13);
+        doc.setFontSize(11);
         const reportTitle = config.isFindingsReport ? "FINDINGS REPORT" : "DEFECT / ANOMALY REPORT";
-        doc.text(reportTitle, pageWidth / 2, startY + 20, { align: "center" });
+        doc.text(reportTitle, pageWidth / 2, startY + 19, { align: "center" });
 
         // Reset Text Color
         doc.setTextColor(0, 0, 0);

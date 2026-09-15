@@ -132,21 +132,21 @@ export const generateDefectCriteriaReport = async (
                 }
             }
 
-            // Company Name
+            // Company Name - SAME size as Report Title
             doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-            doc.setFontSize(16);
+            doc.setFontSize(11);
             doc.setFont("helvetica", "bold");
-            doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", 10, 9);
+            doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
 
             // Dept
-            doc.setFontSize(8);
+            doc.setFontSize(8.5);
             doc.setFont("helvetica", "normal");
-            doc.text(companySettings?.department_name || "Engineering Department", 10, 14);
+            doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
 
             // Title
-            doc.setFontSize(12);
+            doc.setFontSize(11);
             doc.setFont("helvetica", "bold");
-            doc.text("DEFECT CRITERIA SPECIFICATION REPORT", 10, 22);
+            doc.text("DEFECT CRITERIA SPECIFICATION REPORT", pageWidth / 2, 17.5, { align: "center" });
         };
 
         const addFooter = (pageNum: number, pageCount: number) => {

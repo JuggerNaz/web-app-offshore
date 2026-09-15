@@ -96,13 +96,13 @@ export const generateDivingFMDReport = async (
 
             d.setFontSize(8); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`Flooded Member Inspection Report (Diving)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(`Flooded Member Inspection Report (Diving)`, margin + (contentWidth / 2), margin + 16.5, { align: 'center' });
 
             d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth / 2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {

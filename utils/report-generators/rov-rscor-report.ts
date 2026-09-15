@@ -74,12 +74,12 @@ export const generateROVRSCORReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
             if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 4, 'left',  'center');
 
-            d.setFontSize(10); d.setFont("helvetica", "bold");
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 11, { align: 'center' });
-            d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`Scour Survey Sketch Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(`Scour Survey Sketch Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
 
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 21, { align: 'center' });

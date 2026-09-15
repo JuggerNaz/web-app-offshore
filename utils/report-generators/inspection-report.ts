@@ -155,13 +155,13 @@ export const generateInspectionReport = async (
                 } catch (e) {}
             }
 
-            d.setTextColor(255); d.setFontSize(10); d.setFont("helvetica", "bold");
+            d.setTextColor(255); d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings?.company_name || 'NASQUEST RESOURCES SDN BHD', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(companySettings?.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings?.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             const isAnomaly = inspection.has_anomaly;
-            d.text(isAnomaly ? "ANOMALY REPORT" : "INSPECTION REPORT", margin + (contentWidth/2), margin + 18, { align: 'center' });
+            d.text(isAnomaly ? "ANOMALY REPORT" : "INSPECTION REPORT", margin + (contentWidth/2), margin + 17, { align: 'center' });
         };
 
         await drawPremiumHeader(doc);

@@ -97,14 +97,7 @@ export const generateDiverLogReport = async (
         if (contractorLogo) {
             drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + logoPadding, 'left', 'center');
         }
-        if (contractorName) {
-            d.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-            d.setFont("helvetica", "normal");
-            d.setFontSize(6);
-            const cx = sx + logoPadding + logoSize / 2;
-            const nameLines = d.splitTextToSize(contractorName, 40);
-            d.text(nameLines, cx, sy + logoPadding + logoSize + 3, { align: "center" });
-        }
+        
 
         // Client logo (right)
         if (clientLogo) {
@@ -114,16 +107,16 @@ export const generateDiverLogReport = async (
         // Center text
         d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
         d.setFont("helvetica", "bold");
-        d.setFontSize(12);
-        d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 8, { align: "center" });
+        d.setFontSize(11);
+        d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 7.5, { align: "center" });
 
         d.setFont("helvetica", "normal");
-        d.setFontSize(9);
+        d.setFontSize(8.5);
         d.text(companySettings.departmentName || "Technical Inspection Division", pageWidth / 2, sy + 12, { align: "center" });
 
         d.setFont("helvetica", "bold");
-        d.setFontSize(13);
-        d.text("DIVER LOG REPORT", pageWidth / 2, sy + 20, { align: "center" });
+        d.setFontSize(11);
+        d.text("DIVER LOG REPORT", pageWidth / 2, sy + 19, { align: "center" });
 
         d.setTextColor(0, 0, 0);
     };

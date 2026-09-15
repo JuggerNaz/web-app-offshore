@@ -289,33 +289,29 @@ const generatePipelineReport = async (
     }
   }
 
-  // Company Name
+  // Company Name - SAME size as Report Title (centered)
   doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, 10, 9);
-
-  // Department Name
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Technical Inspection Division", 10, 14);
-
-  // Report Title
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("PIPELINE SPECIFICATIONS REPORT", 10, 20);
+  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
+  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
 
-  // Subtitle and Report No
-  doc.setFontSize(7);
+  // Department Name (Sub-header) - Slightly increased font size (centered)
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text("", 10, 24);
+  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
 
-  if (config) {
-    const reportNo = `${config.reportNoPrefix}-${config.reportYear}`;
-    doc.text(`Report: ${reportNo}`, pageWidth - 10, 24, { align: "right" });
-  } else if (companySettings?.serial_no) {
-    doc.text(`Report: ${companySettings.serial_no}`, pageWidth - 10, 24, { align: "right" });
+  // Report Title - SAME size as Company Title (centered)
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("PIPELINE SPECIFICATIONS REPORT", pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No - Centered below Report Title
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
+  if (reportNoStr) {
+    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
   }
 
   let yPos = 32;
@@ -648,33 +644,29 @@ const generatePlatformReport = async (
     }
   }
 
-  // Company Name - LARGEST (left side)
+  // Company Name - SAME size as Report Title (centered)
   doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, 10, 9);
-
-  // Department Name - Under Company Name
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Technical Inspection Division", 10, 14);
-
-  // Report Title - SMALLER
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("PLATFORM SPECIFICATIONS REPORT", 10, 20);
+  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
+  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
 
-  // Subtitle and Report No on same line
-  doc.setFontSize(7);
+  // Department Name (Sub-header) - Slightly increased font size (centered)
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text("", 10, 24);
+  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
 
-  if (config) {
-    const reportNo = `${config.reportNoPrefix}-${config.reportYear}`;
-    doc.text(`Report: ${reportNo}`, pageWidth - 10, 24, { align: "right" });
-  } else if (companySettings?.serial_no) {
-    doc.text(`Report: ${companySettings.serial_no}`, pageWidth - 10, 24, { align: "right" });
+  // Report Title - SAME size as Company Title (centered)
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("PLATFORM SPECIFICATIONS REPORT", pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No - Centered below Report Title
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
+  if (reportNoStr) {
+    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
   }
 
   let yPos = 32;
@@ -1180,14 +1172,19 @@ const generatePipelineHTML = (
     }
         </div>
         
-        <div style="padding-right: 100px;">
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; opacity: 0.95;">PIPELINE SPECIFICATIONS REPORT</h2>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;"></p>
-            <p style="margin: 0; font-size: 9px; opacity: 0.8;">Report: ${companySettings?.serial_no || "N/A"}</p>
-          </div>
+        <!-- Centered title and company info -->
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <!-- Company Name - SAME size as Report Title -->
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
+          
+          <!-- Department Name (Sub-header) - Slightly increased font size -->
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          
+          <!-- Report Title - SAME size as Company Title -->
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">PIPELINE SPECIFICATIONS REPORT</h2>
+          
+          <!-- Report No - Centered below Report Title -->
+          <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
       </div>
 
@@ -1367,22 +1364,19 @@ const generatePlatformHTML = (
     }
         </div>
         
-        <!-- Title and company info with more space -->
-        <div style="padding-right: 100px;">
-          <!-- Company Name - LARGEST -->
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
+        <!-- Centered title and company info -->
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <!-- Company Name - SAME size as Report Title -->
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
           
-          <!-- Department Name - Under Company Name -->
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <!-- Department Name (Sub-header) - Slightly increased font size -->
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
           
-          <!-- Report Title - SMALLER -->
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; opacity: 0.95;">PLATFORM SPECIFICATIONS REPORT</h2>
+          <!-- Report Title - SAME size as Company Title -->
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">PLATFORM SPECIFICATIONS REPORT</h2>
           
-          <!-- Subtitle and Report No on same line -->
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;"></p>
-            <p style="margin: 0; font-size: 9px; opacity: 0.8;">Report: ${companySettings?.serial_no || "N/A"}</p>
-          </div>
+          <!-- Report No - Centered below Report Title -->
+          <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
       </div>
 
@@ -1725,22 +1719,32 @@ export const generateComponentSummaryReport = async (
     } catch (e) { /* ignore */ }
   }
 
-  // Company Headings
+  // Company Headings - SAME size as Report Title (centered)
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", 10, 10);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 16);
+  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
 
-  // Report Title
-  doc.setFontSize(14);
+  // Department (Sub-header) - Slightly increased font size (centered)
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "normal");
+  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
+
+  // Report Title - SAME size as Company Title (centered)
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("COMPONENT SUMMARY REPORT", 10, 24);
+  doc.text("COMPONENT SUMMARY REPORT", pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No / Subtitle
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const reportNoSummary = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
+  if (reportNoSummary) {
+    doc.text(reportNoSummary, pageWidth / 2, 22.5, { align: "center" });
+  }
 
   // Subtitle
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
   doc.text(`Structure: ${structure.str_name} (${structure.str_type})`, 10, 35);
 
@@ -2185,14 +2189,11 @@ export const generateComponentSummaryHTML = (
     }
         </div>
         
-        <div style="padding-right: 100px;">
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; opacity: 0.95;">COMPONENT SUMMARY REPORT</h2>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;">Structure: ${structure.str_name} (${structure.str_type})</p>
-            <p style="margin: 0; font-size: 9px; opacity: 0.8;">Report: ${companySettings?.serial_no || "N/A"}</p>
-          </div>
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">PLATFORM COMPONENT SUMMARY REPORT</h2>
+          <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} (${structure.str_type}) | Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
       </div>
 
@@ -2317,22 +2318,30 @@ export const generateComponentSpecReport = async (
   }
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", 10, 10);
-  doc.setFontSize(10);
+  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 16);
+  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
 
-  doc.setFontSize(14);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("COMPONENT DATA SHEET", 10, 24);
+  doc.text("COMPONENT DATA SHEET", pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No / Context
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const compReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
+  if (compReportNo) {
+    doc.text(compReportNo, pageWidth / 2, 22.5, { align: "center" });
+  }
 
   // Subheader: Structure Context
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
   doc.text(`Structure: ${structure.str_name} (${structure.str_type})`, 10, 35);
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(100, 100, 100);
   doc.text(`Component Type: ${resolveTypeName(component.type || component.code, typeMap)}`, 10, 40);
 
@@ -2493,10 +2502,10 @@ export const generateComponentSpecHTML = (
       : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
     }
         </div>
-        <div style="padding-right: 100px;">
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700;">${companySettings?.company_name || "Company Name"}</h1>
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">COMPONENT DATA SHEET</h2>
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">COMPONENT DATA SHEET</h2>
           <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} | Type: ${resolveTypeName(component.type || component.code, typeMap)}</p>
         </div>
       </div>
@@ -2596,18 +2605,26 @@ export const generateTechnicalSpecsReport = async (
   }
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", 10, 10);
-  doc.setFontSize(10);
+  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 16);
+  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
 
-  doc.setFontSize(14);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("TECHNICAL SPECIFICATIONS", 10, 24);
+  doc.text("TECHNICAL SPECIFICATIONS", pageWidth / 2, 17.5, { align: "center" });
 
-  doc.setFontSize(10);
+  // Report No / Subtitle
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const techReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
+  if (techReportNo) {
+    doc.text(techReportNo, pageWidth / 2, 22.5, { align: "center" });
+  }
+
+  doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
   doc.text(`Structure: ${structure.str_name} (${structure.str_type})`, 10, 35);
   doc.setFontSize(8);
@@ -2785,10 +2802,10 @@ export const generateTechnicalSpecsHTML = (
       : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
     }
         </div>
-        <div style="padding-right: 100px;">
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700;">${companySettings?.company_name || "Company Name"}</h1>
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">TECHNICAL SPECIFICATIONS</h2>
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">TECHNICAL SPECIFICATIONS REPORT</h2>
           <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} (${structure.str_type})</p>
         </div>
       </div>

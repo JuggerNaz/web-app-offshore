@@ -367,13 +367,13 @@ export const generateROVNavigReport = async (
         if (clientLogo) drawLogo(d, clientLogo, 16, 14, pageWidth - margin - 18, margin + 2, "right", "center");
         if (contractorLogo) drawLogo(d, contractorLogo, 16, 14, margin + 2, margin + 2, "left", "center");
 
-        d.setFontSize(10.5); d.setFont("helvetica", "bold");
-        d.text((companySettings.company_name || "OFFSHORE INSPECTION DIVISION").toUpperCase(), margin + (contentWidth / 2), margin + 4.5, { align: "center" });
-        d.setFontSize(7.5); d.setFont("helvetica", "normal");
-        d.text(companySettings.department_name || companySettings.departmentName || "Technical Inspection & Integrity Management Division", margin + (contentWidth / 2), margin + 9, { align: "center" });
+        d.setFontSize(11); d.setFont("helvetica", "bold");
+        d.text((companySettings.company_name || "OFFSHORE INSPECTION DIVISION").toUpperCase(), margin + (contentWidth / 2), margin + 5, { align: "center" });
+        d.setFontSize(8.5); d.setFont("helvetica", "normal");
+        d.text(companySettings.department_name || companySettings.departmentName || "Technical Inspection & Integrity Management Division", margin + (contentWidth / 2), margin + 9.5, { align: "center" });
 
         d.setFontSize(11); d.setFont("helvetica", "bold");
-        d.text("PIPELINE VISUAL INSPECTION REPORT", margin + (contentWidth / 2), margin + 15, { align: "center" });
+        d.text("PIPELINE VISUAL INSPECTION REPORT", margin + (contentWidth / 2), margin + 15.5, { align: "center" });
     };
 
     const drawSubHeader = (d: jsPDF, startY: number): number => {

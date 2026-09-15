@@ -32,6 +32,32 @@ import {
 } from "@/components/ui/table";
 import { JobpackActions } from "@/components/data-table/columns";
 
+const getJobpackDate = (jp: any): string | null => {
+  const meta = jp?.metadata || {};
+  return meta.istart || meta.date_start || meta.start_date || meta.startDate || null;
+};
+
+const getJobpackYear = (jp: any): string => {
+  const meta = jp?.metadata || {};
+  const dateVal = meta.istart || meta.date_start || meta.start_date || meta.startDate;
+  if (dateVal) {
+    const parsed = new Date(dateVal).getFullYear();
+    if (!isNaN(parsed)) return parsed.toString();
+  }
+  if (meta.year) return String(meta.year);
+  // Match 4 digit year from name (e.g., 00-0001/2004 or 00-00042/2001)
+  const match = String(jp?.name || "").match(/[\/\-_](\d{4})(?:[\/\-_]|$)/);
+  if (match) {
+    const y = parseInt(match[1], 10);
+    if (y >= 1970 && y <= 2100) return match[1];
+  }
+  if (jp?.created_at) {
+    const parsed = new Date(jp.created_at).getFullYear();
+    if (!isNaN(parsed)) return parsed.toString();
+  }
+  return "Unknown";
+};
+
 export default function JobpackPage() {
   const { data, error, isLoading } = useSWR("/api/jobpack", fetcher);
   const [searchQuery, setSearchQuery] = useState("");
@@ -42,13 +68,7 @@ export default function JobpackPage() {
     if (data?.data) {
       const years = new Set<string>();
       data.data.forEach((jp: any) => {
-        const istart = jp.metadata?.istart;
-        let year = "Unknown";
-        if (istart) {
-          const parsed = new Date(istart).getFullYear();
-          if (!isNaN(parsed)) year = parsed.toString();
-        }
-        years.add(year);
+        years.add(getJobpackYear(jp));
       });
       const initial: Record<string, boolean> = {};
       years.forEach((y) => {
@@ -83,11 +103,12 @@ export default function JobpackPage() {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     const name = (jp.name || "").toLowerCase();
-    const plan = ((jp.metadata as any)?.plantype || "").toLowerCase();
-    const task = ((jp.metadata as any)?.tasktype || "").toLowerCase();
-    const start = ((jp.metadata as any)?.istart || "").toLowerCase();
-    const year = start ? new Date(start).getFullYear().toString() : "unknown";
-    const structures = ((jp.metadata as any)?.structures || []).some((s: any) => 
+    const meta = jp.metadata || {};
+    const plan = (meta.plantype || meta.plan_type || meta.planType || "").toLowerCase();
+    const task = (meta.tasktype || meta.task_type || meta.taskType || "").toLowerCase();
+    const start = (getJobpackDate(jp) || "").toLowerCase();
+    const year = getJobpackYear(jp).toLowerCase();
+    const structures = (meta.structures || meta.structure_list || []).some((s: any) => 
       (s.title || "").toLowerCase().includes(query) ||
       (s.name || "").toLowerCase().includes(query) ||
       (s.code || "").toLowerCase().includes(query)
@@ -103,14 +124,7 @@ export default function JobpackPage() {
   // Group by year of start date
   const groupedByYear: Record<string, any[]> = {};
   filteredJobpacks.forEach((jp: any) => {
-    const istart = (jp.metadata as any)?.istart;
-    let year = "Unknown";
-    if (istart) {
-      const parsed = new Date(istart).getFullYear();
-      if (!isNaN(parsed)) {
-        year = parsed.toString();
-      }
-    }
+    const year = getJobpackYear(jp);
     if (!groupedByYear[year]) {
       groupedByYear[year] = [];
     }
@@ -134,8 +148,8 @@ export default function JobpackPage() {
       if (nameA > nameB) return 1;
 
       // 2. Sort by Start Date (chronological, ascending/descending)
-      const dateA = (a.metadata as any)?.istart || "";
-      const dateB = (b.metadata as any)?.istart || "";
+      const dateA = getJobpackDate(a) || "";
+      const dateB = getJobpackDate(b) || "";
       return dateA.localeCompare(dateB);
     });
   });
@@ -230,9 +244,9 @@ export default function JobpackPage() {
               // Calculate year unique structures
               const uniqueStructures = new Set<string>();
               yearJobpacks.forEach((jp: any) => {
-                const structures = (jp.metadata as any)?.structures || [];
+                const structures = (jp.metadata as any)?.structures || (jp.metadata as any)?.structure_list || [];
                 structures.forEach((s: any) => {
-                  if (s.id) uniqueStructures.add(`${s.type}-${s.id}`);
+                  if (s.id) uniqueStructures.add(`${s.type || "str"}-${s.id}`);
                 });
               });
               const structuresCount = uniqueStructures.size;
@@ -324,11 +338,11 @@ export default function JobpackPage() {
                         <TableBody>
                           {yearJobpacks.map((jp: any) => {
                             const metadata = jp.metadata || {};
-                            const structures = metadata.structures || [];
+                            const structures = metadata.structures || metadata.structure_list || [];
                             const stStatus = metadata.structure_status || {};
-                            const plantype = metadata.plantype;
-                            const tasktype = metadata.tasktype;
-                            const start = metadata.istart;
+                            const plantype = metadata.plantype || metadata.plan_type || metadata.planType;
+                            const tasktype = metadata.tasktype || metadata.task_type || metadata.taskType;
+                            const start = getJobpackDate(jp);
 
                             let statusColor = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
                             if (jp.status === "OPEN") {
@@ -401,7 +415,7 @@ export default function JobpackPage() {
                                                 : "bg-indigo-50/50 text-indigo-600 border-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/60"
                                             }`}
                                           >
-                                            {s.title || s.code || s.name}
+                                            {s.title || s.name || s.code || s.str_title || (s.id ? `#${s.id}` : "Structure")}
                                             {isClosed && <CheckCircle className="h-3 w-3 text-green-600 dark:text-green-500" />}
                                           </Badge>
                                         );

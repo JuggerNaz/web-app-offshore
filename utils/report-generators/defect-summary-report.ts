@@ -250,13 +250,7 @@ export const generateDefectSummaryReport = async (
         if (contractorLogo) {
             drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + logoPadding, 'left', 'center');
         }
-        if (contractorName) {
-            d.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-            d.setFont("helvetica", "normal");
-            d.setFontSize(5.5);
-            const lines = d.splitTextToSize(contractorName, 38);
-            d.text(lines, sx + logoPadding + logoSize / 2, sy + logoPadding + logoSize + 2.5, { align: "center" });
-        }
+        
 
         // Right — Client logo
         if (clientLogo) {
@@ -267,14 +261,14 @@ export const generateDefectSummaryReport = async (
         d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
-        d.text((companySettings.company_name || "TANJUNG OFFSHORE").toUpperCase(), pageWidth / 2, sy + 8, { align: "center" });
+        d.text((companySettings.company_name || "TANJUNG OFFSHORE").toUpperCase(), pageWidth / 2, sy + 7.5, { align: "center" });
         d.setFont("helvetica", "normal");
-        d.setFontSize(8);
-        d.text(companySettings.departmentName || "Engineering Department", pageWidth / 2, sy + 13, { align: "center" });
+        d.setFontSize(8.5);
+        d.text(companySettings.departmentName || "Engineering Department", pageWidth / 2, sy + 12, { align: "center" });
         d.setFont("helvetica", "bold");
-        d.setFontSize(12);
+        d.setFontSize(11);
         const reportTitle = config.isFindingsReport ? "FINDINGS SUMMARY REPORT" : "DEFECT SUMMARY REPORT";
-        d.text(reportTitle, pageWidth / 2, sy + 21, { align: "center" });
+        d.text(reportTitle, pageWidth / 2, sy + 19, { align: "center" });
         d.setTextColor(0, 0, 0);
     };
 

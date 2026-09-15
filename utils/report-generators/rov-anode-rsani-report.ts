@@ -94,12 +94,12 @@ export const generateROVAnodeRSANIReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
             if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 4, 'left',  'center');
 
-            da.setFontSize(10); da.setFont("helvetica", "bold");
+            da.setFontSize(11); da.setFont("helvetica", "bold");
             da.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            da.setFontSize(7); da.setFont("helvetica", "normal");
-            da.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            da.setFontSize(14); da.setFont("helvetica", "bold");
-            da.text(`Selected Anode Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            da.setFontSize(8.5); da.setFont("helvetica", "normal");
+            da.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
+            da.setFontSize(11); da.setFont("helvetica", "bold");
+            da.text(`Selected Anode Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
 
             da.setFontSize(8); da.setFont("helvetica", "normal");
             da.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });

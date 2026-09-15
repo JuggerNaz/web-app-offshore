@@ -94,14 +94,14 @@ export const generateROVRMGIReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
             if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
 
-            d.setFontSize(9);   d.setFont("helvetica", "bold");
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(7);   d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(12);  d.setFont("helvetica", "bold");
-            d.text("Marine Growth Inspection Report (ROV)",                             margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,                 margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(8.5);   d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10.5, { align: "center" });
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
+            d.text("Marine Growth Inspection Report (ROV)",                             margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,                 margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         // ── Context boxes ───────────────────────────────────────────────────────
@@ -111,8 +111,8 @@ export const generateROVRMGIReport = async (
             const half = contentWidth / 2;
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1);
-                if (!isPF) { d.setFillColor(...colors.lightGray); d.rect(x, ty, w, ROW_H, "F"); }
-                d.rect(x, ty, w, ROW_H, "S");
+                if (!isPF) { d.setFillColor(...colors.lightGray); d.rect(x, y, w, ROW_H, "F"); }
+                d.rect(x, y, w, ROW_H, "S");
                 d.setTextColor(...colors.text);
                 d.setFontSize(7.5); d.setFont("helvetica", "bold");
                 d.text(label, x + 2, ty + 4.8);
