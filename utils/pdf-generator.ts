@@ -304,7 +304,7 @@ const generatePipelineReport = async (
   // Report Title - SAME size as Company Title (centered)
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("PIPELINE SPECIFICATIONS REPORT", pageWidth / 2, 17.5, { align: "center" });
+  doc.text("Pipeline Specifications Report", pageWidth / 2, 17.5, { align: "center" });
 
   // Report No - Centered below Report Title
   doc.setFontSize(8);
@@ -659,7 +659,7 @@ const generatePlatformReport = async (
   // Report Title - SAME size as Company Title (centered)
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("PLATFORM SPECIFICATIONS REPORT", pageWidth / 2, 17.5, { align: "center" });
+  doc.text("Platform Specifications Report", pageWidth / 2, 17.5, { align: "center" });
 
   // Report No - Centered below Report Title
   doc.setFontSize(8);
@@ -1181,7 +1181,7 @@ const generatePipelineHTML = (
           <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
           
           <!-- Report Title - SAME size as Company Title -->
-          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">PIPELINE SPECIFICATIONS REPORT</h2>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Pipeline Specifications Report</h2>
           
           <!-- Report No - Centered below Report Title -->
           <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report: ${companySettings?.serial_no || "N/A"}</p>
@@ -1373,7 +1373,7 @@ const generatePlatformHTML = (
           <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
           
           <!-- Report Title - SAME size as Company Title -->
-          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">PLATFORM SPECIFICATIONS REPORT</h2>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Specifications Report</h2>
           
           <!-- Report No - Centered below Report Title -->
           <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report: ${companySettings?.serial_no || "N/A"}</p>
@@ -1733,7 +1733,7 @@ export const generateComponentSummaryReport = async (
   // Report Title - SAME size as Company Title (centered)
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("COMPONENT SUMMARY REPORT", pageWidth / 2, 17.5, { align: "center" });
+  doc.text("Component Summary Report", pageWidth / 2, 17.5, { align: "center" });
 
   // Report No / Subtitle
   doc.setFontSize(8);
@@ -2192,7 +2192,7 @@ export const generateComponentSummaryHTML = (
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
           <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
           <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">PLATFORM COMPONENT SUMMARY REPORT</h2>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Component Summary Report</h2>
           <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} (${structure.str_type}) | Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
       </div>
@@ -2327,7 +2327,7 @@ export const generateComponentSpecReport = async (
 
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("COMPONENT DATA SHEET", pageWidth / 2, 17.5, { align: "center" });
+  doc.text("Component Data Sheet", pageWidth / 2, 17.5, { align: "center" });
 
   // Report No / Context
   doc.setFontSize(8);
@@ -2614,7 +2614,7 @@ export const generateTechnicalSpecsReport = async (
 
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("TECHNICAL SPECIFICATIONS", pageWidth / 2, 17.5, { align: "center" });
+  doc.text("Technical Specifications Report", pageWidth / 2, 17.5, { align: "center" });
 
   // Report No / Subtitle
   doc.setFontSize(8);
@@ -2805,7 +2805,7 @@ export const generateTechnicalSpecsHTML = (
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
           <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
           <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">TECHNICAL SPECIFICATIONS REPORT</h2>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">Technical Specifications Report</h2>
           <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} (${structure.str_type})</p>
         </div>
       </div>

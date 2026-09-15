@@ -146,7 +146,7 @@ export const generateDefectCriteriaReport = async (
             // Title
             doc.setFontSize(11);
             doc.setFont("helvetica", "bold");
-            doc.text("DEFECT CRITERIA SPECIFICATION REPORT", pageWidth / 2, 17.5, { align: "center" });
+            doc.text("Defect Criteria Specification Report", pageWidth / 2, 17.5, { align: "center" });
         };
 
         const addFooter = (pageNum: number, pageCount: number) => {
