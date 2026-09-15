@@ -75,35 +75,142 @@ export const generateROVRRISIITubeDetailReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
+        const effectiveStructureId = config.structureId || 
+            records.find(r => r.structure_id)?.structure_id || 
+            records.find(r => r.structure_components?.structure_id)?.structure_components?.structure_id;
+
+        // Helper to extract identifier key (e.g., '02' from 'IT-02-SUPP')
+        const extractTubeKey = (qid: string) => {
+            if (!qid) return null;
+            const q = qid.toUpperCase().trim();
+            const match = q.match(/^(?:ITUBE|IT|I)[-_ ]*(\d+[A-Z]?)/i);
+            if (match) {
+                const rawNum = match[1].toUpperCase();
+                const normNum = rawNum.replace(/^0+/, '') || '0';
+                return { raw: rawNum, norm: normNum };
+            }
+            return null;
+        };
+
         // Helper to check if a component is a primary parent I-Tube
         const isParentITubeComp = (c: any) => {
             if (!c) return false;
-            const qid = (c.q_id || '').toUpperCase();
-            const code = (c.code || '').toUpperCase();
-            if (qid.includes('SUPP') || qid.includes('CLAMP') || qid.includes('ANODE') || qid.includes('FLANGE') || qid.includes('WELD') || qid.includes('RISG')) {
+            const qid = (c.q_id || '').toUpperCase().trim();
+            const code = (c.code || '').toUpperCase().trim();
+            if (qid.includes('SUPP') || qid.includes('CLAMP') || qid.includes('CLP') || qid.includes('ANODE') || qid.includes('FLANGE') || qid.includes('WELD') || qid.includes('RISG')) {
                 return false;
             }
-            if (c.metadata?.associated_comp_id) {
+            const meta = c.metadata || {};
+            if (meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_comp_qid || meta.parent_qid) {
                 return false;
             }
-            return code === 'IT' || code === 'ITUBE' || /^I(?:TUBE)?[ -]*\d+[A-Z]?$/i.test(qid);
+            return (code === 'IT' || code === 'ITUBE' || qid.startsWith('I'));
         };
 
         // Fetch all components to build a complete QID map for grouping
-        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const { data: allComps } = effectiveStructureId
+            ? await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', effectiveStructureId)
+            : { data: [] };
+
         const compRegistry = new Map<number, any>();
-        const parentCompMap = new Map<string, number>();
+        const parentCompsMap = new Map<number, any>();
+        const parentByQid = new Map<string, any>();
+        const parentByKey = new Map<string, any>();
+
+        const registerParent = (c: any) => {
+            if (!c || !c.id) return;
+            parentCompsMap.set(c.id, c);
+            const qid = (c.q_id || '').toUpperCase().trim();
+            if (qid) {
+                parentByQid.set(qid, c);
+                const baseQid = qid.replace(/[-_](SK\d+|WLP|PLAT|TEST|BAY).*/i, '').trim();
+                if (baseQid) parentByQid.set(baseQid, c);
+            }
+            const key = extractTubeKey(qid);
+            if (key) {
+                parentByKey.set(key.raw, c);
+                parentByKey.set(key.norm, c);
+            }
+        };
 
         if (allComps) {
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
                 if (isParentITubeComp(c)) {
-                    parentCompMap.set(c.q_id.toUpperCase(), c.id);
-                    const m = c.q_id.match(/I(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
-                    if (m) parentCompMap.set(m[1].toUpperCase(), c.id);
+                    registerParent(c);
                 }
             });
         }
+
+        // Also register parent components from incoming inspection records
+        filteredRecords.forEach(r => {
+            const comp = r.structure_components;
+            if (comp) {
+                if (comp.id) compRegistry.set(comp.id, comp);
+                if (isParentITubeComp(comp)) {
+                    registerParent(comp);
+                }
+            }
+        });
+
+        // Helper to resolve parent component for any component / record
+        const resolveParentComp = (comp: any, r: any) => {
+            if (!comp) return null;
+            if (isParentITubeComp(comp)) {
+                return comp;
+            }
+            const meta = comp.metadata || r.metadata || {};
+
+            // 1. Direct parent ID reference from metadata
+            const pId = Number(meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id);
+            if (pId && parentCompsMap.has(pId)) {
+                return parentCompsMap.get(pId);
+            }
+            if (pId && compRegistry.has(pId)) {
+                const cand = compRegistry.get(pId);
+                if (isParentITubeComp(cand)) return cand;
+            }
+
+            // 2. Direct parent QID reference from metadata
+            const pQid = String(meta.associated_comp_qid || meta.parent_qid || meta.parent_q_id || '').toUpperCase().trim();
+            if (pQid && parentByQid.has(pQid)) {
+                return parentByQid.get(pQid);
+            }
+
+            const qid = (comp.q_id || r.q_id || r.component_qid || '').toUpperCase().trim();
+
+            // 3. Exact QID match in parentByQid
+            if (parentByQid.has(qid)) {
+                return parentByQid.get(qid);
+            }
+
+            // 4. Key match (e.g. IT-02-SUPP matches IT-02 via '02'/'2')
+            const key = extractTubeKey(qid);
+            if (key) {
+                if (parentByKey.has(key.norm)) return parentByKey.get(key.norm);
+                if (parentByKey.has(key.raw)) return parentByKey.get(key.raw);
+            }
+
+            // 5. Prefix match against registered parents
+            let longestMatch: any = null;
+            let longestLen = 0;
+            parentByQid.forEach((pComp, pQ) => {
+                if (qid.startsWith(pQ) || qid.startsWith(pQ + '-') || qid.startsWith(pQ + '_')) {
+                    if (pQ.length > longestLen) {
+                        longestLen = pQ.length;
+                        longestMatch = pComp;
+                    }
+                }
+            });
+            if (longestMatch) return longestMatch;
+
+            // 6. If there is only 1 registered parent component, assign subcomponents to it
+            if (parentCompsMap.size === 1) {
+                return Array.from(parentCompsMap.values())[0];
+            }
+
+            return null;
+        };
 
         // Group records by parent I-Tube component
         const itubesMap = new Map<number, { itubeComp: any, records: any[] }>();
@@ -111,23 +218,10 @@ export const generateROVRRISIITubeDetailReport = async (
         filteredRecords.forEach(r => {
             const comp = r.structure_components;
             if (!comp) return;
-            let rid: number | null = null;
-            if (isParentITubeComp(comp)) {
-                rid = comp.id;
-            } else if (comp.metadata?.associated_comp_id && compRegistry.has(Number(comp.metadata.associated_comp_id))) {
-                rid = Number(comp.metadata.associated_comp_id);
-            } else {
-                const q = (comp.q_id || '').toUpperCase();
-                const m = q.match(/I(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
-                if (m && parentCompMap.has(m[1].toUpperCase())) {
-                    rid = parentCompMap.get(m[1].toUpperCase())!;
-                } else if (parentCompMap.has(q)) {
-                    rid = parentCompMap.get(q)!;
-                }
-            }
-            if (rid) {
-                if (!itubesMap.has(rid)) itubesMap.set(rid, { itubeComp: compRegistry.get(rid) || comp, records: [] });
-                itubesMap.get(rid)!.records.push(r);
+            const parent = resolveParentComp(comp, r);
+            if (parent && parent.id) {
+                if (!itubesMap.has(parent.id)) itubesMap.set(parent.id, { itubeComp: parent, records: [] });
+                itubesMap.get(parent.id)!.records.push(r);
             } else unassigned.push(r);
         });
 

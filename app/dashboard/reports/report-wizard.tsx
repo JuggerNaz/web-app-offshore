@@ -1639,11 +1639,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         // Header Gradient Bar
         doc.setFillColor(37, 99, 235);
         doc.rect(16, 16, width - 32, 20, 'F');
-        
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(14);
-        doc.text("FINAL INSPECTION DATASHEET", width / 2, 28, { align: "center" });
 
         // Main Title
         doc.setTextColor(30, 41, 59); // slate-800

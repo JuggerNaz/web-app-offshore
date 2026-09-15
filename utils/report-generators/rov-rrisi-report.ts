@@ -60,18 +60,24 @@ export const generateROVRRISIReport = async (
         const supabase = createClient();
 
         // ── 1. Context ──────────────────────────────────────────────────────────
-        const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
+        const effectiveStructureId = config.structureId || 
+            records.find(r => r.structure_id)?.structure_id || 
+            records.find(r => r.structure_components?.structure_id)?.structure_components?.structure_id;
+
+        const { data: platform } = effectiveStructureId 
+            ? await supabase.from('u_platform').select('water_depth').eq('id', effectiveStructureId).maybeSingle()
+            : { data: null };
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
         // Filter records strictly by type and prefix
         const filteredRecords = records.filter(r => {
-            const qid = (r.structure_components?.q_id || '').toUpperCase();
+            const qid = (r.structure_components?.q_id || r.q_id || r.component_qid || '').toUpperCase();
             const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || "").toUpperCase();
+            const compCode = (r.structure_components?.code || r.component_code || "").toUpperCase();
             
             if (rType === 'R') {
                 return (typeCode === 'RRISI' || typeCode === 'RISER' || typeCode === 'CPSURV' || typeCode === 'MBINS') &&
-                       (qid.startsWith('R') || compCode === 'RS' || compCode === 'CL') &&
+                       (qid.startsWith('R') || compCode === 'RS' || compCode === 'CL' || qid.includes('SUPP') || qid.includes('CLAMP')) &&
                        !qid.startsWith('RISG');
             } else if (rType === 'J') {
                 return (typeCode === 'JTISI' || typeCode === 'JTUBE' || typeCode === 'CPSURV' || typeCode === 'MBINS') &&
@@ -83,52 +89,157 @@ export const generateROVRRISIReport = async (
             return false;
         });
 
+        // Helper to extract identifier key (e.g., '11' from 'R11-SK358-WLP-A' or 'RIS-11-SUPP 1M')
+        const extractTubeKey = (qid: string, prefix: 'R' | 'J' | 'I') => {
+            if (!qid) return null;
+            const q = qid.toUpperCase().trim();
+            let pattern: RegExp;
+            if (prefix === 'R') {
+                pattern = /^(?:RISER|RIS|RS|R)[-_ ]*(\d+[A-Z]?)/i;
+            } else if (prefix === 'J') {
+                pattern = /^(?:JTUBE|JT|J)[-_ ]*(\d+[A-Z]?)/i;
+            } else {
+                pattern = /^(?:ITUBE|IT|I)[-_ ]*(\d+[A-Z]?)/i;
+            }
+            const match = q.match(pattern);
+            if (match) {
+                const rawNum = match[1].toUpperCase();
+                const normNum = rawNum.replace(/^0+/, '') || '0';
+                return { raw: rawNum, norm: normNum };
+            }
+            return null;
+        };
+
         // Helper to check if a component is a primary parent Riser / J-Tube / I-Tube
         const isParentComp = (c: any, type: 'R' | 'J' | 'I') => {
             if (!c) return false;
-            const qid = (c.q_id || '').toUpperCase();
-            const code = (c.code || '').toUpperCase();
-            if (qid.includes('SUPP') || qid.includes('CLAMP') || qid.includes('ANODE') || qid.includes('FLANGE') || qid.includes('WELD') || qid.includes('RISG')) {
+            const qid = (c.q_id || '').toUpperCase().trim();
+            const code = (c.code || '').toUpperCase().trim();
+            
+            // Subcomponents cannot be primary parent
+            if (qid.includes('SUPP') || qid.includes('CLAMP') || qid.includes('CLP') || qid.includes('ANODE') || qid.includes('FLANGE') || qid.includes('WELD') || qid.includes('RISG')) {
                 return false;
             }
-            if (c.metadata?.associated_comp_id) {
+            const meta = c.metadata || {};
+            if (meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_comp_qid || meta.parent_qid) {
                 return false;
             }
             if (type === 'R') {
-                return code === 'RS' || code === 'RISER' || /^R(?:IS)?[ -]*\d+[A-Z]?$/i.test(qid);
+                return (code === 'RS' || code === 'RISER' || qid.startsWith('R') || qid.startsWith('RIS')) && !qid.startsWith('RISG');
             }
             if (type === 'J') {
-                return code === 'JT' || code === 'JTUBE' || /^J(?:TUBE)?[ -]*\d+[A-Z]?$/i.test(qid);
+                return code === 'JT' || code === 'JTUBE' || qid.startsWith('J');
             }
             if (type === 'I') {
-                return code === 'IT' || code === 'ITUBE' || /^I(?:TUBE)?[ -]*\d+[A-Z]?$/i.test(qid);
+                return code === 'IT' || code === 'ITUBE' || qid.startsWith('I');
             }
             return false;
         };
 
         // Fetch all components to build a complete QID map for grouping
-        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const { data: allComps } = effectiveStructureId 
+            ? await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', effectiveStructureId)
+            : { data: [] };
+
         const compRegistry = new Map<number, any>();
-        const parentCompMap = new Map<string, number>();
+        const parentCompsMap = new Map<number, any>();
+        const parentByQid = new Map<string, any>();
+        const parentByKey = new Map<string, any>();
+
+        const registerParent = (c: any) => {
+            if (!c || !c.id) return;
+            parentCompsMap.set(c.id, c);
+            const qid = (c.q_id || '').toUpperCase().trim();
+            if (qid) {
+                parentByQid.set(qid, c);
+                const baseQid = qid.replace(/[-_](SK\d+|WLP|PLAT|TEST|BAY).*/i, '').trim();
+                if (baseQid) parentByQid.set(baseQid, c);
+            }
+            const key = extractTubeKey(qid, rType);
+            if (key) {
+                parentByKey.set(key.raw, c);
+                parentByKey.set(key.norm, c);
+            }
+        };
 
         if (allComps) {
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
                 if (isParentComp(c, rType)) {
-                    parentCompMap.set(c.q_id.toUpperCase(), c.id);
-                    if (rType === 'R') {
-                        const m = c.q_id.match(/R(?:IS)?[ -]*(\d+[A-Z]?)/i);
-                        if (m) parentCompMap.set(m[1].toUpperCase(), c.id);
-                    } else if (rType === 'J') {
-                        const m = c.q_id.match(/J(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
-                        if (m) parentCompMap.set(m[1].toUpperCase(), c.id);
-                    } else if (rType === 'I') {
-                        const m = c.q_id.match(/I(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
-                        if (m) parentCompMap.set(m[1].toUpperCase(), c.id);
-                    }
+                    registerParent(c);
                 }
             });
         }
+
+        // Also register parent components from incoming inspection records
+        filteredRecords.forEach(r => {
+            const comp = r.structure_components;
+            if (comp) {
+                if (comp.id) compRegistry.set(comp.id, comp);
+                if (isParentComp(comp, rType)) {
+                    registerParent(comp);
+                }
+            }
+        });
+
+        // Helper to resolve parent component for any component / record
+        const resolveParentComp = (comp: any, r: any) => {
+            if (!comp) return null;
+            if (isParentComp(comp, rType)) {
+                return comp;
+            }
+            const meta = comp.metadata || r.metadata || {};
+
+            // 1. Direct parent ID reference from metadata
+            const pId = Number(meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id);
+            if (pId && parentCompsMap.has(pId)) {
+                return parentCompsMap.get(pId);
+            }
+            if (pId && compRegistry.has(pId)) {
+                const cand = compRegistry.get(pId);
+                if (isParentComp(cand, rType)) return cand;
+            }
+
+            // 2. Direct parent QID reference from metadata
+            const pQid = String(meta.associated_comp_qid || meta.parent_qid || meta.parent_q_id || '').toUpperCase().trim();
+            if (pQid && parentByQid.has(pQid)) {
+                return parentByQid.get(pQid);
+            }
+
+            const qid = (comp.q_id || r.q_id || r.component_qid || '').toUpperCase().trim();
+
+            // 3. Exact QID match in parentByQid
+            if (parentByQid.has(qid)) {
+                return parentByQid.get(qid);
+            }
+
+            // 4. Key match (e.g. RIS-11-SUPP matches R11 via '11')
+            const key = extractTubeKey(qid, rType);
+            if (key) {
+                if (parentByKey.has(key.norm)) return parentByKey.get(key.norm);
+                if (parentByKey.has(key.raw)) return parentByKey.get(key.raw);
+            }
+
+            // 5. Prefix match against registered parents
+            let longestMatch: any = null;
+            let longestLen = 0;
+            parentByQid.forEach((pComp, pQ) => {
+                if (qid.startsWith(pQ) || qid.startsWith(pQ + '-') || qid.startsWith(pQ + '_')) {
+                    if (pQ.length > longestLen) {
+                        longestLen = pQ.length;
+                        longestMatch = pComp;
+                    }
+                }
+            });
+            if (longestMatch) return longestMatch;
+
+            // 6. If there is only 1 registered parent component, assign subcomponents to it
+            if (parentCompsMap.size === 1) {
+                return Array.from(parentCompsMap.values())[0];
+            }
+
+            return null;
+        };
 
         // Group records by parent component
         const risersMap = new Map<number, { riserComp: any, records: any[] }>();
@@ -137,29 +248,12 @@ export const generateROVRRISIReport = async (
         filteredRecords.forEach(r => {
             const comp = r.structure_components;
             if (!comp) return;
-            let rid: number | null = null;
-            if (isParentComp(comp, rType)) {
-                rid = comp.id;
-            } else if (comp.metadata?.associated_comp_id && compRegistry.has(Number(comp.metadata.associated_comp_id))) {
-                rid = Number(comp.metadata.associated_comp_id);
-            } else {
-                const q = (comp.q_id || '').toUpperCase();
-                let m: RegExpMatchArray | null = null;
-                if (rType === 'R') m = q.match(/R(?:IS)?[ -]*(\d+[A-Z]?)/i);
-                else if (rType === 'J') m = q.match(/J(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
-                else if (rType === 'I') m = q.match(/I(?:TUBE)?[ -]*(\d+[A-Z]?)/i);
-
-                if (m && parentCompMap.has(m[1].toUpperCase())) {
-                    rid = parentCompMap.get(m[1].toUpperCase())!;
-                } else if (parentCompMap.has(q)) {
-                    rid = parentCompMap.get(q)!;
+            const parent = resolveParentComp(comp, r);
+            if (parent && parent.id) {
+                if (!risersMap.has(parent.id)) {
+                    risersMap.set(parent.id, { riserComp: parent, records: [] });
                 }
-            }
-            if (rid) {
-                if (!risersMap.has(rid)) {
-                    risersMap.set(rid, { riserComp: compRegistry.get(rid) || comp, records: [] });
-                }
-                risersMap.get(rid)!.records.push(r);
+                risersMap.get(parent.id)!.records.push(r);
             } else {
                 unassigned.push(r);
             }

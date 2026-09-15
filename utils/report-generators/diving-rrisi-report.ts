@@ -79,6 +79,41 @@ export const generateDivingRRISIReport = async (
         const compRegistry = new Map<number, any>();
         const parentCompsMap = new Map<number, any>();
         const parentQidMap = new Map<string, string>(); // uppercase parent QID -> Full Parent QID string
+        const parentKeyMap = new Map<string, string>(); // identifier key (e.g. '11') -> Full Parent QID string
+
+        const extractTubeKey = (qid: string, prefix: 'R' | 'J' | 'I') => {
+            if (!qid) return null;
+            const q = qid.toUpperCase().trim();
+            let pattern: RegExp;
+            if (prefix === 'R') {
+                pattern = /^(?:RISER|RIS|RS|R)[-_ ]*(\d+[A-Z]?)/i;
+            } else if (prefix === 'J') {
+                pattern = /^(?:JTUBE|JT|J)[-_ ]*(\d+[A-Z]?)/i;
+            } else {
+                pattern = /^(?:ITUBE|IT|I)[-_ ]*(\d+[A-Z]?)/i;
+            }
+            const match = q.match(pattern);
+            if (match) {
+                const rawNum = match[1].toUpperCase();
+                const normNum = rawNum.replace(/^0+/, '') || '0';
+                return { raw: rawNum, norm: normNum };
+            }
+            return null;
+        };
+
+        const registerDivingParent = (cId: number, qid: string, compObj: any) => {
+            if (!qid) return;
+            const qidUpper = qid.toUpperCase().trim();
+            if (cId) parentCompsMap.set(cId, compObj);
+            parentQidMap.set(qidUpper, qid);
+            const baseQid = qid.replace(/[-_](SK\d+|WLP|PLAT|TEST|BAY).*/i, '').trim();
+            if (baseQid) parentQidMap.set(baseQid.toUpperCase(), qid);
+            const key = extractTubeKey(qid, targetPrefix as 'R' | 'J' | 'I');
+            if (key) {
+                parentKeyMap.set(key.raw, qid);
+                parentKeyMap.set(key.norm, qid);
+            }
+        };
 
         // 1) Populate parentCompsMap from allComps
         if (allComps) {
@@ -89,12 +124,11 @@ export const generateDivingRRISIReport = async (
                 const qidUpper = qid.toUpperCase();
 
                 const isRsCode = code === 'RS' || code === 'RISER' || code === 'JT' || code === 'IT' || code === 'I-TUBE' || code === 'J-TUBE';
-                const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(c.metadata?.associated_comp_id);
-                const isParentCandidate = isRsCode && !isSubComp && qidUpper.startsWith(targetPrefix);
+                const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('CLP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(c.metadata?.associated_comp_id || c.metadata?.parent_id);
+                const isParentCandidate = (isRsCode || qidUpper.startsWith(targetPrefix)) && !isSubComp;
 
                 if (isParentCandidate && qid) {
-                    parentCompsMap.set(c.id, c);
-                    parentQidMap.set(qidUpper, qid);
+                    registerDivingParent(c.id, qid, c);
                 }
             });
         }
@@ -108,16 +142,11 @@ export const generateDivingRRISIReport = async (
             const qidUpper = qid.toUpperCase();
 
             const isRsCode = cCode === 'RS' || cCode === 'RISER' || cCode === 'JT' || cCode === 'IT' || cCode === 'I-TUBE' || cCode === 'J-TUBE';
-            const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(comp.metadata?.associated_comp_id || r.metadata?.associated_comp_id);
-            const isParentCandidate = isRsCode && !isSubComp && qidUpper.startsWith(targetPrefix);
+            const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('CLP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(comp.metadata?.associated_comp_id || r.metadata?.associated_comp_id || comp.metadata?.parent_id);
+            const isParentCandidate = (isRsCode || qidUpper.startsWith(targetPrefix)) && !isSubComp;
 
             if (isParentCandidate && qid) {
-                if (cId && !parentCompsMap.has(cId)) {
-                    parentCompsMap.set(cId, comp.q_id ? comp : { id: cId, q_id: qid, code: cCode || 'RS' });
-                }
-                if (!parentQidMap.has(qidUpper)) {
-                    parentQidMap.set(qidUpper, qid);
-                }
+                registerDivingParent(cId, qid, comp.q_id ? comp : { id: cId, q_id: qid, code: cCode || 'RS' });
                 if (cId) compRegistry.set(cId, comp);
             }
         });
@@ -134,7 +163,7 @@ export const generateDivingRRISIReport = async (
             if (targetPrefix === 'R' && qidUpper.startsWith('RISG')) return null;
 
             // A) Check metadata associated parent ID
-            const pId = Number(metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id);
+            const pId = Number(metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id);
             if (pId && compRegistry.has(pId)) {
                 const pComp = compRegistry.get(pId);
                 const pQ = (pComp.q_id || '').trim();
@@ -156,7 +185,14 @@ export const generateDivingRRISIReport = async (
                 return parentQidMap.get(qidUpper)!;
             }
 
-            // D) Prefix matching against known parent QIDs (longest matching parent QID)
+            // D) Key match (e.g. RIS-11-SUPP matches R11 via key '11')
+            const key = extractTubeKey(qid, targetPrefix as 'R' | 'J' | 'I');
+            if (key) {
+                if (parentKeyMap.has(key.norm)) return parentKeyMap.get(key.norm)!;
+                if (parentKeyMap.has(key.raw)) return parentKeyMap.get(key.raw)!;
+            }
+
+            // E) Prefix matching against known parent QIDs (longest matching parent QID)
             let bestMatchUpper = '';
             let bestMatchOriginal = '';
             parentQidMap.forEach((origQid, pQUpper) => {
@@ -169,7 +205,7 @@ export const generateDivingRRISIReport = async (
             });
             if (bestMatchOriginal) return bestMatchOriginal;
 
-            // E) Fallback prefix check & regex pattern matching (only when no registered parent QID matched)
+            // F) Fallback prefix check & regex pattern matching (only when no registered parent QID matched)
             const isMatchPrefix = qidUpper.startsWith(targetPrefix) || 
                 (targetPrefix === 'R' && qidUpper.startsWith('RIS')) ||
                 (targetPrefix === 'J' && qidUpper.startsWith('JT')) ||
