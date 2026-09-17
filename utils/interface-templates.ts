@@ -644,7 +644,7 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
     ],
   },
 
-  // 18. SZS - Splashzone Inspection
+  // 18. SZS - Splash Zone Inspection
   {
     id: "sics-szs",
     identifierCode: "SZS",
@@ -652,7 +652,7 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
     fileNameFormat: "yymmdd-nn-SZS.txt",
     queryStrategy: "INSP_RECORDS",
     inspectionTypeCode: ["SPLASH", "SZS"],
-    description: "Splashzone Inspection Table Structure",
+    description: "Splash Zone Inspection Table Structure",
     columns: [
       ...SICS_COMMON_PREFIX,
       { key: "CP_RDG", header: "CP_RDG", dataType: "number", width: 12, dataSize: 5, description: "CP Reading (mV)" },

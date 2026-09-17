@@ -73,7 +73,7 @@ const TOC_SECTIONS = [
       { id: "diving-rrisi-report", name: "Riser Inspection (Sketch) Report (Diving)", mode: "Diving" },
       { id: "diving-rrisi-detail-report", name: "Riser Inspection Report (Diving)", mode: "Diving" }
   ]},
-  { id: 7, name: "Splashzone Inspection", templates: [
+  { id: 7, name: "Splash Zone Inspection", templates: [
       { id: "szci-report", name: "Splash Zone Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", mode: "Diving" },
       { id: "diving-plco-report", name: "Coating Damage Inspection (Diving)", mode: "Diving" }
@@ -88,7 +88,7 @@ const TOC_SECTIONS = [
       { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-mgi-report", name: "Marine Growth Inspection Graph Report (Diving)", mode: "Diving" }
   ]},
-  { id: 10, name: "Base Level Survey (Scour Survey)", templates: [
+  { id: 10, name: "Base Level Survey", templates: [
       { id: "rov-scour-report", name: "Scour Survey Report (ROV)", mode: "ROV" },
       { id: "rov-rwdi-report", name: "Water Depth Inspection Report (ROV)", mode: "ROV" },
       { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }

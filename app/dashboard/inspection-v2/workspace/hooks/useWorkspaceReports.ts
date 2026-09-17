@@ -1768,7 +1768,7 @@ export function useWorkspaceReports(
     const generateSZONEReport = async () => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SZONE');
         if (records.length === 0) {
-            toast.error("No Splashzone records found to generate report");
+            toast.error("No Splash Zone records found to generate report");
             return;
         }
         setSzonePreviewOpen(true);
