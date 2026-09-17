@@ -863,10 +863,10 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
     queryStrategy: "JOBPACK_SOW_MASTER",
     description: "Jobpack / SOW Master Table Structure",
     columns: [
-      { key: "INSPNO", header: "INSPNO", dataType: "string", width: 16, dataSize: 11, description: "Inspection / SOW Report No.", required: true },
-      { key: "JOBNAME", header: "JOBNAME", dataType: "string", width: 24, dataSize: 20, description: "SOW / Jobpack Name", required: true },
-      { key: "ISTART", header: "ISTART", dataType: "date", width: 14, description: "SOW / Jobpack Start Date" },
-      { key: "STATUS", header: "STATUS", dataType: "string", width: 14, dataSize: 10, description: "SOW / Jobpack Status (OPEN / CLOSED)", required: true },
+      { key: "INSPNO", header: "INSPNO", dataType: "string", width: 16, dataSize: 11, description: "Inspection / SOW Report No. (Jobpack ID + 10000, 11-char left-padded with 0)", required: true, sourceField: "jobpack.id" },
+      { key: "JOBNAME", header: "JOBNAME", dataType: "string", width: 24, dataSize: 20, description: "SOW / Jobpack Name", required: true, sourceField: "jobpack.name" },
+      { key: "ISTART", header: "ISTART", dataType: "date", width: 14, description: "SOW / Jobpack Start Date", sourceField: "jobpack.metadata.istart" },
+      { key: "STATUS", header: "STATUS", dataType: "string", width: 14, dataSize: 10, description: "SOW / Jobpack Status (OPEN / CLOSED)", required: true, sourceField: "jobpack.status" },
     ],
   },
 ];

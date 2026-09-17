@@ -8169,7 +8169,7 @@ export async function POST(request: NextRequest) {
           // 1. Fetch all inspection records for this structure at once (optimized memory-based matching)
           const { data: allRecords, error: allRecsErr } = await (supabase as any)
             .from('insp_records')
-            .select('insp_id, component_id, inspection_type_id, inspection_type_code, status, elevation, sow_report_no, inspection_date')
+            .select('insp_id, jobpack_id, component_id, inspection_type_id, inspection_type_code, status, elevation, sow_report_no, inspection_date')
             .eq('structure_id', resolvedStructureId);
 
           if (allRecsErr) {
@@ -8208,8 +8208,9 @@ export async function POST(request: NextRequest) {
                   for (const item of existingItems) {
                     const reportNo = item.report_number || fallbackReportNo;
                     
-                    // Filter matching inspection records in memory
+                    // Filter matching inspection records in memory strictly scoped to this jobpack
                     const matchingRecords = (allRecords || []).filter((r: any) => 
+                      (sow.jobpack_id ? r.jobpack_id === sow.jobpack_id : true) &&
                       r.component_id === item.component_id && 
                       (r.inspection_type_id === item.inspection_type_id || r.inspection_type_code === item.inspection_code) &&
                       (!reportNo || r.sow_report_no === reportNo)

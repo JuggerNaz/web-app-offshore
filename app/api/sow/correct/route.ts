@@ -14,16 +14,26 @@ export const POST = withTenant(async (request, { companyId }) => {
 
         const structId = parseInt(structure_id);
 
+        // 1. Fetch SOW parent details to get jobpack_id
+        const { data: sowData, error: sowParentError } = await (supabase as any)
+            .from("u_sow")
+            .select("id, jobpack_id, structure_id, name")
+            .eq("id", sow_id)
+            .single();
+
+        const currentJobpackId = sowData?.jobpack_id;
+
         // Helper to match report numbers (e.g. '2026-01' vs '2026-01A')
         const isReportMatch = (r1: string | null, r2: string | null) => {
-            if (!r1 || !r2) return true;
+            if (!r1 && !r2) return true;
+            if (!r1 || !r2) return false;
             if (r1 === r2) return true;
             const c1 = r1.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
             const c2 = r2.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
             return c1 === c2 || c1.startsWith(c2) || c2.startsWith(c1);
         };
 
-        // 1. Fetch all SOW items for this sow_id
+        // 1b. Fetch all SOW items for this sow_id
         const { data: sowItems, error: sowError } = await (supabase as any)
             .from("u_sow_items")
             .select("*")
@@ -43,15 +53,21 @@ export const POST = withTenant(async (request, { companyId }) => {
             .eq("structure_id", structId)
             .eq("is_deleted", false);
 
-        // 4. Fetch ALL inspection records for this structure
-        const { data: records, error: recError } = await (supabase as any)
+        // 4. Fetch inspection records for this structure and jobpack
+        let recordsQuery = (supabase as any)
             .from("insp_records")
             .select("insp_id, component_id, inspection_type_id, inspection_type_code, status, elevation, sow_report_no, has_anomaly, jobpack_id, inspection_data")
             .eq("structure_id", structId);
 
+        if (currentJobpackId) {
+            recordsQuery = recordsQuery.eq("jobpack_id", currentJobpackId);
+        }
+
+        const { data: records, error: recError } = await recordsQuery;
+
         if (recError) throw recError;
 
-        // 5. Fetch ALL anomalies for this structure
+        // 5. Fetch anomalies for this structure matching current jobpack/report
         const { data: anomalies } = await (supabase as any)
             .from("v_anomaly_details")
             .select("anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name, structure_id, sow_report_no")
@@ -82,7 +98,8 @@ export const POST = withTenant(async (request, { companyId }) => {
                         r.inspection_type_code.toUpperCase().includes(typeCode.toUpperCase())
                     ));
 
-                return matchesComp && matchesType;
+                const matchesRpt = isReportMatch(item.report_number, r.sow_report_no);
+                return matchesComp && matchesType && matchesRpt;
             });
 
             const itemAnomalies = (anomalies || []).filter((a: any) => {
@@ -101,7 +118,7 @@ export const POST = withTenant(async (request, { companyId }) => {
             let newElevationData = item.elevation_data || [];
             let statusChanged = false;
 
-            if (item.elevation_required && Array.isArray(item.elevation_data)) {
+            if (item.elevation_required && Array.isArray(item.elevation_data) && item.elevation_data.length > 0) {
                 const updatedElevData = item.elevation_data.map((elev: any) => {
                     const start = parseFloat(elev.start);
                     const end = parseFloat(elev.end);
@@ -130,11 +147,12 @@ export const POST = withTenant(async (request, { companyId }) => {
                 newElevationData = updatedElevData;
 
                 const hasAnom = updatedElevData.some((e: any) => e.status === 'anomaly');
+                const hasComp = updatedElevData.some((e: any) => e.status === 'completed');
                 const allDone = updatedElevData.every((e: any) => e.status === 'completed' || e.status === 'anomaly');
                 const allPending = updatedElevData.every((e: any) => e.status === 'pending');
                 
                 if (hasAnom) newStatus = 'anomaly';
-                else if (allDone) newStatus = 'completed';
+                else if (allDone && hasComp) newStatus = 'completed';
                 else if (allPending) newStatus = 'pending';
                 else newStatus = 'incomplete';
             } else {
@@ -144,12 +162,14 @@ export const POST = withTenant(async (request, { companyId }) => {
                     newStatus = hasAnom ? 'anomaly' : (hasIncomplete ? 'incomplete' : 'completed');
                 } else if (itemAnomalies.length > 0) {
                     newStatus = 'anomaly';
+                } else {
+                    newStatus = 'pending';
                 }
             }
 
             if (newStatus !== item.status) statusChanged = true;
 
-            // Align report_number with actual inspection records or anomalies if null or suffix mismatched (e.g. '2026-01' -> '2026-01A')
+            // Align report_number with actual inspection records or anomalies if null or suffix mismatched
             let newReportNumber = item.report_number;
             const actualReportNo = itemAnomalies[0]?.sow_report_no || itemRecords[0]?.sow_report_no;
             if (actualReportNo && actualReportNo !== item.report_number && isReportMatch(item.report_number, actualReportNo)) {
@@ -183,109 +203,33 @@ export const POST = withTenant(async (request, { companyId }) => {
             }
         }
 
-        // 7. Identify missing SOW items (inspection records or anomalies without a SOW item)
-        const missingItems: any[] = [];
-        const existingKeys = new Set((sowItems || []).map((item: any) => `${item.component_id}:${item.inspection_type_id}`));
+        // 7. Recalculate parent SOW totals
+        const { data: allRefreshedItems } = await (supabase as any)
+            .from("u_sow_items")
+            .select("status")
+            .eq("sow_id", sow_id);
 
-        const recordGroups: Record<string, any[]> = {};
+        const totalItems = allRefreshedItems?.length || 0;
+        const completedItems = (allRefreshedItems || []).filter((i: any) => i.status === 'completed').length;
+        const incompleteItems = (allRefreshedItems || []).filter((i: any) => i.status === 'incomplete').length;
+        const pendingItems = (allRefreshedItems || []).filter((i: any) => i.status === 'pending').length;
 
-        const addRecordToGroup = (compId: number, typeId: number, rec: any) => {
-            const key = `${compId}:${typeId}`;
-            if (!existingKeys.has(key)) {
-                if (!recordGroups[key]) recordGroups[key] = [];
-                recordGroups[key].push(rec);
-            }
-        };
-
-        for (const rec of (records || [])) {
-            let compId = rec.component_id;
-            if (!compId) {
-                const recQid = rec.component_qid || rec.inspection_data?.component || rec.inspection_data?.component_qid || rec.inspection_data?.qid;
-                if (recQid) {
-                    const matchComp = (allComps || []).find((c: any) => String(c.q_id).toUpperCase() === String(recQid).toUpperCase());
-                    if (matchComp) compId = matchComp.id;
-                }
-            }
-
-            let typeId = rec.inspection_type_id;
-            if (!typeId && rec.inspection_type_code) {
-                const foundType = (allTypes || []).find((t: any) => 
-                    t.code.toUpperCase() === rec.inspection_type_code.toUpperCase() ||
-                    t.code.toUpperCase().includes(rec.inspection_type_code.toUpperCase()) ||
-                    rec.inspection_type_code.toUpperCase().includes(t.code.toUpperCase())
-                );
-                if (foundType) typeId = foundType.id;
-            }
-
-            if (compId && typeId) {
-                addRecordToGroup(compId, typeId, rec);
-            }
-        }
-
-        // Also check anomalies for missing items
-        for (const anom of (anomalies || [])) {
-            let compId = anom.component_id;
-            if (!compId && (anom.component_qid || anom.component_name)) {
-                const q = (anom.component_qid || anom.component_name).toUpperCase();
-                const matchComp = (allComps || []).find((c: any) => String(c.q_id).toUpperCase() === q);
-                if (matchComp) compId = matchComp.id;
-            }
-
-            let typeId: any = null;
-            if (anom.category || anom.defect_type) {
-                const catStr = (anom.category || anom.defect_type || "").toUpperCase();
-                const matchType = (allTypes || []).find((t: any) => 
-                    catStr.includes(t.code.toUpperCase()) || t.name.toUpperCase().includes(catStr) || catStr.includes(t.name.toUpperCase())
-                );
-                if (matchType) typeId = matchType.id;
-            }
-
-            if (compId && typeId) {
-                addRecordToGroup(compId, typeId, { ...anom, has_anomaly: true, status: 'ANOMALY' });
-            }
-        }
-
-        if (Object.keys(recordGroups).length > 0) {
-            for (const [key, group] of Object.entries(recordGroups)) {
-                const [compIdStr, typeIdStr] = key.split(':');
-                const compId = parseInt(compIdStr);
-                const typeId = parseInt(typeIdStr);
-                const comp = (allComps || []).find((c: any) => c.id === compId);
-                const type = (allTypes || []).find((t: any) => t.id === typeId);
-
-                if (comp && type) {
-                    const hasAnom = (group || []).some((r: any) => r.has_anomaly || String(r.status).toUpperCase() === 'ANOMALY' || String(r.status).toLowerCase() === 'anomaly');
-                    const hasIncomplete = (group || []).some((r: any) => String(r.status).toUpperCase() === 'INCOMPLETE');
-                    const status = hasAnom ? 'anomaly' : (hasIncomplete ? 'incomplete' : 'completed');
-                    const recordReportNo = group[0]?.sow_report_no || '2026-01A';
-
-                    missingItems.push({
-                        sow_id,
-                        component_id: compId,
-                        component_qid: comp.q_id,
-                        component_type: comp.code,
-                        inspection_type_id: typeId,
-                        inspection_code: type.code,
-                        inspection_name: type.name,
-                        status,
-                        report_number: recordReportNo,
-                        company_id: companyId,
-                        created_by: 'Correction Tool',
-                        updated_at: new Date().toISOString()
-                    });
-                }
-            }
-
-            if (missingItems.length > 0) {
-                await (supabase as any).from("u_sow_items").insert(missingItems);
-            }
-        }
+        await (supabase as any)
+            .from("u_sow")
+            .update({
+                total_items: totalItems,
+                completed_items: completedItems,
+                incomplete_items: incompleteItems,
+                pending_items: pendingItems,
+                updated_at: new Date().toISOString()
+            })
+            .eq("id", sow_id);
 
         return NextResponse.json({ 
             success: true, 
             total_checked: sowItems.length, 
             updated_count: updates.length,
-            inserted_count: missingItems.length
+            inserted_count: 0
         });
 
     } catch (error: any) {

@@ -75,6 +75,7 @@ export default function InterfaceModulePage() {
 
   // Data fetching state
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
+  const [isFetchingJobpacks, setIsFetchingJobpacks] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [structuresList, setStructuresList] = useState<any[]>([]);
   const [jobpacksList, setJobpacksList] = useState<any[]>([]);
@@ -151,20 +152,61 @@ export default function InterfaceModulePage() {
             .map((s: any) => s.str_id || s.id);
           setSelectedStructureIds(platIds.length > 0 ? platIds : list.map((s: any) => s.str_id || s.id));
         }
-
-        const jpRes = await fetch("/api/jobpack");
-        if (jpRes.ok) {
-          const jpJson = await jpRes.json();
-          setJobpacksList(jpJson.data || []);
-        }
       } catch (err) {
-        console.warn("[Interface] Load error:", err);
+        console.warn("[Interface] Load structures error:", err);
       } finally {
         setIsLoadingData(false);
       }
     }
     loadData();
   }, []);
+
+  // ─── Fetch Jobpacks Scoped Strictly to Selected Structure(s) ───────────────
+  useEffect(() => {
+    let isMounted = true;
+    async function loadScopedJobpacks() {
+      if (selectedStructureIds.length === 0) {
+        setJobpacksList([]);
+        setSelectedJobpackIds([]);
+        return;
+      }
+
+      setIsFetchingJobpacks(true);
+      try {
+        const idsParam = selectedStructureIds.join(",");
+        const selectedTitles = structuresList
+          .filter((s) => selectedStructureIds.includes(s.str_id || s.id))
+          .map((s) => s.str_name || s.title || "")
+          .filter(Boolean);
+        const titlesParam = encodeURIComponent(selectedTitles.join(","));
+
+        const url = `/api/jobpack?structure_ids=${idsParam}${titlesParam ? `&structure_titles=${titlesParam}` : ""}&limit=1000`;
+        const jpRes = await fetch(url);
+        if (jpRes.ok) {
+          const jpJson = await jpRes.json();
+          const list = jpJson.data || [];
+          if (isMounted) {
+            setJobpacksList(list);
+            // Automatically prune any selected jobpack IDs that are no longer part of the scoped structures
+            setSelectedJobpackIds((prev) =>
+              prev.filter((id) => list.some((jp: any) => jp.id === id))
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("[Interface] Load scoped jobpacks error:", err);
+      } finally {
+        if (isMounted) {
+          setIsFetchingJobpacks(false);
+        }
+      }
+    }
+
+    loadScopedJobpacks();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedStructureIds, structuresList]);
 
   // Active Client & Active Interface
   const activeClient = useMemo(() => {
@@ -960,10 +1002,16 @@ export default function InterfaceModulePage() {
                         Jobpack & SOW Retrieval Filter
                       </CardTitle>
                       <CardDescription className="text-xs">
-                        Per SICS specs: automatically retrieves OPEN jobpacks (or closed within 1 day of export)
+                        Scoped strictly to selected structure(s) per SICS interface specifications
                       </CardDescription>
                     </div>
                   </div>
+
+                  {selectedStructureIds.length > 0 && !isFetchingJobpacks && (
+                    <Badge variant="outline" className="font-mono text-[10px] bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20">
+                      {jobpacksList.length} Jobpack{jobpacksList.length !== 1 ? "s" : ""} Scoped
+                    </Badge>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -977,7 +1025,7 @@ export default function InterfaceModulePage() {
                         : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     )}
                   >
-                    All Active Jobpacks ({jobpacksList.length})
+                    All Active Jobpacks for Structure{selectedStructureIds.length > 1 ? "s" : ""} ({jobpacksList.length})
                   </button>
                   <button
                     onClick={() => setJobpackMode("SELECTED")}
@@ -992,38 +1040,124 @@ export default function InterfaceModulePage() {
                   </button>
                 </div>
 
-                {jobpackMode === "SELECTED" && (
+                {isFetchingJobpacks ? (
+                  <div className="flex items-center justify-center py-8 text-xs text-slate-400 gap-2 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                    <RefreshCw className="h-4 w-4 animate-spin text-teal-500" />
+                    <span>Loading jobpacks for selected structure(s)...</span>
+                  </div>
+                ) : selectedStructureIds.length === 0 ? (
+                  <div className="p-5 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-xs text-slate-400 space-y-1">
+                    <Package className="h-5 w-5 mx-auto mb-1 text-slate-400 opacity-60" />
+                    <p className="font-semibold text-slate-600 dark:text-slate-300">No Structures Selected</p>
+                    <p className="text-[11px]">Select at least one asset in Step 3 above to list down its associated jobpacks.</p>
+                  </div>
+                ) : jobpacksList.length === 0 ? (
+                  <div className="p-5 rounded-2xl border border-dashed border-amber-300/40 bg-amber-500/5 text-center text-xs text-amber-600 dark:text-amber-400 space-y-1">
+                    <AlertCircle className="h-5 w-5 mx-auto mb-1 opacity-80" />
+                    <p className="font-semibold">No Jobpacks Found</p>
+                    <p className="text-[11px] opacity-80">No jobpacks are currently associated with the selected structure(s).</p>
+                  </div>
+                ) : jobpackMode === "SELECTED" ? (
                   <div className="space-y-2 animate-in fade-in duration-300">
-                    <Input
-                      placeholder="Search jobpack..."
-                      value={searchJobpackQuery}
-                      onChange={(e) => setSearchJobpackQuery(e.target.value)}
-                      className="h-8 text-xs rounded-xl"
-                    />
-                    <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-1 p-1">
-                      {filteredJobpacks.map((jp) => {
-                        const isSel = selectedJobpackIds.includes(jp.id);
-                        return (
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          placeholder="Search scoped jobpack..."
+                          value={searchJobpackQuery}
+                          onChange={(e) => setSearchJobpackQuery(e.target.value)}
+                          className="pl-8 h-8 text-xs rounded-xl"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedJobpackIds(filteredJobpacks.map((jp) => jp.id))}
+                        className="text-[11px] h-8 px-2 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10"
+                      >
+                        Select All
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedJobpackIds([])}
+                        className="text-[11px] h-8 px-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        Clear
+                      </Button>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1 p-1">
+                      {filteredJobpacks.length === 0 ? (
+                        <p className="text-center py-4 text-xs text-slate-400">No matching jobpack found for search query</p>
+                      ) : (
+                        filteredJobpacks.map((jp) => {
+                          const isSel = selectedJobpackIds.includes(jp.id);
+                          return (
+                            <div
+                              key={jp.id}
+                              onClick={() => handleToggleJobpack(jp.id)}
+                              className={cn(
+                                "p-2.5 rounded-xl border text-xs flex items-center justify-between cursor-pointer transition-all",
+                                isSel
+                                  ? "bg-teal-500/10 border-teal-500/50 font-bold text-teal-700 dark:text-teal-300 shadow-sm"
+                                  : "bg-white/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-teal-400/40"
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5 truncate">
+                                <div
+                                  className={cn(
+                                    "h-4 w-4 rounded-md border flex items-center justify-center shrink-0 transition-colors",
+                                    isSel
+                                      ? "bg-teal-600 border-teal-600 text-white"
+                                      : "border-slate-300 dark:border-slate-600"
+                                  )}
+                                >
+                                  {isSel && <Check className="h-3 w-3 stroke-[3]" />}
+                                </div>
+                                <span className="truncate">{jp.name}</span>
+                              </div>
+                              <Badge variant="outline" className="text-[10px] font-mono shrink-0">
+                                {jp.status || "OPEN"}
+                              </Badge>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 animate-in fade-in duration-300">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        placeholder="Filter jobpack names..."
+                        value={searchJobpackQuery}
+                        onChange={(e) => setSearchJobpackQuery(e.target.value)}
+                        className="pl-8 h-8 text-xs rounded-xl"
+                      />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1 p-1">
+                      {filteredJobpacks.length === 0 ? (
+                        <p className="text-center py-4 text-xs text-slate-400">No matching jobpack found for search query</p>
+                      ) : (
+                        filteredJobpacks.map((jp) => (
                           <div
                             key={jp.id}
-                            onClick={() => handleToggleJobpack(jp.id)}
-                            className={cn(
-                              "p-2 rounded-xl border text-xs flex items-center justify-between cursor-pointer transition-all",
-                              isSel
-                                ? "bg-teal-500/10 border-teal-500/50 font-bold text-teal-700 dark:text-teal-300"
-                                : "bg-white/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
-                            )}
+                            className="p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white/50 dark:bg-slate-800/40 text-xs flex items-center justify-between text-slate-700 dark:text-slate-300"
                           >
-                            <div className="flex items-center gap-2 truncate">
-                              <Package className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                              <span className="truncate">{jp.name}</span>
+                            <div className="flex items-center gap-2.5 truncate">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-teal-500 shrink-0" />
+                              <span className="truncate font-medium">{jp.name}</span>
                             </div>
-                            <Badge variant="outline" className="text-[10px] font-mono shrink-0">
+                            <Badge variant="outline" className="text-[9px] font-mono shrink-0">
                               {jp.status || "OPEN"}
                             </Badge>
                           </div>
-                        );
-                      })}
+                        ))
+                      )}
                     </div>
                   </div>
                 )}

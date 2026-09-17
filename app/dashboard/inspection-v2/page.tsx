@@ -82,50 +82,10 @@ function getInitialCachedList<T>(sessionKey: string): T[] {
 
 export default function InspectionLanding() {
     const router = useRouter();
-    const supabase = createClient();
-
-    const initialStructure = useMemo(() => getInitialInspectionState("inspection_structure", "structure"), []);
-    const initialJobPack = useMemo(() => getInitialInspectionState("inspection_jobpack", "jobpack"), []);
-    const initialSow = useMemo(() => getInitialInspectionState("inspection_sow"), []);
-    const initialMode = useMemo(() => getInitialInspectionState("inspection_mode", "mode") || "ROV", []);
-
-    const initialRawStructId = initialStructure ? initialStructure.replace(/^(platform|pipeline)-/, "") : "";
-    const initialSowKey = initialJobPack && initialRawStructId ? `${initialJobPack}_${initialRawStructId}` : "";
-
-    const [allStructures, setAllStructures] = useState<Structure[]>(() => {
-        if (memoryAllStructures.length > 0) return memoryAllStructures;
-        return getInitialCachedList<Structure>("cached_all_structures");
-    });
-
-    const [jobPacks, setJobPacks] = useState<JobPack[]>(() => {
-        if (initialRawStructId && memoryJobPacksByStructure.has(initialRawStructId)) {
-            return memoryJobPacksByStructure.get(initialRawStructId) || [];
-        }
-        if (initialRawStructId) {
-            return getInitialCachedList<JobPack>(`cached_jobpacks_${initialRawStructId}`);
-        }
-        return [];
-    });
-
-    const [sowReports, setSOWReports] = useState<SOWReport[]>(() => {
-        if (initialSowKey && memorySowReportsByJobPack.has(initialSowKey)) {
-            return memorySowReportsByJobPack.get(initialSowKey) || [];
-        }
-        if (initialSowKey) {
-            return getInitialCachedList<SOWReport>(`cached_sows_${initialSowKey}`);
-        }
-        return [];
-    });
-
-    const [rawSowItems, setRawSowItems] = useState<any[]>(() => {
-        if (initialSowKey && memoryRawSowItemsByJobPack.has(initialSowKey)) {
-            return memoryRawSowItemsByJobPack.get(initialSowKey) || [];
-        }
-        if (initialSowKey) {
-            return getInitialCachedList<any>(`cached_sow_items_${initialSowKey}`);
-        }
-        return [];
-    });
+    const [allStructures, setAllStructures] = useState<Structure[]>([]);
+    const [jobPacks, setJobPacks] = useState<JobPack[]>([]);
+    const [sowReports, setSOWReports] = useState<SOWReport[]>([]);
+    const [rawSowItems, setRawSowItems] = useState<any[]>([]);
 
     const [sowInspRecords, setSowInspRecords] = useState<any[]>([]);
     const [anomalyCount, setAnomalyCount] = useState<number>(0);
@@ -135,14 +95,15 @@ export default function InspectionLanding() {
     const [sowReportsLoading, setSowReportsLoading] = useState<boolean>(false);
 
     const [mounted, setMounted] = useState(false);
-    const [selectedJobPack, setSelectedJobPack] = useState<string>(initialJobPack);
-    const [selectedStructure, setSelectedStructure] = useState<string>(initialStructure);
-    const [selectedSOW, setSelectedSOW] = useState<string>(initialSow);
-    const [selectedMode, setSelectedMode] = useState<string>(initialMode);
-    const [loading, setLoading] = useState(() => memoryAllStructures.length === 0);
+    const [selectedJobPack, setSelectedJobPack] = useState<string>("");
+    const [selectedStructure, setSelectedStructure] = useState<string>("");
+    const [selectedSOW, setSelectedSOW] = useState<string>("");
+    const [selectedMode, setSelectedMode] = useState<string>("ROV");
+    const [loading, setLoading] = useState<boolean>(true);
+    const supabase = useMemo(() => createClient(), []);
 
-    const prevStructureRef = useRef<string>(initialStructure);
-    const prevJobPackRef = useRef<string>(initialJobPack);
+    const prevStructureRef = useRef<string>("");
+    const prevJobPackRef = useRef<string>("");
     const activeJobPackReqIdRef = useRef<number>(0);
     const activeSowReqIdRef = useRef<number>(0);
 
@@ -260,6 +221,22 @@ export default function InspectionLanding() {
     const hasInitialUrlSyncRef = useRef(false);
     useEffect(() => {
         setMounted(true);
+        const initStruct = getInitialInspectionState("inspection_structure", "structure");
+        const initJobPack = getInitialInspectionState("inspection_jobpack", "jobpack");
+        const initSow = getInitialInspectionState("inspection_sow");
+        const initMode = getInitialInspectionState("inspection_mode", "mode") || "ROV";
+
+        if (initStruct) {
+            setSelectedStructure(initStruct);
+            prevStructureRef.current = initStruct;
+        }
+        if (initJobPack) {
+            setSelectedJobPack(initJobPack);
+            prevJobPackRef.current = initJobPack;
+        }
+        if (initSow) setSelectedSOW(initSow);
+        if (initMode) setSelectedMode(initMode);
+
         loadStructures();
     }, []);
 
@@ -496,6 +473,7 @@ export default function InspectionLanding() {
 
         async function fetchSowInspRecords(structId: string, jpId: string, sowReportNo: string) {
             try {
+                const supabase = createClient();
                 const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
                 const cacheKey = `sow_records_${rawId}_${jpId}_${sowReportNo || 'all'}`;
 
@@ -562,6 +540,7 @@ export default function InspectionLanding() {
 
         async function fetchAnomalyCount(structId: string, jpId: string, sowReportNo: string) {
             try {
+                const supabase = createClient();
                 // Parse prefix e.g., platform-1 or pipeline-1
                 const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
                 const numRawId = parseInt(rawId);

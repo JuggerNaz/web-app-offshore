@@ -255,7 +255,7 @@ export function SOWDialog({
     };
 
     // ── CORE LOGIC ──
-    const getTaskMode = (it: { code: string; name: string; metadata?: any }) => {
+    const getTaskMode = (it: { code?: string; name?: string; metadata?: any }) => {
         const code = (it.code || "").toUpperCase();
         const name = (it.name || "").toUpperCase();
         const meta = it.metadata || {};
@@ -268,18 +268,18 @@ export function SOWDialog({
         if (isDiving && !isRov) return "DIVING";
         if (isRov && isDiving) {
             // Both flags set — disambiguate by code/name
-            if (code.includes("ROV") || name.includes("ROV")) return "ROV";
+            if (code.includes("ROV") || name.includes("ROV") || code.startsWith("R")) return "ROV";
             return "DIVING";
         }
 
         // Neither flag set explicitly — fallback to code/name heuristics
-        if (code.includes("ROV") || name.includes("ROV") || name.includes("SEABED")) return "ROV";
+        if (code.includes("ROV") || name.includes("ROV") || name.includes("SEABED") || code.startsWith("R")) return "ROV";
         return "DIVING";
     };
 
     const getModeStyles = (mode: "ROV" | "DIVING") => {
         if (mode === "ROV") return { text: "text-[#0ea5e9]", bg: "bg-[#0ea5e9]", border: "border-[#0ea5e9]/20", light: "bg-[#0ea5e9]/5", icon: <PlaneTakeoff className="h-4 w-4" /> };
-        return { text: "text-[#10b981]", bg: "bg-[#10b981]", border: "border-[#10b981]/20", light: "bg-[#10b981]/5", icon: <Waves className="h-4 w-4" /> };
+        return { text: "text-[#6366f1]", bg: "bg-[#6366f1]", border: "border-[#6366f1]/20", light: "bg-[#6366f1]/5", icon: <Waves className="h-4 w-4" /> };
     };
 
     // ── ANALYTICS ──
@@ -442,10 +442,14 @@ export function SOWDialog({
     };
 
     const isReportMatch = (itemRpt: string | null | undefined, activeRpt: string) => {
-        if (!itemRpt || itemRpt === 'null') return activeRpt === 'null' || !activeRpt;
-        if (itemRpt === activeRpt) return true;
+        if (!itemRpt || itemRpt === 'null' || !itemRpt.trim()) {
+            return !activeRpt || activeRpt === 'null' || !activeRpt.trim();
+        }
+        if (!activeRpt || activeRpt === 'null' || !activeRpt.trim()) return false;
+        if (itemRpt.trim().toUpperCase() === activeRpt.trim().toUpperCase()) return true;
         const cleanItem = itemRpt.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
         const cleanActive = activeRpt.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        if (!cleanItem || !cleanActive) return false;
         return cleanItem === cleanActive || cleanActive.startsWith(cleanItem) || cleanItem.startsWith(cleanActive);
     };
 
@@ -454,23 +458,23 @@ export function SOWDialog({
         const comp = (liveComponents.length > 0 ? liveComponents : components).find(c => c.id === compId);
         const itType = validInspections.find(t => t.id === typeId);
 
-        // Check if there is an inspection record for this component and inspection type in live components
+        // Check if there is an inspection record for this component and inspection type in live components strictly matching this jobpack
         const rec = comp && Array.isArray((comp as any).inspections)
             ? (comp as any).inspections.find((r: any) => {
-                const matchesRpt = isReportMatch(r.sow_report_no, activeReport);
-                const matchesJobpack = !r.jobpack_id || String(r.jobpack_id) === String(jobpackId);
+                const matchesJobpack = r.jobpack_id && jobpackId ? String(r.jobpack_id) === String(jobpackId) : false;
+                const matchesRpt = !activeReport || activeReport === 'null' || (r.sow_report_no && isReportMatch(r.sow_report_no, activeReport));
                 const matchesCode = itType && r.inspection_type_code && (
                     r.inspection_type_code.toUpperCase() === itType.code.toUpperCase() ||
                     itType.code.toUpperCase().includes(r.inspection_type_code.toUpperCase()) ||
                     r.inspection_type_code.toUpperCase().includes(itType.code.toUpperCase())
                 );
-                return matchesRpt && matchesJobpack && matchesCode;
+                return matchesJobpack && matchesRpt && matchesCode;
             })
             : null;
 
         // Check if component has direct anomaly in anomalies array matching inspection type/code and report
         const hasDirectCompAnomaly = comp && Array.isArray((comp as any).anomalies) && (comp as any).anomalies.some((a: any) => {
-            const matchesRpt = isReportMatch(a.sow_report_no, activeReport);
+            const matchesRpt = a.sow_report_no && isReportMatch(a.sow_report_no, activeReport);
             if (!matchesRpt) return false;
             if (!itType) return true;
             const cat = (a.category || a.defect_type || a.description || "").toUpperCase();
@@ -1822,11 +1826,15 @@ export function SOWDialog({
                                 <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Legend:</span>
                                 <div className="flex items-center gap-1.5">
                                     <div className="h-4 w-4 rounded-md bg-[#0ea5e9] flex items-center justify-center text-white shadow-xs"><Check className="h-2.5 w-2.5 stroke-[3px]" /></div>
-                                    <span>Pending Scope</span>
+                                    <span>ROV Scope (Pending)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="h-4 w-4 rounded-md bg-[#6366f1] flex items-center justify-center text-white shadow-xs"><Check className="h-2.5 w-2.5 stroke-[3px]" /></div>
+                                    <span>Diving Scope (Pending)</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <div className="h-4 w-4 rounded-md bg-emerald-500 flex items-center justify-center text-white shadow-xs"><Check className="h-2.5 w-2.5 stroke-[3px]" /></div>
-                                    <span>Inspected</span>
+                                    <span>Inspected (Completed)</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <div className="h-4 w-4 rounded-md bg-rose-500 flex items-center justify-center text-white shadow-xs"><AlertTriangle className="h-2.5 w-2.5 stroke-[2.5px]" /></div>

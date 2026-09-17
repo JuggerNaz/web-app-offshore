@@ -34,8 +34,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
     // 1. Fetch Structures
     let strQuery = (supabase as any).from("structure").select("*").eq("company_id", companyId);
-    if (structureIds.length > 0) {
-      strQuery = strQuery.in("str_id", structureIds);
+    if (structureIds && structureIds.length > 0) {
+      strQuery = strQuery.in("str_id", structureIds.map(Number));
     }
     if (structureType && structureType !== "ALL") {
       strQuery = strQuery.eq("str_type", structureType.toUpperCase());
@@ -43,7 +43,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
     const { data: structuresData } = await strQuery;
     const structureMap = new Map<number, any>();
-    const activeStrIds = (structuresData || []).map((s: any) => s.str_id);
+    const activeStrIds = (structuresData || []).map((s: any) => Number(s.str_id));
 
     // Fetch platform & pipeline details
     const { data: platformData } = await (supabase as any)
@@ -86,30 +86,88 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       }
     });
 
-    // 2. Fetch Jobpacks & SOWs
-    let jpQuery = (supabase as any).from("jobpack").select("*").eq("company_id", companyId);
+    // 2. Fetch Jobpacks & SOWs scoped to selected structures
+    let rawJpQuery = (supabase as any).from("jobpack").select("*").eq("company_id", companyId);
+    const { data: allCompanyJps } = await rawJpQuery;
+
+    let finalJobpacks: any[] = [];
     if (jobpackMode === "SELECTED" && jobpackIds.length > 0) {
-      jpQuery = jpQuery.in("id", jobpackIds);
+      const selectedSet = new Set(jobpackIds.map(Number));
+      finalJobpacks = (allCompanyJps || []).filter((j: any) => selectedSet.has(Number(j.id)));
+    } else if (activeStrIds.length > 0) {
+      const [sowRel, recRel, diveRel, rovRel] = await Promise.all([
+        (supabase as any).from("u_sow").select("jobpack_id").in("structure_id", activeStrIds).not("jobpack_id", "is", null),
+        (supabase as any).from("insp_records").select("jobpack_id").in("structure_id", activeStrIds).not("jobpack_id", "is", null),
+        (supabase as any).from("insp_dive_jobs").select("jobpack_id").in("structure_id", activeStrIds).not("jobpack_id", "is", null),
+        (supabase as any).from("insp_rov_jobs").select("jobpack_id").in("structure_id", activeStrIds).not("jobpack_id", "is", null),
+      ]);
+
+      const matchedIdSet = new Set<number>();
+      (sowRel?.data || []).forEach((r: any) => r.jobpack_id && matchedIdSet.add(Number(r.jobpack_id)));
+      (recRel?.data || []).forEach((r: any) => r.jobpack_id && matchedIdSet.add(Number(r.jobpack_id)));
+      (diveRel?.data || []).forEach((r: any) => r.jobpack_id && matchedIdSet.add(Number(r.jobpack_id)));
+      (rovRel?.data || []).forEach((r: any) => r.jobpack_id && matchedIdSet.add(Number(r.jobpack_id)));
+
+      const activeStrSet = new Set(activeStrIds.map(Number));
+      (allCompanyJps || []).forEach((jp: any) => {
+        if (matchedIdSet.has(Number(jp.id))) {
+          return;
+        }
+        const structures = jp.metadata?.structures || [];
+        if (Array.isArray(structures)) {
+          const m = structures.some((s: any) => {
+            const sid = Number(String(s.id || s.structure_id || s.platform_id || s.pipe_id || s.str_id || s.plat_id || "").replace(/^(platform|pipeline)-/, ""));
+            return !isNaN(sid) && activeStrSet.has(sid);
+          });
+          if (m) matchedIdSet.add(Number(jp.id));
+        }
+        const directSId = Number(String(jp.metadata?.structure_id || jp.metadata?.platform_id || jp.metadata?.pipe_id || jp.metadata?.plat_id || jp.metadata?.str_id || "").replace(/^(platform|pipeline)-/, ""));
+        if (!isNaN(directSId) && activeStrSet.has(directSId)) {
+          matchedIdSet.add(Number(jp.id));
+        }
+      });
+
+      finalJobpacks = (allCompanyJps || []).filter((j: any) => matchedIdSet.has(Number(j.id)));
+    } else {
+      finalJobpacks = allCompanyJps || [];
     }
-    const { data: jobpacksData } = await jpQuery;
+
+    const jobpacksData = finalJobpacks;
     const jobpackMap = new Map<number, any>();
     (jobpacksData || []).forEach((j: any) => jobpackMap.set(j.id, j));
 
     // Fetch SOWs
-    const { data: sowData } = await (supabase as any)
+    let sowQuery = (supabase as any)
       .from("u_sow")
       .select("*")
       .in("jobpack_id", (jobpacksData || []).map((j: any) => j.id).concat([0]));
+    if (activeStrIds.length > 0) {
+      sowQuery = sowQuery.in("structure_id", activeStrIds);
+    }
+    const { data: sowData } = await sowQuery;
     const sowMap = new Map<number, any>();
     (sowData || []).forEach((s: any) => sowMap.set(s.sow_id || s.id, s));
 
-    // 3. Fetch Components Master
-    const { data: compData } = await (supabase as any)
-      .from("structure_components")
-      .select("*")
-      .in("structure_id", activeStrIds.length > 0 ? activeStrIds : [0]);
+    // 3. Fetch Components Master & Component Types
+    const [{ data: compData }, { data: compTypesData }] = await Promise.all([
+      (supabase as any)
+        .from("structure_components")
+        .select("*")
+        .in("structure_id", activeStrIds.length > 0 ? activeStrIds : [-999999])
+        .limit(10000),
+      (supabase as any)
+        .from("components")
+        .select("code, descrip, name")
+    ]);
     const compMap = new Map<number, any>();
     (compData || []).forEach((c: any) => compMap.set(c.id, c));
+
+    const compTypeMap = new Map<string, string>();
+    (compTypesData || []).forEach((ct: any) => {
+      if (ct.code) {
+        compTypeMap.set(String(ct.code).trim().toUpperCase(), ct.descrip || ct.name || "");
+      }
+    });
 
     // 4. Fetch Inspection Records
     let inspQuery = (supabase as any)
@@ -202,13 +260,45 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       return String(val).replace(/[\r\n\t]+/g, " ").trim();
     };
 
-    const formatDateStr = (d: any) => {
-      if (!d) return new Date().toISOString().split("T")[0];
+    const formatInspNo = (jobpackId: any): string => {
+      const numId = Number(jobpackId) || 0;
+      return String(numId + 10000).padStart(11, "0");
+    };
+
+    const formatDateStr = (d: any): string => {
+      if (!d) return "";
       try {
-        return new Date(d).toISOString().split("T")[0];
+        const dt = new Date(d);
+        if (isNaN(dt.getTime())) {
+          const s = String(d).trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+            const [yyyy, mm, dd] = s.split("T")[0].split("-");
+            return `${dd}-${mm}-${yyyy}`;
+          }
+          if (/^\d{2}-\d{2}-\d{4}/.test(s)) {
+            return s.substring(0, 10);
+          }
+          return s;
+        }
+        const day = String(dt.getUTCDate()).padStart(2, "0");
+        const month = String(dt.getUTCMonth() + 1).padStart(2, "0");
+        const year = String(dt.getUTCFullYear());
+        return `${day}-${month}-${year}`;
       } catch {
-        return String(d).split("T")[0];
+        return String(d);
       }
+    };
+
+    const getModifiedRecDate = (updatedAt: any, createdAt?: any): string => {
+      if (!updatedAt) return "";
+      if (createdAt) {
+        const uTime = new Date(updatedAt).getTime();
+        const cTime = new Date(createdAt).getTime();
+        if (!isNaN(uTime) && !isNaN(cTime) && Math.abs(uTime - cTime) < 1000) {
+          return "";
+        }
+      }
+      return formatDateStr(updatedAt);
     };
 
     // 8. Determine templates to process (all templates or single table)
@@ -261,52 +351,47 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       const strategy = sheetDef.queryStrategy;
 
       if (strategy === "COMPONENT_MASTER" || code === "CMS") {
-        (compData || []).forEach((c: any) => {
-          const strObj = structureMap.get(c.structure_id);
+        const activeStrSet = new Set(activeStrIds.map(Number));
+        const targetComps = (compData || []).filter((c: any) => activeStrSet.has(Number(c.structure_id)));
+
+        targetComps.forEach((c: any) => {
+          const strObj = structureMap.get(Number(c.structure_id));
           const meta = c.metadata || {};
+          const codeUpper = String(c.code || "").trim().toUpperCase();
+          const compTypeDesc = compTypeMap.get(codeUpper) || meta.comptype || meta.comp_type || c.type || "MEMBER";
+
           sheetRows.push({
-            STR_ID: c.structure_id,
+            STR_ID: strObj?.plat_id || c.structure_id,
             TITLE: sanitizeText(strObj?.title || `Platform ${c.structure_id}`),
-            PFIELD: sanitizeText(strObj?.pfield || "Offshore"),
-            PDESC: sanitizeText(strObj?.pdesc || "Platform Jacket Structure"),
-            DEF_UNIT: strObj?.def_unit || "Metric",
+            PFIELD: sanitizeText(strObj?.pfield || ""),
+            PDESC: sanitizeText(strObj?.pdesc || ""),
+            DEF_UNIT: sanitizeText(strObj?.def_unit || "Metric"),
             COMP_ID: c.id,
-            ID_NO: sanitizeText(c.id_no || `SYS-${c.id}`),
-            Q_ID: sanitizeText(c.q_id || `Q-${c.id}`),
-            CODE: sanitizeText(c.code || "MB"),
-            COMPDESC: sanitizeText(c.description || meta.desc || "Structural Member"),
-            S_NODE: sanitizeText(meta.s_node || "N01"),
-            F_NODE: sanitizeText(meta.f_node || "N02"),
-            S_LEG: sanitizeText(meta.s_leg || "A1"),
-            F_LEG: sanitizeText(meta.f_leg || "A2"),
-            ELV_1: meta.elv_1 != null ? Number(meta.elv_1) : -12.5,
-            ELV_2: meta.elv_2 != null ? Number(meta.elv_2) : -15.0,
-            DIST: meta.dist != null ? Number(meta.dist) : 0,
-            CLK_POS: meta.clk_pos != null ? Number(meta.clk_pos) : 12,
-            COMPTYPE: sanitizeText(c.type || "MEMBER"),
-            REC_DATE: formatDateStr(c.updated_at || c.created_at),
+            ID_NO: sanitizeText(c.id_no || ""),
+            Q_ID: sanitizeText(c.q_id || ""),
+            CODE: sanitizeText(c.code || ""),
+            COMPDESC: sanitizeText(meta.description || meta.desc || c.description || c.name || ""),
+            S_NODE: sanitizeText(meta.s_node || ""),
+            F_NODE: sanitizeText(meta.f_node || ""),
+            S_LEG: sanitizeText(meta.s_leg || ""),
+            F_LEG: sanitizeText(meta.f_leg || ""),
+            ELV_1: meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (meta.start_elevation != null && meta.start_elevation !== "" ? Number(meta.start_elevation) : ""),
+            ELV_2: meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (meta.end_elevation != null && meta.end_elevation !== "" ? Number(meta.end_elevation) : ""),
+            DIST: meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (meta.distance != null && meta.distance !== "" ? Number(meta.distance) : ""),
+            CLK_POS: meta.clk_pos != null && meta.clk_pos !== "" ? Number(meta.clk_pos) : (meta.clock_position != null && meta.clock_position !== "" ? Number(meta.clock_position) : ""),
+            COMPTYPE: sanitizeText(compTypeDesc),
+            REC_DATE: getModifiedRecDate(c.updated_at, c.created_at),
           });
         });
       } else if (strategy === "JOBPACK_SOW_MASTER" || code === "JMS") {
         (jobpacksData || []).forEach((jp: any) => {
-          const linkedSows = (sowData || []).filter((s: any) => s.jobpack_id === jp.id);
-          if (linkedSows.length > 0) {
-            linkedSows.forEach((sow: any) => {
-              sheetRows.push({
-                INSPNO: sanitizeText(sow.sow_report_no || `INSP-${sow.id}`),
-                JOBNAME: sanitizeText(jp.name || `JP-${jp.id}`),
-                ISTART: formatDateStr(sow.start_date || jp.created_at),
-                STATUS: sanitizeText(jp.status || "OPEN").toUpperCase(),
-              });
-            });
-          } else {
-            sheetRows.push({
-              INSPNO: sanitizeText(jp.jobpack_number || `INSP-${jp.id}`),
-              JOBNAME: sanitizeText(jp.name || `JP-${jp.id}`),
-              ISTART: formatDateStr(jp.created_at),
-              STATUS: sanitizeText(jp.status || "OPEN").toUpperCase(),
-            });
-          }
+          const istartVal = jp.metadata?.istart || jp.metadata?.date_start || jp.metadata?.start_date || jp.created_at;
+          sheetRows.push({
+            INSPNO: formatInspNo(jp.id),
+            JOBNAME: sanitizeText(jp.name || `JP-${jp.id}`),
+            ISTART: formatDateStr(istartVal),
+            STATUS: sanitizeText(jp.status || "OPEN").toUpperCase(),
+          });
         });
       } else if (strategy === "ATTACHMENTS" || code === "ATS") {
         (attachmentsData || []).forEach((att: any) => {
@@ -314,6 +399,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           const strObj = structureMap.get(att.structure_id || linkedRec?.structure_id);
           const comp = compMap.get(att.component_id || linkedRec?.component_id);
           const jp = jobpackMap.get(linkedRec?.jobpack_id);
+          const attCompCodeUpper = String(comp?.code || "").trim().toUpperCase();
+          const attCompTypeDesc = compTypeMap.get(attCompCodeUpper) || comp?.metadata?.comptype || comp?.type || "MEMBER";
 
           sheetRows.push({
             ATTACH_ID: att.id || 1,
@@ -335,13 +422,13 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             ELV_2: -15.0,
             DIST: 0,
             CLK_POS: 12,
-            COMPTYPE: sanitizeText(comp?.type || "MEMBER"),
+            COMPTYPE: sanitizeText(attCompTypeDesc),
             A_FILENAME: sanitizeText(att.file_name || "photo.jpg"),
             A_FILETYPE: sanitizeText(att.file_type || "JPG").toUpperCase(),
             A_PATH: sanitizeText(att.file_path || "/attachments/"),
             ATT_TITLE: sanitizeText(att.title || "Inspection Photo"),
             DETAILS: sanitizeText(att.description || "Inspection attachment image"),
-            INSPNO: sanitizeText(linkedRec?.sow_report_no || `INSP-${linkedRec?.insp_id || 1}`),
+            INSPNO: formatInspNo(linkedRec?.jobpack_id || jp?.id || att.jobpack_id),
             INSP_ID: linkedRec?.insp_id || 1,
             INSPCODE: sanitizeText(linkedRec?.inspection_type_code || "GVI"),
             INSPNAME: sanitizeText(linkedRec?.inspection_type_code || "General Visual Inspection"),
@@ -368,6 +455,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           const meta = comp?.metadata || {};
           const idata = r.inspection_data || {};
           const linkedAnom = allAnomalies.find((a: any) => a.inspection_id === r.insp_id) || r.insp_anomalies?.[0];
+          const recCompCodeUpper = String(comp?.code || "").trim().toUpperCase();
+          const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || comp?.type || "MEMBER";
 
           const baseRow: any = {
             STR_ID: r.structure_id || 1,
@@ -388,7 +477,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             ELV_2: meta.elv_2 != null ? Number(meta.elv_2) : -15.0,
             DIST: meta.dist != null ? Number(meta.dist) : 0,
             CLK_POS: meta.clk_pos != null ? Number(meta.clk_pos) : 12,
-            COMPTYPE: sanitizeText(comp?.type || "MEMBER"),
+            COMPTYPE: sanitizeText(recCompTypeDesc),
             INSP_ID: r.insp_id,
             INSP_DATE: formatDateStr(r.inspection_date),
             INSP_TIME: sanitizeText(idata.insp_time || "09:30:00"),
@@ -507,7 +596,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           baseRow.RECTIFID = linkedAnom?.status === "CLOSED" ? "Yes" : "No";
           baseRow.RECTIFID_DESC = sanitizeText(linkedAnom?.follow_up_notes || "");
           baseRow.RECT_DATE = linkedAnom?.created_at ? formatDateStr(linkedAnom.created_at) : "";
-          baseRow.INSPNO = sanitizeText(r.sow_report_no || `INSP-${r.insp_id}`);
+          baseRow.INSPNO = formatInspNo(r.jobpack_id || jp?.id);
           baseRow.JOBNAME = sanitizeText(jp?.name || "CAMPAIGN-2026");
           baseRow.STATUS = sanitizeText(jp?.status || "OPEN").toUpperCase();
           baseRow.INSP_DONE = "Yes";
@@ -647,7 +736,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     if (isSingleTableExport && tablesOutput.length === 1) {
       const tbl = tablesOutput[0];
       if (format === "individual_xlsx" || format === "xlsx" || format === "single_xlsx") {
-        return new NextResponse(tbl.xlsxBuffer, {
+        return new NextResponse(new Uint8Array(tbl.xlsxBuffer), {
           status: 200,
           headers: {
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -699,7 +788,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       const outputFileName = fileName || `${clientProfile.code}_${activeInterface.code}_PACKAGE_${dateFormattedYymmdd}.xlsx`;
       const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 
-      return new NextResponse(excelBuffer, {
+      return new NextResponse(new Uint8Array(excelBuffer), {
         status: 200,
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -734,9 +823,9 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       zipFileName = zipFileName || `${clientProfile.code}_${activeInterface.code}_INDIVIDUAL_TXT_${dateFormattedYymmdd}.zip`;
     }
 
-    const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    const zipUint8 = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(zipUint8, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
