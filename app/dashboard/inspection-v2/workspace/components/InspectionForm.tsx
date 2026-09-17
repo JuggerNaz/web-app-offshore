@@ -1215,38 +1215,38 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 <div className="p-2">
                     <div className="space-y-2">
                         <AnimatePresence mode="wait">
-                            <motion.div key={activeSpec} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.2 }} className="p-1.5 border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/30 rounded-lg space-y-1.5">
-                                <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5 space-y-1">
-                                    <div className="text-[9px] font-black uppercase text-slate-800 dark:text-slate-400 tracking-widest opacity-70">Inspection Metadata & Coordinates</div>
-                                    <div className="flex flex-wrap gap-x-2 gap-y-1.5 items-end">
+                            <motion.div key={activeSpec} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.2 }} className="p-1 border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/30 rounded-lg space-y-1">
+                                <div className="border-b border-slate-200 dark:border-slate-800 pb-1 space-y-0.5">
+                                    <div className="text-[8px] font-black uppercase text-slate-800 dark:text-slate-400 tracking-widest opacity-70">Inspection Metadata & Coordinates</div>
+                                    <div className="flex flex-wrap gap-x-1.5 gap-y-1 items-end">
                                         {activeSpec?.toUpperCase() === 'NAVIG' || headerData?.structureType === 'pipeline' ? (
-                                            <div className="space-y-0.5 flex-grow min-w-[120px] max-w-[180px]">
-                                                <label className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-1"><MapPinIcon className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500" /> KP / FP Value</label>
+                                            <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[160px]">
+                                                <label className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-1"><MapPinIcon className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500" /> KP / FP</label>
                                                 <div className="flex items-center gap-1">
                                                     <Input type="text" value={dynamicProps?.fp_kp !== undefined ? dynamicProps.fp_kp : (dynamicProps?.kp !== undefined ? dynamicProps.kp : (headerData?.kp || '0.0000'))} onChange={(e) => {
                                                         handleDynamicPropChange?.('fp_kp', e.target.value);
                                                         handleDynamicPropChange?.('kp', e.target.value);
-                                                    }} placeholder="Enter KP / FP" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 flex-1 dark:text-slate-200" />
-                                                    <select className="h-8 px-1 text-[10px] font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[45px]" value={dynamicProps?.fp_kp_unit || 'km'} onChange={(e) => handleDynamicPropChange?.('fp_kp_unit', e.target.value)}>
+                                                    }} placeholder="Enter KP / FP" className="h-7 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 flex-1 dark:text-slate-200" />
+                                                    <select className="h-7 px-1 text-[9px] font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[40px]" value={dynamicProps?.fp_kp_unit || 'km'} onChange={(e) => handleDynamicPropChange?.('fp_kp_unit', e.target.value)}>
                                                         <option value="km">km</option><option value="m">m</option><option value="ft">ft</option>
                                                     </select>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="space-y-0.5 flex-grow min-w-[120px] max-w-[180px]">
+                                            <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[160px]">
                                                 <label className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-1"><MapPinIcon className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500" /> Elevation</label>
                                                 <div className="flex items-center gap-1">
-                                                    <Input type="text" value={dynamicProps?.verification_depth || (selectedComp?.lowestElev && selectedComp?.lowestElev !== '-' ? selectedComp?.lowestElev : (selectedComp?.endElev && selectedComp?.endElev !== '-' ? selectedComp?.endElev : (selectedComp?.depth ? selectedComp?.depth.replace(/[^\d.-]/g, '') : '')))} onChange={(e) => handleDynamicPropChange?.('verification_depth', e.target.value)} placeholder="Enter depth" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 flex-1 dark:text-slate-200" />
-                                                    <select className="h-8 px-1 text-[10px] font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[45px]" value={dynamicProps?.verification_depth_unit || 'm'} onChange={(e) => handleDynamicPropChange?.('verification_depth_unit', e.target.value)}>
+                                                    <Input type="text" value={dynamicProps?.verification_depth || (selectedComp?.lowestElev && selectedComp?.lowestElev !== '-' ? selectedComp?.lowestElev : (selectedComp?.endElev && selectedComp?.endElev !== '-' ? selectedComp?.endElev : (selectedComp?.depth ? selectedComp?.depth.replace(/[^\d.-]/g, '') : '')))} onChange={(e) => handleDynamicPropChange?.('verification_depth', e.target.value)} placeholder="Enter depth" className="h-7 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 flex-1 dark:text-slate-200" />
+                                                    <select className="h-7 px-1 text-[9px] font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-[40px]" value={dynamicProps?.verification_depth_unit || 'm'} onChange={(e) => handleDynamicPropChange?.('verification_depth_unit', e.target.value)}>
                                                         <option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option><option value="ft">ft</option><option value="in">in</option>
                                                     </select>
                                                 </div>
                                             </div>
                                         )}
                                         {!(activeSpec?.toUpperCase() === 'NAVIG' || headerData?.structureType === 'pipeline') && (selectedComp?.startElev !== '-' || selectedComp?.endElev !== '-') && selectedComp?.startElev && selectedComp?.endElev && (
-                                             <div className="space-y-0.5 flex-grow min-w-[80px] max-w-[120px]">
+                                             <div className="space-y-0.5 flex-grow min-w-[70px] max-w-[110px]">
                                                  <label className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Range</label>
-                                                 <div className="h-8 px-1.5 flex items-center text-[10px] font-bold bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50 rounded-md text-slate-500 dark:text-slate-400 truncate">{selectedComp.startElev}→{selectedComp.endElev}</div>
+                                                 <div className="h-7 px-1.5 flex items-center text-[10px] font-bold bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50 rounded-md text-slate-500 dark:text-slate-400 truncate">{selectedComp.startElev}→{selectedComp.endElev}</div>
                                              </div>
                                         )}
                                         {isRov && (() => {
@@ -1262,53 +1262,53 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                                              return (
                                                  <>
-                                                     <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
+                                                     <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
                                                          <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Northing</span>
                                                          {northingField ? renderInspectionField(northingField, 'primary') : (
-                                                             <Input type="text" value={dynamicProps?.northing !== undefined ? dynamicProps.northing : ''} onChange={(e) => handleDynamicPropChange?.('northing', e.target.value)} placeholder="Enter Northing" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
-                                                         )}
-                                                     </div>
-                                                     <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
-                                                         <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Easting</span>
-                                                         {eastingField ? renderInspectionField(eastingField, 'primary') : (
-                                                             <Input type="text" value={dynamicProps?.easting !== undefined ? dynamicProps.easting : ''} onChange={(e) => handleDynamicPropChange?.('easting', e.target.value)} placeholder="Enter Easting" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
+                                                             <Input type="text" value={dynamicProps?.northing !== undefined ? dynamicProps.northing : ''} onChange={(e) => handleDynamicPropChange?.('northing', e.target.value)} placeholder="Enter Northing" className="h-7 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
                                                          )}
                                                      </div>
                                                      <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
+                                                         <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Easting</span>
+                                                         {eastingField ? renderInspectionField(eastingField, 'primary') : (
+                                                             <Input type="text" value={dynamicProps?.easting !== undefined ? dynamicProps.easting : ''} onChange={(e) => handleDynamicPropChange?.('easting', e.target.value)} placeholder="Enter Easting" className="h-7 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
+                                                         )}
+                                                     </div>
+                                                     <div className="space-y-0.5 flex-grow min-w-[90px] max-w-[120px]">
                                                           <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Depth</span>
                                                           {depthField ? renderInspectionField(depthField, 'primary') : (
                                                               <Input type="text" value={dynamicProps?.depth !== undefined ? dynamicProps.depth : (dynamicProps?.verification_depth !== undefined ? dynamicProps.verification_depth : '')} onChange={(e) => {
                                                                   handleDynamicPropChange?.('depth', e.target.value);
                                                                   handleDynamicPropChange?.('verification_depth', e.target.value);
-                                                              }} placeholder="Enter Depth" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
+                                                              }} placeholder="Enter Depth" className="h-7 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
                                                           )}
                                                       </div>
-                                                      <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
+                                                      <div className="space-y-0.5 flex-grow min-w-[90px] max-w-[120px]">
                                                           <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">CP FG</span>
                                                           {cpFgField ? renderInspectionField(cpFgField, 'primary') : (
                                                               <Input type="text" value={dynamicProps?.cp_fg_rdg !== undefined ? dynamicProps.cp_fg_rdg : (dynamicProps?.cp_fg !== undefined ? dynamicProps.cp_fg : '')} onChange={(e) => {
                                                                   handleDynamicPropChange?.('cp_fg_rdg', e.target.value);
                                                                   handleDynamicPropChange?.('cp_fg', e.target.value);
-                                                              }} placeholder="Enter CP FG" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
+                                                              }} placeholder="Enter CP FG" className="h-7 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
                                                           )}
                                                       </div>
-                                                      <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
+                                                      <div className="space-y-0.5 flex-grow min-w-[90px] max-w-[120px]">
                                                           <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Heading</span>
                                                           {headingField ? renderInspectionField(headingField, 'primary') : (
                                                               <Input type="text" value={dynamicProps?.rov_heading !== undefined ? dynamicProps.rov_heading : (dynamicProps?.heading !== undefined ? dynamicProps.heading : '')} onChange={(e) => {
                                                                   handleDynamicPropChange?.('rov_heading', e.target.value);
                                                                   handleDynamicPropChange?.('heading', e.target.value);
-                                                              }} placeholder="Enter Heading" className="h-8 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
+                                                              }} placeholder="Enter Heading" className="h-7 text-[11px] font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500 w-full dark:text-slate-200" />
                                                           )}
                                                       </div>
                                                      {flowField && headerData?.structureType === 'pipeline' && (
-                                                         <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
+                                                         <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
                                                              <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Inspection Flow</span>
                                                              {renderInspectionField(flowField, 'primary')}
                                                          </div>
                                                      )}
                                                      {modeField && headerData?.structureType === 'pipeline' && (
-                                                         <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[150px]">
+                                                         <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[140px]">
                                                              <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Inspection On</span>
                                                              {renderInspectionField(modeField, 'primary')}
                                                          </div>
@@ -1316,15 +1316,15 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                  </>
                                              );
                                          })()}
-                                        <div className="space-y-0.5 flex-grow min-w-[100px] max-w-[130px]">
+                                        <div className="space-y-0.5 flex-grow min-w-[95px] max-w-[125px]">
                                             <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Date</span>
                                             {renderInspectionField({ name: 'inspection_date', label: 'Date', type: 'date' }, 'primary')}
                                         </div>
-                                        <div className="space-y-0.5 flex-grow min-w-[80px] max-w-[110px]">
+                                        <div className="space-y-0.5 flex-grow min-w-[75px] max-w-[105px]">
                                             <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Time</span>
                                             {renderInspectionField({ name: 'inspection_time', label: 'Time', type: 'text' }, 'primary')}
                                         </div>
-                                        <div className="space-y-0.5 flex-grow min-w-[80px] max-w-[110px]">
+                                        <div className="space-y-0.5 flex-grow min-w-[75px] max-w-[105px]">
                                             <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Counter</span>
                                             {renderInspectionField({ name: 'tape_count_no', label: `Live: ${formatTime(vidTimer)}`, type: 'text' }, 'primary')}
                                         </div>
@@ -1586,68 +1586,78 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     const bools = otherFields.filter((f: any) => f.type === 'boolean');
                                                     const rest = otherFields.filter((f: any) => !circ.includes(f) && !bools.includes(f));
                                                     return (
-                                                        <div className="space-y-4">
+                                                        <div className="space-y-2.5">
                                                             {circ.length > 0 && (
-                                                                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-1.5 space-y-1 shadow-sm">
+                                                                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 space-y-1 shadow-sm">
                                                                     <label className="text-[10px] font-black uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">Circumference</label>
-                                                                    <div className="flex flex-wrap gap-2">
+                                                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
                                                                         {['circumferential_measurement_5m_above', 'circumferential_measurement_0m', 'circumferential_measurement_5m_below'].map(n => {
                                                                             const p = circ.find((f: any) => f.name === n);
                                                                             if (!p) return null;
                                                                             const label = n.includes('above') ? '-5m' : n.includes('below') ? '+5m' : '0m';
-                                                                            return (<div key={n} className="space-y-1 flex-grow min-w-[80px] max-w-[120px]"><label className="text-[9px] font-bold uppercase block text-center">{label}</label>{renderInspectionField({...p, label}, 'primary')}</div>);
+                                                                            return (<div key={n} className="space-y-0.5 min-w-0"><label className="text-[9px] font-bold uppercase block text-center truncate">{label}</label>{renderInspectionField({...p, label}, 'primary')}</div>);
                                                                         })}
                                                                     </div>
                                                                 </div>
                                                             )}
-                                                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-x-3 gap-y-2">
-                                                                {rest.map((p: any) => (<div key={p.name} className={`space-y-0.5 flex-grow ${p.type === 'repeater' || p.type === 'textarea' ? 'col-span-full' : 'col-span-2'}`}><label className="text-[9px] font-black uppercase truncate block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}
+                                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-x-2.5 gap-y-1.5">
+                                                                {rest.map((p: any) => {
+                                                                    const isRepeater = p.type === 'repeater';
+                                                                    return (
+                                                                        <div key={p.name} className={`space-y-0.5 min-w-0 ${p.type === 'repeater' || p.type === 'textarea' ? 'col-span-full' : 'col-span-1'}`}>
+                                                                            {!isRepeater && <label className="text-[9px] font-black uppercase truncate block text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>}
+                                                                            {renderInspectionField(p, 'primary')}
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                             {bools.length > 0 && (
-                                                                <div className="grid grid-cols-3 gap-3">{bools.map((p: any) => (<div key={p.name} className="space-y-1.5"><label className="text-[10px] font-black uppercase mb-1 block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}</div>
+                                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">{bools.map((p: any) => (<div key={p.name} className="space-y-0.5 min-w-0"><label className="text-[9px] font-black uppercase mb-0.5 block truncate text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}</div>
                                                             )}
                                                         </div>
                                                     );
                                                 } else if (type === 'RSEAB') {
                                                     const { location: loc, itemDetails: det, grid: grd, rest: rst } = fieldGroups;
                                                     return (
-                                                        <div className="space-y-4">
+                                                        <div className="space-y-2.5">
                                                             {loc.length > 0 && (
-                                                                <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                                    <label className="text-[11px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">Location</label>
-                                                                    <div className="grid grid-cols-2 gap-3">{loc.map((p: any) => (<div key={p.name} className="space-y-1"><label className="text-[10px] font-black uppercase block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}</div>
+                                                                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 space-y-1.5 shadow-sm">
+                                                                    <label className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">Location</label>
+                                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{loc.map((p: any) => (<div key={p.name} className="space-y-0.5 min-w-0"><label className="text-[9px] font-black uppercase block truncate text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}</div>
                                                                 </div>
                                                             )}
                                                             {det.length > 0 && (
-                                                                <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                                    <label className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">Item Details</label>
-                                                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+                                                                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 space-y-1.5 shadow-sm">
+                                                                    <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">Item Details</label>
+                                                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                                                                         {det.map((p: any) => {
-                                                                            const hasMat = det.some((f: any) => f.name === 'material');
-                                                                            const hasIntensity = det.some((f: any) => f.name === 'seepage_intensity');
-                                                                            const hasCrater = det.some((f: any) => ['crater_diameter', 'crater_depth'].includes(f.name));
-                                                                            const hasDebrisDims = det.some((f: any) => f.name.startsWith('size_'));
-                                                                            
-                                                                            let span = 'space-y-1';
-                                                                            if (p.name === 'category') span = (hasMat || hasIntensity || hasCrater || hasDebrisDims) ? 'col-span-full md:col-span-1' : 'col-span-full border-b border-slate-50 dark:border-slate-800 pb-2 mb-1';
-                                                                            else if (p.name === 'material') span = 'col-span-full md:col-span-2 lg:col-span-4';
-                                                                            else if (p.name === 'seepage_intensity') span = 'col-span-1 md:col-span-2 lg:col-span-2';
-                                                                            else if (['crater_diameter', 'crater_depth'].includes(p.name)) span = 'col-span-1 md:col-span-2 lg:col-span-2';
-                                                                            else if (p.name.startsWith('size_')) span = 'col-span-1';
-                                                                            else if (p.name === 'debris_desc') span = 'col-span-full';
-                                                                            
-                                                                            return (<div key={p.name} className={span}><label className="text-[10px] font-black uppercase block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>);
+                                                                            let span = 'space-y-0.5 min-w-0 col-span-1';
+                                                                            if (p.name === 'material') span = 'space-y-0.5 min-w-0 col-span-2';
+                                                                            else if (p.name === 'debris_desc') span = 'space-y-0.5 min-w-0 col-span-full';
+                                                                            return (<div key={p.name} className={span}><label className="text-[9px] font-black uppercase block truncate text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>);
                                                                         })}
                                                                     </div>
                                                                 </div>
                                                             )}
                                                             {grd.length > 0 && (
-                                                                <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm">
-                                                                    <label className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">Grid & Offset</label>
-                                                                    <div className="grid grid-cols-4 gap-3">{grd.map((p: any) => (<div key={p.name} className="space-y-1"><label className="text-[10px] font-black uppercase block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}</div>
+                                                                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 space-y-1.5 shadow-sm">
+                                                                    <label className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">Grid & Offset</label>
+                                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{grd.map((p: any) => (<div key={p.name} className="space-y-0.5 min-w-0"><label className="text-[9px] font-black uppercase block truncate text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}</div>
                                                                 </div>
                                                             )}
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2">{rst.map((p: any) => (<div key={p.name} className="space-y-1"><label className="text-[10px] font-black uppercase block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}</div>
+                                                            {rst.length > 0 && (
+                                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-2.5 gap-y-1.5">
+                                                                    {rst.map((p: any) => {
+                                                                        const isRepeater = p.type === 'repeater';
+                                                                        return (
+                                                                            <div key={p.name} className={`space-y-0.5 min-w-0 ${p.type === 'repeater' || p.type === 'textarea' ? 'col-span-full' : 'col-span-1'}`}>
+                                                                                {!isRepeater && <label className="text-[9px] font-black uppercase block truncate text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>}
+                                                                                {renderInspectionField(p, 'primary')}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 } else if (type === 'MPINS' || type === 'DMPI' || type === 'RMPI') {
@@ -1659,17 +1669,17 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                         if (!p) return null;
                                                         return (
                                                             <div className="w-full min-w-0">
-                                                                {label && <label className="text-[9px] font-black uppercase text-slate-500 mb-0.5 block truncate" title={label}>{label}</label>}
+                                                                {label && <label className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5 block truncate" title={label}>{label}</label>}
                                                                 {renderInspectionField({ ...p, label: p.label }, 'primary')}
                                                             </div>
                                                         );
                                                     };
 
                                                     return (
-                                                        <div className="space-y-4">
+                                                        <div className="space-y-2.5">
                                                             {/* Group 1: General Meta Params */}
-                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm">
-                                                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 shadow-sm">
+                                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                                                                     {renderCell('magnetic_ink', 'Magnetic Ink')}
                                                                     {renderCell('surface_condition', 'Surface Cond.')}
                                                                     {renderCell('cleaning_method', 'Cleaning Mthd.')}
@@ -1678,8 +1688,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                     {renderCell('magnetic_method', 'Magn. Method')}
                                                                     {renderCell('lighting_method', 'Lighting Method')}
                                                                     {renderCell('calib_block', 'Calibration Blk.')}
-                                                                    {renderCell('magnetic_lifting_power', 'Magn. Lifting Power (tonne)')}
-
+                                                                    {renderCell('magnetic_lifting_power', 'Magn. Lifting Power (t)')}
 
                                                                     {renderCell('orientation', 'Orientation')}
                                                                     {renderCell('indication', 'Indication')}
@@ -1690,7 +1699,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                             </div>
 
                                                             {/* Group 2: Clock Readings */}
-                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-xl p-2.5 shadow-sm space-y-1">
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-lg p-2 shadow-sm space-y-1">
                                                                 <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr_1fr] gap-2 items-end mb-1">
                                                                     <div></div>
                                                                     <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">3 O'Clk</span></div>
@@ -1714,18 +1723,18 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                             </div>
 
                                                             {/* Group 3: Parameters */}
-                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm">
-                                                                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
-                                                                    {renderCell('current_in_coil_magnet', 'Curr. in Coil/Magr (Amps)')}
-                                                                    {renderCell('voltage_in_coil_magnet', 'Volt. in Coil/Magr (Volts)')}
-                                                                    {renderCell('current_pole_spacing', 'Curr. Pole Spacing (mm)')}
-                                                                    {renderCell('dist_from_datum', 'Dist. from Datum (m)')}
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 shadow-sm">
+                                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                                                                    {renderCell('current_in_coil_magnet', 'Curr. Coil (A)')}
+                                                                    {renderCell('voltage_in_coil_magnet', 'Volt. Coil (V)')}
+                                                                    {renderCell('current_pole_spacing', 'Pole Spacing (mm)')}
+                                                                    {renderCell('dist_from_datum', 'Dist. Datum (m)')}
                                                                     {renderCell('probe_size', 'Size')}
                                                                 </div>
                                                             </div>
 
                                                             {/* Group 4: Segment Readings */}
-                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-xl p-2.5 shadow-sm space-y-1">
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-lg p-2 shadow-sm space-y-1">
                                                                 <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] md:grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-end mb-1">
                                                                     <div></div>
                                                                     <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">6 - 9</span></div>
@@ -1763,9 +1772,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                 
                                                                 if (remainingFields.length > 0) {
                                                                     return (
-                                                                        <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm">
-                                                                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                                                                {remainingFields.map((p: any) => (<div key={p.name} className="space-y-1"><label className="text-[10px] font-black uppercase block">{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}
+                                                                        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 shadow-sm">
+                                                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                                                                                {remainingFields.map((p: any) => (<div key={p.name} className="space-y-0.5 min-w-0"><label className="text-[9px] font-black uppercase block truncate text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>{renderInspectionField(p, 'primary')}</div>))}
                                                                             </div>
                                                                         </div>
                                                                     );
@@ -1782,32 +1791,32 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                         if (!p) return null;
                                                         return (
                                                             <div className="w-full min-w-0">
-                                                                {label && <label className="text-[9px] font-black uppercase text-slate-500 mb-0.5 block truncate" title={label}>{label}</label>}
+                                                                {label && <label className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5 block truncate" title={label}>{label}</label>}
                                                                 {renderInspectionField({ ...p, label: p.label }, 'primary')}
                                                             </div>
                                                         );
                                                     };
 
                                                     return (
-                                                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-[5%] duration-200">
+                                                        <div className="space-y-2.5 animate-in fade-in slide-in-from-bottom-[5%] duration-200">
                                                             {/* Group 1: General Parameters */}
-                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm space-y-3">
-                                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 shadow-sm space-y-2">
+                                                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2">
                                                                     {renderCell('acfmc_page', 'ACFM Page')}
                                                                     {renderCell('probe_fl', 'Probe')}
                                                                     {renderCell('probe_flow', 'Probe Flow')}
                                                                     {renderCell('report', 'Report')}
                                                                 </div>
-                                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                                                                    {renderCell('chord_weld_brace', 'Chord / Weld / Brace')}
-                                                                    {renderCell('clk_pos', 'Clock Position')}
-                                                                    {renderCell('direction_travl', 'Direction of Travel')}
+                                                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                                                                    {renderCell('chord_weld_brace', 'Chord/Weld/Brace')}
+                                                                    {renderCell('clk_pos', 'Clock Pos.')}
+                                                                    {renderCell('direction_travl', 'Travel Dir.')}
                                                                     {renderCell('orientation', 'Orientation')}
                                                                 </div>
                                                             </div>
 
                                                             {/* Group 2: Clock Readings */}
-                                                            <div className="border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-xl p-2.5 shadow-sm space-y-1">
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-lg p-2 shadow-sm space-y-1">
                                                                 <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 items-end mb-1">
                                                                     <div></div>
                                                                     <div className="text-center"><span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">12 O'Clk</span></div>
@@ -1862,30 +1871,30 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     }, {});
 
                                                     return (
-                                                        <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+                                                        <div className="space-y-2.5">
                                                             {hasEventFields && (
-                                                                <div className="col-span-full border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm space-y-2.5">
+                                                                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 shadow-sm space-y-1.5">
                                                                     {/* Row 1: Event Name, Event Type, Event Position in one row */}
-                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                                                         {eventFields.eventName && (
-                                                                            <div key="event_name" className="space-y-0.5">
-                                                                                <label className="text-[9px] font-black uppercase text-slate-500 block truncate" title={eventFields.eventName.label || "Event Name"}>
+                                                                            <div key="event_name" className="space-y-0.5 min-w-0">
+                                                                                <label className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 block truncate" title={eventFields.eventName.label || "Event Name"}>
                                                                                     {eventFields.eventName.label || "Event Name"}
                                                                                 </label>
                                                                                 {renderInspectionField(eventFields.eventName, 'primary')}
                                                                             </div>
                                                                         )}
                                                                         {eventFields.eventType && (
-                                                                            <div key="event_type" className="space-y-0.5">
-                                                                                <label className="text-[9px] font-black uppercase text-slate-500 block truncate" title={eventFields.eventType.label || "Event Type"}>
+                                                                            <div key="event_type" className="space-y-0.5 min-w-0">
+                                                                                <label className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 block truncate" title={eventFields.eventType.label || "Event Type"}>
                                                                                     {eventFields.eventType.label || "Event Type"}
                                                                                 </label>
                                                                                 {renderInspectionField(eventFields.eventType, 'primary')}
                                                                             </div>
                                                                         )}
                                                                         {eventFields.eventPosition && (
-                                                                            <div key="event_position" className="space-y-0.5">
-                                                                                <label className="text-[9px] font-black uppercase text-slate-500 block truncate" title={eventFields.eventPosition.label || "Event Position"}>
+                                                                            <div key="event_position" className="space-y-0.5 min-w-0">
+                                                                                <label className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 block truncate" title={eventFields.eventPosition.label || "Event Position"}>
                                                                                     {eventFields.eventPosition.label || "Event Position"}
                                                                                 </label>
                                                                                 {renderInspectionField(eventFields.eventPosition, 'primary')}
@@ -1896,7 +1905,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                     {/* Row 2: Event Description in Next Line */}
                                                                     {eventFields.eventDescription && (
                                                                         <div key="event_description" className="w-full space-y-0.5 pt-0.5">
-                                                                            <label className="text-[9px] font-black uppercase text-slate-500 block truncate" title={eventFields.eventDescription.label || "Event Description"}>
+                                                                            <label className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 block truncate" title={eventFields.eventDescription.label || "Event Description"}>
                                                                                 {eventFields.eventDescription.label || "Event Description"}
                                                                             </label>
                                                                             {renderInspectionField(eventFields.eventDescription, 'primary')}
@@ -1905,14 +1914,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                 </div>
                                                             )}
                                                             {isUTWTK && utwtkTopFields.length > 0 && (
-                                                                <div className="col-span-full">
-                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-x-3 gap-y-2">
+                                                                <div className="w-full">
+                                                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                                                                         {utwtkTopNames.map(name => {
                                                                             const p = utwtkTopFields.find((f: any) => f.name === name);
                                                                             if (!p) return null;
                                                                             return (
-                                                                                <div key={p.name} className="space-y-0.5">
-                                                                                    <label className="text-[9px] font-black uppercase truncate block" title={p.label || p.name}>{p.label || p.name}</label>
+                                                                                <div key={p.name} className="space-y-0.5 min-w-0">
+                                                                                    <label className="text-[9px] font-black uppercase truncate block text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>
                                                                                     {renderInspectionField(p, 'primary')}
                                                                                 </div>
                                                                             );
@@ -1921,14 +1930,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                 </div>
                                                             )}
                                                             {isUTWTK && utwtkResults.length > 0 && (
-                                                                <div className="col-span-full border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 shadow-sm space-y-2">
-                                                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-2">
+                                                                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2 shadow-sm space-y-1.5">
+                                                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                                                                         {utwtkResultNames.map(name => {
                                                                             const p = utwtkResults.find((f: any) => f.name === name);
                                                                             if (!p) return null;
                                                                             return (
-                                                                                <div key={p.name} className="space-y-0.5">
-                                                                                    <label className="text-[9px] font-black uppercase truncate block" title={p.label || p.name}>{p.label || p.name}</label>
+                                                                                <div key={p.name} className="space-y-0.5 min-w-0">
+                                                                                    <label className="text-[9px] font-black uppercase truncate block text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>
                                                                                     {renderInspectionField(p, 'primary')}
                                                                                 </div>
                                                                             );
@@ -1941,19 +1950,23 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                 const fields = groupedRest[groupName];
                                                                 
                                                                 return (
-                                                                    <div key={groupName} className={!isUngrouped ? "border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-2.5 space-y-2 shadow-sm" : "col-span-full"}>
+                                                                    <div key={groupName} className={!isUngrouped ? "border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-1.5 space-y-1 shadow-sm" : "w-full"}>
                                                                         {!isUngrouped && (
-                                                                            <label className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                                                                            <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-0.5">
                                                                                 {groupName === 'marine_growth' ? 'Marine Growth' : (groupName === 'grid_coordinates' || groupName === 'grid' ? 'Grid & Offset' : groupName)}
                                                                             </label>
                                                                         )}
-                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-2 gap-x-3 gap-y-2">
+                                                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-x-2 gap-y-1">
                                                                             {fields.map((p: any) => {
                                                                                 if (isAnomaly && (p.name === 'has_anomaly' || p.name === 'anomalydata')) return null;
                                                                                 if (!shouldShowField(p)) return null;
+                                                                                const isWide = p.type === 'repeater' || p.type === 'textarea';
+                                                                                const isRepeater = p.type === 'repeater';
                                                                                 return (
-                                                                                    <motion.div layout key={p.name} className={`flex-grow ${p.type === 'repeater' || p.type === 'textarea' ? 'col-span-full' : 'col-span-1'} space-y-0.5`}>
-                                                                                        <label className="text-[9px] font-black uppercase truncate block" title={p.label || p.name}>{p.label || p.name}</label>
+                                                                                    <motion.div layout key={p.name} className={`${isWide ? 'col-span-full' : 'col-span-1'} space-y-0.5 min-w-0`}>
+                                                                                        {!isRepeater && (
+                                                                                            <label className="text-[9px] font-black uppercase truncate block text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>
+                                                                                        )}
                                                                                         {renderInspectionField(p, 'primary')}
                                                                                     </motion.div>
                                                                                 );
@@ -1966,7 +1979,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                     );
                                                 }
                                             })()}
-                                            {(!resolvedFields || resolvedFields.length === 0) && (<div className="py-6 text-center"><p className="text-xs text-slate-400 italic">No additional specialized fields for this type.</p></div>)}
+                                            {(!resolvedFields || resolvedFields.length === 0) && (<div className="py-4 text-center"><p className="text-xs text-slate-400 italic">No additional specialized fields for this type.</p></div>)}
                                         </>
                                     );
                                 })()}
@@ -1984,46 +1997,46 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         </div>
 
                         {(findingType === 'Anomaly' || findingType === 'Finding') && (
-                            <div className={`mt-3 p-3 rounded-lg border-2 space-y-3 animate-in fade-in slide-in-from-top-2 ${isAnomaly ? 'border-red-200 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/10' : 'border-blue-200 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-900/10'}`}>
-                                <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-2 ${isAnomaly ? 'text-red-700 dark:text-red-400 border-red-200 dark:border-red-800' : 'text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'}`}>{isAnomaly ? '⚠ Anomaly / Defect Details' : '📋 Finding Details'}</div>
-                                <div className="flex flex-wrap gap-3">
-                                    <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
-                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
-                                        <select value={anomalyData.defectCode} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, defectCode: e.target.value }))} className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-semibold dark:text-slate-200 ${ringClass}`}><option value="">Select Code</option>{defectCodes.map(c => (<option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>))}</select>
+                            <div className={`mt-2 p-2.5 rounded-lg border-2 space-y-2 animate-in fade-in slide-in-from-top-2 ${isAnomaly ? 'border-red-200 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/10' : 'border-blue-200 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-900/10'}`}>
+                                <div className={`text-[10px] font-black uppercase tracking-widest border-b pb-1 ${isAnomaly ? 'text-red-700 dark:text-red-400 border-red-200 dark:border-red-800' : 'text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'}`}>{isAnomaly ? '⚠ Anomaly / Defect Details' : '📋 Finding Details'}</div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2">
+                                    <div className="space-y-0.5 min-w-0">
+                                        <label className="text-[9px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate block">{isAnomaly ? 'Defect Code' : 'Finding Code'} *</label>
+                                        <select value={anomalyData.defectCode} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, defectCode: e.target.value }))} className={`flex h-8 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2 text-xs font-semibold dark:text-slate-200 ${ringClass}`}><option value="">Select Code</option>{defectCodes.map(c => (<option key={c.lib_id} value={c.lib_desc}>{c.lib_desc}</option>))}</select>
                                     </div>
-                                    <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
-                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
-                                        <select value={anomalyData.defectType} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, defectType: e.target.value }))} className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-semibold dark:text-slate-200 ${ringClass}`}><option value="">Select Type</option>{availableDefectTypes.map(t => (<option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>))}</select>
+                                    <div className="space-y-0.5 min-w-0">
+                                        <label className="text-[9px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate block">{isAnomaly ? 'Defect Type' : 'Finding Type'}</label>
+                                        <select value={anomalyData.defectType} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, defectType: e.target.value }))} className={`flex h-8 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2 text-xs font-semibold dark:text-slate-200 ${ringClass}`}><option value="">Select Type</option>{availableDefectTypes.map(t => (<option key={t.lib_id} value={t.lib_desc}>{t.lib_desc}</option>))}</select>
                                     </div>
-                                    <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
-                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Priority *</label>
-                                        <select value={anomalyData.priority} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, priority: e.target.value }))} className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-semibold dark:text-slate-200 ${ringClass}`}><option value="">Select Priority</option>{priorities.map(p => (<option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>))}</select>
+                                    <div className="space-y-0.5 min-w-0">
+                                        <label className="text-[9px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate block">Priority *</label>
+                                        <select value={anomalyData.priority} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, priority: e.target.value }))} className={`flex h-8 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2 text-xs font-semibold dark:text-slate-200 ${ringClass}`}><option value="">Select Priority</option>{priorities.map(p => (<option key={p.lib_id} value={p.lib_desc}>{p.lib_desc}</option>))}</select>
                                     </div>
-                                    <div className="space-y-1.5 flex-grow min-w-[140px] max-w-[220px]">
+                                    <div className="space-y-0.5 min-w-0">
                                         <div className="flex items-center justify-between">
-                                            <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Reference No</label>
+                                            <label className="text-[9px] font-bold text-slate-800 dark:text-slate-200 uppercase truncate">Reference No</label>
                                             <button
                                                 type="button"
                                                 onClick={() => setAnomalyData((prev: any) => ({ ...prev, referenceNo: "" }))}
                                                 className="text-[9px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-1 cursor-pointer transition-colors"
                                                 title="Auto-generate next reference number"
                                             >
-                                                <Sparkles className="w-2.5 h-2.5" /> Auto-Gen
+                                                <Sparkles className="w-2.5 h-2.5" /> Auto
                                             </button>
                                         </div>
-                                        <div className="relative"><input ref={refInputRef} type="text" value={anomalyData.referenceNo} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, referenceNo: e.target.value }))} onFocus={() => setPrevRefNo(anomalyData.referenceNo)} onBlur={async (e) => { const isValid = await validateAnomalyRef(e.target.value); if (!isValid) setTimeout(() => refInputRef.current?.focus(), 10); }} placeholder="Auto-generating..." className={`flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 text-xs font-mono font-bold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`} /></div>
+                                        <div className="relative"><input ref={refInputRef} type="text" value={anomalyData.referenceNo} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, referenceNo: e.target.value }))} onFocus={() => setPrevRefNo(anomalyData.referenceNo)} onBlur={async (e) => { const isValid = await validateAnomalyRef(e.target.value); if (!isValid) setTimeout(() => refInputRef.current?.focus(), 10); }} placeholder="Auto-generating..." className={`flex h-8 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2 text-xs font-mono font-bold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`} /></div>
                                     </div>
-                                    <div className="space-y-1.5 flex-grow min-w-full">
-                                        <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase">Recommendation</label>
-                                        <textarea value={anomalyData.recommendedAction} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, recommendedAction: e.target.value }))} placeholder="Enter recommendation..." className={`w-full min-h-[60px] rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 p-2 text-xs font-semibold dark:text-slate-200 focus:outline-none focus:ring-2 ${ringClass}`} />
+                                    <div className="space-y-0.5 col-span-full">
+                                        <label className="text-[9px] font-bold text-slate-800 dark:text-slate-200 uppercase">Recommendation</label>
+                                        <textarea value={anomalyData.recommendedAction} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, recommendedAction: e.target.value }))} placeholder="Enter recommendation..." className={`w-full min-h-[45px] rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 p-1.5 text-xs font-semibold dark:text-slate-200 focus:outline-none focus:ring-2 resize-none ${ringClass}`} />
                                     </div>
                                 </div>
-                                <div className="p-3 border border-green-100 dark:border-green-900/30 bg-green-50/80 dark:bg-green-900/10 rounded-lg space-y-3">
-                                    <div className="flex items-center gap-2"><input type="checkbox" id="rectifyCheck" checked={anomalyData.rectify} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectify: e.target.checked }))} className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-green-300 dark:border-green-800 cursor-pointer" /><label htmlFor="rectifyCheck" className="text-xs font-bold text-green-800 dark:text-green-400 cursor-pointer">Rectify {categoryLabel}</label></div>
+                                <div className="p-2 border border-green-100 dark:border-green-900/30 bg-green-50/80 dark:bg-green-900/10 rounded-lg space-y-2">
+                                    <div className="flex items-center gap-2"><input type="checkbox" id="rectifyCheck" checked={anomalyData.rectify} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectify: e.target.checked }))} className="w-3.5 h-3.5 rounded text-green-600 focus:ring-green-500 border-green-300 dark:border-green-800 cursor-pointer" /><label htmlFor="rectifyCheck" className="text-[11px] font-bold text-green-800 dark:text-green-400 cursor-pointer">Rectify {categoryLabel}</label></div>
                                     {anomalyData.rectify && (
-                                        <div className="space-y-3 animate-in fade-in zoom-in-95">
-                                            <div className="space-y-1"><label className="text-[9px] font-bold text-green-700 uppercase">Rectified Date</label><Input type="date" value={anomalyData.rectifiedDate} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectifiedDate: e.target.value }))} className="h-8 text-xs bg-white dark:bg-slate-950 border-green-200 dark:border-green-900/30" /></div>
-                                            <div className="space-y-1"><label className="text-[9px] font-bold text-green-700 uppercase">Rectification Remarks</label><textarea value={anomalyData.rectifiedRemarks} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectifiedRemarks: e.target.value }))} placeholder="How was it rectified?" className="w-full min-h-[50px] rounded border border-green-200 dark:border-green-900/30 p-2 text-xs bg-white dark:bg-slate-950 dark:text-slate-200 focus:ring-green-500"></textarea></div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 animate-in fade-in zoom-in-95">
+                                            <div className="space-y-0.5"><label className="text-[9px] font-bold text-green-700 uppercase">Rectified Date</label><Input type="date" value={anomalyData.rectifiedDate} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectifiedDate: e.target.value }))} className="h-7 text-xs bg-white dark:bg-slate-950 border-green-200 dark:border-green-900/30" /></div>
+                                            <div className="space-y-0.5"><label className="text-[9px] font-bold text-green-700 uppercase">Rectification Remarks</label><textarea value={anomalyData.rectifiedRemarks} onChange={(e) => setAnomalyData((prev: any) => ({ ...prev, rectifiedRemarks: e.target.value }))} placeholder="How was it rectified?" className="w-full min-h-[35px] rounded border border-green-200 dark:border-green-900/30 p-1.5 text-xs bg-white dark:bg-slate-950 dark:text-slate-200 focus:ring-green-500 resize-none"></textarea></div>
                                         </div>
                                     )}
                                 </div>
@@ -2031,13 +2044,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         )}
 
                         {findingType === 'Incomplete' && (
-                            <div className="pt-3 animate-in fade-in slide-in-from-top-2">
-                                <label className="text-[10px] font-bold text-amber-600 uppercase mb-1.5 block">Reason for Incomplete Task *</label>
-                                <textarea value={incompleteReason} onChange={(e) => setIncompleteReason(e.target.value)} placeholder="e.g. Visibility issues..." className="w-full min-h-[80px] rounded border border-amber-200 dark:border-amber-900/30 p-2 text-xs bg-amber-50/30 dark:bg-amber-900/10 dark:text-slate-200 focus:ring-amber-500"></textarea>
+                            <div className="pt-2 animate-in fade-in slide-in-from-top-2">
+                                <label className="text-[9px] font-bold text-amber-600 uppercase mb-1 block">Reason for Incomplete Task *</label>
+                                <textarea value={incompleteReason} onChange={(e) => setIncompleteReason(e.target.value)} placeholder="e.g. Obstacles cant inspect..." className="w-full min-h-[50px] rounded border border-amber-200 dark:border-amber-900/30 p-2 text-xs bg-amber-50/30 dark:bg-amber-900/10 dark:text-slate-200 focus:ring-amber-500 resize-none"></textarea>
                             </div>
                         )}
 
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                             <div className="flex items-center justify-between">
                                 <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1"><FileText className="w-3 h-3" /> Findings</label>
                                 <div className="flex items-center gap-1.5">
@@ -2057,10 +2070,10 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     <FindingsSuggestionEngine supabase={supabase} componentType={selectedComp?.raw?.type || ""} inspectionTypeCode={activeSpec || ""} formData={dynamicProps} onSelect={(val) => { if (recordNotes && recordNotes.trim()) setRecordNotes(`${recordNotes.trim()}\n${val}`); else setRecordNotes(val); }} currentFinding={recordNotes} />
                                 </div>
                             </div>
-                            <textarea value={recordNotes} onChange={(e) => setRecordNotes(e.target.value)} placeholder="Observation specifics..." className="w-full min-h-[80px] rounded-lg border border-slate-300 dark:border-slate-700 p-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50 dark:bg-slate-950/50 dark:text-slate-200 shadow-inner"></textarea>
+                            <textarea value={recordNotes} onChange={(e) => setRecordNotes(e.target.value)} placeholder="Observation specifics..." className="w-full min-h-[38px] h-[38px] rounded-lg border border-slate-300 dark:border-slate-700 p-1.5 text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none bg-slate-50/50 dark:bg-slate-950/50 dark:text-slate-200 shadow-inner"></textarea>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> Attachments ({pendingAttachments.length})</label>
                                 <div className="flex gap-1.5">
@@ -2083,7 +2096,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                 </div>
                             )}
                             {pendingAttachments.length === 0 && (
-                                <div className="py-6 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950/50 opacity-60"><Paperclip className="w-6 h-6 text-slate-300 dark:text-slate-700 mb-1" /><span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">No Attachments Picked</span></div>
+                                <div className="py-2.5 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-center gap-1.5 bg-slate-50/50 dark:bg-slate-950/50 opacity-60"><Paperclip className="w-3.5 h-3.5 text-slate-400" /><span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">No Attachments</span></div>
                             )}
                         </div>
                     </div>

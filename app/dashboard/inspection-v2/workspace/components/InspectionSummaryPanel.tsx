@@ -28,6 +28,9 @@ import {
   LayoutGrid,
   Printer,
   Compass,
+  Loader2,
+  Database,
+  ArrowLeft,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -734,10 +737,25 @@ export function InspectionSummaryPanel({
   const [expandedDefectTypes, setExpandedDefectTypes] = useState<Record<string, boolean>>({});
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const supabase = createClient();
+
+  const handleCancelAndClose = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    onClose();
+  }, [onClose]);
 
   const fetchSummary = useCallback(async () => {
     if (!structureId && !sowId) return;
+    
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     setError(null);
     try {
@@ -747,12 +765,15 @@ export function InspectionSummaryPanel({
       if (jobpackId) params.set("jobpack_id", jobpackId);
       if (sowReportNo && sowReportNo !== "N/A") params.set("sow_report_no", sowReportNo);
 
-      const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+      const res = await fetch(`/api/inspection-summary?${params.toString()}`, {
+        signal: controller.signal,
+      });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
       setData(json.data);
       setLastUpdated(new Date());
     } catch (e: any) {
+      if (e.name === "AbortError") return;
       setError(e.message || "Failed to load summary");
     } finally {
       setLoading(false);
@@ -1241,8 +1262,9 @@ export function InspectionSummaryPanel({
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             </button>
             <button
-              onClick={onClose}
+              onClick={handleCancelAndClose}
               className="p-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50 text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-all"
+              title="Close / Cancel"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -1260,7 +1282,10 @@ export function InspectionSummaryPanel({
             <span className="text-[9px] text-slate-400 hidden sm:inline">Auto-refreshes 30s</span>
           </div>
           {loading && (
-            <span className="text-[9px] text-blue-400 font-bold animate-pulse">Refreshing...</span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-blue-300 font-bold text-[9px] animate-pulse">
+              <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-400" />
+              <span>Data is processing, please wait...</span>
+            </div>
           )}
         </div>
 
@@ -1303,6 +1328,109 @@ export function InspectionSummaryPanel({
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto px-6 py-5 space-y-7 custom-scrollbar"
         >
+          {/* ── Scenario 1: Dedicated Processing Message Box on Initial Load ── */}
+          {loading && !data ? (
+            <div className="flex flex-col items-center justify-center min-h-[440px] py-12 px-4 text-center animate-in fade-in zoom-in-95">
+              <div className="relative mb-5">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600/30 via-cyan-500/20 to-indigo-600/30 border border-cyan-500/40 flex items-center justify-center shadow-xl shadow-cyan-950/40">
+                  <Activity className="w-8 h-8 text-cyan-400 animate-spin" style={{ animationDuration: "3s" }} />
+                </div>
+                <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center border-2 border-slate-950 shadow">
+                  <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                </div>
+              </div>
+
+              <div className="max-w-md w-full bg-slate-900/90 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl backdrop-blur-md space-y-4 text-left">
+                <div className="space-y-1.5">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-[10px] font-black uppercase tracking-widest">
+                    <Database className="w-3 h-3 text-cyan-400 animate-pulse" />
+                    <span>Processing Inspection Records</span>
+                  </div>
+                  <h3 className="text-base font-black text-white tracking-wide">
+                    Aggregating Inspection Summary Data...
+                  </h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    The system is currently querying the database and computing the latest Scope of Work (SOW) completion, component inspections, Flooded Member Detection (FMD), Anodes, CP / UT readings, and Anomaly logs.
+                  </p>
+                  <p className="text-[11px] font-semibold text-cyan-400/90 italic">
+                    Please wait until it refreshes with the latest verified data.
+                  </p>
+                </div>
+
+                {/* Progress Shimmer Bar */}
+                <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-indigo-500 animate-pulse w-full" />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="pt-2 flex items-center justify-between border-t border-slate-800/80">
+                  <span className="text-[10px] text-slate-500">You can cancel and return at any time</span>
+                  <button
+                    type="button"
+                    onClick={handleCancelAndClose}
+                    className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-sm"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Cancel & Back</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* ── Scenario 2: Background Refresh Notification Banner ── */}
+              {loading && data && (
+                <div className="bg-gradient-to-r from-blue-950/80 via-cyan-950/70 to-slate-900/90 border border-cyan-500/40 rounded-xl p-3.5 shadow-lg backdrop-blur-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 mb-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                      <RefreshCw className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-white flex items-center gap-1.5">
+                        <span>Data is updating with latest records...</span>
+                        <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                      </div>
+                      <div className="text-[10px] text-slate-300 truncate">
+                        Please wait while latest inspection readings and SOW flags are synchronized.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelAndClose}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[10px] font-bold transition-all flex items-center gap-1 active:scale-95"
+                    title="Return to Workspace"
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    <span>Back</span>
+                  </button>
+                </div>
+              )}
+
+              {/* ── Empty State ── */}
+              {!data && !loading && !error && (
+                <div className="flex flex-col items-center justify-center min-h-[350px] p-8 text-center">
+                  <AlertCircle className="w-12 h-12 text-slate-500 mb-3" />
+                  <h3 className="text-sm font-bold text-slate-200 mb-1">No Inspection Records Found</h3>
+                  <p className="text-xs text-slate-400 max-w-sm mb-4">
+                    No Scope of Work items or inspection entries were found for this structure / SOW.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => fetchSummary()}
+                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition"
+                    >
+                      Retry Fetch
+                    </button>
+                    <button
+                      onClick={handleCancelAndClose}
+                      className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                    >
+                      Back to Workspace
+                    </button>
+                  </div>
+                </div>
+              )}
           {/* ═══ PIPELINE STRUCTURE SUMMARY SECTION (MATCHING PIC-2 & PIC-1) ═════ */}
           {isPipelineMode && (
             <section id="summary-sec-pipeline" className="space-y-4">
@@ -2954,30 +3082,23 @@ export function InspectionSummaryPanel({
               </div>
             </section>
           )}
+        </>
+      )}
 
-          {/* Loading skeleton */}
-          {loading && !data && (
-            <div className="space-y-4 animate-pulse">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-32 bg-slate-800/40 rounded-2xl" />
-              ))}
-            </div>
-          )}
-
-          {/* Bottom padding */}
-          <div className="h-6" />
-        </div>
-      </div>
-
-      <style>{`
-                @keyframes slideInRight {
-                    from { transform: translateX(100%); opacity: 0; }
-                    to { transform: translateX(0); opacity: 1; }
-                }
-                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
-            `}</style>
+      {/* Bottom padding */}
+      <div className="h-6" />
     </div>
+
+    <style>{`
+      @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+    `}</style>
+  </div>
+</div>
   );
 }
