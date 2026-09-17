@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -21,6 +21,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -31,7 +32,10 @@ export const generateDivingCVINSReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
+    if ((!records || records.length === 0) && config.returnBlob && !config.isBlankReport) {
+        return null;
+    }
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -88,7 +92,7 @@ export const generateDivingCVINSReport = async (
         };
 
         const drawPageFooter = (d: jsPDF, pageNo: number) => {
-            d.setFontSize(6.5); d.setFont("helvetica", "normal");
+            d.setFontSize(6.5); doc.setFont("helvetica", "normal");
             d.setTextColor(...colors.text);
             d.setDrawColor(...colors.border); d.setLineWidth(0.2);
             d.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
@@ -267,9 +271,9 @@ export const generateDivingCVINSReport = async (
                     doc.text(label, lx + 2, sigY + 3.5);
                     doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                     doc.text("Name:", lx + 2, sigY + 10);
-                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
+                    if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                     doc.text("Date:", lx + 2, sigY + 13.5);
-                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
+                    if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                     doc.text("Signature:", lx + 2, sigY + 17);
                 };
 
@@ -288,7 +292,6 @@ export const generateDivingCVINSReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`Diving_CVINS_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving CVINS Report] Error:", err);

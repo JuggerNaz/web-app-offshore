@@ -338,11 +338,14 @@ export const generateROVRRISIJTubeDetailReport = async (
             let currentY = margin + HEADER_H + 4;
             currentY = drawContextRow(doc, currentY, g.records);
 
-            // J-Tube Header info block
-            doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-            doc.setTextColor(...colors.navy);
-            doc.text(`J-Tube Group: ${g.jtubeComp?.q_id || "Miscellaneous"}`, margin, currentY);
-            currentY += 5;
+            // J-Tube Header info block (navy sub-header banner)
+            doc.setFillColor(...colors.navy);
+            doc.rect(margin, currentY, contentWidth, 7, "F");
+            doc.setTextColor(255);
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "bold");
+            doc.text(`J-Tube Component: ${g.jtubeComp?.q_id || "Miscellaneous"}`, margin + 4, currentY + 5);
+            currentY += 10;
 
             // Sort records by elevation Ascending
             const sortedRecords = [...g.records].sort((a, b) => {

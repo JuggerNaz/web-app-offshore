@@ -40,9 +40,9 @@ export const generateROVRRISIReport = async (
         // Determine Report Type & Filter
         const rType = config.reportType || 'R';
         const typeConfig = {
-            'R': { title: 'ROV Riser Survey Report', prefix: 'R', label: 'RISER', file: 'ROV_Riser_Survey_Report' },
-            'J': { title: 'ROV J-Tube Inspection Report', prefix: 'J', label: 'J-TUBE', file: 'ROV_JTube_Inspection_Report' },
-            'I': { title: 'ROV I-Tube Inspection Report', prefix: 'I', label: 'I-TUBE', file: 'ROV_ITube_Inspection_Report' }
+            'R': { title: 'Riser Survey Report (ROV)', prefix: 'R', label: 'RISER', file: 'Riser_Survey_Report_ROV' },
+            'J': { title: 'J-Tube Inspection Report (ROV)', prefix: 'J', label: 'J-TUBE', file: 'JTube_Inspection_Report_ROV' },
+            'I': { title: 'I-Tube Inspection Report (ROV)', prefix: 'I', label: 'I-TUBE', file: 'ITube_Inspection_Report_ROV' }
         }[rType];
 
         const colors = {
@@ -372,7 +372,7 @@ export const generateROVRRISIReport = async (
             doc.setFontSize(7.5); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.navy);
             doc.text(`${typeConfig.label} SKETCH (${riser?.q_id || 'Unknown'})`, gX + (gW / 2), currentY + 5, { align: 'center' });
 
-            const pipeCenterX = gX + (gW * 0.35);
+            const pipeCenterX = gX + (gW * 0.38);
             const cX = pipeCenterX;
             const pipeY = eToY(bottomElev); 
             const mudY = eToY(mudlineElev) + (rWidth / 2);
@@ -383,22 +383,22 @@ export const generateROVRRISIReport = async (
             if (sMax >= 0 && sMin <= 0) {
                 const seaY = eToY(0);
                 doc.setDrawColor(59, 130, 246); doc.setLineWidth(0.4);
-                doc.line(gX + 4, seaY, gX + gW - 4, seaY);
-                doc.setFontSize(6); doc.setTextColor(59, 130, 246); doc.setFont("helvetica", "bold");
-                doc.text("SEA LEVEL (0.00m)", gX + 5, seaY - 1.5);
+                doc.line(gX + 2, seaY, gX + gW - 2, seaY);
+                doc.setFontSize(5); doc.setTextColor(59, 130, 246); doc.setFont("helvetica", "bold");
+                doc.text("SEA LEVEL (0.00m)", gX + 2.5, seaY - 1.2);
             }
 
             // 2. Seabed Mudline Line
             doc.setDrawColor(...colors.mudline); doc.setLineWidth(1.2);
             if (suspGap === 0) {
-                doc.line(gX + 4, mudY, gX + gW - 4, mudY);
-                doc.setFontSize(6); doc.setTextColor(...colors.mudline); doc.setFont("helvetica", "bold");
-                doc.text(`SEABED / MUDLINE (${bottomElev.toFixed(1)}m)`, gX + 5, mudY - 2.5);
+                doc.line(gX + 2, mudY, gX + gW - 2, mudY);
+                doc.setFontSize(5); doc.setTextColor(...colors.mudline); doc.setFont("helvetica", "bold");
+                doc.text(`SEABED (${bottomElev.toFixed(1)}m)`, gX + 2.5, mudY - 1.5);
             } else {
                 const startMudY = mudY;
                 const endMudY = pipeY + (rWidth / 2);
-                const touchMudX = pipeCenterX + bRadius + (mudTouchDist * (gW / 60));
-                doc.line(gX + 4, startMudY, pipeCenterX - 10, startMudY);
+                const touchMudX = Math.min(pipeCenterX + bRadius + (mudTouchDist * (gW / 60)), gX + gW - 4);
+                doc.line(gX + 2, startMudY, pipeCenterX - 10, startMudY);
                 let lx = pipeCenterX - 10; let ly = startMudY;
                 const segs = 20;
                 for (let j = 1; j <= segs; j++) {
@@ -407,10 +407,10 @@ export const generateROVRRISIReport = async (
                     const ty = Math.pow(1 - t, 2) * startMudY + 2 * (1 - t) * t * endMudY + Math.pow(t, 2) * endMudY;
                     doc.line(lx, ly, tx, ty); lx = tx; ly = ty;
                 }
-                doc.line(lx, ly, gX + gW - 4, ly);
-                doc.setFontSize(6); doc.setTextColor(...colors.mudline); doc.setFont("helvetica", "bold");
-                doc.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 5, { align: 'center' });
-                doc.text(`SEABED (${bottomElev.toFixed(1)}m)`, gX + 5, startMudY - 2.5);
+                doc.line(lx, ly, gX + gW - 2, ly);
+                doc.setFontSize(5); doc.setTextColor(...colors.mudline); doc.setFont("helvetica", "bold");
+                doc.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 4, { align: 'center' });
+                doc.text(`SEABED (${bottomElev.toFixed(1)}m)`, gX + 2.5, startMudY - 1.5);
             }
 
             // --- Draw Riser ---
@@ -458,12 +458,18 @@ export const generateROVRRISIReport = async (
                 doc.ellipse(cX, pipeBottomY, rx, ry, 'S');
 
                 // Leader line and Callout
+                // Left Side: Elevation
+                const leftTermLineEnd = cX - rx - 5;
                 doc.setDrawColor(...colors.navy);
                 doc.setLineWidth(0.3);
-                doc.line(cX + rx + 1, pipeBottomY, cX + rx + 6, pipeBottomY);
+                doc.line(cX - rx, pipeBottomY, leftTermLineEnd, pipeBottomY);
+                doc.setFontSize(5); doc.setTextColor(...colors.navy); doc.setFont("helvetica", "bold");
+                doc.text(`${itubeEndElev.toFixed(1)}m`, leftTermLineEnd - 1, pipeBottomY + 1.2, { align: "right" });
 
-                doc.setFontSize(5.5); doc.setTextColor(...colors.navy); doc.setFont("helvetica", "bold");
-                doc.text(`TERMINATOR GRILL (${itubeEndElev.toFixed(1)}m)`, cX + rx + 7, pipeBottomY + 1.5);
+                // Right Side: Terminator Label
+                const rightTermLineEnd = Math.min(cX + rx + 5, gX + gW - 22);
+                doc.line(cX + rx, pipeBottomY, rightTermLineEnd, pipeBottomY);
+                doc.text("TERMINATOR GRILL", rightTermLineEnd + 1, pipeBottomY + 1.2);
             } else {
                 drawP(cX, eToY(designStart), cX, bY, true);
                 const endX = cX + bRadius; 
@@ -482,18 +488,19 @@ export const generateROVRRISIReport = async (
                     drawC([120, 130, 150], rWidth, 0); drawC([160, 175, 195], rWidth * 0.7, 0); drawC([220, 230, 240], rWidth * 0.2, -rWidth * 0.15);
                 }
                 if ((rType as string) !== 'J' && (rType as string) !== 'I') {
-                    drawP(endX, pipeY, gX + gW - 5, pipeY, false);
-                    doc.setFontSize(6); doc.setTextColor(120, 130, 150); doc.text("PIPELINE", endX + 10, pipeY + 8);
+                    const pipeEndX = Math.min(gX + gW - 4, endX + 25);
+                    drawP(endX, pipeY, pipeEndX, pipeY, false);
+                    doc.setFontSize(5); doc.setTextColor(120, 130, 150); doc.text("PIPELINE", Math.min(endX + 6, gX + gW - 14), pipeY + 6);
                 }
             }
 
-            // Scale
+            // Scale on Far Left
             doc.setLineWidth(0.1); doc.setDrawColor(200, 200, 200);
             for (let e = Math.floor(sMax); e >= sMin; e -= 5) {
                 const ey = eToY(e);
                 if (ey <= gMudlineY + 15) {
-                    doc.line(cX - 12, ey, cX - 5, ey);
-                    doc.setFontSize(6); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, cX - 18, ey + 1);
+                    doc.line(gX + 7, ey, gX + 10, ey);
+                    doc.setFontSize(5); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, gX + 2, ey + 1);
                 }
             }
 
@@ -510,20 +517,54 @@ export const generateROVRRISIReport = async (
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
                     doc.rect(cX - cw/2 - fw, py - 1, fw, 2, 'S'); doc.rect(cX + cw/2, py - 1, fw, 2, 'S');
                     doc.setFillColor(...colors.navy); doc.circle(cX - cw/2 - fw/2, py, 0.5, 'F'); doc.circle(cX + cw/2 + fw/2, py, 0.5, 'F');
-                    doc.setLineWidth(0.3); 
+                    
+                    // Left Side: Elevation Value
+                    doc.setLineWidth(0.3); doc.setDrawColor(...colors.navy);
+                    const leftLineStart = cX - cw/2 - fw;
+                    const leftLineEnd = leftLineStart - 5;
+                    doc.line(leftLineStart, py, leftLineEnd, py);
+                    doc.setFontSize(5.5); doc.setTextColor(...colors.navy); 
+                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+
+                    // Right Side: Object Name / QID
                     const lineStart = cX + cw/2 + fw;
-                    const lineEnd = lineStart + 10;
+                    const lineEnd = Math.min(lineStart + 5, gX + gW - 20);
                     doc.line(lineStart, py, lineEnd, py);
-                    doc.setFontSize(6); doc.setTextColor(...colors.navy); 
-                    doc.text(`${el}m`, lineEnd + 1, py + 1);
-                    doc.text(c.q_id || 'Clamp', lineEnd + 1, py + 3);
+                    doc.setFontSize(5.5); doc.setTextColor(...colors.navy);
+                    let qidText = c.q_id || 'Clamp';
+                    const maxQidW = (gX + gW - 2) - (lineEnd + 1);
+                    if (doc.getTextWidth(qidText) > maxQidW) {
+                        while (qidText.length > 3 && doc.getTextWidth(qidText + "...") > maxQidW) {
+                            qidText = qidText.slice(0, -1);
+                        }
+                        qidText += "...";
+                    }
+                    doc.text(qidText, lineEnd + 1, py + 1);
                 } else {
                     doc.setFillColor(...col); doc.circle(cX, py, 1.8, 'F');
                     doc.setDrawColor(...col); doc.setLineWidth(0.1); 
-                    const lineEnd = cX + 2 + 10;
-                    doc.line(cX + 2, py, lineEnd, py);
-                    doc.setFontSize(6); doc.setTextColor(...col);
-                    doc.text(`${el}m`, lineEnd + 1, py + 1);
+
+                    // Left Side: Elevation Value
+                    const leftLineEnd = cX - 2 - 5;
+                    doc.line(cX - 2, py, leftLineEnd, py);
+                    doc.setFontSize(5.5); doc.setTextColor(...col);
+                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+
+                    // Right Side: Object Name / QID if present
+                    if (c.q_id && !c.q_id.startsWith('GEN')) {
+                        const lineEnd = Math.min(cX + 2 + 5, gX + gW - 20);
+                        doc.line(cX + 2, py, lineEnd, py);
+                        doc.setFontSize(5.5); doc.setTextColor(...col);
+                        let qidText = c.q_id;
+                        const maxQidW = (gX + gW - 2) - (lineEnd + 1);
+                        if (doc.getTextWidth(qidText) > maxQidW) {
+                            while (qidText.length > 3 && doc.getTextWidth(qidText + "...") > maxQidW) {
+                                qidText = qidText.slice(0, -1);
+                            }
+                            qidText += "...";
+                        }
+                        doc.text(qidText, lineEnd + 1, py + 1);
+                    }
                 }
             });
 
@@ -553,13 +594,16 @@ export const generateROVRRISIReport = async (
                 startY: currentY,
                 margin: { left: dX, right: margin, top: margin + 22 + 6 },
                 tableWidth: dW,
-                head: [['Loc / Elev', 'CP (mV)', 'Findings / Anomalies']],
-                body: sortedR.map(r => {
+                head: [['Item No.', 'Loc / Elev', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
+                body: sortedR.map((r, idx) => {
+                    const itemNo = idx + 1;
                     const rd = r.inspection_data || {};
                     const anoms = r.insp_anomalies || [];
                     const isAnom = r.has_anomaly || anoms.length > 0;
                     const c = r.structure_components || {};
                     const isClamp = c.code === 'CL' || rd.clamp_type || c.q_id?.includes('SUPP') || c.q_id?.includes('CLP');
+
+                    const diveNo = r.insp_rov_jobs?.job_no || r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.name || r.dive_no || r.inspection_data?.dive_no || 'N/A';
 
                     const primaryCP = rd.cp_rdg ?? rd.cp_reading_mv ?? rd.cp ?? "";
                     const additionals: any[] = Array.isArray(rd.cp_rdg_additional) ? rd.cp_rdg_additional : (Array.isArray(rd.cp_readings) ? rd.cp_readings : []);
@@ -586,20 +630,21 @@ export const generateROVRRISIReport = async (
                     if (isAnom && anoms.length > 0) {
                         findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`));
                     }
-                    if (r.insp_rov_jobs?.job_no) findingsParts.push(`[Dive: ${r.insp_rov_jobs.job_no}]`);
 
                     const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
 
                     return [
-                        { content: r.elevation ? `${r.elevation}m` : (rd.riser_item || 'N/A'), styles: { fontStyle: 'bold' } },
+                        { content: String(itemNo), styles: { halign: 'center' } },
+                        { content: r.elevation ? `${r.elevation}m` : (rd.riser_item || 'N/A'), styles: { fontStyle: 'bold', halign: 'center' } },
+                        { content: String(diveNo), styles: { halign: 'center' } },
                         { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
                 }),
                 theme: 'grid',
-                headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8 },
+                headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, halign: 'center' },
                 styles: { fontSize: 7, cellPadding: 2 },
-                columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } },
+                columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 16 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 }, 4: { cellWidth: 'auto' } },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);
                 }

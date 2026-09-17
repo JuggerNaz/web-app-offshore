@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showSignatures?: boolean;
     showPageNumbers?: boolean;
     watermarkText?: string;
@@ -35,6 +36,10 @@ export const generateDivingMEASUReport = async (
     config: ReportConfig
 ) => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
@@ -34,6 +35,10 @@ export const generateDivingMPINSReport = async (
     config: ReportConfig
 ): Promise<Blob | void> => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -104,7 +109,7 @@ export const generateDivingMPINSReport = async (
 
         // Group records by QID
         const groupedByQid: Record<string, any[]> = {};
-        for (const r of records) {
+        for (const r of (records || [])) {
             const qid = r.structure_components?.q_id || r.component?.q_id || "UNKNOWN";
             if (!groupedByQid[qid]) groupedByQid[qid] = [];
             groupedByQid[qid].push(r);
@@ -113,6 +118,7 @@ export const generateDivingMPINSReport = async (
         const qids = Object.keys(groupedByQid).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
         if (qids.length === 0) {
+            if (config?.returnBlob && !config?.isBlankReport) return null as any;
             // Empty report
             drawPageHeader(doc, 1);
             drawPageFooter(doc, 1);

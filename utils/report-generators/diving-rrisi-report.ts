@@ -24,6 +24,7 @@ interface ReportConfig {
     showPageNumbers?: boolean;
     watermarkText?: string;
     reportType?: 'R' | 'J' | 'I';
+    isBlankReport?: boolean;
 }
 
 /**
@@ -263,6 +264,7 @@ export const generateDivingRRISIReport = async (
 
         // Fallback default group if still empty
         if (risersMap.size === 0) {
+            if (config.returnBlob && !config.isBlankReport) return null;
             const fallbackQid = `${typeConfig.label}-1`;
             risersMap.set(fallbackQid, { parentQid: fallbackQid, records: [] });
         }
@@ -273,6 +275,10 @@ export const generateDivingRRISIReport = async (
         }
         const sortedGroups: RiserGroup[] = Array.from(risersMap.values())
             .sort((a, b) => a.parentQid.localeCompare(b.parentQid, undefined, { numeric: true, sensitivity: 'base' }));
+
+        if (filteredRecords.length === 0 && config.returnBlob && !config.isBlankReport) {
+            return null;
+        }
 
         // --- Pre-load Logos ---
         let companyLogo: any = null;
@@ -503,7 +509,7 @@ export const generateDivingRRISIReport = async (
                 const gMudlineY = gTopY + 115;
                 const elevToY = (elev: number) => gTopY + ((sMax - elev) / eRange) * (gMudlineY - gTopY);
 
-                const pipeCenterX = sx + (sw * 0.35);
+                const pipeCenterX = sx + (sw * 0.38);
                 const pipeY = elevToY(bottomElev);
                 const mudY = elevToY(mudlineElev) + (rWidth / 2);
                 const isITube = targetPrefix === 'I';
@@ -513,22 +519,22 @@ export const generateDivingRRISIReport = async (
                 if (sMax >= 0 && sMin <= 0) {
                     const seaY = elevToY(0);
                     d.setDrawColor(...colors.seaLevel); d.setLineWidth(0.4);
-                    d.line(sx + 4, seaY, sx + sw - 4, seaY);
-                    d.setFontSize(6); d.setTextColor(...colors.seaLevel); d.setFont("helvetica", "bold");
-                    d.text("SEA LEVEL (0.00m)", sx + 5, seaY - 1.5);
+                    d.line(sx + 2, seaY, sx + sw - 2, seaY);
+                    d.setFontSize(5); d.setTextColor(...colors.seaLevel); d.setFont("helvetica", "bold");
+                    d.text("SEA LEVEL (0.00m)", sx + 2.5, seaY - 1.2);
                 }
 
                 // 2. Seabed Mudline Line
                 d.setDrawColor(...colors.mudline); d.setLineWidth(1.2);
                 if (suspGap === 0) {
-                    d.line(sx + 4, mudY, sx + sw - 4, mudY);
-                    d.setFontSize(6); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
-                    d.text(`SEABED / MUDLINE (${platformDepth.toFixed(1)}m)`, sx + 5, mudY - 2.5);
+                    d.line(sx + 2, mudY, sx + sw - 2, mudY);
+                    d.setFontSize(5); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
+                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 2.5, mudY - 1.5);
                 } else {
                     const startMudY = mudY;
                     const endMudY = pipeY + (rWidth / 2);
-                    const touchMudX = pipeCenterX + bRadius + (mudTouchDist * (sw / 60));
-                    d.line(sx + 4, startMudY, pipeCenterX - 10, startMudY);
+                    const touchMudX = Math.min(pipeCenterX + bRadius + (mudTouchDist * (sw / 60)), sx + sw - 4);
+                    d.line(sx + 2, startMudY, pipeCenterX - 10, startMudY);
                     let lx = pipeCenterX - 10; let ly = startMudY;
                     const segs = 20;
                     for (let j = 1; j <= segs; j++) {
@@ -538,10 +544,10 @@ export const generateDivingRRISIReport = async (
                         d.line(lx, ly, tx, ty);
                         lx = tx; ly = ty;
                     }
-                    d.line(lx, ly, sx + sw - 4, ly);
-                    d.setFontSize(6); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
-                    d.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 5, { align: 'center' });
-                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 5, startMudY - 2.5);
+                    d.line(lx, ly, sx + sw - 2, ly);
+                    d.setFontSize(5); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
+                    d.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 4, { align: 'center' });
+                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 2.5, startMudY - 1.5);
                 }
 
                 // Helper pipe cylinder renderer
@@ -600,12 +606,18 @@ export const generateDivingRRISIReport = async (
                     d.ellipse(pipeCenterX, pipeBottomY, rx, ry, 'S');
 
                     // 4. Leader Line & Callout Label
+                    // Left Side: Elevation
+                    const leftTermLineEnd = pipeCenterX - rx - 5;
                     d.setDrawColor(...colors.navy);
                     d.setLineWidth(0.3);
-                    d.line(pipeCenterX + rx + 1, pipeBottomY, pipeCenterX + rx + 6, pipeBottomY);
+                    d.line(pipeCenterX - rx, pipeBottomY, leftTermLineEnd, pipeBottomY);
+                    d.setFontSize(5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
+                    d.text(`${itubeEndElev.toFixed(1)}m`, leftTermLineEnd - 1, pipeBottomY + 1.2, { align: "right" });
 
-                    d.setFontSize(5.5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
-                    d.text(`TERMINATOR GRILL (${itubeEndElev.toFixed(1)}m)`, pipeCenterX + rx + 7, pipeBottomY + 1.5);
+                    // Right Side: Terminator Label
+                    const rightTermLineEnd = Math.min(pipeCenterX + rx + 5, sx + sw - 22);
+                    d.line(pipeCenterX + rx, pipeBottomY, rightTermLineEnd, pipeBottomY);
+                    d.text("TERMINATOR GRILL", rightTermLineEnd + 1, pipeBottomY + 1.2);
                 } else {
                     // Vertical Riser down to bY (which is bRadius meters above bottomElev)
                     const pipeTopY = elevToY(sMax);
@@ -636,23 +648,23 @@ export const generateDivingRRISIReport = async (
                     drawCurveSegment([220, 230, 240], rWidth * 0.25, -rWidth * 0.15);
 
                     // Horizontal Pipeline extending right sitting on the seabed
-                    const pipeRightX = sx + sw - 6;
+                    const pipeRightX = Math.min(sx + sw - 4, bendEndX + 25);
                     d.setLineWidth(rWidth); d.setDrawColor(120, 130, 150); d.line(bendEndX, pipeY, pipeRightX, pipeY);
                     d.setLineWidth(rWidth * 0.7); d.setDrawColor(160, 175, 195); d.line(bendEndX, pipeY, pipeRightX, pipeY);
                     d.setLineWidth(rWidth * 0.25); d.setDrawColor(220, 230, 240); d.line(bendEndX, pipeY - rWidth * 0.15, pipeRightX, pipeY - rWidth * 0.15);
 
-                    d.setFontSize(5.5); d.setTextColor(100, 115, 130); d.setFont("helvetica", "bold");
-                    d.text("PIPELINE", bendEndX + 2, pipeY + 6);
+                    d.setFontSize(5); d.setTextColor(100, 115, 130); d.setFont("helvetica", "bold");
+                    d.text("PIPELINE", Math.min(bendEndX + 6, sx + sw - 14), pipeY + 6);
                 }
 
-                // 5. Elevation Scale Ticks
+                // 5. Elevation Scale Ticks on Far Left
                 d.setDrawColor(180, 190, 205); d.setLineWidth(0.2);
                 for (let e = Math.floor(sMax); e >= sMin; e -= 5) {
                     const ty = elevToY(e);
                     if (ty >= gTopY && ty <= gMudlineY + 15) {
-                        d.line(pipeCenterX - 10, ty, pipeCenterX - 5, ty);
-                        d.setFontSize(5.5); d.setFont("helvetica", "normal"); d.setTextColor(100, 115, 130);
-                        d.text(`${e}m`, pipeCenterX - 11, ty + 1.5, { align: 'right' });
+                        d.line(sx + 7, ty, sx + 10, ty);
+                        d.setFontSize(5); d.setFont("helvetica", "normal"); d.setTextColor(100, 115, 130);
+                        d.text(`${e}m`, sx + 2, ty + 1);
                     }
                 }
 
@@ -691,26 +703,53 @@ export const generateDivingRRISIReport = async (
                         d.circle(pipeCenterX - cw/2 - 1, py, 0.5, 'F');
                         d.circle(pipeCenterX + cw/2 + 1, py, 0.5, 'F');
 
-                        // Leader line & text callout
+                        // Left Side: Elevation Value
                         d.setDrawColor(...colors.navy); d.setLineWidth(0.2);
-                        d.line(pipeCenterX + cw/2 + 2, py, pipeCenterX + cw/2 + 6, py);
+                        const leftLineEnd = pipeCenterX - cw/2 - 2 - 5;
+                        d.line(pipeCenterX - cw/2 - 2, py, leftLineEnd, py);
                         d.setFontSize(5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
-                        d.text(`${elev.toFixed(1)}m ${qid} (Clamp)`, pipeCenterX + cw/2 + 7, py + 1.5);
-                    } else if (compCode === 'AN' || qid.includes('AN')) {
-                        // Anode shape
-                        d.setFillColor(245, 158, 11); d.circle(pipeCenterX, py, 2, 'F');
-                        d.setDrawColor(217, 119, 6); d.setLineWidth(0.3); d.circle(pipeCenterX, py, 2, 'S');
-                        d.setFontSize(5); d.setTextColor(180, 83, 9); d.setFont("helvetica", "bold");
-                        d.text(`${elev.toFixed(1)}m ${qid}`, pipeCenterX + 4, py + 1.5);
+                        d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1.2, { align: "right" });
+
+                        // Right Side: Object Name / QID
+                        const rightLineEnd = Math.min(pipeCenterX + cw/2 + 2 + 5, sx + sw - 20);
+                        d.line(pipeCenterX + cw/2 + 2, py, rightLineEnd, py);
+                        d.setFontSize(5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
+                        let displayQid = c.q_id || r.q_id || 'Clamp';
+                        const maxW = (sx + sw - 2) - (rightLineEnd + 1);
+                        if (d.getTextWidth(displayQid) > maxW) {
+                            while (displayQid.length > 3 && d.getTextWidth(displayQid + '...') > maxW) {
+                                displayQid = displayQid.slice(0, -1);
+                            }
+                            displayQid += '...';
+                        }
+                        d.text(displayQid, rightLineEnd + 1, py + 1.2);
                     } else {
-                        // General Node (Weld, Pipe section)
-                        d.setFillColor(...markerColor); d.circle(pipeCenterX, py, 1.5, 'F');
-                        d.setDrawColor(255, 255, 255); d.setLineWidth(0.2); d.circle(pipeCenterX, py, 1.5, 'S');
-                        
-                        d.setDrawColor(...markerColor); d.setLineWidth(0.2);
-                        d.line(pipeCenterX + 1.5, py, pipeCenterX + 5, py);
+                        // Normal Marker Dot
+                        d.setFillColor(...markerColor);
+                        d.circle(pipeCenterX, py, 1.8, 'F');
+                        d.setDrawColor(...markerColor); d.setLineWidth(0.1);
+
+                        // Left Side: Elevation Value
+                        const leftLineEnd = pipeCenterX - 2 - 5;
+                        d.line(pipeCenterX - 2, py, leftLineEnd, py);
                         d.setFontSize(5); d.setTextColor(...markerColor); d.setFont("helvetica", "bold");
-                        d.text(`${elev.toFixed(1)}m ${qid}`, pipeCenterX + 6, py + 1.5);
+                        d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1.2, { align: "right" });
+
+                        // Right Side: Object Name / QID if present
+                        let displayQid = c.q_id || r.q_id || '';
+                        if (displayQid && !displayQid.startsWith('GEN')) {
+                            const rightLineEnd = Math.min(pipeCenterX + 2 + 5, sx + sw - 20);
+                            d.line(pipeCenterX + 2, py, rightLineEnd, py);
+                            d.setFontSize(5); d.setTextColor(...markerColor); d.setFont("helvetica", "bold");
+                            const maxW = (sx + sw - 2) - (rightLineEnd + 1);
+                            if (d.getTextWidth(displayQid) > maxW) {
+                                while (displayQid.length > 3 && d.getTextWidth(displayQid + '...') > maxW) {
+                                    displayQid = displayQid.slice(0, -1);
+                                }
+                                displayQid += '...';
+                            }
+                            d.text(displayQid, rightLineEnd + 1, py + 1.2);
+                        }
                     }
                 });
             };
@@ -759,7 +798,6 @@ export const generateDivingRRISIReport = async (
                 return {
                     rowCells: [
                         String(itemNo),
-                        qid,
                         elevVal,
                         diveNo,
                         cpInfo.display,
@@ -776,7 +814,7 @@ export const generateDivingRRISIReport = async (
                 margin: { left: dX, right: margin, top: margin + 22 + 6, bottom: 20 },
                 tableWidth: dW,
                 head: [
-                    ['Item No.', 'QID', 'Elev', 'Dive', 'CP', 'UT', 'Findings']
+                    ['Item No.', 'Elev', 'Dive', 'CP', 'UT', 'Findings']
                 ],
                 body: tableRows.map(tr => tr.rowCells),
                 theme: 'grid',
@@ -814,12 +852,11 @@ export const generateDivingRRISIReport = async (
                 },
                 columnStyles: {
                     0: { cellWidth: 12, halign: 'center' },
-                    1: { cellWidth: 20, fontStyle: 'bold', halign: 'left' },
+                    1: { cellWidth: 16, halign: 'center' },
                     2: { cellWidth: 14, halign: 'center' },
-                    3: { cellWidth: 13, halign: 'center' },
-                    4: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
-                    5: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
-                    6: { cellWidth: 'auto', halign: 'left' }
+                    3: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
+                    4: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+                    5: { cellWidth: 'auto', halign: 'left' }
                 },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);

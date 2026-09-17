@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -36,7 +37,7 @@ export const generateROVBoatlandingReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -315,6 +316,10 @@ export const generateROVBoatlandingReport = async (
             const qidB = idToComp[b]?.q_id || "";
             return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: 'base' });
         });
+
+        if (sortedParentIds.length === 0 && config?.returnBlob && !config?.isBlankReport) {
+            return null;
+        }
 
         const buildRow = (r: any, idx: number): string[] => {
             const d   = r.inspection_data || {};

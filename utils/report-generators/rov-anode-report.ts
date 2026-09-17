@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -34,6 +35,10 @@ export const generateROVAnodeReport = async (
     config: ReportConfig
 ) => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const isPF = config.printFriendly;
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();

@@ -53,6 +53,10 @@ export const generateVideoLogReport = async (
         console.error("Error fetching video log data", e);
     }
 
+    if ((!tapes || tapes.length === 0) && config.returnBlob && !config.isBlankReport) {
+        return null;
+    }
+
     // ── Logos ────────────────────────────────────────────────────────────────
     let clientLogo: any = null;
     if (companySettings.logo_url) clientLogo = await loadLogoWithTransparency(companySettings.logo_url);

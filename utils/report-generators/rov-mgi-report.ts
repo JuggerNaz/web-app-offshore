@@ -20,6 +20,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showSignatures?: boolean;
 }
 
@@ -34,6 +35,19 @@ export const generateROVMGIGraphReport = async (
     config: ReportConfig
 ) => {
     try {
+        const recordsByQid: Record<string, any[]> = {};
+        (records || []).forEach(r => {
+            const qid = r.structure_components?.q_id || r.component?.q_id || "Unassigned";
+            if (!recordsByQid[qid]) recordsByQid[qid] = [];
+            recordsByQid[qid].push(r);
+        });
+
+        const sortedQids = Object.keys(recordsByQid).sort();
+
+        if (sortedQids.length === 0 && config?.returnBlob && !config?.isBlankReport) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -52,14 +66,6 @@ export const generateROVMGIGraphReport = async (
             return -val; // Force negative as requested
         };
 
-        const recordsByQid: Record<string, any[]> = {};
-        records.forEach(r => {
-            const qid = r.structure_components?.q_id || r.component?.q_id || "Unassigned";
-            if (!recordsByQid[qid]) recordsByQid[qid] = [];
-            recordsByQid[qid].push(r);
-        });
-
-        const sortedQids = Object.keys(recordsByQid).sort();
         const thresholdList = mgiProfile?.thresholds || [];
 
         const colors = {

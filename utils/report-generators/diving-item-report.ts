@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
     watermarkText?: string;
@@ -37,6 +38,16 @@ export const generateDivingItemReport = async (
     config: ReportConfig
 ): Promise<Blob | void> => {
     try {
+        // ── Filter to PL_IC records strictly if mixed ───────────────────────────
+        const filteredRecords = (records || []).filter(r => {
+            const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+            return code === 'PL_IC' || code === 'ITEM' || code === '';
+        });
+
+        if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -54,11 +65,6 @@ export const generateDivingItemReport = async (
             finding: [124, 58, 237] as [number, number, number],
         };
 
-        // ── Filter to PL_IC records strictly if mixed ───────────────────────────
-        const filteredRecords = (records || []).filter(r => {
-            const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
-            return code === 'PL_IC' || code === 'ITEM' || code === '';
-        });
         const targetRecords = filteredRecords.length > 0 ? filteredRecords : (records || []);
 
         // ── Date range calculation ──────────────────────────────────────────────

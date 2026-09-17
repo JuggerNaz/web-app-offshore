@@ -1573,7 +1573,7 @@ export function useWorkspaceReports(
         setDivingAcfmcPreviewOpen(true);
     };
 
-    const generateDivingACFMCReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+    const generateDivingACFMCReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void | null> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'ACFMC');
         if (records.length === 0) return;
         const settings = await getReportHeaderData();

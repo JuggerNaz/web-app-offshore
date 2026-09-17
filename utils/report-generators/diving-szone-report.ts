@@ -20,6 +20,7 @@ interface ReportConfig {
     approvedBy?: { name: string; date: string };
     watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
@@ -36,6 +37,10 @@ export const generateDivingSZONEReport = async (
     supabase?: any
 ): Promise<Blob | void> => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

@@ -110,19 +110,19 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
     { templateId: "rutwt", label: "UTWT Survey", code: "RUTWT", mode: "ROV" },
   ],
   BL: [
-    { templateId: "bl", label: "ROV Boatlanding Report", code: "BL", mode: "ROV" },
+    { templateId: "bl", label: "Boatlanding Inspection Report (ROV)", code: "BL", mode: "ROV" },
   ],
   RG: [
-    { templateId: "rg", label: "ROV Riser Guard Report", code: "RG", mode: "ROV" },
+    { templateId: "rg", label: "Riser Guard Inspection Report (ROV)", code: "RG", mode: "ROV" },
   ],
   SG: [
-    { templateId: "sg", label: "ROV Caisson Guard Report", code: "SG", mode: "ROV" },
+    { templateId: "sg", label: "Caisson Guard Inspection Report (ROV)", code: "SG", mode: "ROV" },
   ],
   CU: [
-    { templateId: "cu", label: "ROV Conductor Guard Report", code: "CU", mode: "ROV" },
+    { templateId: "cu", label: "Conductor Guard Inspection Report (ROV)", code: "CU", mode: "ROV" },
   ],
   RSANI: [
-    { templateId: "rsani", label: "ROV Selected Anode Report (SANI)", code: "RSANI", mode: "ROV" },
+    { templateId: "rsani", label: "Selected Anode Report (ROV)", code: "RSANI", mode: "ROV" },
   ],
   // Multi-template: ROV Scour
   RSCOR: [

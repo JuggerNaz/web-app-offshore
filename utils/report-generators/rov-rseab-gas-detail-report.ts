@@ -20,6 +20,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
@@ -33,18 +34,21 @@ interface ReportConfig {
 export const generateROVRSEABGasDetailReport = async (
     records: any[],
     headerData: any,
-    companySettings: CompanySettings,
-    config: ReportConfig
-): Promise<Blob | void> => {
+    companySettingsOrConfig: any = {},
+    maybeConfig?: ReportConfig
+): Promise<Blob | void | null> => {
+    let companySettings: CompanySettings = {};
+    let config: ReportConfig = {};
+    if (maybeConfig !== undefined) {
+        companySettings = companySettingsOrConfig || {};
+        config = maybeConfig || {};
+    } else {
+        config = companySettingsOrConfig || {};
+        companySettings = (config as any).companySettings || {};
+    }
     const supabase = createClient();
     console.log("[ROV Seabed Gas Seepage Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
-        const doc = new jsPDF({ orientation: "portrait" });
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
-        const contentWidth = pageWidth - margin * 2;
-
         const colors = {
             navy: [31, 55, 93] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
@@ -63,6 +67,16 @@ export const generateROVRSEABGasDetailReport = async (
             const desc = (r.description || '').toLowerCase();
             return cat === 'gas seepage' || desc.startsWith('gas seepage');
         });
+
+        if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
+        const doc = new jsPDF({ orientation: "portrait" });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 12;
+        const contentWidth = pageWidth - margin * 2;
 
         // ── Pre-load logos ──
         let companyLogo: any = null;

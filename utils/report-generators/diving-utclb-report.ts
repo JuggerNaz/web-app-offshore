@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
@@ -35,6 +36,10 @@ export const generateDivingUTCLBReport = async (
     config: ReportConfig
 ): Promise<Blob | void> => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -55,7 +60,7 @@ export const generateDivingUTCLBReport = async (
         // ── Date range ──────────────────────────────────────────────────────────
         let startDate: Date | null = null;
         let endDate:   Date | null = null;
-        if (records.length > 0) {
+        if (records && records.length > 0) {
             const dates = records
                 .map(r => new Date(r.cr_date || r.created_at))
                 .filter(d => !isNaN(d.getTime()));
@@ -129,7 +134,7 @@ export const generateDivingUTCLBReport = async (
         // Find the record with the most populated labels (up to 6)
         let maxLabels = 0;
         let activeLabels: string[] = [];
-        for (const r of records) {
+        for (const r of (records || [])) {
             const d = r.inspection_data || {};
             let count = 0;
             const currentLabels: string[] = [];
@@ -237,7 +242,7 @@ export const generateDivingUTCLBReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [headerRow],
-            body: records.map(buildRow),
+            body: (records || []).map(buildRow),
             theme: "grid",
             headStyles: {
                 fillColor: isPF ? [255, 255, 255] : colors.navy,

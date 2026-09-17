@@ -20,6 +20,7 @@ interface ReportConfig {
     approvedBy?: { name: string; date: string };
     watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showSignatures?: boolean;
     showPageNumbers?: boolean;
 }
@@ -144,6 +145,9 @@ export const generateROVRSCORReport = async (
         });
 
         const components = Array.from(componentMap.keys());
+        if (components.length === 0 && config?.returnBlob && !config?.isBlankReport) {
+            return null;
+        }
         for (let i = 0; i < components.length; i++) {
             const qid = components[i];
             const rawCompRecords = groupedMap.get(qid) || [];

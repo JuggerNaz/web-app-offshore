@@ -20,6 +20,7 @@ interface ReportConfig {
     approvedBy?: { name: string; date: string };
     watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showSignatures?: boolean;
     showPageNumbers?: boolean;
 }
@@ -143,6 +144,10 @@ export const generateROVRSCORV2Report = async (
         });
 
         const components = Array.from(componentMap.keys());
+        if (components.length === 0 && config?.returnBlob && !config?.isBlankReport) {
+            return null;
+        }
+
         const compsPerPage = 4;
         const totalPages = Math.ceil(components.length / compsPerPage);
 

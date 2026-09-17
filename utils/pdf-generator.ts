@@ -765,32 +765,108 @@ const generatePlatformReport = async (
   yPos = Math.max(col1Y, col2Y, col3Y) + 5;
 
   // ===== STRUCTURE VISUALS =====
-  const photos: string[] = [];
-  if (structure.photo_url) photos.push(structure.photo_url);
-  if (structure.photos) photos.push(...structure.photos.map(p => p.url));
-  if (structure.visuals) photos.push(...structure.visuals.map((v: any) => v.url || v.file_url || v.meta?.file_url || v)); // Handle visuals if string or object
+  interface VisualItem {
+    url: string;
+    title: string;
+  }
 
-  // Filter unique valid URLs
-  const uniquePhotos = Array.from(new Set(photos.filter(url => typeof url === 'string' && url.length > 0))).slice(0, 3);
+  const rawVisuals: VisualItem[] = [];
+
+  const formatCleanTitle = (raw: string): string => {
+    if (!raw) return "Structure Visual";
+    let str = String(raw).trim();
+    const isFileOrUrl = str.includes("/") || str.includes("\\") || /\.(png|jpe?g|webp|gif|bmp|tiff|svg)$/i.test(str);
+    if (str.includes("/") || str.includes("\\")) {
+      str = str.split(/[/\\]/).pop() || str;
+    }
+    try {
+      str = decodeURIComponent(str);
+    } catch {}
+    // Strip file extensions (.png, .jpg, etc.)
+    str = str.replace(/\.(png|jpe?g|webp|gif|bmp|tiff|svg)$/i, "");
+    // Strip UUID or timestamp prefixes
+    str = str.replace(/^[0-9a-fA-F-]{32,36}_?/, "");
+    str = str.replace(/^\d{10,14}_?/, "");
+    
+    // If it was a filename, clean underscores and hyphens between words
+    if (isFileOrUrl) {
+      str = str.replace(/[_]/g, " ");
+      if (/^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)+$/.test(str)) {
+        str = str.replace(/-/g, " ");
+      }
+    }
+    return str.trim() || "Structure Visual";
+  };
+
+  const addPhotoItem = (item: any, fallbackTitle?: string) => {
+    if (!item) return;
+    if (typeof item === 'string' && item.trim().length > 0) {
+      let url = item.trim();
+      if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("data:")) {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+        if (supabaseUrl) url = `${supabaseUrl}/storage/v1/object/public/attachments/${url}`;
+      }
+      const title = fallbackTitle || formatCleanTitle(item);
+      rawVisuals.push({ url, title });
+    } else if (typeof item === 'object') {
+      let url = item.url || item.file_url || item.path || item.meta?.file_url || item.meta?.url;
+      if (url && typeof url === 'string' && url.trim().length > 0) {
+        url = url.trim();
+        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("data:")) {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+          if (supabaseUrl) url = `${supabaseUrl}/storage/v1/object/public/attachments/${url}`;
+        }
+        // Explicit title from visual page metadata / structure visuals
+        const explicitTitle = item.meta?.title || item.title;
+        let title = "";
+        if (explicitTitle && String(explicitTitle).trim().length > 0) {
+          title = String(explicitTitle).trim();
+        } else {
+          const rawTitle = item.name || item.meta?.name || item.description || item.meta?.description || item.meta?.original_file_name || item.file_name || item.meta?.file_name || fallbackTitle || url;
+          title = formatCleanTitle(rawTitle);
+        }
+        rawVisuals.push({ url, title });
+      }
+    }
+  };
+
+  // Prioritize visual page attachments first (first 4 photos), then other photos, then default photo_url
+  if (Array.isArray(structure.visuals)) structure.visuals.forEach((v: any) => addPhotoItem(v));
+  if (Array.isArray(structure.photos)) structure.photos.forEach((p: any) => addPhotoItem(p));
+  if (structure.photo_url) addPhotoItem(structure.photo_url, structure.title || structure.str_name || "Platform Overview");
+
+  // Filter unique valid URLs, take up to 4 photos
+  const seenUrls = new Set<string>();
+  const uniquePhotos: VisualItem[] = [];
+  for (const item of rawVisuals) {
+    if (!seenUrls.has(item.url)) {
+      seenUrls.add(item.url);
+      uniquePhotos.push(item);
+      if (uniquePhotos.length >= 4) break;
+    }
+  }
 
   if (uniquePhotos.length > 0) {
     drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUALS (${uniquePhotos.length})`, 12, yPos + 3.5);
     yPos += 5;
 
-    const gap = 5;
+    const count = uniquePhotos.length;
+    const gap = count === 4 ? 3.5 : 5;
     const totalWidth = pageWidth - 20;
-    const imgWidth = (totalWidth - (gap * (uniquePhotos.length - 1))) / uniquePhotos.length;
-    const imgHeight = 60;
+    const imgWidth = (totalWidth - (gap * (count - 1))) / count;
+    const imgHeight = count === 4 ? 50 : 58;
 
     let currentX = 10;
     const padding = 1; // Inner padding for border
 
     // Load all images
-    const imagePromises = uniquePhotos.map(url => loadImage(url).catch(e => null));
+    const imagePromises = uniquePhotos.map(p => loadImage(p.url).catch(e => null));
     try {
       const loadedImages = await Promise.all(imagePromises);
 
-      loadedImages.forEach((imgData) => {
+      loadedImages.forEach((imgData, idx) => {
+        const photoItem = uniquePhotos[idx];
+
         // Draw border container
         doc.setDrawColor(200, 200, 200);
         doc.rect(currentX, yPos, imgWidth, imgHeight);
@@ -812,6 +888,42 @@ const generatePlatformReport = async (
           doc.setTextColor(150, 150, 150);
           doc.text("No Img", currentX + 5, yPos + 10);
         }
+
+        // Semi-transparent Title Overlay over the photo (bottom bar)
+        if (photoItem && photoItem.title) {
+          const bannerH = count === 4 ? 5.5 : 6;
+          const bannerY = yPos + imgHeight - bannerH - padding;
+          const bannerX = currentX + padding;
+          const bannerW = imgWidth - (padding * 2);
+
+          doc.saveGraphicsState();
+          try {
+            if ((doc as any).GState) {
+              doc.setGState(new (doc as any).GState({ opacity: 0.65 }));
+            }
+            doc.setFillColor(15, 23, 42); // slate-900 semi-transparent dark
+            doc.rect(bannerX, bannerY, bannerW, bannerH, 'F');
+          } finally {
+            doc.restoreGraphicsState();
+          }
+
+          // Overlay Title Text
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(count === 4 ? 5.5 : 6.5);
+          doc.setTextColor(255, 255, 255);
+
+          const maxTextW = bannerW - 3;
+          let displayTitle = photoItem.title;
+          if (doc.getTextWidth(displayTitle) > maxTextW) {
+            while (displayTitle.length > 3 && doc.getTextWidth(displayTitle + "...") > maxTextW) {
+              displayTitle = displayTitle.slice(0, -1);
+            }
+            displayTitle += "...";
+          }
+
+          doc.text(displayTitle, bannerX + bannerW / 2, bannerY + (count === 4 ? 3.8 : 4.2), { align: "center" });
+        }
+
         currentX += imgWidth + gap;
       });
 

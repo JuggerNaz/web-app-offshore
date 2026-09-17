@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -36,7 +37,7 @@ export const generateROVCasnReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     const supabase = createClient();
     console.log("[ROV Caisson Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
@@ -225,6 +226,10 @@ export const generateROVCasnReport = async (
             // Fallback for records not explicitly grouped
             caissonGroups["General"] = records;
             sortedCaissonQids.push("General");
+        }
+
+        if (sortedCaissonQids.length === 0 && config?.returnBlob && !config?.isBlankReport) {
+            return null;
         }
 
         const buildRow = (r: any, idx: number): string[] => {

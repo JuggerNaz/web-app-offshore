@@ -22,6 +22,7 @@ interface ReportConfig {
     showSignatures?: boolean;
     showPageNumbers?: boolean;
     watermarkText?: string;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -32,7 +33,10 @@ export const generateDivingFMDReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
+    if ((!records || records.length === 0) && config.returnBlob && !config.isBlankReport) {
+        return null;
+    }
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();

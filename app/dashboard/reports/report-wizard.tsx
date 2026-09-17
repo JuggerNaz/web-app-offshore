@@ -218,7 +218,7 @@ const TOC_SECTIONS = [
       { id: "fmd-report", name: "FMD Survey Report (ROV)", mode: "ROV" },
       { id: "diving-fmd-report", name: "FMD Survey Report (Diving)", mode: "Diving" }
   ]},
-  { id: 5, name: "Attachment Inspection (Conductor, Caisson, Boatlanding)", templates: [
+  { id: 5, name: "Attachment Inspection", templates: [
       { id: "rov-rcond-report", name: "Conductor Survey Report (ROV)", mode: "ROV" },
       { id: "rov-rcasn-report", name: "Caisson Survey Report (ROV)", mode: "ROV" },
       { id: "rov-bl-report", name: "Boatlanding Survey Report (ROV)", mode: "ROV" },
@@ -1635,19 +1635,18 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         doc.setLineWidth(2);
         doc.rect(15, 15, width - 30, height - 30);
 
-        // Header Gradient Bar
-        doc.setFillColor(37, 99, 235);
-        doc.rect(16, 16, width - 32, 20, 'F');
-
-        // Main Title
+        // Main Title (Centered vertically and horizontally)
         doc.setTextColor(30, 41, 59); // slate-800
-        doc.setFontSize(28);
+        const fontSize = 26;
+        doc.setFontSize(fontSize);
+        doc.setFont("helvetica", "bold");
         
         // Wrap text if too long
         const splitTitle = doc.splitTextToSize(templateName.toUpperCase(), width - 60);
-        doc.text(splitTitle, width / 2, height / 2 - 20, { align: "center" });
-
-
+        const numLines = Array.isArray(splitTitle) ? splitTitle.length : 1;
+        const lineHeightMm = 11.5;
+        const startY = (height / 2) - ((numLines - 1) * lineHeightMm / 2) + 3.5;
+        doc.text(splitTitle, width / 2, startY, { align: "center" });
 
         return doc.output('blob');
     };
@@ -1736,6 +1735,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             console.error("Error fetching company settings for report:", error);
         }
 
+        const isFinalDatasheet = selections.templateId === "final-inspection-datasheet";
+
         const reportConfig = { 
             ...config, 
             returnBlob,
@@ -1743,7 +1744,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             jobPackId: selections.jobPackId,
             structureId: selections.structureId,
             sowReportNo: selections.sowReportNo,
-            ...(currentTemplateId === "final-inspection-datasheet" ? { showPageNumbers: false } : {})
+            ...(isFinalDatasheet ? { showPageNumbers: false, showSignatures: false, isFinalDatasheet: true } : {})
         };
 
         // Universal Blank Report Interceptor — guarantees ALL report templates produce an authentic blank report

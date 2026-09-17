@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -21,6 +21,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -35,6 +36,10 @@ export const generateROVRWDIReport = async (
     config: ReportConfig
 ): Promise<Blob | void> => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

@@ -36,6 +36,10 @@ export const generateDivingMGIReport = async (
     supabase?: any
 ) => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !(config as any)?.isBlankReport) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

@@ -234,6 +234,7 @@ export const generateSeabedSurveyReport = async (
                 isMetallic: false
             }));
         } else {
+            if (config.returnBlob) return null;
             drawHeader(doc);
             drawSubHeader(doc, margin + headerH + 3);
             doc.setFontSize(11);
@@ -242,7 +243,6 @@ export const generateSeabedSurveyReport = async (
             doc.text(`No seabed survey records found ${filterMsg}.`, pageWidth / 2, 90, { align: "center" });
 
             applyWatermarkAndSignaturesGlobal(doc, config);
-            if (config.returnBlob) return doc.output("blob");
             doc.save(`${sowReportNo || 'Report'}_Seabed_Survey.pdf`);
             return;
         }

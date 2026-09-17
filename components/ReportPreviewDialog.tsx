@@ -42,7 +42,7 @@ interface ReportPreviewDialogProps {
     onOpenChange: (open: boolean) => void;
     title: string;
     fileName: string;
-    generateReport: (printFriendly: boolean, showSignatures: boolean) => Promise<Blob | void>;
+    generateReport: (printFriendly: boolean, showSignatures: boolean) => Promise<Blob | void | null>;
     /** Initial value for the Signatory toggle — driven by the Report Wizard config */
     initialShowSignatures?: boolean;
     /** Initial value for the Ink Saver (print-friendly) toggle — driven by the Report Wizard config */

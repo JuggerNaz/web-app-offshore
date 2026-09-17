@@ -49,6 +49,7 @@ export const generateROVPhotographyLogReport = async (
 
         // If no photos, return a document with an empty state message
         if (!photos || photos.length === 0) {
+            if (config.returnBlob && !(config as any)?.isBlankReport) return null as any;
             doc.setFont("helvetica", "bold");
             doc.setFontSize(16);
             doc.setTextColor(150, 150, 150);

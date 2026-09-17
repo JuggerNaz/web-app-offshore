@@ -29,6 +29,7 @@ export interface ReportConfig {
     prefix?: string;
     isFindingsReport?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 interface LoadedImageData {
@@ -123,6 +124,10 @@ export const generateDefectAnomalyReport = async (
         }
     } catch (e) {
         console.error("Error fetching anomaly data", e);
+    }
+
+    if ((!anomalies || anomalies.length === 0) && config.returnBlob && !(config as any).isBlankReport) {
+        return null;
     }
 
     // Load Client Logo (Right Side)

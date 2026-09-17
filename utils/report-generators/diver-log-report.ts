@@ -48,6 +48,10 @@ export const generateDiverLogReport = async (
         console.error("Error fetching diver log data", e);
     }
 
+    if ((!diveJobs || diveJobs.length === 0) && config.returnBlob && !config.isBlankReport) {
+        return null;
+    }
+
     // ── Logos ────────────────────────────────────────────────────────────────
     let clientLogo: any = null;
     if (companySettings.logo_url) {

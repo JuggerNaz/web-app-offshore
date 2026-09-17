@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -33,7 +34,10 @@ export const generateDivingAnodeReport = async (
     companySettings: CompanySettings,
     config: ReportConfig,
     supabase?: any
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
+    if ((!records || records.length === 0) && config.returnBlob && !config.isBlankReport) {
+        return null;
+    }
     try {
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth  = doc.internal.pageSize.getWidth();

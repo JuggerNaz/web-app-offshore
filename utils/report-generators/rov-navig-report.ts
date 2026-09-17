@@ -312,6 +312,10 @@ export const generateROVNavigReport = async (
         };
     });
 
+    if (rawRecords.length === 0 && config?.returnBlob && !config?.isBlankReport && !config?.printBlankReport) {
+        return null as any;
+    }
+
     // ── 2. Geodetic Parameters Data ──────────────────────────────────────────
     let geodeticData: any = jobPack?.metadata?.geodetic_parameters || null;
     if (!geodeticData && (structure?.id || config.structureId)) {

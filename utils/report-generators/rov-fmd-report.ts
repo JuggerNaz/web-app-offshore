@@ -21,6 +21,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showSignatures?: boolean;
     showPageNumbers?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -33,6 +34,10 @@ export const generateROVFMDReport = async (
     config: ReportConfig
 ) => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

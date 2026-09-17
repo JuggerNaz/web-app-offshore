@@ -188,6 +188,10 @@ export const generateDefectSummaryReport = async (
         }));
     }
 
+    if (anomalies.length === 0 && config.returnBlob && !(config as any).isBlankReport) {
+        return null;
+    }
+
     // Sort primarily by Priority, then secondarily by Anomaly Reference No. (natural alphanumeric sort)
     anomalies = [...anomalies].sort((a, b) => {
         const pDiff = prioritySortKey(a.priority) - prioritySortKey(b.priority);

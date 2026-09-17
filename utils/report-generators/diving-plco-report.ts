@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
@@ -35,6 +36,10 @@ export const generateDivingPLCOReport = async (
     config: ReportConfig
 ): Promise<Blob | void> => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -55,7 +60,7 @@ export const generateDivingPLCOReport = async (
         // ── Date range ──────────────────────────────────────────────────────────
         let startDate: Date | null = null;
         let endDate:   Date | null = null;
-        if (records.length > 0) {
+        if (records && records.length > 0) {
             const dates = records
                 .map(r => new Date(r.cr_date || r.created_at))
                 .filter(d => !isNaN(d.getTime()));
@@ -126,7 +131,7 @@ export const generateDivingPLCOReport = async (
         };
 
         // ── Build each table row ────────────────────────────────────────────────
-        const sorted = [...records].sort((a, b) => {
+        const sorted = [...(records || [])].sort((a, b) => {
             const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
             const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
             return elB - elA;

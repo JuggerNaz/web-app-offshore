@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -33,8 +34,12 @@ export const generateROVRGVIReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+            return null as any;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

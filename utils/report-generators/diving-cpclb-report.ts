@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -21,6 +21,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -33,7 +34,10 @@ export const generateDivingCPCLBReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
+    if ((!records || records.length === 0) && config.returnBlob && !config.isBlankReport) {
+        return null;
+    }
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -268,7 +272,6 @@ export const generateDivingCPCLBReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`Diving_CP_Calibration_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving CP Calibration Report] Error:", err);

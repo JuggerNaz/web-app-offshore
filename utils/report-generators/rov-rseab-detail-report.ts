@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -11,59 +11,73 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
-    reportNoPrefix?: string;
+    orientation?: "portrait" | "landscape";
+    includeCover?: boolean;
     printFriendly?: boolean;
-    jobPackId?: number;
+    companySettings?: CompanySettings;
+    returnBlob?: boolean;
+    isBlankReport?: boolean;
+    reportNoPrefix?: string;
+    showSignatures?: boolean;
+    showPageNumbers?: boolean;
+    preparedBy?: { name?: string; date?: string };
+    reviewedBy?: { name?: string; date?: string };
+    approvedBy?: { name?: string; date?: string };
+    watermarkText?: string;
+    customSignatures?: any[];
     structureId?: number;
     sowReportNo?: string;
-    preparedBy?: { name: string; date: string };
-    reviewedBy?: { name: string; date: string };
-    approvedBy?: { name: string; date: string };
-    returnBlob?: boolean;
-    showPageNumbers?: boolean;
-    showSignatures?: boolean;
 }
 
-/**
- * ROV Seabed Survey Debris Inspection Report (Portrait)
- * Columns: Item No. | QID | Dive No. | Tape No. | Findings
- *
- * Filtered by item category = Debris. Ordered by leg name and distance.
- */
 export const generateROVRSEABDetailReport = async (
     records: any[],
     headerData: any,
-    companySettings: CompanySettings,
-    config: ReportConfig
-): Promise<Blob | void> => {
-    const supabase = createClient();
-    console.log("[ROV Seabed Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
+    companySettingsOrConfig: any = {},
+    maybeConfig?: ReportConfig
+) => {
     try {
-        const doc = new jsPDF({ orientation: "portrait" });
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
-        const contentWidth = pageWidth - margin * 2;
+        let companySettings: CompanySettings = {};
+        let config: ReportConfig = {};
+        if (maybeConfig !== undefined) {
+            companySettings = companySettingsOrConfig || {};
+            config = maybeConfig || {};
+        } else {
+            config = companySettingsOrConfig || {};
+            companySettings = config.companySettings || {};
+        }
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
-            teal: [20, 184, 166] as [number, number, number],
-            lightGray: [248, 250, 252] as [number, number, number],
-            border: [203, 213, 225] as [number, number, number],
-            text: [30, 41, 59] as [number, number, number],
-            anomaly: [220, 38, 38] as [number, number, number],
-            rectified: [22, 163, 74] as [number, number, number],
+            navy: config.printFriendly ? [0, 0, 0] as [number, number, number] : [27, 54, 93] as [number, number, number],
+            lightGray: [245, 247, 250] as [number, number, number],
+            border: [200, 205, 215] as [number, number, number],
+            text: [30, 40, 55] as [number, number, number],
+            anomaly: [180, 40, 40] as [number, number, number]
         };
 
-        // ── Filter Records (Strict Seabed Filter: RSEAB + Debris category only) ──
+        const doc = new jsPDF({
+            orientation: "portrait",
+            unit: "mm",
+            format: "a4",
+        });
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 10;
+        const contentWidth = pageWidth - (margin * 2);
+
+        // Filter specifically for Seabed Survey Debris records
         const filteredRecords = records.filter(r => {
-            const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+            const typeCode = (r.structure_components?.component_types?.code || r.structure_components?.component_type || r.component_type || '').toUpperCase();
             if (typeCode !== 'RSEAB') return false;
             const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
             const desc = (r.description || '').toLowerCase();
             // Include if category is Debris, or if no category is set (legacy default is Debris)
             return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || !desc.startsWith('gas') && !desc.startsWith('crater')));
         });
+
+        if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
+            return null;
+        }
 
         // ── Pre-load logos ──
         let companyLogo: any = null;

@@ -24,6 +24,7 @@ interface ReportConfig {
     showPageNumbers?: boolean;
     watermarkText?: string;
     reportType?: 'R' | 'J' | 'I';
+    isBlankReport?: boolean;
 }
 
 /**
@@ -256,6 +257,7 @@ export const generateDivingRRISIDetailReport = async (
 
         // Fallback default group if still empty
         if (risersMap.size === 0) {
+            if (config.returnBlob && !config.isBlankReport) return null;
             const fallbackQid = `${typeConfig.label}-1`;
             risersMap.set(fallbackQid, { parentQid: fallbackQid, records: [] });
         }
@@ -266,6 +268,10 @@ export const generateDivingRRISIDetailReport = async (
         }
         const sortedGroups: RiserGroup[] = Array.from(risersMap.values())
             .sort((a, b) => a.parentQid.localeCompare(b.parentQid, undefined, { numeric: true, sensitivity: 'base' }));
+
+        if (filteredRecords.length === 0 && config.returnBlob && !config.isBlankReport) {
+            return null;
+        }
 
         // Pre-load Logos
         let companyLogo: any = null;

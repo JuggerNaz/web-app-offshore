@@ -47,7 +47,7 @@ const TOC_SECTIONS = [
       { id: "fmd-report", name: "FMD Survey Report (ROV)", mode: "ROV" },
       { id: "diving-fmd-report", name: "FMD Survey Report (Diving)", mode: "Diving" }
   ]},
-  { id: 5, name: "Attachment Inspection (Conductor, Caisson, Boatlanding)", templates: [
+  { id: 5, name: "Attachment Inspection", templates: [
       { id: "rov-rcond-report", name: "Conductor Survey Report (ROV)", mode: "ROV" },
       { id: "rov-rcasn-report", name: "Caisson Survey Report (ROV)", mode: "ROV" },
       { id: "rov-bl-report", name: "Boatlanding Survey Report (ROV)", mode: "ROV" },
