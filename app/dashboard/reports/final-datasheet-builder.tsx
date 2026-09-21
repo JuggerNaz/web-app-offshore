@@ -44,7 +44,7 @@ const TOC_SECTIONS = [
       { id: "diving-cpsurv-report", name: "CP Survey Report (Diving)", mode: "Diving" },
       { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
-  { id: 4, name: "Flooded Member Detection", templates: [
+  { id: 4, name: "Flooded Member Detection Survey", templates: [
       { id: "fmd-report", name: "FMD Survey Report (ROV)", mode: "ROV" },
       { id: "diving-fmd-report", name: "FMD Survey Report (Diving)", mode: "Diving" }
   ]},
