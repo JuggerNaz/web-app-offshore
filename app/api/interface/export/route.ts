@@ -761,11 +761,19 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       });
       const csvContent = csvLines.join("\r\n");
 
-      // 3. Build Individual XLSX Buffer
+      // 3. Build Individual XLSX Buffer (Always print the column header for each column as the first row even if 0 records exist)
+      const xlsxRowsData = sheetRows.length > 0
+        ? sheetRows.map((row) => {
+            const rowObj: Record<string, any> = {};
+            sheetDef.columns.forEach((c) => {
+              rowObj[c.header] = row[c.key] ?? row[c.header] ?? "";
+            });
+            return rowObj;
+          })
+        : [];
+
       const singleWb = XLSX.utils.book_new();
-      const singleWs = XLSX.utils.json_to_sheet(
-        sheetRows.length > 0 ? sheetRows : [{ Message: "No records found" }]
-      );
+      const singleWs = XLSX.utils.json_to_sheet(xlsxRowsData, { header: headers });
       singleWs["!cols"] = sheetDef.columns.map((c) => ({ wch: c.width || 18 }));
       XLSX.utils.book_append_sheet(singleWb, singleWs, sheetDef.sheetName.substring(0, 31));
       const xlsxBuffer = XLSX.write(singleWb, { type: "buffer", bookType: "xlsx" }) as Buffer;
@@ -827,9 +835,17 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             // Consolidated single .xlsx with 24 tabs
             const combinedWb = XLSX.utils.book_new();
             tablesOutput.forEach((tbl) => {
-              const ws = XLSX.utils.json_to_sheet(
-                tbl.rows.length > 0 ? tbl.rows : [{ Message: "No records found" }]
-              );
+              const tblHeaders = tbl.columns.map((c) => c.header);
+              const tblRowsData = tbl.rows.length > 0
+                ? tbl.rows.map((row: any) => {
+                    const rowObj: Record<string, any> = {};
+                    tbl.columns.forEach((c) => {
+                      rowObj[c.header] = row[c.key] ?? row[c.header] ?? "";
+                    });
+                    return rowObj;
+                  })
+                : [];
+              const ws = XLSX.utils.json_to_sheet(tblRowsData, { header: tblHeaders });
               ws["!cols"] = tbl.columns.map((c) => ({ wch: c.width || 18 }));
               XLSX.utils.book_append_sheet(combinedWb, ws, tbl.sheetName.substring(0, 31));
             });
@@ -898,9 +914,17 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     if (format === "single_xlsx") {
       const workbook = XLSX.utils.book_new();
       tablesOutput.forEach((tbl) => {
-        const worksheet = XLSX.utils.json_to_sheet(
-          tbl.rows.length > 0 ? tbl.rows : [{ Message: "No records found" }]
-        );
+        const tblHeaders = tbl.columns.map((c) => c.header);
+        const tblRowsData = tbl.rows.length > 0
+          ? tbl.rows.map((row: any) => {
+              const rowObj: Record<string, any> = {};
+              tbl.columns.forEach((c) => {
+                rowObj[c.header] = row[c.key] ?? row[c.header] ?? "";
+              });
+              return rowObj;
+            })
+          : [];
+        const worksheet = XLSX.utils.json_to_sheet(tblRowsData, { header: tblHeaders });
         worksheet["!cols"] = tbl.columns.map((c) => ({ wch: c.width || 18 }));
         XLSX.utils.book_append_sheet(workbook, worksheet, tbl.sheetName.substring(0, 31));
       });
