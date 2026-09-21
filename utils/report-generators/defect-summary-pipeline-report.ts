@@ -663,7 +663,7 @@ export const generatePipelineDefectSummaryReport = async (
     const margin = 12;
     const contentWidth = pageWidth - margin * 2; // 273mm
     const isPrintFriendly = config.printFriendly === true;
-    const headerH = 22;
+    const headerH = 26;
 
     // Report Number standard formatting
     const defaultPrefix = isFindingsReport ? "FSR-PL" : "DSR-PL";
@@ -771,9 +771,9 @@ export const generatePipelineDefectSummaryReport = async (
         d.text(String(pField).substring(0, 38), col1X + 28, startY + 10.5);
 
         d.setFont("helvetica", "bold");
-        d.text("Report No.:", col2X, startY + 10.5);
+        d.text("Scope:", col2X, startY + 10.5);
         d.setFont("helvetica", "normal");
-        d.text(sowReportNo || "N/A", col2X + 20, startY + 10.5);
+        d.text(config?.isFindingsReport ? "Findings Summary" : "Defect Summary", col2X + 16, startY + 10.5);
 
         d.setFont("helvetica", "bold");
         d.text("Vessel:", col3X, startY + 10.5);

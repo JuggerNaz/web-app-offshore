@@ -58,7 +58,7 @@ export const generatePlatformInspectionSummaryReport = async (
             red:       [220, 38,  38]  as [number, number, number],
         };
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -93,7 +93,7 @@ export const generatePlatformInspectionSummaryReport = async (
             d.setFontSize(11);  d.setFont("helvetica", "bold");
             d.text("Platform Inspection Summary Report", margin + contentWidth / 2, margin + 16.5, { align: "center" });
             d.setFontSize(8);   d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.sowReportNo || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21.5, { align: "center" });
+            d.text(`Report No: ${(config?.sowReportNo || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         // ── Context Header Grid ───────────────────────────────────────────────────
@@ -114,7 +114,7 @@ export const generatePlatformInspectionSummaryReport = async (
 
             drawBox("Structure Title:", headerData?.platformName || "N/A", margin,        half - 1, y);
             drawBox("Job Pack Ref:",    headerData?.jobpackName  || "N/A", margin + half + 1, half - 1, y);
-            drawBox("SOW Report No:",   headerData?.sowReportNo  || "N/A", margin,        half - 1, y + ROW_H);
+            drawBox("Field / Location:",headerData?.fieldName || headerData?.field || "N/A", margin, half - 1, y + ROW_H);
             drawBox("Vessel / Support:",headerData?.vessel       || "N/A", margin + half + 1, half - 1, y + ROW_H);
         };
 

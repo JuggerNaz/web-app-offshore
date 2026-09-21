@@ -240,7 +240,7 @@ export const generateROVRRISIDetailReport = async (
             return null;
         }
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;

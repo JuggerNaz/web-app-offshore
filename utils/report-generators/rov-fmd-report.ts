@@ -79,8 +79,9 @@ export const generateROVFMDReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -134,7 +135,7 @@ export const generateROVFMDReport = async (
         };
 
         drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const startY = drawContext(doc, margin + headerH + 2);
 
         const isPF = config.printFriendly;
 
@@ -147,7 +148,7 @@ export const generateROVFMDReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6 },
             head: [
                 ['Component QID', 'Elevation (m)', 'Dive No.', 'Tape No.', 'Status', 'Density Value', 'Findings']
             ],

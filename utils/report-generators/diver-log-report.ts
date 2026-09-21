@@ -78,8 +78,8 @@ export const generateDiverLogReport = async (
     }
 
     // ── Layout Constants ─────────────────────────────────────────────────────
-    const headerH = 28;
-    const logoSize = 18;
+    const headerH = 26;
+    const logoSize = 16;
     const logoPadding = 4;
     const isPrintFriendly = config.printFriendly === true;
     const FOOTER_Y_OFFSET = 10; // distance from bottom
@@ -99,28 +99,33 @@ export const generateDiverLogReport = async (
 
         // Contractor logo + name (left)
         if (contractorLogo) {
-            drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + logoPadding, 'left', 'center');
+            drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + 3, 'left', 'center');
         }
         
 
         // Client logo (right)
         if (clientLogo) {
-            drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + logoPadding, 'right', 'center');
+            drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + 3, 'right', 'center');
         }
 
         // Center text
         d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
-        d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 7.5, { align: "center" });
+        d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 6, { align: "center" });
 
         d.setFont("helvetica", "normal");
         d.setFontSize(8.5);
-        d.text(companySettings.departmentName || "Technical Inspection Division", pageWidth / 2, sy + 12, { align: "center" });
+        d.text(companySettings.department_name || companySettings.departmentName || "Technical Inspection Division", pageWidth / 2, sy + 10.5, { align: "center" });
 
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
-        d.text("DIVER LOG REPORT", pageWidth / 2, sy + 19, { align: "center" });
+        d.text("DIVER LOG REPORT", pageWidth / 2, sy + 16.5, { align: "center" });
+
+        d.setFont("helvetica", "normal");
+        d.setFontSize(8);
+        const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
+        d.text(`Report No: ${reportNoDisplay}`, pageWidth / 2, sy + 21, { align: "center" });
 
         d.setTextColor(0, 0, 0);
     };
@@ -129,7 +134,6 @@ export const generateDiverLogReport = async (
     const drawSubHeader = (d: jsPDF, jobPack: any, structure: any, sowReportNo: string) => {
         const field = structure?.field_name || structure?.str_name || "N/A";
         const installation = structure?.str_name || structure?.str_desc || "N/A";
-        const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || "N/A";
         // Vessel: check vessel_history (multi-vessel) first, then single vessel
         let vessel = "N/A";
         if (jobPack?.metadata?.vessel_history && Array.isArray(jobPack.metadata.vessel_history) && jobPack.metadata.vessel_history.length > 0) {
@@ -147,26 +151,20 @@ export const generateDiverLogReport = async (
             : { fillColor: [229, 231, 235] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] };
 
         autoTable(d, {
-            startY: margin + headerH + 10,
+            startY: margin + headerH + 2,
             head: [],
             body: [
                 [
                     { content: "Project Description:", styles: headStyle },
                     { content: projectDesc },
-                    { content: "Report No.:", styles: headStyle },
-                    { content: reportNoDisplay }
-                ],
-                [
-                    { content: "Field:", styles: headStyle },
-                    { content: field },
                     { content: "Installation:", styles: headStyle },
                     { content: installation }
                 ],
                 [
+                    { content: "Field:", styles: headStyle },
+                    { content: field },
                     { content: "Vessel:", styles: headStyle },
-                    { content: vessel },
-                    { content: "", styles: headStyle },
-                    { content: "" }
+                    { content: vessel }
                 ]
             ] as any,
             theme: "grid",
@@ -177,7 +175,7 @@ export const generateDiverLogReport = async (
                 2: { cellWidth: labelColWidth },
                 3: { cellWidth: valueColWidth }
             },
-            margin: { left: margin, right: margin, top: margin + headerH + 5 }
+            margin: { left: margin, right: margin, top: margin + headerH + 2 }
         });
     };
 

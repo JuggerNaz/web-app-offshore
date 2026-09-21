@@ -78,7 +78,7 @@ export const generateROVCasnReport = async (
         // Fetch all components to build a complete QID map for grouping
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
         
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF, caissonQid?: string) => {
             const isPF = config.printFriendly;

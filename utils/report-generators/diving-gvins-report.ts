@@ -64,7 +64,7 @@ export const generateDivingGVINSReport = async (
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
             : "N/A";
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;

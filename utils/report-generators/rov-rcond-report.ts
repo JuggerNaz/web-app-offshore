@@ -68,7 +68,7 @@ export const generateROVCondReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;

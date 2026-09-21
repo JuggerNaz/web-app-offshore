@@ -61,8 +61,9 @@ export const generateROVRSCORReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            const headerH = 26;
             const isPF = config.printFriendly;
             if (isPF) {
                 d.setDrawColor(...colors.navy); d.setLineWidth(0.3); d.rect(margin, margin, contentWidth, headerH, 'S');
@@ -86,6 +87,18 @@ export const generateROVRSCORReport = async (
             d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
+        let startDate: Date | null = null;
+        let endDate: Date | null = null;
+        if (records.length > 0) {
+            const dates = records
+                .map(r => new Date(r.cr_date || r.created_at))
+                .filter(d => !isNaN(d.getTime()));
+            if (dates.length > 0) { startDate = new Date(Math.min(...dates.map(d => d.getTime()))); endDate = new Date(Math.max(...dates.map(d => d.getTime()))); }
+        }
+        const dateRangeStr = startDate && endDate
+            ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
+            : (headerData.date || "N/A");
+
         const drawContext = (d: jsPDF, y: number) => {
             const rowH = 7;
             const colW = contentWidth / 2;
@@ -98,10 +111,10 @@ export const generateROVRSCORReport = async (
                 d.text(label, x + 2, ty + 4.5); d.setFont("helvetica", "normal");
                 d.text(String(value), x + 35, ty + 4.5);
             };
-            drawBox('Structure:', headerData.platformName, margin, colW, y);
+            drawBox('Structure:', headerData.platformName || 'N/A', margin, colW, y);
             drawBox('Vessel:', headerData.vessel || 'N/A', margin + colW, colW, y);
-            drawBox('Job Pack:', headerData.jobpackName, margin, colW, y + rowH);
-            drawBox('Report No:', sowReportNo, margin + colW, colW, y + rowH);
+            drawBox('Job Pack:', headerData.jobpackName || 'N/A', margin, colW, y + rowH);
+            drawBox('Insp. Date Range:', dateRangeStr, margin + colW, colW, y + rowH);
             return y + (rowH * 2) + 5;
         };
 
@@ -190,7 +203,7 @@ export const generateROVRSCORReport = async (
 
             if (i > 0) doc.addPage();
             drawHeader(doc);
-            let currentY = drawContext(doc, margin + 22 + 2);
+            let currentY = drawContext(doc, margin + headerH + 2);
 
             doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 6, 'F');
             doc.setTextColor(255); doc.setFontSize(8); doc.setFont("helvetica", "bold");
@@ -378,7 +391,7 @@ export const generateROVRSCORReport = async (
 
             autoTable(doc, {
                 startY: currentY,
-                margin: { left: margin, right: margin, top: margin + 22 + 6 },
+                margin: { left: margin, right: margin, top: margin + headerH + 6 },
                 head: [['Location', 'Scour Depth', 'Burial %', 'Exposed Pile', 'Remarks']],
                 body: compRecords.map(r => {
                     const rd = r.inspection_data || {};
@@ -435,7 +448,7 @@ export const generateROVRSCORReport = async (
             });
         }
 
-        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + headerH + 20);
         let sigY = pageHeight - 28;
         if (config.showSignatures !== false) {
             if (finalY > sigY - 2) {

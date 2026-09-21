@@ -126,6 +126,18 @@ export const generateDefectAnomalyReport = async (
         console.error("Error fetching anomaly data", e);
     }
 
+    // Sort anomalies naturally by defect reference number
+    if (anomalies && anomalies.length > 0) {
+        anomalies.sort((a, b) => {
+            const refA = (a.display_ref_no || a.anomaly_ref_no || a.ref_no || "").toString().trim();
+            const refB = (b.display_ref_no || b.anomaly_ref_no || b.ref_no || "").toString().trim();
+            if (refA && refB) {
+                return refA.localeCompare(refB, undefined, { numeric: true, sensitivity: "base" });
+            }
+            return refA ? -1 : (refB ? 1 : 0);
+        });
+    }
+
     if ((!anomalies || anomalies.length === 0) && config.returnBlob && !(config as any).isBlankReport) {
         return null;
     }
@@ -227,8 +239,8 @@ export const generateDefectAnomalyReport = async (
     }
 
     // Header Dimensions
-    const headerH = 28; // Reduced Height
-    const logoSize = 18; // Reduced Logo Size
+    const headerH = 26;
+    const logoSize = 16;
     const logoPadding = 4;
 
     const isPrintFriendly = config.printFriendly === true;
@@ -250,17 +262,14 @@ export const generateDefectAnomalyReport = async (
 
         // --- Left Side: Contractor Logo + Name ---
         const logoX = startX + logoPadding;
-        const logoCenterX = logoX + (logoSize / 2);
 
         if (contractorLogo) {
-            drawLogo(doc, contractorLogo, logoSize, logoSize, logoX, startY + logoPadding, 'center', 'center');
+            drawLogo(doc, contractorLogo, logoSize, logoSize, logoX, startY + 3, 'left', 'center');
         }
-
-        
 
         // --- Right Side: Client Logo ---
         if (clientLogo) {
-            drawLogo(doc, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, startY + logoPadding, 'center', 'center');
+            drawLogo(doc, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, startY + 3, 'right', 'center');
         }
 
         // --- Center: Text ---
@@ -271,19 +280,25 @@ export const generateDefectAnomalyReport = async (
         doc.setFont("helvetica", "bold");
         doc.setFontSize(11);
         const companyName = (companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase();
-        doc.text(companyName, pageWidth / 2, startY + 7.5, { align: "center" });
+        doc.text(companyName, pageWidth / 2, startY + 6, { align: "center" });
 
         // Department (Sub-header) - slightly increased font size
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8.5);
-        const deptName = companySettings.departmentName || "Technical Inspection Division";
-        doc.text(deptName, pageWidth / 2, startY + 12, { align: "center" });
+        const deptName = companySettings.department_name || companySettings.departmentName || "Technical Inspection Division";
+        doc.text(deptName, pageWidth / 2, startY + 10.5, { align: "center" });
 
         // Report Title - SAME size as Company Title
         doc.setFont("helvetica", "bold");
         doc.setFontSize(11);
         const reportTitle = config.isFindingsReport ? "FINDINGS REPORT" : "DEFECT / ANOMALY REPORT";
-        doc.text(reportTitle, pageWidth / 2, startY + 19, { align: "center" });
+        doc.text(reportTitle, pageWidth / 2, startY + 16.5, { align: "center" });
+
+        // Report No
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        const reportNoDisplay = sowReportNo || (anomalies.length > 0 ? anomalies[0].sow_report_no : null) || (jobPack?.metadata && jobPack?.metadata?.report_no) || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
+        doc.text(`Report No: ${reportNoDisplay}`, pageWidth / 2, startY + 21, { align: "center" });
 
         // Reset Text Color
         doc.setTextColor(0, 0, 0);
@@ -325,7 +340,9 @@ export const generateDefectAnomalyReport = async (
     }
 
     let globalPage = 1;
+    const labelColWidth = 32;
     const anomalyPageRanges: { start: number; end: number }[] = [];
+    const pageNoCellCoordinates: { [anomalyIndex: number]: { x: number; y: number; w: number; h: number } } = {};
 
     for (let i = 0; i < anomalies.length; i++) {
         const anomaly = anomalies[i];
@@ -455,12 +472,12 @@ export const generateDefectAnomalyReport = async (
             elevVal = "N/A";
         }
 
-        // Details table with consistent column widths
+        const isRectified = Boolean(record.rectified || anomalyDetails.rectified || anomalyDetails.rectified_remarks);
         const labelColWidth = 32;
         const valueColWidth = (contentWidth - (labelColWidth * 2)) / 2;
 
         autoTable(doc, {
-            startY: margin + headerH + 10,
+            startY: margin + headerH + 2,
             head: [],
             body: [
                 [
@@ -475,19 +492,23 @@ export const generateDefectAnomalyReport = async (
                 ],
                 [
                     { content: config.isFindingsReport ? "Findings Ref. No.:" : "Anomaly Ref. No.:", styles: headStylesString }, { content: ref },
-                    { content: "Report No.:", styles: headStylesString }, { content: reportNoDisplay }
+                    { content: "Date:", styles: headStylesString }, { content: inspDate }
                 ],
                 [
-                    { content: "Date:", styles: headStylesString }, { content: inspDate },
-                    { content: "Vessel:", styles: headStylesString }, { content: vessel }
-                ],
-                [
-                    { content: "DVD/Recording No.:", styles: headStylesString }, { content: recording },
+                    { content: "Vessel:", styles: headStylesString }, { content: vessel },
                     { content: rovDiverLabel, styles: headStylesString }, { content: rovDiverVal }
                 ],
                 [
-                    { content: "Component:", styles: headStylesString }, { content: compVal },
-                    { content: elevLabel, styles: headStylesString }, { content: elevVal }
+                    { content: "DVD/Recording No.:", styles: headStylesString }, { content: recording },
+                    { content: "Component:", styles: headStylesString }, { content: compVal }
+                ],
+                [
+                    { content: elevLabel, styles: headStylesString }, { content: elevVal },
+                    { content: "Status:", styles: headStylesString }, { content: isRectified ? "RECTIFIED" : "OPEN" }
+                ],
+                [
+                    { content: "Page No.:", styles: headStylesString },
+                    { content: "", colSpan: 3 }
                 ]
             ] as any,
             theme: 'grid',
@@ -498,7 +519,17 @@ export const generateDefectAnomalyReport = async (
                 2: { cellWidth: labelColWidth },
                 3: { cellWidth: valueColWidth }
             },
-            margin: { left: margin, right: margin, top: margin + headerH + 5 },
+            margin: { left: margin, right: margin, top: margin + headerH + 2 },
+            didDrawCell: (data) => {
+                if (data.row.index === 6 && data.column.index >= 1 && !pageNoCellCoordinates[i]) {
+                    pageNoCellCoordinates[i] = {
+                        x: data.cell.x,
+                        y: data.cell.y,
+                        w: data.cell.width,
+                        h: data.cell.height
+                    };
+                }
+            },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawHeader(doc);
             }
@@ -632,6 +663,20 @@ export const generateDefectAnomalyReport = async (
                     doc.addPage();
                     globalPage++;
                     drawHeader(doc);
+
+                    // Continuation Sub-Header Bar on page 2+
+                    const subBarH = 6;
+                    const subBarY = margin + headerH + 2;
+                    doc.setDrawColor(200, 200, 200);
+                    doc.setLineWidth(0.1);
+                    doc.setFillColor(isPrintFriendly ? 250 : 240, isPrintFriendly ? 250 : 242, isPrintFriendly ? 250 : 246);
+                    doc.rect(margin, subBarY, contentWidth, subBarH, 'FD');
+                    doc.setFontSize(7.5);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(31, 55, 93);
+                    doc.text(`${config.isFindingsReport ? "Findings Ref:" : "Anomaly Ref:"} ${ref}  |  Structure: ${install}  |  Component: ${compVal || "N/A"}`, margin + 3, subBarY + 4.2);
+                    doc.setTextColor(0, 0, 0);
+
                     lastY = margin + headerH + 10;
                     availableH = maxYForContent - lastY;
 
@@ -738,6 +783,19 @@ export const generateDefectAnomalyReport = async (
             if (lastY > footerY - 1) {
                 doc.addPage();
                 drawHeader(doc);
+
+                // Continuation Sub-Header Bar
+                const subBarH = 6;
+                const subBarY = margin + headerH + 2;
+                doc.setDrawColor(200, 200, 200);
+                doc.setLineWidth(0.1);
+                doc.setFillColor(isPrintFriendly ? 250 : 240, isPrintFriendly ? 250 : 242, isPrintFriendly ? 250 : 246);
+                doc.rect(margin, subBarY, contentWidth, subBarH, 'FD');
+                doc.setFontSize(7.5);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(31, 55, 93);
+                doc.text(`${config.isFindingsReport ? "Findings Ref:" : "Anomaly Ref:"} ${ref}  |  Structure: ${install}  |  Signatures`, margin + 3, subBarY + 4.2);
+                doc.setTextColor(0, 0, 0);
             }
             drawSignatories();
         }
@@ -757,34 +815,50 @@ export const generateDefectAnomalyReport = async (
         doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
 
-
-        // Local Page Number (per anomaly)
-        const range = anomalyPageRanges.find(r => i >= r.start && i <= r.end);
-        if (range) {
+        // Local Page Number (per anomaly) - ALWAYS draw in the defect report table & sub-bar
+        const rangeIdx = anomalyPageRanges.findIndex(r => i >= r.start && i <= r.end);
+        if (rangeIdx !== -1) {
+            const range = anomalyPageRanges[rangeIdx];
             const localPage = i - range.start + 1;
             const localTotal = range.end - range.start + 1;
-            if (config.showPageNumbers) {
-                doc.setTextColor(80, 80, 80);
+
+            // If on Page 1 of this anomaly, draw inside the dedicated Page No. table cell!
+            if (i === range.start) {
+                const cell = pageNoCellCoordinates[rangeIdx];
+                const cellX = cell ? cell.x + 2 : (margin + labelColWidth + 2);
+                const cellY = cell ? (cell.y + 4.8) : 82;
                 doc.setFontSize(8);
-                doc.text(`Page ${localPage} of ${localTotal}`, pageWidth - margin, margin + headerH + 4, { align: "right" });
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(0, 0, 0);
+                doc.text(`Page ${localPage} of ${localTotal}`, cellX, cellY);
+            } else if (i > range.start) {
+                // On page 2+, draw Page X of Y on the right side of the continuation sub-bar!
+                const subBarY = margin + headerH + 2;
+                doc.setFontSize(7.5);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(31, 55, 93);
+                doc.text(`Page ${localPage} of ${localTotal}`, pageWidth - margin - 3, subBarY + 4.2, { align: "right" });
+                doc.setTextColor(0, 0, 0);
             }
         }
 
-        // ===== PAGE FOOTER =====
-        const footerLineY = pageHeight - 10;
+        // ===== DOCUMENT PAGE FOOTER ===== (Controlled by showPageNumbers for compiled datasheet books)
+        if (config.showPageNumbers !== false) {
+            const footerLineY = pageHeight - 10;
 
-        // Horizontal line across content width
-        doc.setDrawColor(180, 180, 180);
-        doc.setLineWidth(0.3);
-        doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+            // Horizontal line across content width
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
 
-        // Page number - centered
-        doc.setFontSize(7);
-        doc.setTextColor(100, 100, 100);
-        doc.text(`Page ${i} of ${totalPages}`, pageWidth / 2, footerLineY + 4, { align: "center" });
+            // Page number - centered
+            doc.setFontSize(7);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Page ${i} of ${totalPages}`, pageWidth / 2, footerLineY + 4, { align: "center" });
 
-        // Printed date - right aligned
-        doc.text(printedDateStr, pageWidth - margin, footerLineY + 4, { align: "right" });
+            // Printed date - right aligned
+            doc.text(printedDateStr, pageWidth - margin, footerLineY + 4, { align: "right" });
+        }
     }
 
     if (config.returnBlob) {

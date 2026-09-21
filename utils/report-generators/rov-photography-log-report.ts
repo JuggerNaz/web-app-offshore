@@ -72,7 +72,7 @@ export const generateROVPhotographyLogReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        const HEADER_H = 22;
+        const HEADER_H = 26;
 
         const drawHeaderFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
             const isPF = config.printFriendly;

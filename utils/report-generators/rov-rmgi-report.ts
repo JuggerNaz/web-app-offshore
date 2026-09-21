@@ -71,7 +71,7 @@ export const generateROVRMGIReport = async (
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
             : "N/A";
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -116,8 +116,8 @@ export const generateROVRMGIReport = async (
             const half = contentWidth / 2;
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1);
-                if (!isPF) { d.setFillColor(...colors.lightGray); d.rect(x, y, w, ROW_H, "F"); }
-                d.rect(x, y, w, ROW_H, "S");
+                if (!isPF) { d.setFillColor(...colors.lightGray); d.rect(x, ty, w, ROW_H, "F"); }
+                d.rect(x, ty, w, ROW_H, "S");
                 d.setTextColor(...colors.text);
                 d.setFontSize(7.5); d.setFont("helvetica", "bold");
                 d.text(label, x + 2, ty + 4.8);

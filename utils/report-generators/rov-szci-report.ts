@@ -79,8 +79,9 @@ export const generateROVSZCIReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -134,7 +135,7 @@ export const generateROVSZCIReport = async (
         };
 
         drawHeader(doc);
-        const currentY = drawContext(doc, margin + 22 + 2);
+        const currentY = drawContext(doc, margin + headerH + 2);
 
         const isPF = config.printFriendly;
 
@@ -147,7 +148,7 @@ export const generateROVSZCIReport = async (
 
         autoTable(doc, {
             startY: currentY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6 },
             head: [
                 [
                     { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },

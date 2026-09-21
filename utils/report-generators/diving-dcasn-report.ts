@@ -81,7 +81,7 @@ export const generateDivingDCASNReport = async (
             .select('id, q_id, code, name, metadata')
             .eq('structure_id', config.structureId);
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;

@@ -296,8 +296,9 @@ export const generateDivingRRISIDetailReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -431,7 +432,7 @@ export const generateDivingRRISIDetailReport = async (
         };
 
         drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const startY = drawContext(doc, margin + headerH + 2);
         const isPF = config.printFriendly;
 
         // Build continuous table rows with Group Section Header banners for each parent Riser QID
@@ -522,7 +523,7 @@ export const generateDivingRRISIDetailReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6, bottom: 20 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: 20 },
             head: [
                 ['Item No.', 'QID', 'Elevation (m)', 'Dive No.', 'CP', 'UT', 'Findings']
             ],

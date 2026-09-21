@@ -723,7 +723,7 @@ async function generateCustomFallbackBlank(
         text: [30, 41, 59] as [number, number, number],
     };
 
-    const HEADER_H = 24;
+    const HEADER_H = 26;
 
     let companyLogo: any = null;
     if (companySettings.logo_url) {

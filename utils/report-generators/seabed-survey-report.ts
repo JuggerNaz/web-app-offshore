@@ -5,6 +5,7 @@ import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 export interface SeabedSurveyReportOptions extends Partial<ReportConfig> {
+    contractorLogoUrl?: string;
     comparisonKey?: string;
     comparisonName?: string;
     comparisonRecords?: any[];
@@ -144,16 +145,28 @@ export const generateSeabedSurveyReport = async (
 
     let contractorLogo: any = null;
     let contractorName = "";
-    if (config.showContractorLogo || config.headerData?.contractorLogoUrl) {
-        const logoUrl = config.headerData?.contractorLogoUrl;
-        if (logoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(logoUrl); } catch (_) {}
-        }
+    const contrLogoUrl = config.headerData?.contractorLogoUrl || (config as any).contractorLogoUrl || (config as any).contrLogoUrl;
+    if (contrLogoUrl) {
+        try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+    }
+    if (!contractorLogo && (config.showContractorLogo !== false) && jobPack?.metadata?.contrac) {
+        try {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const { data: contrData } = await supabase
+                .from('u_lib_list')
+                .select('logo_url')
+                .eq('lib_code', 'CONTR_NAM')
+                .eq('lib_id', jobPack.metadata.contrac)
+                .maybeSingle();
+            if (contrData?.logo_url) {
+                contractorLogo = await loadLogoWithTransparency(contrData.logo_url);
+            }
+        } catch (_) {}
     }
 
     // ── Header & Subheader Drawers ───────────────────────────────────────────
     const isPrintFriendly = config.printFriendly === true;
-    const headerH = 22;
+    const headerH = 26;
 
     const drawHeader = (d: jsPDF) => {
         if (isPrintFriendly) {
@@ -175,6 +188,9 @@ export const generateSeabedSurveyReport = async (
         d.setFontSize(11); d.setFont("helvetica", "bold");
         const titleType = itemTypeFilter && itemTypeFilter.toLowerCase() !== 'all' ? itemTypeFilter.toUpperCase() : "GENERAL";
         d.text(`SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
+        d.setFontSize(8); d.setFont("helvetica", "normal");
+        const reportNo = sowReportNo || config.headerData?.sowReportNo || (config as any)?.reportNoPrefix || "N/A";
+        d.text(`Report No: ${reportNo}`, margin + (contentWidth / 2), margin + 21, { align: 'center' });
     };
 
     const drawSubHeader = (d: jsPDF, y: number) => {
@@ -185,7 +201,6 @@ export const generateSeabedSurveyReport = async (
         const structName = structure?.str_name || structure?.name || hData.platformName || "N/A";
         const jobPackName = jobPack?.name || hData.jobpackName || "N/A";
         const vessel = hData.vessel || "N/A";
-        const reportNo = sowReportNo || hData.sowReportNo || "N/A";
         const inspDate = hData.date || new Date().toLocaleDateString("en-GB");
 
         const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
@@ -201,16 +216,14 @@ export const generateSeabedSurveyReport = async (
         drawBox('Structure:', structName, margin, colW, y);
         drawBox('Vessel:', vessel, margin + colW, colW, y);
         drawBox('Job Pack:', jobPackName, margin, colW, y + rowH);
-        drawBox('Report No:', reportNo, margin + colW, colW, y + rowH);
+        drawBox('Inspection Date:', inspDate, margin + colW, colW, y + rowH);
         
         if (config.comparisonName) {
             drawBox('Filter Type:', itemTypeFilter || 'ALL', margin, colW, y + (rowH * 2));
             drawBox('Compared With:', config.comparisonName, margin + colW, colW, y + (rowH * 2));
             return y + (rowH * 3) + 4;
         } else {
-            drawBox('Filter Type:', itemTypeFilter || 'ALL', margin, colW, y + (rowH * 2));
-            drawBox('Inspection Date:', inspDate, margin + colW, colW, y + (rowH * 2));
-            return y + (rowH * 3) + 4;
+            return y + (rowH * 2) + 4;
         }
     };
 

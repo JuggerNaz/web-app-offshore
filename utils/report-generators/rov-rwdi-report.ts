@@ -70,7 +70,7 @@ export const generateROVRWDIReport = async (
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
             : "N/A";
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -103,7 +103,7 @@ export const generateROVRWDIReport = async (
             d.setFontSize(8.5); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
             d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text("Water Depth Inspection Report (ROV)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.text("Water Depth Measurement Survey Report (ROV)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
@@ -250,7 +250,7 @@ export const generateROVRWDIReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Water Depth Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Water Depth Measurement Survey Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
@@ -301,7 +301,7 @@ export const generateROVRWDIReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_Water_Depth_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`ROV_Water_Depth_Measurement_Survey_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ROV Water Depth Report] Error:", err);
         throw err;

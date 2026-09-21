@@ -237,6 +237,7 @@ export const generateDefectSummaryReport = async (
     const FOOTER_LINE_Y = pageHeight - 8;
 
     // ── Draw Header ──────────────────────────────────────────────────────────
+    // ── Draw Header ──────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
         const sx = margin;
         const sy = margin;
@@ -252,27 +253,31 @@ export const generateDefectSummaryReport = async (
 
         // Left — Contractor logo + name
         if (contractorLogo) {
-            drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + logoPadding, 'left', 'center');
+            drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + 3, 'left', 'center');
         }
         
 
         // Right — Client logo
         if (clientLogo) {
-            drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + logoPadding, 'right', 'center');
+            drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + 3, 'right', 'center');
         }
 
         // Centre text
         d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
-        d.text((companySettings.company_name || "TANJUNG OFFSHORE").toUpperCase(), pageWidth / 2, sy + 7.5, { align: "center" });
+        d.text((companySettings.company_name || "TANJUNG OFFSHORE").toUpperCase(), pageWidth / 2, sy + 6, { align: "center" });
         d.setFont("helvetica", "normal");
         d.setFontSize(8.5);
-        d.text(companySettings.departmentName || "Engineering Department", pageWidth / 2, sy + 12, { align: "center" });
+        d.text(companySettings.department_name || companySettings.departmentName || "Engineering Department", pageWidth / 2, sy + 10.5, { align: "center" });
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
         const reportTitle = config.isFindingsReport ? "FINDINGS SUMMARY REPORT" : "DEFECT SUMMARY REPORT";
-        d.text(reportTitle, pageWidth / 2, sy + 19, { align: "center" });
+        d.text(reportTitle, pageWidth / 2, sy + 16.5, { align: "center" });
+        d.setFont("helvetica", "normal");
+        d.setFontSize(8);
+        const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
+        d.text(`Report No: ${reportNoDisplay}`, pageWidth / 2, sy + 21, { align: "center" });
         d.setTextColor(0, 0, 0);
     };
 
@@ -280,7 +285,6 @@ export const generateDefectSummaryReport = async (
     const drawSubHeader = (d: jsPDF, startY: number) => {
         const field = structure?.field_name || structure?.str_name || "N/A";
         const installation = structure?.str_name || structure?.str_desc || "N/A";
-        const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || "N/A";
         let vessel = "N/A";
         if (jobPack?.metadata?.vessel_history && Array.isArray(jobPack.metadata.vessel_history) && jobPack.metadata.vessel_history.length > 0) {
             vessel = jobPack.metadata.vessel_history.map((v: any) => v.name || v).join(" / ");
@@ -288,10 +292,9 @@ export const generateDefectSummaryReport = async (
             vessel = jobPack.metadata.vessel;
         }
         const projectDesc = jobPack?.name || "N/A";
-        const printDate = new Date().toLocaleDateString("en-GB");
 
-        const lw = 35;
-        const vw = (contentWidth - lw * 3) / 3;
+        const labelColWidth = 32;
+        const valueColWidth = (contentWidth - labelColWidth * 2) / 2;
 
         const headSt = isPrintFriendly
             ? { fillColor: [255, 255, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] }
@@ -303,23 +306,22 @@ export const generateDefectSummaryReport = async (
             body: [
                 [
                     { content: "Project Description:", styles: headSt }, { content: projectDesc },
-                    { content: "Report No.:", styles: headSt }, { content: reportNoDisplay },
-                    { content: "Print Date:", styles: headSt }, { content: printDate }
+                    { content: "Installation:", styles: headSt }, { content: installation }
                 ],
                 [
                     { content: "Field:", styles: headSt }, { content: field },
-                    { content: "Installation:", styles: headSt }, { content: installation },
                     { content: "Vessel:", styles: headSt }, { content: vessel }
                 ],
             ] as any,
             theme: "grid",
-            styles: { fontSize: 7.5, cellPadding: 1.8, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
             columnStyles: {
-                0: { cellWidth: lw }, 1: { cellWidth: vw },
-                2: { cellWidth: lw }, 3: { cellWidth: vw },
-                4: { cellWidth: lw }, 5: { cellWidth: vw },
+                0: { cellWidth: labelColWidth },
+                1: { cellWidth: valueColWidth },
+                2: { cellWidth: labelColWidth },
+                3: { cellWidth: valueColWidth },
             },
-            margin: { left: margin, right: margin, top: margin + headerH + 5 },
+            margin: { left: margin, right: margin, top: margin + headerH + 2 },
         });
 
         return (d as any).lastAutoTable.finalY;

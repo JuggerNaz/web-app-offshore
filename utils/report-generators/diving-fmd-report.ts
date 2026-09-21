@@ -80,8 +80,9 @@ export const generateDivingFMDReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -98,7 +99,7 @@ export const generateDivingFMDReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
             if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
 
-            d.setFontSize(8); d.setFont("helvetica", "bold");
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
             d.setFontSize(8.5); d.setFont("helvetica", "normal");
             d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: 'center' });
@@ -140,7 +141,7 @@ export const generateDivingFMDReport = async (
         };
 
         drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const startY = drawContext(doc, margin + headerH + 2);
         const isPF = config.printFriendly;
 
         // Sort all records by elevation top to bottom (descending order)
@@ -152,7 +153,7 @@ export const generateDivingFMDReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6, bottom: 20 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: 20 },
             head: [
                 ['Item No.', 'QID', 'Elevation (m)', 'Dive No.', 'Flooded', 'Grouted', 'Findings']
             ],

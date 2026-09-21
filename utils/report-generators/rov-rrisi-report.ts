@@ -281,8 +281,9 @@ export const generateROVRRISIReport = async (
         if (companySettings.logo_url) { try { coLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {} }
         if (headerData.contractorLogoUrl) { try { ctLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {} }
 
+        const hH = 26;
         const drawHeader = (d: jsPDF) => {
-            const hH = 22; const isPF = config.printFriendly;
+             const isPF = config.printFriendly;
             if (isPF) { d.setDrawColor(...colors.navy); d.setLineWidth(0.5); d.rect(margin, margin, contentWidth, hH, 'S'); d.setTextColor(...colors.navy); }
             else { d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, hH, 'F'); d.setTextColor(255, 255, 255); }
             if (coLogo) drawLogo(d, coLogo, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
@@ -320,8 +321,7 @@ export const generateROVRRISIReport = async (
             drawBox('Vessel:', headerData.vessel || 'N/A', margin + half, half, y);
             drawBox('Job Pack:', headerData.jobpackName || 'N/A', margin, half, y + rH);
             drawBox('Insp. Date Range:', dr, margin + half, half, y + rH);
-            drawBox('Report No:', (config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A', margin, contentWidth, y + (rH * 2));
-            return y + (rH * 3) + 4;
+            return y + (rH * 2) + 4;
         };
 
         for (let i = 0; i < groups.length; i++) {
@@ -330,7 +330,7 @@ export const generateROVRRISIReport = async (
             const recordsInGroup = group.records;
             if (i > 0) doc.addPage();
             drawHeader(doc);
-            let currentY = drawContext(doc, margin + 22 + 2, recordsInGroup);
+            let currentY = drawContext(doc, margin + hH + 2, recordsInGroup);
 
             // Sub-header
             doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 7, 'F');
@@ -549,22 +549,6 @@ export const generateROVRRISIReport = async (
                     doc.line(cX - 2, py, leftLineEnd, py);
                     doc.setFontSize(5.5); doc.setTextColor(...col);
                     doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
-
-                    // Right Side: Object Name / QID if present
-                    if (c.q_id && !c.q_id.startsWith('GEN')) {
-                        const lineEnd = Math.min(cX + 2 + 5, gX + gW - 20);
-                        doc.line(cX + 2, py, lineEnd, py);
-                        doc.setFontSize(5.5); doc.setTextColor(...col);
-                        let qidText = c.q_id;
-                        const maxQidW = (gX + gW - 2) - (lineEnd + 1);
-                        if (doc.getTextWidth(qidText) > maxQidW) {
-                            while (qidText.length > 3 && doc.getTextWidth(qidText + "...") > maxQidW) {
-                                qidText = qidText.slice(0, -1);
-                            }
-                            qidText += "...";
-                        }
-                        doc.text(qidText, lineEnd + 1, py + 1);
-                    }
                 }
             });
 
@@ -592,7 +576,7 @@ export const generateROVRRISIReport = async (
             });
             autoTable(doc, {
                 startY: currentY,
-                margin: { left: dX, right: margin, top: margin + 22 + 6 },
+                margin: { left: dX, right: margin, top: margin + hH + 6 },
                 tableWidth: dW,
                 head: [['Item No.', 'Loc / Elev', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
                 body: sortedR.map((r, idx) => {
@@ -651,7 +635,7 @@ export const generateROVRRISIReport = async (
             });
         }
 
-        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + hH + 20);
         if (config.showSignatures !== false) {
             let sigY = pageHeight - 38;
             if (finalY > sigY - 10) {

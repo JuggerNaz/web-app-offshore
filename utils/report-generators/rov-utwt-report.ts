@@ -79,8 +79,9 @@ export const generateROVUTWTReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -100,13 +101,13 @@ export const generateROVUTWTReport = async (
             d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
             d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
             
             d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(`UT Wall Thickness Report (ROV)`, margin + (contentWidth/2), margin + 15.5, { align: 'center' });
+            d.text(`UT Wall Thickness Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
             
             d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 19.5, { align: 'center' });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -135,7 +136,7 @@ export const generateROVUTWTReport = async (
         };
 
         drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const startY = drawContext(doc, margin + headerH + 2);
 
         const isPF = config.printFriendly;
 
@@ -148,7 +149,7 @@ export const generateROVUTWTReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6 },
             head: [
                 [
                     { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },

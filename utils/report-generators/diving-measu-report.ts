@@ -82,8 +82,9 @@ export const generateDivingMEASUReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -142,7 +143,7 @@ export const generateDivingMEASUReport = async (
         };
 
         drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const startY = drawContext(doc, margin + headerH + 2);
         const isPF = config.printFriendly;
 
         // --- Helper Data Extractor Functions ---
@@ -345,7 +346,7 @@ export const generateDivingMEASUReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6, bottom: 20 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: 20 },
             head: [
                 ['Item No.', 'Type', 'Unit', 'Result']
             ],

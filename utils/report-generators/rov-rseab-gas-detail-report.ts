@@ -61,11 +61,18 @@ export const generateROVRSEABGasDetailReport = async (
 
         // ── Filter Records (Strict Seabed Filter: RSEAB + Gas Seepage category only) ──
         const filteredRecords = records.filter(r => {
-            const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-            if (typeCode !== 'RSEAB') return false;
+            const typeCode = (
+                r.inspection_type?.code ||
+                r.inspection_type_code ||
+                r.structure_components?.component_types?.code ||
+                r.structure_components?.component_type ||
+                r.component_type ||
+                ''
+            ).toUpperCase();
+            if (typeCode && typeCode !== 'RSEAB' && typeCode !== 'SEABED') return false;
             const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
             const desc = (r.description || '').toLowerCase();
-            return cat === 'gas seepage' || desc.startsWith('gas seepage');
+            return cat === 'gas seepage' || cat === 'gas' || desc.startsWith('gas seepage') || desc.startsWith('gas');
         });
 
         if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
@@ -81,14 +88,28 @@ export const generateROVRSEABGasDetailReport = async (
         // ── Pre-load logos ──
         let companyLogo: any = null;
         let contractorLogo: any = null;
-        if (companySettings.logo_url) {
+        if (companySettings?.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        if (headerData.contractorLogoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        const contrLogoUrl = headerData?.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        if (contrLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+        }
+        if (!contractorLogo && (headerData?.jobpackId || config?.jobPackId || filteredRecords?.[0]?.jobpack_id)) {
+            try {
+                const jId = headerData?.jobpackId || config?.jobPackId || filteredRecords?.[0]?.jobpack_id;
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                const { data: jp } = await supabase.from('jobpack').select('metadata').eq('id', Number(jId)).maybeSingle();
+                if (jp?.metadata?.contrac) {
+                    const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jp.metadata.contrac).maybeSingle();
+                    if (contrData?.logo_url) {
+                        contractorLogo = await loadLogoWithTransparency(contrData.logo_url);
+                    }
+                }
+            } catch (_) {}
         }
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;

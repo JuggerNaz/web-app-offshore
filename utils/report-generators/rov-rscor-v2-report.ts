@@ -61,8 +61,9 @@ export const generateROVRSCORV2Report = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 18;
+            const headerH = 26;
             const isPF = config.printFriendly;
             if (isPF) {
                 d.setDrawColor(...colors.navy); d.setLineWidth(0.3); d.rect(margin, margin, contentWidth, headerH, 'S');
@@ -76,14 +77,26 @@ export const generateROVRSCORV2Report = async (
             if (contractorLogo) drawLogo(d, contractorLogo, 14, 14, margin + 4,              margin + 2, 'left',  'center');
 
             d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 4.5, { align: 'center' });
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
             d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 8.5, { align: 'center' });
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
             d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(`Scour Survey Sketch Report (ROV) - v2`, margin + (contentWidth/2), margin + 13.5, { align: 'center' });
+            d.text(`Scour Survey Sketch Report (ROV) - v2`, margin + (contentWidth/2), margin + 21, { align: 'center' });
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
         };
+
+        let startDate: Date | null = null;
+        let endDate: Date | null = null;
+        if (records.length > 0) {
+            const dates = records
+                .map(r => new Date(r.cr_date || r.created_at))
+                .filter(d => !isNaN(d.getTime()));
+            if (dates.length > 0) { startDate = new Date(Math.min(...dates.map(d => d.getTime()))); endDate = new Date(Math.max(...dates.map(d => d.getTime()))); }
+        }
+        const dateRangeStr = startDate && endDate
+            ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
+            : (headerData.date || "N/A");
 
         const drawContext = (d: jsPDF, y: number) => {
             const rowH = 5;
@@ -97,10 +110,10 @@ export const generateROVRSCORV2Report = async (
                 d.text(label, x + 2, ty + 3.5); d.setFont("helvetica", "normal");
                 d.text(String(value), x + 25, ty + 3.5);
             };
-            drawBox('Structure:', headerData.platformName, margin, colW, y);
+            drawBox('Structure:', headerData.platformName || 'N/A', margin, colW, y);
             drawBox('Vessel:', headerData.vessel || 'N/A', margin + colW, colW, y);
-            drawBox('Job Pack:', headerData.jobpackName, margin, colW, y + rowH);
-            drawBox('Report No:', sowReportNo, margin + colW, colW, y + rowH);
+            drawBox('Job Pack:', headerData.jobpackName || 'N/A', margin, colW, y + rowH);
+            drawBox('Insp. Date Range:', dateRangeStr, margin + colW, colW, y + rowH);
             return y + (rowH * 2) + 3;
         };
 
@@ -322,7 +335,7 @@ export const generateROVRSCORV2Report = async (
         for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
             if (pageIdx > 0) doc.addPage();
             drawHeader(doc);
-            let currentY = drawContext(doc, margin + 18 + 2);
+            let currentY = drawContext(doc, margin + headerH + 2);
 
             const startCompIdx = pageIdx * compsPerPage;
             const pageComponents = components.slice(startCompIdx, startCompIdx + compsPerPage);

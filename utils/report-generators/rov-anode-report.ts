@@ -80,8 +80,9 @@ export const generateROVAnodeReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -135,7 +136,7 @@ export const generateROVAnodeReport = async (
         };
 
         drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const startY = drawContext(doc, margin + headerH + 2);
 
         // --- 2. Data Sorting & Mapping ---
         const sortedRecords = [...records].sort((a, b) => {
@@ -146,7 +147,7 @@ export const generateROVAnodeReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6 },
             head: [[
                 'Item No.', 'QID', 'Elevation (m)', 'Depletion (%)', 
                 'Anode CP (mV)', 'Anode Type', 'Anomaly', 'Dive No.', 'Findings'

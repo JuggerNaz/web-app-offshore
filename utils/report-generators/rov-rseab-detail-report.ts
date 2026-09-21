@@ -67,12 +67,19 @@ export const generateROVRSEABDetailReport = async (
 
         // Filter specifically for Seabed Survey Debris records
         const filteredRecords = records.filter(r => {
-            const typeCode = (r.structure_components?.component_types?.code || r.structure_components?.component_type || r.component_type || '').toUpperCase();
-            if (typeCode !== 'RSEAB') return false;
+            const typeCode = (
+                r.inspection_type?.code ||
+                r.inspection_type_code ||
+                r.structure_components?.component_types?.code ||
+                r.structure_components?.component_type ||
+                r.component_type ||
+                ''
+            ).toUpperCase();
+            if (typeCode && typeCode !== 'RSEAB' && typeCode !== 'SEABED') return false;
             const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
             const desc = (r.description || '').toLowerCase();
-            // Include if category is Debris, or if no category is set (legacy default is Debris)
-            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || !desc.startsWith('gas') && !desc.startsWith('crater')));
+            // Include if category is Debris, or if no category is set (legacy default is Debris), or not gas/crater
+            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
         });
 
         if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
@@ -82,14 +89,28 @@ export const generateROVRSEABDetailReport = async (
         // ── Pre-load logos ──
         let companyLogo: any = null;
         let contractorLogo: any = null;
-        if (companySettings.logo_url) {
+        if (companySettings?.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        if (headerData.contractorLogoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        const contrLogoUrl = headerData?.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        if (contrLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+        }
+        if (!contractorLogo && (headerData?.jobpackId || (config as any)?.jobPackId || filteredRecords?.[0]?.jobpack_id)) {
+            try {
+                const jId = headerData?.jobpackId || (config as any)?.jobPackId || filteredRecords?.[0]?.jobpack_id;
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                const { data: jp } = await supabase.from('jobpack').select('metadata').eq('id', Number(jId)).maybeSingle();
+                if (jp?.metadata?.contrac) {
+                    const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jp.metadata.contrac).maybeSingle();
+                    if (contrData?.logo_url) {
+                        contractorLogo = await loadLogoWithTransparency(contrData.logo_url);
+                    }
+                }
+            } catch (_) {}
         }
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
@@ -185,6 +206,7 @@ export const generateROVRSEABDetailReport = async (
 
         // Helper to extract legs and distance from QID
         const parseQid = (q: string) => {
+            if (!q) return { legs: "", distance: 0 };
             const match = q.match(/S\/BED\(([^)]+)\)-(\d+)M/i);
             if (match) {
                 return { legs: match[1].trim(), distance: parseInt(match[2], 10) };
@@ -198,8 +220,8 @@ export const generateROVRSEABDetailReport = async (
 
         // Sort records by leg name and distance value
         const sortedRecords = [...filteredRecords].sort((a, b) => {
-            const qA = (a.structure_components?.q_id || a.qid || '').toUpperCase();
-            const qB = (b.structure_components?.q_id || b.qid || '').toUpperCase();
+            const qA = (a.structure_components?.q_id || a.qid || a.q_id || '').toUpperCase();
+            const qB = (b.structure_components?.q_id || b.qid || b.q_id || '').toUpperCase();
             
             const parsedA = parseQid(qA);
             const parsedB = parseQid(qB);
@@ -213,16 +235,16 @@ export const generateROVRSEABDetailReport = async (
         // Map records to autoTable RowInput[]
         const tableRows = sortedRecords.map((r, rIdx) => {
             const comp = r.structure_components || {};
-            const d = r.inspection_data || {};
+            const d = r.inspection_data || r.inspection_dat || {};
             const anoms = r.insp_anomalies || [];
             const isAnom = anoms.length > 0;
 
             // Dive & Tape No
-            const diveNo = r.insp_rov_jobs?.job_no || r.dive_no || "—";
+            const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || r.dive_no || r.dive_job_id || r.rov_job_id || "—";
             const tapeNo = r.insp_video_tapes?.tape_no || r.tape_no || d.tape_no || r.tape_id || "—";
 
             // Format Findings
-            let findings = r.description || d.findings || "No significant findings";
+            let findings = r.description || d.findings || d.description || d.debris_desc || "No significant findings";
             
             if (anoms.length > 0) {
                 findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || a.anomaly_ref_no || "N/A"}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ""})` : ""}`).join("\n");
@@ -230,7 +252,7 @@ export const generateROVRSEABDetailReport = async (
 
             return [
                 { content: String(rIdx + 1), styles: { halign: "center" as const } },
-                { content: comp.q_id || r.qid || "—" },
+                { content: comp.q_id || r.qid || r.q_id || "—" },
                 { content: String(diveNo), styles: { halign: "center" as const } },
                 { content: String(tapeNo), styles: { halign: "center" as const } },
                 { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }

@@ -303,8 +303,9 @@ export const generateDivingRRISIReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -448,7 +449,7 @@ export const generateDivingRRISIReport = async (
             const gRecords = group.records || [];
 
             drawHeader(doc);
-            const startY = drawContext(doc, margin + 22 + 2);
+            const startY = drawContext(doc, margin + headerH + 2);
             const isPF = config.printFriendly;
 
             // Section Banner Header
@@ -734,22 +735,6 @@ export const generateDivingRRISIReport = async (
                         d.line(pipeCenterX - 2, py, leftLineEnd, py);
                         d.setFontSize(5); d.setTextColor(...markerColor); d.setFont("helvetica", "bold");
                         d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1.2, { align: "right" });
-
-                        // Right Side: Object Name / QID if present
-                        let displayQid = c.q_id || r.q_id || '';
-                        if (displayQid && !displayQid.startsWith('GEN')) {
-                            const rightLineEnd = Math.min(pipeCenterX + 2 + 5, sx + sw - 20);
-                            d.line(pipeCenterX + 2, py, rightLineEnd, py);
-                            d.setFontSize(5); d.setTextColor(...markerColor); d.setFont("helvetica", "bold");
-                            const maxW = (sx + sw - 2) - (rightLineEnd + 1);
-                            if (d.getTextWidth(displayQid) > maxW) {
-                                while (displayQid.length > 3 && d.getTextWidth(displayQid + '...') > maxW) {
-                                    displayQid = displayQid.slice(0, -1);
-                                }
-                                displayQid += '...';
-                            }
-                            d.text(displayQid, rightLineEnd + 1, py + 1.2);
-                        }
                     }
                 });
             };
@@ -811,7 +796,7 @@ export const generateDivingRRISIReport = async (
 
             autoTable(doc, {
                 startY: sketchY,
-                margin: { left: dX, right: margin, top: margin + 22 + 6, bottom: 20 },
+                margin: { left: dX, right: margin, top: margin + headerH + 6, bottom: 20 },
                 tableWidth: dW,
                 head: [
                     ['Item No.', 'Elev', 'Dive', 'CP', 'UT', 'Findings']

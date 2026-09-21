@@ -55,7 +55,7 @@ export const generateDivingUTWTKReport = async (
             finding: [124, 58, 237] as [number, number, number],
         };
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // Pre-load logos
         let companyLogo: any = null;

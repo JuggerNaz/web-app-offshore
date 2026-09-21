@@ -75,6 +75,17 @@ export async function GET(request: NextRequest) {
             seenKeys.add(key);
             uniqueAnomalies.push(item);
         }
+        // Sort anomalies naturally by defect reference number
+        const getRef = (item: any) => (item.display_ref_no || item.anomaly_ref_no || item.ref_no || "").toString().trim();
+        uniqueAnomalies.sort((a, b) => {
+            const refA = getRef(a);
+            const refB = getRef(b);
+            if (refA && refB) {
+                return refA.localeCompare(refB, undefined, { numeric: true, sensitivity: "base" });
+            }
+            return refA ? -1 : (refB ? 1 : 0);
+        });
+
         anomalies = uniqueAnomalies;
 
         if (!anomalies || anomalies.length === 0) {
