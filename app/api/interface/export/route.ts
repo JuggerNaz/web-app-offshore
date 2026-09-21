@@ -19,6 +19,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       structureType = "ALL", // "ALL" | "PLATFORM" | "PIPELINE"
       jobpackMode = "ALL", // "ALL" | "SELECTED"
       jobpackIds = [],
+      sowReportNos = [],
+      sowReportNo = "",
       inspectionTypes = [],
       format = "individual_xlsx", // "individual_xlsx" | "individual_txt" | "individual_csv" | "single_xlsx" | "txt_zip" | "csv_zip" | "xlsx"
       destinationFolder = "",
@@ -169,6 +171,18 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       }
     });
 
+    // 3.5 Fetch Inspection Types
+    const { data: inspTypesData } = await (supabase as any)
+      .from("inspection_type")
+      .select("id, code, name, metadata");
+
+    const inspTypeMapById = new Map<number, any>();
+    const inspTypeMapByCode = new Map<string, any>();
+    (inspTypesData || []).forEach((it: any) => {
+      if (it.id != null) inspTypeMapById.set(Number(it.id), it);
+      if (it.code) inspTypeMapByCode.set(String(it.code).trim().toUpperCase(), it);
+    });
+
     // 4. Fetch Inspection Records
     let inspQuery = (supabase as any)
       .from("insp_records")
@@ -177,6 +191,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         jobpack_id,
         structure_id,
         component_id,
+        inspection_type_id,
         inspection_type_code,
         status,
         inspection_date,
@@ -185,6 +200,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         workunit,
         structure_components (
           id,
+          id_no,
           q_id,
           code,
           metadata
@@ -208,6 +224,11 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     }
     if (jobpackMode === "SELECTED" && jobpackIds.length > 0) {
       inspQuery = inspQuery.in("jobpack_id", jobpackIds);
+    }
+    if (sowReportNos && sowReportNos.length > 0) {
+      inspQuery = inspQuery.in("sow_report_no", sowReportNos);
+    } else if (sowReportNo && sowReportNo !== "ALL") {
+      inspQuery = inspQuery.eq("sow_report_no", sowReportNo);
     }
     if (inspectionTypes.length > 0 && !inspectionTypes.includes("ALL")) {
       inspQuery = inspQuery.in("inspection_type_code", inspectionTypes);
@@ -247,12 +268,56 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       .in("str_id", activeStrIds.length > 0 ? activeStrIds : [0])
       .limit(2000);
 
-    // 7. Fetch Attachments
-    const { data: attachmentsData } = await (supabase as any)
-      .from("attachments")
-      .select("*")
-      .eq("company_id", companyId)
-      .limit(1000);
+    // 7. Fetch Attachments linked to matching inspection records
+    const targetInspIds = allRecords.map((r: any) => Number(r.insp_id)).filter((id: number) => !isNaN(id) && id > 0);
+    let attachmentsList: any[] = [];
+
+    if (targetInspIds.length > 0) {
+      const [attRes1, attRes2, mediaRes] = await Promise.all([
+        (supabase as any)
+          .from("attachment")
+          .select("*")
+          .in("source_id", targetInspIds)
+          .in("source_type", ["inspection", "INSPECTION"]),
+        (supabase as any)
+          .from("attachments")
+          .select("*")
+          .in("inspection_id", targetInspIds),
+        (supabase as any)
+          .from("insp_media")
+          .select("*")
+          .in("inspection_id", targetInspIds),
+      ]);
+
+      if (attRes1?.data && attRes1.data.length > 0) {
+        attachmentsList.push(...attRes1.data);
+      }
+      if (attRes2?.data && attRes2.data.length > 0) {
+        attRes2.data.forEach((a: any) => {
+          attachmentsList.push({
+            ...a,
+            source_id: a.inspection_id || a.source_id,
+            source_type: "INSPECTION",
+          });
+        });
+      }
+      if (mediaRes?.data && mediaRes.data.length > 0) {
+        mediaRes.data.forEach((m: any) => {
+          attachmentsList.push({
+            id: m.media_id,
+            source_id: m.inspection_id,
+            source_type: "INSPECTION",
+            name: m.name || `Snapshot ${m.media_id}`,
+            title: m.name || `Snapshot ${m.media_id}`,
+            file_name: m.meta?.original_file_name || m.name || `media_${m.media_id}.jpg`,
+            file_type: m.meta?.file_extension || (m.file_path ? path.extname(m.file_path).replace(".", "") : "JPG"),
+            path: m.file_path || "",
+            meta: m.meta || {},
+            description: m.meta?.description || m.description || "",
+          });
+        });
+      }
+    }
 
     // Helpers
     const sanitizeText = (val: any) => {
@@ -394,46 +459,101 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           });
         });
       } else if (strategy === "ATTACHMENTS" || code === "ATS") {
-        (attachmentsData || []).forEach((att: any) => {
-          const linkedRec = allRecords.find((r: any) => r.insp_id === att.inspection_id);
-          const strObj = structureMap.get(att.structure_id || linkedRec?.structure_id);
-          const comp = compMap.get(att.component_id || linkedRec?.component_id);
-          const jp = jobpackMap.get(linkedRec?.jobpack_id);
-          const attCompCodeUpper = String(comp?.code || "").trim().toUpperCase();
-          const attCompTypeDesc = compTypeMap.get(attCompCodeUpper) || comp?.metadata?.comptype || comp?.type || "MEMBER";
+        (attachmentsList || []).forEach((att: any, idx: number) => {
+          const inspId = Number(att.source_id || att.inspection_id);
+          const linkedRec = allRecords.find((r: any) => Number(r.insp_id) === inspId);
+          if (!linkedRec) return;
+
+          const strId = Number(linkedRec.structure_id);
+          const strObj = structureMap.get(strId);
+          const compId = Number(linkedRec.component_id);
+          const comp = compMap.get(compId) || linkedRec.structure_components;
+          const compMeta = comp?.metadata || {};
+          const jp = jobpackMap.get(Number(linkedRec.jobpack_id));
+
+          // Component Type description
+          const compCodeUpper = String(comp?.code || "").trim().toUpperCase();
+          const compTypeDesc = compTypeMap.get(compCodeUpper) || compMeta.comptype || comp?.type || "MEMBER";
+
+          // File name & Extension & Path & Details
+          const origFileName = String(
+            att.meta?.original_file_name ||
+            att.file_name ||
+            att.name ||
+            (att.path ? path.basename(att.path) : `attachment_${att.id || idx + 1}.jpg`)
+          ).trim();
+
+          let ext = "";
+          if (origFileName && origFileName.includes(".")) {
+            const parts = origFileName.split(".");
+            ext = parts[parts.length - 1].toUpperCase();
+          } else if (att.file_type) {
+            ext = String(att.file_type).replace(".", "").toUpperCase();
+          } else {
+            ext = "JPG";
+          }
+          if (ext.length > 3) {
+            ext = ext.substring(0, 3);
+          }
+
+          const filePath = att.path || att.file_path || att.meta?.path || "/attachments/";
+          const attTitle = att.name || att.title || att.meta?.title || "Inspection Photo";
+          const attDesc = att.meta?.description || att.description || "Inspection attachment image";
+
+          // Inspection Type mapping
+          const itype = (linkedRec.inspection_type_id ? inspTypeMapById.get(Number(linkedRec.inspection_type_id)) : null) ||
+                        inspTypeMapByCode.get(String(linkedRec.inspection_type_code || "").trim().toUpperCase());
+
+          const isRov = itype?.metadata?.rov === 1 || itype?.metadata?.rov === "1" || itype?.metadata?.rov === true;
+          const isDiving = itype?.metadata?.diving === 1 || itype?.metadata?.diving === "1" || itype?.metadata?.diving === true;
+
+          let inspCode = "PLATGI";
+          if (isRov) {
+            inspCode = "PLATGI";
+          } else if (isDiving) {
+            inspCode = String(itype?.code || linkedRec.inspection_type_code || "DIVING").trim().toUpperCase();
+          } else {
+            inspCode = String(itype?.code || linkedRec.inspection_type_code || "PLATGI").trim().toUpperCase();
+          }
+
+          const inspName = itype?.name || linkedRec.inspection_type_code || "General Visual Inspection";
+
+          // INSPNO: Add 10000 + Jobpack.id, left pad with '0' to make 11 chars
+          const numJpId = Number(linkedRec.jobpack_id || jp?.id) || 0;
+          const formattedInspNo = String(numJpId + 10000).padStart(11, "0");
 
           sheetRows.push({
-            ATTACH_ID: att.id || 1,
-            STR_ID: strObj?.str_id || 1,
-            TITLE: sanitizeText(strObj?.title || "Platform"),
-            PFIELD: sanitizeText(strObj?.pfield || "Offshore"),
-            PDESC: sanitizeText(strObj?.pdesc || "Platform"),
-            DEF_UNIT: strObj?.def_unit || "Metric",
-            COMP_ID: comp?.id || 1,
-            ID_NO: sanitizeText(comp?.id_no || "SYS-01"),
-            Q_ID: sanitizeText(comp?.q_id || "Q-01"),
-            CODE: sanitizeText(comp?.code || "MB"),
-            COMPDESC: sanitizeText(comp?.description || "Member"),
-            S_NODE: "N01",
-            F_NODE: "N02",
-            S_LEG: "A1",
-            F_LEG: "A2",
-            ELV_1: -12.5,
-            ELV_2: -15.0,
-            DIST: 0,
-            CLK_POS: 12,
-            COMPTYPE: sanitizeText(attCompTypeDesc),
-            A_FILENAME: sanitizeText(att.file_name || "photo.jpg"),
-            A_FILETYPE: sanitizeText(att.file_type || "JPG").toUpperCase(),
-            A_PATH: sanitizeText(att.file_path || "/attachments/"),
-            ATT_TITLE: sanitizeText(att.title || "Inspection Photo"),
-            DETAILS: sanitizeText(att.description || "Inspection attachment image"),
-            INSPNO: formatInspNo(linkedRec?.jobpack_id || jp?.id || att.jobpack_id),
-            INSP_ID: linkedRec?.insp_id || 1,
-            INSPCODE: sanitizeText(linkedRec?.inspection_type_code || "GVI"),
-            INSPNAME: sanitizeText(linkedRec?.inspection_type_code || "General Visual Inspection"),
-            JOBNAME: sanitizeText(jp?.name || "Jobpack"),
-            STATUS: sanitizeText(jp?.status || "OPEN").toUpperCase(),
+            ATTACH_ID: Number(att.id) || (idx + 1),
+            STR_ID: Number(strObj?.plat_id || strObj?.str_id || strId || 1),
+            TITLE: sanitizeText(strObj?.title || "Platform").substring(0, 20),
+            PFIELD: sanitizeText(strObj?.pfield || "Offshore").substring(0, 20),
+            PDESC: sanitizeText(strObj?.pdesc || "Platform").substring(0, 50),
+            DEF_UNIT: sanitizeText(strObj?.def_unit || "Metric").substring(0, 10),
+            COMP_ID: Number(comp?.id || compId || 1),
+            ID_NO: sanitizeText(comp?.id_no || "").substring(0, 25),
+            Q_ID: sanitizeText(comp?.q_id || "").substring(0, 16),
+            CODE: sanitizeText(comp?.code || "").substring(0, 2),
+            COMPDESC: sanitizeText(compMeta.description || compMeta.desc || comp?.description || comp?.name || "").substring(0, 40),
+            S_NODE: sanitizeText(compMeta.s_node || "").substring(0, 6),
+            F_NODE: sanitizeText(compMeta.f_node || "").substring(0, 6),
+            S_LEG: sanitizeText(compMeta.s_leg || "").substring(0, 2),
+            F_LEG: sanitizeText(compMeta.f_leg || "").substring(0, 2),
+            ELV_1: compMeta.elv_1 != null && compMeta.elv_1 !== "" ? Number(compMeta.elv_1) : (compMeta.start_elevation != null && compMeta.start_elevation !== "" ? Number(compMeta.start_elevation) : ""),
+            ELV_2: compMeta.elv_2 != null && compMeta.elv_2 !== "" ? Number(compMeta.elv_2) : (compMeta.end_elevation != null && compMeta.end_elevation !== "" ? Number(compMeta.end_elevation) : ""),
+            DIST: compMeta.dist != null && compMeta.dist !== "" ? Number(compMeta.dist) : (compMeta.distance != null && compMeta.distance !== "" ? Number(compMeta.distance) : ""),
+            CLK_POS: compMeta.clk_pos != null && compMeta.clk_pos !== "" ? Number(compMeta.clk_pos) : (compMeta.clock_position != null && compMeta.clock_position !== "" ? Number(compMeta.clock_position) : ""),
+            COMPTYPE: sanitizeText(compTypeDesc).substring(0, 30),
+            A_FILENAME: sanitizeText(origFileName).substring(0, 60),
+            A_FILETYPE: sanitizeText(ext).substring(0, 3),
+            A_PATH: sanitizeText(filePath).substring(0, 255),
+            ATT_TITLE: sanitizeText(attTitle).substring(0, 20),
+            DETAILS: sanitizeText(attDesc).substring(0, 250),
+            INSPNO: formattedInspNo,
+            INSP_ID: Number(linkedRec.insp_id),
+            INSPCODE: sanitizeText(inspCode).substring(0, 6),
+            INSPNAME: sanitizeText(inspName).substring(0, 50),
+            JOBNAME: sanitizeText(jp?.name || `JP-${numJpId}`).substring(0, 20),
+            STATUS: sanitizeText(jp?.status || "OPEN").substring(0, 10).toUpperCase(),
           });
         });
       } else {
