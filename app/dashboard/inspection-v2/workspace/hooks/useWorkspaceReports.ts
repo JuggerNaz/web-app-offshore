@@ -19,7 +19,7 @@ import { generateROVRRISIJTubeDetailReport } from "@/utils/report-generators/rov
 import { generateROVRRISIITubeDetailReport } from "@/utils/report-generators/rov-itisi-detail-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVAnodeRSANIReport } from "@/utils/report-generators/rov-anode-rsani-report";
-import { generateROVCPReport } from "@/utils/report-generators/rov-cp-report";
+import { generateROVCPReport, isROVRecord } from "@/utils/report-generators/rov-cp-report";
 import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
 import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
@@ -1128,10 +1128,11 @@ export function useWorkspaceReports(
     const generateCPReport = async () => {
         const records = currentRecords.filter(r => {
             const d = r.inspection_data || {};
-            return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+            const hasCP = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+            return hasCP && isROVRecord(r);
         });
         if (records.length === 0) {
-            toast.error("No CP records found to generate report");
+            toast.error("No ROV CP records found to generate report");
             return;
         }
         setCpPreviewOpen(true);
@@ -1140,7 +1141,8 @@ export function useWorkspaceReports(
     const generateCPReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => {
             const d = r.inspection_data || {};
-            return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+            const hasCP = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
+            return hasCP && isROVRecord(r);
         });
         if (records.length === 0) return;
         const settings = await getReportHeaderData();

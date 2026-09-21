@@ -349,8 +349,8 @@ export const mapInspectionDataForDocx = async (
                 const { generateROVRICMIReport } = await import("./rov-ricmi-report");
                 pdfBlob = await generateROVRICMIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RICMI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-cp-report') {
-                const { generateROVCPReport } = await import("./rov-cp-report");
-                pdfBlob = await generateROVCPReport(records.filter(r => ["CP", "RSANI"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                const { generateROVCPReport, isROVRecord } = await import("./rov-cp-report");
+                pdfBlob = await generateROVCPReport(records.filter(r => isROVRecord(r) && (["CP", "RSANI"].includes((r.inspection_type?.code || "").toUpperCase()) || r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined)), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-fmd-report' || templateId === 'fmd-report') {
                 const { generateROVFMDReport } = await import("./rov-fmd-report");
                 pdfBlob = await generateROVFMDReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RFMD" || (r.inspection_type?.code || "").toUpperCase() === "FMD"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);

@@ -1685,7 +1685,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRSEABGasDetailReport } = await import("@/utils/report-generators/rov-rseab-gas-detail-report");
             const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
             const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
-            const { generateROVCPReport }    = await import("@/utils/report-generators/rov-cp-report");
+            const { generateROVCPReport, isROVRecord } = await import("@/utils/report-generators/rov-cp-report");
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
             const { generateROVCondReport }  = await import("@/utils/report-generators/rov-rcond-report");
             const { generateROVCondSketchReport } = await import("@/utils/report-generators/rov-rcond-sketch-report");
@@ -3491,14 +3491,15 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 return null;
             }
 
-            // Filter to records that have CP data + optional SOW/jobpack scoping
+            // Filter to records that have CP data + inspected by ROV + optional SOW/jobpack scoping
             const cpRecords = records?.filter((r: any) => {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
                 const d = r.inspection_data || r.inspection_dat || {};
                 const hasCP = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
-                return sowMatches && jobPackMatches && hasCP;
+                const isROV = isROVRecord(r);
+                return sowMatches && jobPackMatches && hasCP && isROV;
             });
 
             if (!cpRecords || cpRecords.length === 0) {
@@ -3714,12 +3715,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     return null;
                 }
 
+                const { isExcludedFromRGVI } = await import("@/utils/report-generators/rov-rgvi-report");
                 rgviRecords = (records || []).filter((r: any) => {
                     const sowMatches = !selections.sowReportNo ||
                         String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                     const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
                     const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RGVI";
-                    return sowMatches && jobPackMatches && isRGVI;
+                    return sowMatches && jobPackMatches && isRGVI && !isExcludedFromRGVI(r);
                 });
 
                 if (!rgviRecords || rgviRecords.length === 0) {

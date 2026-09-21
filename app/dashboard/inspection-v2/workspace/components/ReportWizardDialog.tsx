@@ -39,6 +39,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
+import { isROVRecord } from "@/utils/report-generators/rov-cp-report";
 
 interface ReportTemplate {
     id: string;
@@ -539,7 +540,7 @@ export function ReportWizardDialog({
         const baseTemplates: ReportTemplate[] = [
             // ── INSPECTION REPORTS (ROV) ───────────────────────────────────────────
             { id: 'rgvi', code: 'RGVI', name: 'General Visual Inspection (ROV)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
-            { id: 'cp_rov', code: 'CP', name: 'CP Survey Report (ROV)', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || (r.inspection_type_code || '').toUpperCase() === 'CP') },
+            { id: 'cp_rov', code: 'CP', name: 'CP Survey Report (ROV)', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => isROVRecord(r) && (r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || (r.inspection_type_code || '').toUpperCase() === 'CP')) },
             { id: 'rswni_rov', code: 'RSWNI', name: 'Selected Node Report (ROV)', description: 'Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSWNIReport, available: hasRecords(['RSWNI', 'SWNI']) },
             { id: 'rov_ricmi_report', code: 'RICMI', name: 'Inclinometer Survey Report (ROV)', description: 'Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRICMIReport, available: hasRecords(['RICMI']) },
             { id: 'anode_rov', code: 'ANODE', name: 'Anode Inspection Report (ROV)', description: 'Detailed depletion measurements and attachment status (excluding RSANI).', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeReport, available: currentRecords.some(r => {
