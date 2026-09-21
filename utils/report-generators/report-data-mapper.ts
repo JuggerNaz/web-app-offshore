@@ -171,6 +171,7 @@ export const mapInspectionDataForDocx = async (
         'rov-rseab-gas-detail-report': ['RSEAB'],
         'rov-rseab-crater-detail-report': ['RSEAB'],
         'rov-cp-report': ['CP', 'RSANI'],
+        'diving-cpsurv-report': ['CPSURV', 'DCPSURV', 'CPINS', 'PIPECP', 'CP'],
         'rov-fmd-report': ['RFMD'],
         'diving-fmd-report': ['FLOOD', 'FMD', 'DFMD'],
         'diving-measu-report': ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'],
@@ -481,6 +482,9 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'diving-anmain-report') {
                 const { generateDivingANMAINReport } = await import("./diving-anmain-report");
                 pdfBlob = await generateDivingANMAINReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "ANMAIN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (templateId === 'diving-cpsurv-report' || templateId === 'cpsurv-diving-report') {
+                const { generateDivingCPSURVReport, isDivingCPSURVRecord } = await import("./diving-cpsurv-report");
+                pdfBlob = await generateDivingCPSURVReport(records.filter(isDivingCPSURVRecord), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel, structureId: structure?.id, jobPackId: jobPack?.id }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-cpclb-report') {
                 const { generateDivingCPCLBReport } = await import("./diving-cpclb-report");
                 pdfBlob = await generateDivingCPCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CPCLB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);

@@ -168,6 +168,7 @@ export const REPORT_TEMPLATES = {
         { id: "diving-mpins-report", name: "Magnetic Particle Inspection (Diving)", icon: FileBarChart, description: "Detailed magnetic particle inspection (MPINS) report with clock readings and segmentation.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", icon: FileBarChart, description: "UT Wall Thickness Inspection (UTWTK) report with clock readings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with grouped clock positions", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-cpsurv-report", name: "CP Survey Report (Diving)", icon: FileBarChart, description: "Landscape CP survey report (Diving) with pre/post dive calibration and CP potential readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", icon: FileBarChart, description: "CP calibration in water survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-utclb-report", name: "UT Calibration Report (Diving)", icon: FileBarChart, description: "UT calibration survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-mgi-report", name: "Marine Growth Inspection Graph Report (Diving)", icon: FileBarChart, description: "Diving marine growth thickness vs allowable thresholds with graphical elevation profile", requires: ["jobpack", "structure", "sow_report"] },
@@ -212,6 +213,7 @@ const TOC_SECTIONS = [
   ]},
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
       { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-cpsurv-report", name: "CP Survey Report (Diving)", mode: "Diving" },
       { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 4, name: "Flooded Member Detection", templates: [
@@ -4589,6 +4591,77 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 );
             } catch (error) {
                 console.error("SZONE Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // Diving CP Survey Report (CPSURV)
+        if (currentTemplateId === "diving-cpsurv-report") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const { generateDivingCPSURVReport, isDivingCPSURVRecord } = await import("@/utils/report-generators/diving-cpsurv-report");
+            const structure = await fetchStructureData();
+            const jobPack = await fetchJobPackData();
+            if (!structure || !jobPack) return null;
+
+            let { data: records, error: fetchError } = await supabase
+                .from('insp_records')
+                .select(`
+                    *,
+                    inspection_type:inspection_type_id!left(id, code, name),
+                    structure_components:component_id!left(id, q_id, code, metadata),
+                    insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                    insp_anomalies(*)
+                `)
+                .eq('structure_id', Number(selections.structureId));
+
+            if (fetchError) {
+                console.error("Fetch Error:", fetchError);
+                alert(`Database error: ${fetchError.message}`);
+                return null;
+            }
+
+            const cpsurvRecords = records?.filter(r => {
+                const sowMatches = !selections.sowReportNo || 
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                return sowMatches && jobPackMatches && isDivingCPSURVRecord(r);
+            });
+
+            if (!cpsurvRecords || cpsurvRecords.length === 0) {
+                alert(`No Diving CPSURV records found for structure "${structure.str_name}" in this SOW.`);
+                return null;
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Logo fetch error", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack),
+                structureId: structure.id,
+                jobPackId: jobPack.id
+            };
+
+            try {
+                return await generateDivingCPSURVReport(
+                    cpsurvRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    reportConfig
+                );
+            } catch (error) {
+                console.error("Diving CPSURV Generator Error:", error);
                 throw error;
             }
         }

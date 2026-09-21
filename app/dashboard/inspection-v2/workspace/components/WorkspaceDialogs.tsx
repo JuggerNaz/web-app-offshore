@@ -183,6 +183,7 @@ interface WorkspaceDialogsProps {
         mpinsPreviewOpen: boolean;
         utwtkPreviewOpen: boolean;
         szonePreviewOpen: boolean;
+        cpsurvDivingPreviewOpen: boolean;
         cpclbPreviewOpen: boolean;
         utclbPreviewOpen: boolean;
         divingAnodePreviewOpen: boolean;
@@ -289,6 +290,7 @@ interface WorkspaceDialogsProps {
         setMpinsPreviewOpen: (open: boolean) => void;
         setUtwtkPreviewOpen: (open: boolean) => void;
         setSzonePreviewOpen: (open: boolean) => void;
+        setCpsurvDivingPreviewOpen: (open: boolean) => void;
         setCpclbPreviewOpen: (open: boolean) => void;
         setUtclbPreviewOpen: (open: boolean) => void;
         setDivingAnodePreviewOpen: (open: boolean) => void;
@@ -392,6 +394,8 @@ interface WorkspaceDialogsProps {
         generateUTWTKReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJobPackSummaryReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingCPSURVReport?: () => void;
+        generateDivingCPSURVReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -549,6 +553,7 @@ export function WorkspaceDialogs({
         mpinsPreviewOpen,
         utwtkPreviewOpen,
         szonePreviewOpen,
+        cpsurvDivingPreviewOpen,
         cpclbPreviewOpen,
         utclbPreviewOpen,
         divingAnodePreviewOpen,
@@ -644,6 +649,7 @@ export function WorkspaceDialogs({
         setMpinsPreviewOpen,
         setUtwtkPreviewOpen,
         setSzonePreviewOpen,
+        setCpsurvDivingPreviewOpen,
         setCpclbPreviewOpen,
         setUtclbPreviewOpen,
         setDivingAnodePreviewOpen,
@@ -725,6 +731,8 @@ export function WorkspaceDialogs({
         generateUTWTKReportBlob,
         generateJobPackSummaryReportBlob,
         generateSZONEReportBlob,
+        generateDivingCPSURVReport,
+        generateDivingCPSURVReportBlob,
         generateCPCLBReportBlob,
         generateUTCLBReportBlob,
         generateDivingAnodeReportBlob,
@@ -752,9 +760,12 @@ export function WorkspaceDialogs({
     const parseDbDate = (dateString?: string | null): Date => {
         if (!dateString) return new Date();
         try {
-            const t = dateString.replace(' ', 'T');
+            let t = dateString.trim().replace(' ', 'T');
+            if (!t.includes('Z') && !/[\+\-]\d{2}(:\d{2})?$/.test(t)) {
+                t = `${t}Z`;
+            }
             const d = new Date(t);
-            return isNaN(d.getTime()) ? new Date() : d;
+            return isNaN(d.getTime()) ? new Date(dateString) : d;
         } catch (e) {
             return new Date();
         }
@@ -2973,6 +2984,18 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={cpsurvDivingPreviewOpen} 
+                onOpenChange={setCpsurvDivingPreviewOpen} 
+                title="Diving CP Survey Report Preview" 
+                fileName={`Diving_CP_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingCPSURVReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cpclbPreviewOpen} 
                 onOpenChange={setCpclbPreviewOpen} 
                 title="Diving CP Calibration Report Preview" 
@@ -3261,6 +3284,7 @@ export function WorkspaceDialogs({
                     generateUTWTKReport: () => setUtwtkPreviewOpen(true),
                     generateSZONEReport: () => setSzonePreviewOpen(true),
                     generateCPReport: () => setters.setCpPreviewOpen(true),
+                    generateDivingCPSURVReport: () => setters.setCpsurvDivingPreviewOpen ? setters.setCpsurvDivingPreviewOpen(true) : handlers.generateDivingCPSURVReport?.(),
                     generateRSWNIReport: () => setters.setRswniPreviewOpen(true),
                     generateROVRICMIReport: () => setters.setRovRicmiPreviewOpen(true),
                     generateDivingANMAINReport: () => setters.setDivingAnmainPreviewOpen(true),

@@ -2486,6 +2486,10 @@ function V10PreviewLayout() {
     generateJobPackSummaryReportBlob,
     generateSZONEReport,
     generateSZONEReportBlob,
+    cpsurvDivingPreviewOpen,
+    setCpsurvDivingPreviewOpen,
+    generateDivingCPSURVReport,
+    generateDivingCPSURVReportBlob,
     generateCPCLBReport,
     generateCPCLBReportBlob,
     generateUTCLBReport,
@@ -3148,11 +3152,12 @@ function V10PreviewLayout() {
   const parseDbDate = useCallback((dateString?: string | null): Date => {
     if (!dateString) return new Date();
     try {
-      const t = dateString.replace(" ", "T");
-      // Stop artificially converting raw timestamps dynamically to UTC with `Z` suffix.
-      // When postgres stores 'timestamp without tz', treating it implicitly as local is correct.
+      let t = dateString.trim().replace(" ", "T");
+      if (!t.includes("Z") && !/[\+\-]\d{2}(:\d{2})?$/.test(t)) {
+        t = `${t}Z`;
+      }
       const d = new Date(t);
-      return isNaN(d.getTime()) ? new Date() : d;
+      return isNaN(d.getTime()) ? new Date(dateString) : d;
     } catch (e) {
       return new Date();
     }
@@ -4670,13 +4675,13 @@ function V10PreviewLayout() {
               time: r.inspection_data?._meta_timecode ? r.inspection_data._meta_timecode : (r.tape_count_no ? formatCounter(r.tape_count_no) : "00:00:00"),
               action: status,
               logType: "insp",
-              eventTime:
-                r.inspection_date && r.inspection_time
-                  ? format(
-                      parseDbDate(`${r.inspection_date} ${r.inspection_time}`),
-                      "yyyy-MM-dd'T'HH:mm:ss"
-                    )
-                  : format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"),
+              eventTime: (() => {
+                if (r.inspection_date && r.inspection_time) {
+                  const d = new Date(`${r.inspection_date}T${r.inspection_time}`);
+                  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+                }
+                return new Date().toISOString();
+              })(),
               tape_id: r.tape_id,
               tapeNo,
               chapterNo,
@@ -5085,7 +5090,7 @@ function V10PreviewLayout() {
           .insert({
             tape_id: tId,
             event_type: dbAction,
-            event_time: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"), // Store EXACT region local time safely
+            event_time: new Date().toISOString(),
             timecode_start: tcode,
             tape_counter_start: currentTimer,
             remarks: "",
@@ -9339,6 +9344,7 @@ function V10PreviewLayout() {
           mpinsPreviewOpen,
           utwtkPreviewOpen,
           szonePreviewOpen,
+          cpsurvDivingPreviewOpen,
           cpclbPreviewOpen,
           utclbPreviewOpen,
           divingAnodePreviewOpen,
@@ -9446,6 +9452,7 @@ function V10PreviewLayout() {
           setMpinsPreviewOpen,
           setUtwtkPreviewOpen,
           setSzonePreviewOpen,
+          setCpsurvDivingPreviewOpen,
           setCpclbPreviewOpen,
           setUtclbPreviewOpen,
           setDivingAnodePreviewOpen,
@@ -9551,6 +9558,8 @@ function V10PreviewLayout() {
           generateUTWTKReportBlob,
           generateJobPackSummaryReportBlob,
           generateSZONEReportBlob,
+          generateDivingCPSURVReport,
+          generateDivingCPSURVReportBlob,
           generateCPCLBReportBlob,
           generateUTCLBReportBlob,
           generateDivingAnodeReportBlob,

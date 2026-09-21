@@ -40,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { isROVRecord } from "@/utils/report-generators/rov-cp-report";
+import { isDivingCPSURVRecord } from "@/utils/report-generators/diving-cpsurv-report";
 
 interface ReportTemplate {
     id: string;
@@ -357,6 +358,7 @@ interface ReportWizardDialogProps {
         generateUTWTKReport: () => void;
         generateSZONEReport: () => void;
         generateCPCLBReport: () => void;
+        generateDivingCPSURVReport?: () => void;
         generateCPReport: () => void;
         generateRSWNIReport: () => void;
         generateROVRICMIReport: () => void;
@@ -602,7 +604,7 @@ export function ReportWizardDialog({
             { id: 'diver_log', code: 'DIVLOG', name: 'Diver Log Report (Diving)', description: 'Chronological diver activities and findings per dive.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: hasRecords(['DIVLOG', 'DIVER_LOG', 'DIVE_LOG']) || (inspMethod === 'DIVING' && currentRecords.length > 0) },
             { id: 'acfmc', code: 'ACFMC', name: 'ACFM Crack Inspection (Diving)', description: 'Landscape Diving ACFM Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingACFMCReport, available: hasRecords(['ACFMC']) },
             { id: 'plco', code: 'PL_CO', name: 'Coating Damage Inspection (Diving)', description: 'Landscape Diving Coating Damage Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingPLCOReport, available: hasRecords(['PL_CO']) },
-            { id: 'cp_div', code: 'CP', name: 'CP Survey Report (Diving)', description: 'Diver-held CP probe measurements and potential readings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined) },
+            { id: 'cp_div', code: 'CPSURV', name: 'CP Survey Report (Diving)', description: 'Landscape CP survey report with pre/post dive calibration, potential readings, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingCPSURVReport || handlers.generateCPReport, available: currentRecords.some(isDivingCPSURVRecord) },
             { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration Report (Diving)', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
             { id: 'fmd_div', code: 'DFMD', name: 'Flooded Member Inspection Report (Diving)', description: 'Flooded Member Inspection report (Diving) with QID, Elevation, Dive No., Flooded, Grouted, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingFMDReport || handlers.generateFMDReport, available: hasRecords(['DFMD', 'FLOOD', 'FMD']) },
             { id: 'measu_div', code: 'MEASU', name: 'Measurement Dimensional Survey Report (Diving)', description: 'Measurement Dimensional Survey report (Diving) with QID, Elevation, Dive No., Type, Unit, Result, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMEASUReport || handlers.generateFullInspectionReport, available: hasRecords(['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS']) },

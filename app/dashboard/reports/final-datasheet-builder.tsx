@@ -41,6 +41,7 @@ const TOC_SECTIONS = [
   ]},
   { id: 3, name: "Cathodic Protection Potential Survey", templates: [
       { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-cpsurv-report", name: "CP Survey Report (Diving)", mode: "Diving" },
       { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 4, name: "Flooded Member Detection", templates: [

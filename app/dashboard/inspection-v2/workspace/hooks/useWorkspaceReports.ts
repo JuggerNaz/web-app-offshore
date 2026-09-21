@@ -37,6 +37,7 @@ import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-p
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
 import { generateDivingGVINSReport } from "@/utils/report-generators/diving-gvins-report";
 import { generateDivingSZONEReport } from "@/utils/report-generators/diving-szone-report";
+import { generateDivingCPSURVReport as generateDivingCPSURVReportTemplate, isDivingCPSURVRecord } from "@/utils/report-generators/diving-cpsurv-report";
 import { generateDivingCPCLBReport } from "@/utils/report-generators/diving-cpclb-report";
 import { generateDivingUTCLBReport } from "@/utils/report-generators/diving-utclb-report";
 import { generateDivingAnodeReport } from "@/utils/report-generators/diving-anode-report";
@@ -127,6 +128,7 @@ export function useWorkspaceReports(
     const [mpinsPreviewOpen, setMpinsPreviewOpen] = useState(false);
     const [utwtkPreviewOpen, setUtwtkPreviewOpen] = useState(false);
     const [szonePreviewOpen, setSzonePreviewOpen] = useState(false);
+    const [cpsurvDivingPreviewOpen, setCpsurvDivingPreviewOpen] = useState(false);
     const [cpclbPreviewOpen, setCpclbPreviewOpen] = useState(false);
     const [utclbPreviewOpen, setUtclbPreviewOpen] = useState(false);
     const [pipelineEventSketchPreviewOpen, setPipelineEventSketchPreviewOpen] = useState(false);
@@ -1841,6 +1843,39 @@ export function useWorkspaceReports(
         return filtered;
     };
 
+    const generateDivingCPSURVReport = async () => {
+        const records = currentRecords.filter(isDivingCPSURVRecord);
+        if (records.length === 0) {
+            toast.error("No Diving CP Survey (CPSURV) records found to generate report");
+            return;
+        }
+        setCpsurvDivingPreviewOpen(true);
+    };
+
+    const generateDivingCPSURVReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const records = currentRecords.filter(isDivingCPSURVRecord);
+        if (records.length === 0) return;
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateDivingCPSURVReportTemplate(
+            records,
+            { ...headerData, contractorLogoUrl, structureId: Number(structureId), jobPackId: Number(jobPackId) },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            {
+                returnBlob: true,
+                printFriendly,
+                showSignatures: showSignatures ?? reportConfig.showSignatures,
+                structureId: Number(structureId),
+                jobPackId: Number(jobPackId)
+            }
+        ) as Blob;
+    };
+
     const generateCPCLBReport = async () => {
         const records = await fetchCPCLBRecords();
         if (records.length === 0) {
@@ -2494,6 +2529,7 @@ export function useWorkspaceReports(
         cleanPreviewOpen, setCleanPreviewOpen,
         mpinsPreviewOpen, setMpinsPreviewOpen,
         szonePreviewOpen, setSzonePreviewOpen,
+        cpsurvDivingPreviewOpen, setCpsurvDivingPreviewOpen,
         cpclbPreviewOpen, setCpclbPreviewOpen,
         utclbPreviewOpen, setUtclbPreviewOpen,
         divingAnodePreviewOpen, setDivingAnodePreviewOpen,
@@ -2832,6 +2868,8 @@ export function useWorkspaceReports(
         },
         generateSZONEReport,
         generateSZONEReportBlob,
+        generateDivingCPSURVReport,
+        generateDivingCPSURVReportBlob,
         generateCPCLBReport,
         generateCPCLBReportBlob,
         generateUTCLBReport,

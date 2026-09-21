@@ -72,6 +72,40 @@ function getTemplateTableSpec(templateId: string): {
                 }
             };
 
+        case "diving-cpsurv-report":
+        case "cpsurv-diving-report":
+            return {
+                orientation: "landscape",
+                sampleRowCount: 10,
+                head: [
+                    [
+                        { content: "Item\nNo.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Component\nQID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Elevation\n(m)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Dive No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Equipment /\nSerial No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Cathodic Potential (mV)", colSpan: 3, styles: { halign: "center", valign: "middle" } },
+                        { content: "Findings", rowSpan: 2, styles: { halign: "center", valign: "middle" } }
+                    ],
+                    [
+                        { content: "Pre Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Post Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
+                        { content: "CP Value\n(mV)", styles: { halign: "center", valign: "middle" } }
+                    ]
+                ],
+                columnStyles: {
+                    0: { cellWidth: 12, halign: "center" },
+                    1: { cellWidth: 28 },
+                    2: { cellWidth: 20, halign: "center" },
+                    3: { cellWidth: 20, halign: "center" },
+                    4: { cellWidth: 34, halign: "center" },
+                    5: { cellWidth: 22, halign: "center" },
+                    6: { cellWidth: 22, halign: "center" },
+                    7: { cellWidth: 24, halign: "center" },
+                    8: { cellWidth: "auto" },
+                }
+            };
+
         case "rov-cp-report":
         case "diving-cpclb-report":
             return {
@@ -421,6 +455,10 @@ export const generateBlankInspectionReport = async (
             case "rov-cp-report": {
                 const { generateROVCPReport } = await import("./rov-cp-report");
                 return await generateROVCPReport(blankRecords, headerData, companySettings, generatorConfig as any);
+            }
+            case "diving-cpsurv-report": {
+                const { generateDivingCPSURVReport } = await import("./diving-cpsurv-report");
+                return await generateDivingCPSURVReport(blankRecords, headerData, companySettings, generatorConfig as any);
             }
             case "diving-cpclb-report": {
                 const { generateDivingCPCLBReport } = await import("./diving-cpclb-report");
