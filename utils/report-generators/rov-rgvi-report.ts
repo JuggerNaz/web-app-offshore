@@ -25,8 +25,56 @@ interface ReportConfig {
     isBlankReport?: boolean;
 }
 
+const EXCLUDED_RGVI_COMP_CODES = new Set([
+    "AN", "FD", "BL", "CS", "SG", "CD", "CG", "CU", "RS", "RG"
+]);
+
+export const isExcludedFromRGVI = (r: any): boolean => {
+    // 1. Check explicit component code / type fields
+    const candidates = [
+        r.structure_components?.code,
+        r.structure_components?.comp_type,
+        r.structure_components?.component_type_code,
+        r.component?.code,
+        r.component?.comp_type,
+        r.component?.component_type_code,
+        r.component_code,
+        r.component_type_code,
+        r.comp_code,
+        r.comp_type,
+        r.inspection_data?.component_code,
+        r.inspection_data?.comp_type,
+        r.inspection_data?.component_type,
+    ];
+
+    for (const c of candidates) {
+        if (c && typeof c === "string") {
+            const clean = c.trim().toUpperCase();
+            if (EXCLUDED_RGVI_COMP_CODES.has(clean)) return true;
+        }
+    }
+
+    // 2. Check component QID prefix (e.g. "AN-01", "RS/02", "CD_01", "BL 01", "SG-01")
+    const qid = (
+        r.structure_components?.q_id ||
+        r.component?.q_id ||
+        r.component_qid ||
+        r.inspection_data?.component_qid ||
+        ""
+    ).toString().trim().toUpperCase();
+
+    if (qid) {
+        const prefixMatch = qid.match(/^([A-Z]{2})([-_/\s\d]|$)/);
+        if (prefixMatch && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch[1])) {
+            return true;
+        }
+    }
+
+    return false;
+};
+
 /**
- * ROV Riser Guard General Visual Inspection (RGVI) Report (Portrait)
+ * ROV General Visual Inspection (RGVI) Report (Portrait)
  * Columns: Item No. | Component QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
  */
 export const generateROVRGVIReport = async (
@@ -36,7 +84,10 @@ export const generateROVRGVIReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
-        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+        // Exclude components that have dedicated report templates ('AN','FD','BL','CS','SG','CD','CG','CU','RS','RG')
+        const validRecords = (records || []).filter((r: any) => !isExcludedFromRGVI(r));
+
+        if ((!validRecords || validRecords.length === 0) && config?.returnBlob && !config?.isBlankReport) {
             return null as any;
         }
 
@@ -60,8 +111,8 @@ export const generateROVRGVIReport = async (
         // ── Date range ──────────────────────────────────────────────────────────
         let startDate: Date | null = null;
         let endDate:   Date | null = null;
-        if (records.length > 0) {
-            const dates = records
+        if (validRecords.length > 0) {
+            const dates = validRecords
                 .map(r => new Date(r.cr_date || r.created_at))
                 .filter(d => !isNaN(d.getTime()));
             if (dates.length > 0) {
@@ -136,7 +187,7 @@ export const generateROVRGVIReport = async (
         };
 
         // ── Sort by elevation (top → bottom) ───────────────────────────────────
-        const sorted = [...records].sort((a, b) => {
+        const sorted = [...validRecords].sort((a, b) => {
             const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
             const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
             return elB - elA;

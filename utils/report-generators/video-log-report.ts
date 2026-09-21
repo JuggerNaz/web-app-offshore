@@ -275,7 +275,16 @@ export const generateVideoLogReport = async (
         } else {
             logs.forEach((log: any, idx: number) => {
                 const eventDateTime = log.event_time
-                    ? new Date(log.event_time).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                    ? (() => {
+                        let t = String(log.event_time).trim().replace(" ", "T");
+                        if (!t.includes("Z") && !/[\+\-]\d{2}(:\d{2})?$/.test(t)) {
+                            t = `${t}Z`;
+                        }
+                        const d = new Date(t);
+                        return isNaN(d.getTime())
+                            ? "—"
+                            : d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                    })()
                     : "—";
 
                 const timecode = log.timecode_start || "—";

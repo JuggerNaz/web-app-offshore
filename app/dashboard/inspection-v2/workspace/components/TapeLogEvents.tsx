@@ -143,6 +143,20 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         );
     };
 
+    const formatEventTime = (timeStr?: string | null) => {
+        if (!timeStr) return "-";
+        try {
+            let t = timeStr.trim().replace(" ", "T");
+            if (!t.includes("Z") && !/[\+\-]\d{2}(:\d{2})?$/.test(t)) {
+                t = `${t}Z`;
+            }
+            const d = new Date(t);
+            return isNaN(d.getTime()) ? format(new Date(timeStr), "MMM dd, HH:mm:ss") : format(d, "MMM dd, HH:mm:ss");
+        } catch {
+            return "-";
+        }
+    };
+
     const renderEventList = () => (
         <div className="space-y-4">
             {renderTapeFilterBar()}
@@ -196,7 +210,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                             <div className="flex items-center gap-2 text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tight mt-0.5">
                                                 <div className="flex items-center gap-1">
                                                     <Clock className="w-3 h-3" />
-                                                    {ev.eventTime ? format(new Date(ev.eventTime), 'MMM dd, HH:mm:ss') : '-'}
+                                                    {formatEventTime(ev.eventTime)}
                                                 </div>
                                                 {ev.remarks && ev.remarks !== "-" && (
                                                     <span className="text-slate-500 dark:text-slate-400 font-normal truncate max-w-xs">
