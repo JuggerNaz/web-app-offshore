@@ -576,6 +576,7 @@ const ComponentMesh = ({
         }
 
         const fenderGroup = useMemo(() => {
+            const calculatedClampRadius = Math.max(0.34, (thickness || 0.3) * 1.15);
             return new Fender({
                 height: fenderHeight,
                 widthBack: spanWidth,
@@ -585,10 +586,12 @@ const ComponentMesh = ({
                 isHovered: hovered,
                 localLeftTop,
                 localRightTop,
+                clampRadius: calculatedClampRadius,
             });
         }, [
             fenderHeight,
             spanWidth,
+            thickness,
             isSelected,
             hovered,
             localLeftTop.x, localLeftTop.y, localLeftTop.z,
@@ -681,34 +684,24 @@ const ComponentMesh = ({
         const guardCenter = legMidpoint.clone().add(finalOffset);
         guardCenter.y = yTop - guardHeight / 2;
 
-        // Compute leg coordinates at top and middle elevations
+        // Compute leg coordinates at top elevation
         const leg1Top = new THREE.Vector3(startVec.x, yTop, startVec.z);
         const leg2Top = new THREE.Vector3(endVec.x, yTop, endVec.z);
-        const leg1Mid = new THREE.Vector3(startVec.x, guardCenter.y + guardHeight / 6, startVec.z);
-        const leg2Mid = new THREE.Vector3(endVec.x, guardCenter.y + guardHeight / 6, endVec.z);
 
         // Convert coordinates to riser guard local space
         const loc1Top = leg1Top.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
         const loc2Top = leg2Top.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
-        const loc1Mid = leg1Mid.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
-        const loc2Mid = leg2Mid.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
 
         // Determine left vs right legs horizontally in local space
         let localLeftTop: THREE.Vector3;
         let localRightTop: THREE.Vector3;
-        let localLeftMid: THREE.Vector3;
-        let localRightMid: THREE.Vector3;
 
         if (loc1Top.x < loc2Top.x) {
             localLeftTop = loc1Top;
             localRightTop = loc2Top;
-            localLeftMid = loc1Mid;
-            localRightMid = loc2Mid;
         } else {
             localLeftTop = loc2Top;
             localRightTop = loc1Top;
-            localLeftMid = loc2Mid;
-            localRightMid = loc1Mid;
         }
 
         const riserGuardGroup = useMemo(() => {
@@ -720,8 +713,6 @@ const ComponentMesh = ({
                 isHovered: hovered,
                 localLeftTop,
                 localRightTop,
-                localLeftMid,
-                localRightMid,
             });
         }, [
             guardHeight,
@@ -729,9 +720,7 @@ const ComponentMesh = ({
             isSelected,
             hovered,
             localLeftTop.x, localLeftTop.y, localLeftTop.z,
-            localRightTop.x, localRightTop.y, localRightTop.z,
-            localLeftMid.x, localLeftMid.y, localLeftMid.z,
-            localRightMid.x, localRightMid.y, localRightMid.z
+            localRightTop.x, localRightTop.y, localRightTop.z
         ]);
 
         return (
