@@ -788,7 +788,7 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
     queryStrategy: "ATTACHMENTS",
     description: "All Attachments attached during inspection",
     columns: [
-      { key: "ATTACH_ID", header: "ATTACH_ID", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Attachment ID", required: true },
+      { key: "ATTACH_ID", header: "ATTACH_ID", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Attachment ID", required: true, sourceField: "attachment.id" },
       { key: "STR_ID", header: "STR_ID", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Structure ID", required: true },
       { key: "TITLE", header: "TITLE", dataType: "string", width: 20, dataSize: 20, description: "Structure Title" },
       { key: "PFIELD", header: "PFIELD", dataType: "string", width: 20, dataSize: 20, description: "Field Name" },
