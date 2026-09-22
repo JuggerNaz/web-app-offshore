@@ -12,6 +12,8 @@ import { Clock, Plus, ListChecks, Trash2, Edit, Save, X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
+import { parseClientDate, formatClientTime, formatClientDate, toDatetimeLocalString, toLocalDbTimestamp } from "@/utils/client-date";
+
 const ROV_ACTIONS = [
     { label: "Rov On Hire" },
     { label: "Rov Launched" },
@@ -37,21 +39,11 @@ interface Movement {
 export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogProps) {
     const supabase = createClient();
 
-    const getLocalDatetimeString = (date = new Date()) => {
-        return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    };
-
-    const parseDbDate = (dateString?: string | null) => {
-        if (!dateString) return new Date();
-        const t = dateString.replace(' ', 'T');
-        return new Date(t.includes('Z') || t.includes('+') ? t : `${t}Z`);
-    };
-
     const [movements, setMovements] = useState<Movement[]>([]);
     const [newMovement, setNewMovement] = useState({
         movement_type: "",
         remarks: "",
-        movement_time: getLocalDatetimeString(),
+        movement_time: toDatetimeLocalString(),
     });
     const [loading, setLoading] = useState(false);
 
@@ -109,7 +101,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
 
         try {
             const depId = Number(diveJob.id || diveJob.rov_job_id);
-            const finalTime = newMovement.movement_time ? new Date(newMovement.movement_time).toISOString() : new Date().toISOString();
+            const finalTime = toLocalDbTimestamp(newMovement.movement_time);
 
             const { error } = await supabase.from("insp_rov_movements").insert({
                 rov_job_id: depId,
@@ -165,7 +157,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
             }
 
             toast.success("Movement logged");
-            setNewMovement({ movement_type: "", remarks: "", movement_time: getLocalDatetimeString() });
+            setNewMovement({ movement_type: "", remarks: "", movement_time: toDatetimeLocalString() });
             await loadMovements();
             onRefresh?.();
         } catch (error: any) {
@@ -194,7 +186,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
         if (!editForm || !editForm.movement_id) return;
         try {
             const { error } = await supabase.from("insp_rov_movements").update({
-                movement_time: new Date(editForm.movement_time).toISOString(),
+                movement_time: toLocalDbTimestamp(editForm.movement_time),
                 movement_type: editForm.movement_type,
                 remarks: editForm.remarks
             }).eq("movement_id", editForm.movement_id);
@@ -210,21 +202,11 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
     }
 
     function formatTime(timestamp: string): string {
-        const date = parseDbDate(timestamp);
-        return date.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-        });
+        return formatClientTime(timestamp);
     }
 
     function formatDate(timestamp: string): string {
-        const date = parseDbDate(timestamp);
-        return date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-        });
+        return formatClientDate(timestamp);
     }
 
     return (
@@ -314,8 +296,8 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                         movements.map((movement, index) => {
                             // Calculate elapsed using oldest array movement as baseline
                             const oldestMovement = movements[movements.length - 1];
-                            const baselineMs = oldestMovement ? parseDbDate(oldestMovement.movement_time).getTime() : 0;
-                            const currentMs = parseDbDate(movement.movement_time).getTime();
+                            const baselineMs = oldestMovement ? parseClientDate(oldestMovement.movement_time).getTime() : 0;
+                            const currentMs = parseClientDate(movement.movement_time).getTime();
                             const diffMs = currentMs - baselineMs;
 
                             const hrs = Math.floor(Math.max(0, diffMs) / (1000 * 60 * 60));
@@ -355,7 +337,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
 
                                     {editingId === movement.movement_id ? (
                                         <div className="space-y-2 mt-4 pb-2 border-t border-slate-100 dark:border-slate-800 pt-3">
-                                            <Input type="datetime-local" value={editForm?.movement_time ? new Date(parseDbDate(editForm.movement_time).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEditForm({ ...editForm!, movement_time: new Date(e.target.value).toISOString() })} className="h-9 font-bold bg-white dark:bg-slate-900" />
+                                            <Input type="datetime-local" value={editForm?.movement_time ? toDatetimeLocalString(editForm.movement_time) : ""} onChange={(e) => setEditForm({ ...editForm!, movement_time: e.target.value })} className="h-9 font-bold bg-white dark:bg-slate-900" />
                                             <Select
                                                 value={editForm?.movement_type || ""}
                                                 onValueChange={(val) => setEditForm(editForm ? { ...editForm, movement_type: val } : null)}

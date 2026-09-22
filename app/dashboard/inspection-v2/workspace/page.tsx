@@ -105,6 +105,7 @@ function formatCounter(seconds: number | string): string {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { parseClientDate, toLocalDbTimestamp, toDatetimeLocalString, formatClientTime } from "@/utils/client-date";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
@@ -3150,17 +3151,7 @@ function V10PreviewLayout() {
   }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam, router]);
 
   const parseDbDate = useCallback((dateString?: string | null): Date => {
-    if (!dateString) return new Date();
-    try {
-      let t = dateString.trim().replace(" ", "T");
-      if (!t.includes("Z") && !/[\+\-]\d{2}(:\d{2})?$/.test(t)) {
-        t = `${t}Z`;
-      }
-      const d = new Date(t);
-      return isNaN(d.getTime()) ? new Date(dateString) : d;
-    } catch (e) {
-      return new Date();
-    }
+    return parseClientDate(dateString);
   }, []);
 
   const openFloatingWindow = async (title: string, defaultWidth = 1000, defaultHeight = 600) => {
@@ -4558,7 +4549,7 @@ function V10PreviewLayout() {
                         ? "Resume"
                         : l.event_type,
               logType: "video_log",
-              eventTime: parseDbDate(l.event_time).toISOString(),
+              eventTime: l.event_time ? l.event_time : new Date().toISOString(),
               inspectionId: l.inspection_id,
               tape_id: l.tape_id,
               tape_counter_start: l.tape_counter_start || 0,
@@ -4677,10 +4668,9 @@ function V10PreviewLayout() {
               logType: "insp",
               eventTime: (() => {
                 if (r.inspection_date && r.inspection_time) {
-                  const d = new Date(`${r.inspection_date}T${r.inspection_time}`);
-                  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+                  return `${r.inspection_date}T${r.inspection_time}`;
                 }
-                return new Date().toISOString();
+                return r.cr_date || new Date().toISOString();
               })(),
               tape_id: r.tape_id,
               tapeNo,
@@ -5090,7 +5080,7 @@ function V10PreviewLayout() {
           .insert({
             tape_id: tId,
             event_type: dbAction,
-            event_time: new Date().toISOString(),
+            event_time: toLocalDbTimestamp(),
             timecode_start: tcode,
             tape_counter_start: currentTimer,
             remarks: "",
@@ -6103,16 +6093,17 @@ function V10PreviewLayout() {
     const mvtCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
     const jobTable = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
 
+    const localNow = toLocalDbTimestamp();
     const payload: any = {};
     if (inspMethod === "DIVING") {
       const mappedAction = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.label === dbValue);
       payload.dive_job_id = activeDep.id;
-      payload.movement_time = new Date().toISOString();
+      payload.movement_time = localNow;
       payload.movement_type = dbValue;
       payload.remarks = mappedAction?.location ? `Location: ${mappedAction.location}` : "";
     } else {
       payload.rov_job_id = activeDep.id;
-      payload.movement_time = new Date().toISOString();
+      payload.movement_time = localNow;
       payload.movement_type = dbValue;
       payload.remarks = "";
     }

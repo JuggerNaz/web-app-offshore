@@ -3,6 +3,7 @@
 import React from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { parseClientDate, toDatetimeLocalString, toLocalDbTimestamp } from "@/utils/client-date";
 import { 
     Clock, 
     Activity, 
@@ -758,17 +759,7 @@ export function WorkspaceDialogs({
     const { fileInputRef } = refs;
 
     const parseDbDate = (dateString?: string | null): Date => {
-        if (!dateString) return new Date();
-        try {
-            let t = dateString.trim().replace(' ', 'T');
-            if (!t.includes('Z') && !/[\+\-]\d{2}(:\d{2})?$/.test(t)) {
-                t = `${t}Z`;
-            }
-            const d = new Date(t);
-            return isNaN(d.getTime()) ? new Date(dateString) : d;
-        } catch (e) {
-            return new Date();
-        }
+        return parseClientDate(dateString);
     };
 
     const formatTime = (secs: number) => {
@@ -878,13 +869,13 @@ export function WorkspaceDialogs({
                                 <span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase font-black mb-1.5 tracking-widest">1. Wall Clock (Local Date & Time)</span>
                                 <Input
                                     type="datetime-local"
-                                    value={editingEvent.eventTime ? new Date(new Date(editingEvent.eventTime).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ""}
+                                    value={editingEvent.eventTime ? toDatetimeLocalString(editingEvent.eventTime) : ""}
                                     onChange={e => {
                                         const localVal = e.target.value;
                                         if (!localVal) return;
  
-                                        const d = new Date(localVal);
-                                        const newIso = d.toISOString();
+                                        const d = parseClientDate(localVal);
+                                        const newTime = toLocalDbTimestamp(localVal);
  
                                         let updatedTime = editingEvent.time;
  
@@ -895,7 +886,7 @@ export function WorkspaceDialogs({
                                             updatedTime = formatTime((lastStartEventForEdit.tape_counter_start || 0) + diffSecs);
                                         }
  
-                                        setEditingEvent({ ...editingEvent, eventTime: newIso, time: updatedTime, referenceNo: '' });
+                                        setEditingEvent({ ...editingEvent, eventTime: newTime, time: updatedTime, referenceNo: '' });
                                     }}
                                     className="font-mono font-bold bg-blue-50/30 dark:bg-blue-900/10 border-blue-100 dark:border-blue-900/30 focus:ring-blue-500 dark:text-slate-200"
                                 />

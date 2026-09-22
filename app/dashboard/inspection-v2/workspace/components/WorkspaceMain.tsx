@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
+import { parseClientDate, formatClientDate, formatClientTime } from "@/utils/client-date";
 import { InspectionForm } from "./InspectionForm";
 
 interface WorkspaceMainProps {
@@ -976,8 +977,8 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                             const recordDate = r.cr_date || (r.inspection_date ? (r.inspection_time ? `${r.inspection_date}T${r.inspection_time}` : r.inspection_date) : null);
                             return (
                               <td key={col.id} className="px-3 py-3 text-slate-600 dark:text-slate-400 align-top">
-                                <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{recordDate ? format(new Date(recordDate), 'dd MMM yyyy') : '-'}</div>
-                                <div className="text-[10px] opacity-70 mt-0.5">{recordDate ? format(new Date(recordDate), 'HH:mm') : '-'}</div>
+                                <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{recordDate ? formatClientDate(recordDate, 'dd MMM yyyy') : '-'}</div>
+                                <div className="text-[10px] opacity-70 mt-0.5">{recordDate ? formatClientTime(recordDate, { hour12: false, includeSeconds: false }) : '-'}</div>
                               </td>
                             );
                           case 'event_name':

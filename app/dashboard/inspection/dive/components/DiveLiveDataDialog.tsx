@@ -38,6 +38,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+import { formatClientTime } from "@/utils/client-date";
 
 interface DiveLiveDataDialogProps {
     open: boolean;
@@ -269,7 +270,7 @@ export default function DiveLiveDataDialog({
     }
 
     function startEditing(log: DiveLog) {
-        const timeStr = new Date(log.timestamp).toLocaleTimeString('en-GB', { hour12: false });
+        const timeStr = formatClientTime(log.timestamp, { hour12: false, includeSeconds: true });
         setEditForm({ activity: log.activity, time: timeStr });
         setEditingId(log.id);
     }
@@ -330,7 +331,7 @@ export default function DiveLiveDataDialog({
                                 </div>
                                 {lastLog && (
                                     <Badge variant="outline" className="text-xs">
-                                        Last Update: {new Date(lastLog.timestamp).toLocaleTimeString()}
+                                        Last Update: {formatClientTime(lastLog.timestamp)}
                                     </Badge>
                                 )}
                             </div>
@@ -423,7 +424,7 @@ export default function DiveLiveDataDialog({
                                                 <div className="group">
                                                     <div className="flex items-baseline justify-between">
                                                         <span className="text-sm font-mono text-muted-foreground">
-                                                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                            {formatClientTime(log.timestamp)}
                                                         </span>
                                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <Button

@@ -11,6 +11,7 @@ import {
     Video 
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatClientDateTime } from "@/utils/client-date";
 
 interface TapeLogEventsProps {
     videoEvents: any[];
@@ -145,16 +146,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
     const formatEventTime = (timeStr?: string | null) => {
         if (!timeStr) return "-";
-        try {
-            let t = timeStr.trim().replace(" ", "T");
-            if (!t.includes("Z") && !/[\+\-]\d{2}(:\d{2})?$/.test(t)) {
-                t = `${t}Z`;
-            }
-            const d = new Date(t);
-            return isNaN(d.getTime()) ? format(new Date(timeStr), "MMM dd, HH:mm:ss") : format(d, "MMM dd, HH:mm:ss");
-        } catch {
-            return "-";
-        }
+        return formatClientDateTime(timeStr, "MMM dd, HH:mm:ss");
     };
 
     const renderEventList = () => (

@@ -38,6 +38,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+import { formatClientTime } from "@/utils/client-date";
 
 interface ROVLiveDataDialogProps {
     open: boolean;
@@ -255,7 +256,7 @@ export default function ROVLiveDataDialog({
     }
 
     function startEditing(log: DiveLog) {
-        const timeStr = new Date(log.movement_time).toLocaleTimeString('en-GB', { hour12: false });
+        const timeStr = formatClientTime(log.movement_time, { hour12: false, includeSeconds: true });
         setEditForm({ movement_type: log.movement_type, time: timeStr });
         setEditingId(log.movement_id);
     }
@@ -316,7 +317,7 @@ export default function ROVLiveDataDialog({
                                 </div>
                                 {lastLog && (
                                     <Badge variant="outline" className="text-xs">
-                                        Last Update: {new Date(lastLog.movement_time).toLocaleTimeString()}
+                                        Last Update: {formatClientTime(lastLog.movement_time)}
                                     </Badge>
                                 )}
                             </div>
@@ -417,7 +418,7 @@ export default function ROVLiveDataDialog({
                                                 <div className="group">
                                                     <div className="flex items-baseline justify-between">
                                                         <span className="text-sm font-mono text-muted-foreground">
-                                                            {new Date(log.movement_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                            {formatClientTime(log.movement_time)}
                                                         </span>
                                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <Button

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Clock, Plus, ListChecks, Trash2, Edit, Save, X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
+import { parseClientDate, formatClientTime, formatClientDate, toDatetimeLocalString, toLocalDbTimestamp } from "@/utils/client-date";
 
 // DIVE ACTIONS
 const AIR_DIVE_ACTIONS = [
@@ -23,13 +24,13 @@ const AIR_DIVE_ACTIONS = [
 ];
 
 const BELL_DIVE_ACTIONS = [
-    { label: "Left Surface", value: "BELL_LAUNCHED", location: "Surface" },
-    { label: "Bell at Working Depth", value: "BELL_AT_DEPTH", location: "Bottom" },
-    { label: "Diver Locked Out", value: "DIVER_EXITING_BELL", location: "Worksite" },
-    { label: "Diver Locked In", value: "DIVER_RETURNING_TO_BELL", location: "Bell" },
-    { label: "Bell Left Bottom", value: "BELL_ASCENDING", location: "Bottom" },
-    { label: "Bell on Surface", value: "BELL_AT_SURFACE", location: "Surface" },
-    { label: "TUP Complete", value: "BELL_MATED_TO_CHAMBER", location: "Deck" }
+    { value: "Left Surface", label: "Left Surface", location: "Surface" },
+    { value: "Arrived Bottom", label: "Arrived Bottom", location: "Bottom" },
+    { value: "Diver Left Bell", label: "Diver Left Bell", location: "Bell" },
+    { value: "Diver Return Bell", label: "Diver Return Bell", location: "Bell" },
+    { value: "Left Bottom", label: "Left Bottom", location: "Bottom" },
+    { value: "Bell on Surface", label: "Bell on Surface", location: "Surface" },
+    { value: "TUP Complete", label: "TUP Complete", location: "Surface" }
 ];
 
 interface DiveMovementLogProps {
@@ -50,22 +51,12 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
 
     const diveActionsList = ((diveJob?.dive_type?.toUpperCase() || "AIR")).includes("BELL") || ((diveJob?.dive_type?.toUpperCase() || "AIR")).includes("SAT") ? BELL_DIVE_ACTIONS : AIR_DIVE_ACTIONS;
 
-    const getLocalDatetimeString = (date = new Date()) => {
-        return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    };
-
-    const parseDbDate = (dateString?: string | null) => {
-        if (!dateString) return new Date();
-        const t = dateString.replace(' ', 'T');
-        return new Date(t.includes('Z') || t.includes('+') ? t : `${t}Z`);
-    };
-
     const [movements, setMovements] = useState<Movement[]>([]);
     const [activeSchema, setActiveSchema] = useState<"corrected" | "standard" | null>(null);
     const [newMovement, setNewMovement] = useState({
         activity: "",
         notes: "",
-        timestamp: getLocalDatetimeString(),
+        timestamp: toDatetimeLocalString(),
     });
     const [loading, setLoading] = useState(false);
 
@@ -154,18 +145,17 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
 
         try {
             const depId = Number(diveJob.id || diveJob.dive_job_id);
-            const finalTime = newMovement.timestamp ? new Date(newMovement.timestamp).toISOString() : new Date().toISOString();
-            const selectedAction = diveActionsList.find(a => a.label === newMovement.activity);
+            const finalTime = toLocalDbTimestamp(newMovement.timestamp);
+            const selectedAction = diveActionsList.find(a => a.label === newMovement.activity || a.value === newMovement.activity);
 
-            let insertPayload: Record<string, any> = {
-                dive_job_id: depId
-            };
-
+            let insertPayload: Record<string, any> = {};
             if (activeSchema === "corrected") {
+                insertPayload.dive_job_id = depId;
                 insertPayload.movement_time = finalTime;
                 insertPayload.movement_type = newMovement.activity;
                 insertPayload.remarks = newMovement.notes;
             } else {
+                insertPayload.dive_job_id = depId;
                 insertPayload.timestamp = finalTime;
                 insertPayload.activity = newMovement.activity;
                 insertPayload.notes = newMovement.notes;
@@ -224,7 +214,7 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
             }
 
             toast.success("Movement logged");
-            setNewMovement({ activity: "", notes: "", timestamp: getLocalDatetimeString() });
+            setNewMovement({ activity: "", notes: "", timestamp: toDatetimeLocalString() });
             await loadMovements();
             onRefresh?.();
         } catch (error: any) {
@@ -253,17 +243,17 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
     async function handleUpdateMovement() {
         if (!editForm || !editForm.id) return;
         try {
-            const selectedAction = diveActionsList.find(a => a.label === editForm.activity);
+            const selectedAction = diveActionsList.find(a => a.label === editForm.activity || a.value === editForm.activity);
             const pkField = activeSchema === "corrected" ? "movement_id" : "id";
 
             let updatePayload: Record<string, any> = {};
 
             if (activeSchema === "corrected") {
-                updatePayload.movement_time = new Date(editForm.timestamp).toISOString();
+                updatePayload.movement_time = toLocalDbTimestamp(editForm.timestamp);
                 updatePayload.movement_type = editForm.activity;
                 updatePayload.remarks = editForm.notes;
             } else {
-                updatePayload.timestamp = new Date(editForm.timestamp).toISOString();
+                updatePayload.timestamp = toLocalDbTimestamp(editForm.timestamp);
                 updatePayload.activity = editForm.activity;
                 updatePayload.notes = editForm.notes;
                 updatePayload.location = selectedAction?.location || editForm.location || "N/A";
@@ -286,21 +276,11 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
     }
 
     function formatTime(timestamp: string): string {
-        const date = parseDbDate(timestamp);
-        return date.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-        });
+        return formatClientTime(timestamp);
     }
 
     function formatDate(timestamp: string): string {
-        const date = parseDbDate(timestamp);
-        return date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-        });
+        return formatClientDate(timestamp);
     }
 
     return (
@@ -389,8 +369,8 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
                         movements.map((movement, index) => {
                             // Calculate elapsed using oldest array movement as baseline
                             const oldestMovement = movements[movements.length - 1];
-                            const baselineMs = oldestMovement ? parseDbDate(oldestMovement.timestamp).getTime() : 0;
-                            const currentMs = parseDbDate(movement.timestamp).getTime();
+                            const baselineMs = oldestMovement ? parseClientDate(oldestMovement.timestamp).getTime() : 0;
+                            const currentMs = parseClientDate(movement.timestamp).getTime();
                             const diffMs = currentMs - baselineMs;
 
                             const hrs = Math.floor(Math.max(0, diffMs) / (1000 * 60 * 60));
@@ -428,7 +408,7 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
 
                                     {editingId === movement.id ? (
                                         <div className="space-y-2 mt-2 pb-2">
-                                            <Input type="datetime-local" value={editForm?.timestamp ? new Date(parseDbDate(editForm.timestamp).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEditForm({ ...editForm!, timestamp: new Date(e.target.value).toISOString() })} className="h-8 text-sm bg-white" />
+                                            <Input type="datetime-local" value={editForm?.timestamp ? toDatetimeLocalString(editForm.timestamp) : ""} onChange={(e) => setEditForm({ ...editForm!, timestamp: e.target.value })} className="h-8 text-sm bg-white" />
                                             <Select
                                                 value={diveActionsList.find(a => a.value === editForm?.activity || a.label === editForm?.activity)?.label || editForm?.activity || ""}
                                                 onValueChange={(val) => setEditForm(editForm ? { ...editForm, activity: val } : null)}
