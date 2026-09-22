@@ -92,9 +92,14 @@ export const POST = withTenant(async (request, { companyId }) => {
       : selectFields;
     const finalDbFields = dbSelectFields.length > 0 ? dbSelectFields : ["id"];
 
+    // For inspection records and incomplete categories, select all columns including JSON inspection_data
+    const selectQueryStr = (category === "inspection_records" || category === "incomplete")
+      ? "*"
+      : finalDbFields.join(",");
+
     let query = (supabase as any)
       .from(catDef.table)
-      .select(finalDbFields.join(","), { count: "exact" });
+      .select(selectQueryStr, { count: "exact" });
 
     // Apply company scoping safely depending on the view schema
     if (companyId) {
@@ -173,6 +178,26 @@ export const POST = withTenant(async (request, { companyId }) => {
         let finalValue2 = cond.value2;
         let finalOperator = cond.operator;
 
+        const TOP_LEVEL_INSP_COLS = new Set([
+          "insp_id", "structure_id", "component_id", "jobpack_id", "inspection_type_id",
+          "inspection_type_code", "status", "inspection_date", "inspection_time", "sow_report_no",
+          "workunit", "dive_job_id", "rov_job_id", "dive_no", "elevation", "fp_kp",
+          "structure_name", "structure_field", "structure_spec_type",
+          "component_id_str", "component_id_no", "component_qid", "component_description",
+          "start_node", "end_node", "elevation1", "elevation2", "jobpack_name",
+          "marine_growth", "coating_condition", "component_condition", "nominal_thickness",
+          "verification_depth", "ut_12_o_clock", "ut_3_o_clock", "ut_6_o_clock", "ut_9_o_clock",
+          "cp_reading", "pre_dive_cp_rdg", "post_dive_cp_rdg", "scour_depth", "scour_location",
+          "finding_type", "debris_info", "distance_info", "anode_depletion", "anode_type",
+          "seepage_intensity", "mgi_profile", "mgi_thickness_at", "mgi_hard_thickness",
+          "mgi_soft_thickness", "calib_block", "serial_number", "calib_equipment_type",
+          "cr_user", "cr_date", "md_user", "md_date"
+        ]);
+
+        if ((category === "inspection_records" || category === "incomplete") && !TOP_LEVEL_INSP_COLS.has(cond.field)) {
+          finalField = `inspection_data->>${cond.field}`;
+        }
+
         if (cond.transform === "year" && fieldType === "date" && cond.value) {
           const year = parseInt(cond.value);
           if (!isNaN(year)) {
@@ -181,22 +206,22 @@ export const POST = withTenant(async (request, { companyId }) => {
 
             switch (cond.operator) {
               case "eq":
-                query = query.gte(cond.field, start).lte(cond.field, end);
+                query = query.gte(finalField, start).lte(finalField, end);
                 continue;
               case "neq":
-                query = query.or(`${cond.field}.lt.${start},${cond.field}.gt.${end}`);
+                query = query.or(`${finalField}.lt.${start},${finalField}.gt.${end}`);
                 continue;
               case "gt":
-                query = query.gt(cond.field, end);
+                query = query.gt(finalField, end);
                 continue;
               case "lt":
-                query = query.lt(cond.field, start);
+                query = query.lt(finalField, start);
                 continue;
               case "gte":
-                query = query.gte(cond.field, start);
+                query = query.gte(finalField, start);
                 continue;
               case "lte":
-                query = query.lte(cond.field, end);
+                query = query.lte(finalField, end);
                 continue;
             }
           }
@@ -281,6 +306,17 @@ export const POST = withTenant(async (request, { companyId }) => {
       if (category === "structures") {
         if (selectFields.includes("md_user") && item.md_user === undefined) item.md_user = null;
         if (selectFields.includes("md_date") && item.md_date === undefined) item.md_date = null;
+      }
+      if (category === "inspection_records" || category === "incomplete") {
+        let idata = item.inspection_data || item.inspection_dat || {};
+        if (typeof idata === "string") {
+          try { idata = JSON.parse(idata); } catch (e) { idata = {}; }
+        }
+        selectFields.forEach((f) => {
+          if ((item[f] === undefined || item[f] === null) && idata[f] !== undefined) {
+            item[f] = idata[f];
+          }
+        });
       }
       return item;
     });
