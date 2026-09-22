@@ -535,11 +535,11 @@ export default function InterfaceModulePage() {
                   variant="outline"
                   className="bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20 text-xs font-bold py-0.5"
                 >
-                  PCSB SICS 24 Tables Ready
+                  {activeInterface.name} ({activeInterface.templates.length} Tables)
                 </Badge>
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
-                Produce official PCSB SICS tab-delimited text packages (<code className="font-mono text-[11px]">yymmdd-nn-XXX.txt</code>) and multi-sheet Excel files across all 24 structural inspection disciplines, auto-scoped to platforms, pipelines, and jobpacks.
+                Produce official PCSB SICS tab-delimited text packages (<code className="font-mono text-[11px]">yymmdd-nn-XXX.txt</code>) and multi-sheet Excel files across all structural inspection disciplines, auto-scoped to platforms, pipelines, and jobpacks.
               </p>
             </div>
           </div>
@@ -1597,11 +1597,11 @@ export default function InterfaceModulePage() {
                         Pre-Export Manifest & SICS Output Package
                       </span>
                       <Badge className="bg-emerald-500 text-white text-[10px]">
-                        24 Tables Ready
+                        {activeInterface.templates.length} Tables Ready
                       </Badge>
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      All 24 individual interface files to be generated and written directly to disk:
+                      All {activeInterface.templates.length} individual interface files to be generated and written directly to disk:
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -1621,10 +1621,10 @@ export default function InterfaceModulePage() {
                           Interface Spec
                         </p>
                         <p className="text-sm font-black text-slate-900 dark:text-white mt-0.5 truncate">
-                          SICS Interface
+                          {activeInterface.name}
                         </p>
                         <p className="text-[10px] text-indigo-400 font-bold uppercase">
-                          Platforms (24 Tables)
+                          Platforms ({activeInterface.templates.length} Tables)
                         </p>
                       </div>
                       <div className="p-3.5 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900/50">
