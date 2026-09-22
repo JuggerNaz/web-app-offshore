@@ -12,7 +12,7 @@ import { Clock, Plus, ListChecks, Trash2, Edit, Save, X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
-import { parseClientDate, formatClientTime, formatClientDate, toDatetimeLocalString, toLocalDbTimestamp } from "@/utils/client-date";
+import { parseClientDate, formatClientTime, formatClientDate, toDatetimeLocalString, toUtcIsoTimestamp } from "@/utils/client-date";
 
 const ROV_ACTIONS = [
     { label: "Rov On Hire" },
@@ -101,7 +101,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
 
         try {
             const depId = Number(diveJob.id || diveJob.rov_job_id);
-            const finalTime = toLocalDbTimestamp(newMovement.movement_time);
+            const finalTime = toUtcIsoTimestamp(newMovement.movement_time);
 
             const { error } = await supabase.from("insp_rov_movements").insert({
                 rov_job_id: depId,
@@ -186,7 +186,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
         if (!editForm || !editForm.movement_id) return;
         try {
             const { error } = await supabase.from("insp_rov_movements").update({
-                movement_time: toLocalDbTimestamp(editForm.movement_time),
+                movement_time: toUtcIsoTimestamp(editForm.movement_time),
                 movement_type: editForm.movement_type,
                 remarks: editForm.remarks
             }).eq("movement_id", editForm.movement_id);

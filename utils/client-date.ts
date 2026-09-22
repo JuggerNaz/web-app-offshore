@@ -1,15 +1,14 @@
 import { format as dateFnsFormat } from "date-fns";
 
 /**
- * Parses a date or timestamp string from Supabase / PostgreSQL / Oracle / user input
- * into a valid JavaScript Date object in the client's local timezone.
+ * Parses a date or timestamp from Supabase / PostgreSQL (which stores in UTC)
+ * into a JavaScript Date object in the client's local timezone.
  *
  * Rules:
- * 1. If dateString already contains explicit timezone info (ends with 'Z' or '+HH:mm' / '-HH:mm'),
- *    standard Date constructor parses it into local client time.
- * 2. If dateString is a date-only string ('YYYY-MM-DD'), it is parsed as local midnight.
- * 3. If dateString is a timestamp without timezone ('YYYY-MM-DD HH:mm:ss' or 'YYYY-MM-DDTHH:mm:ss'),
- *    it is parsed directly as LOCAL client time, NEVER forced to UTC.
+ * 1. If it's already a Date object, return it.
+ * 2. If it's a date-only string ('YYYY-MM-DD'), parse as local midnight.
+ * 3. If it's a timestamp string without explicit timezone (e.g. '2026-09-22T06:26:29' or '2026-09-22 06:26:29' from database),
+ *    treat it as UTC (append 'Z') so the browser automatically converts it to the user's local timezone (e.g. UTC+8 -> 14:26:29 / 2:26:29 PM).
  */
 export function parseClientDate(dateInput?: string | Date | null): Date {
   if (!dateInput) return new Date();
@@ -20,23 +19,24 @@ export function parseClientDate(dateInput?: string | Date | null): Date {
   const s = String(dateInput).trim();
   if (!s) return new Date();
 
-  // If explicit timezone offset or Z
-  if (s.endsWith("Z") || s.endsWith("z") || /[+-]\d{2}(:\d{2})?$/.test(s)) {
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? new Date() : d;
-  }
-
   // If date-only 'YYYY-MM-DD'
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const [y, m, d] = s.split("-").map(Number);
     return new Date(y, m - 1, d);
   }
 
-  // If date-time without timezone (e.g. '2026-07-28 14:28:34' or '2026-07-28T14:28:34')
+  // If explicit timezone offset (+08:00 or -05:00) or Z
+  if (s.endsWith("Z") || s.endsWith("z") || /[+-]\d{2}(:\d{2})?$/.test(s)) {
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? new Date() : d;
+  }
+
+  // Database timestamps (PostgreSQL / Supabase) are stored in UTC without 'Z' suffix.
+  // We treat them as UTC so the browser converts them to the client local timezone.
   const isoLike = s.replace(" ", "T");
-  const parsed = new Date(isoLike);
-  if (!isNaN(parsed.getTime())) {
-    return parsed;
+  const utcDate = new Date(`${isoLike}Z`);
+  if (!isNaN(utcDate.getTime())) {
+    return utcDate;
   }
 
   // Fallback direct Date parse
@@ -126,9 +126,23 @@ export function toDatetimeLocalString(
 }
 
 /**
- * Converts a Date or date string to local DB timestamp format "YYYY-MM-DDTHH:mm:ss"
- * ensuring no timezone skew when written to PostgreSQL TIMESTAMP columns.
+ * Converts a client local datetime (from input or Date) to UTC ISO string
+ * for storage in PostgreSQL / Supabase.
  */
-export function toLocalDbTimestamp(dateInput?: string | Date | null): string {
-  return toDatetimeLocalString(dateInput, true);
+export function toUtcIsoTimestamp(dateInput?: string | Date | null): string {
+  if (!dateInput) return new Date().toISOString();
+  if (dateInput instanceof Date) {
+    return isNaN(dateInput.getTime()) ? new Date().toISOString() : dateInput.toISOString();
+  }
+  const s = String(dateInput).trim();
+  if (!s) return new Date().toISOString();
+
+  // If it's a datetime-local value like "2026-09-22T14:59"
+  // new Date("2026-09-22T14:59") creates a local Date object.
+  // .toISOString() converts it to UTC!
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString();
+  }
+  return new Date().toISOString();
 }

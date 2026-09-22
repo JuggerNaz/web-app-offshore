@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Clock, Plus, ListChecks, Trash2, Edit, Save, X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
-import { parseClientDate, formatClientTime, formatClientDate, toDatetimeLocalString, toLocalDbTimestamp } from "@/utils/client-date";
+import { parseClientDate, formatClientTime, formatClientDate, toDatetimeLocalString, toUtcIsoTimestamp } from "@/utils/client-date";
 
 // DIVE ACTIONS
 const AIR_DIVE_ACTIONS = [
@@ -145,7 +145,7 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
 
         try {
             const depId = Number(diveJob.id || diveJob.dive_job_id);
-            const finalTime = toLocalDbTimestamp(newMovement.timestamp);
+            const finalTime = toUtcIsoTimestamp(newMovement.timestamp);
             const selectedAction = diveActionsList.find(a => a.label === newMovement.activity || a.value === newMovement.activity);
 
             let insertPayload: Record<string, any> = {};
@@ -249,11 +249,11 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
             let updatePayload: Record<string, any> = {};
 
             if (activeSchema === "corrected") {
-                updatePayload.movement_time = toLocalDbTimestamp(editForm.timestamp);
+                updatePayload.movement_time = toUtcIsoTimestamp(editForm.timestamp);
                 updatePayload.movement_type = editForm.activity;
                 updatePayload.remarks = editForm.notes;
             } else {
-                updatePayload.timestamp = toLocalDbTimestamp(editForm.timestamp);
+                updatePayload.timestamp = toUtcIsoTimestamp(editForm.timestamp);
                 updatePayload.activity = editForm.activity;
                 updatePayload.notes = editForm.notes;
                 updatePayload.location = selectedAction?.location || editForm.location || "N/A";

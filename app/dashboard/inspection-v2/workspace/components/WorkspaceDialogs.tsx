@@ -3,7 +3,7 @@
 import React from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { parseClientDate, toDatetimeLocalString, toLocalDbTimestamp } from "@/utils/client-date";
+import { parseClientDate, toDatetimeLocalString, toUtcIsoTimestamp } from "@/utils/client-date";
 import { 
     Clock, 
     Activity, 
@@ -875,7 +875,7 @@ export function WorkspaceDialogs({
                                         if (!localVal) return;
  
                                         const d = parseClientDate(localVal);
-                                        const newTime = toLocalDbTimestamp(localVal);
+                                        const newTime = toUtcIsoTimestamp(localVal);
  
                                         let updatedTime = editingEvent.time;
  

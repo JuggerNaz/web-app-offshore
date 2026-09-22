@@ -105,7 +105,7 @@ function formatCounter(seconds: number | string): string {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { parseClientDate, toLocalDbTimestamp, toDatetimeLocalString, formatClientTime } from "@/utils/client-date";
+import { parseClientDate, toUtcIsoTimestamp, toDatetimeLocalString, formatClientTime } from "@/utils/client-date";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
@@ -5080,7 +5080,7 @@ function V10PreviewLayout() {
           .insert({
             tape_id: tId,
             event_type: dbAction,
-            event_time: toLocalDbTimestamp(),
+            event_time: new Date().toISOString(),
             timecode_start: tcode,
             tape_counter_start: currentTimer,
             remarks: "",
@@ -6093,17 +6093,17 @@ function V10PreviewLayout() {
     const mvtCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
     const jobTable = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
 
-    const localNow = toLocalDbTimestamp();
+    const nowIso = new Date().toISOString();
     const payload: any = {};
     if (inspMethod === "DIVING") {
       const mappedAction = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.label === dbValue);
       payload.dive_job_id = activeDep.id;
-      payload.movement_time = localNow;
+      payload.movement_time = nowIso;
       payload.movement_type = dbValue;
       payload.remarks = mappedAction?.location ? `Location: ${mappedAction.location}` : "";
     } else {
       payload.rov_job_id = activeDep.id;
-      payload.movement_time = localNow;
+      payload.movement_time = nowIso;
       payload.movement_type = dbValue;
       payload.remarks = "";
     }
