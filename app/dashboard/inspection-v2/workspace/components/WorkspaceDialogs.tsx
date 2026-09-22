@@ -21,7 +21,9 @@ import {
     Paperclip, 
     FileText, 
     Video,
-    History
+    History,
+    ArrowRightLeft,
+    Film
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -92,6 +94,7 @@ interface WorkspaceDialogsProps {
         lastStartEventForEdit: any;
         isMovementLogOpen: boolean;
         isEditTapeOpen: boolean;
+        jobTapes?: any[];
         editTapeNo: string;
         editTapeChapter: string;
         editTapeStatus: string;
@@ -524,6 +527,7 @@ export function WorkspaceDialogs({
         isPipelineMapOpen,
         inspectionDirection,
         tapeId,
+        jobTapes = [],
         vidTimer,
         dataAcqFields,
         manualOverride,
@@ -774,6 +778,121 @@ export function WorkspaceDialogs({
     const wizardShowSignatures: boolean = reportConfig?.showSignatures !== false;
     const wizardPrintFriendly: boolean = reportConfig?.printFriendly === true;
 
+    const [bulkTargetTapeId, setBulkTargetTapeId] = React.useState<string>("");
+    const [isBulkTransferring, setIsBulkTransferring] = React.useState<boolean>(false);
+
+    const handleTransferAllEventsFromTape = async () => {
+        if (!tapeId || !bulkTargetTapeId) {
+            toast.error("Please select a target tape to transfer events into.");
+            return;
+        }
+        setIsBulkTransferring(true);
+        try {
+            const targetTape = (jobTapes || []).find((t: any) => String(t.tape_id) === String(bulkTargetTapeId));
+            const targetTapeNo = targetTape?.tape_no || `Tape #${bulkTargetTapeId}`;
+
+            // Fetch target tape boundaries from insp_video_logs
+            const { data: logs } = await supabase
+                .from("insp_video_logs")
+                .select("event_type, event_time, tape_counter_start, timecode_start")
+                .eq("tape_id", Number(bulkTargetTapeId))
+                .order("event_time", { ascending: true });
+
+            let tapeDate: string | null = null;
+            let tapeStartTime: string | null = null;
+            let tapeEndTime: string | null = null;
+            let maxCounter = 7200;
+
+            if (logs && logs.length > 0) {
+                const startLog = logs.find((l: any) => l.event_type === "NEW_LOG_START" || l.event_type === "RESUME") || logs[0];
+                const endLog = logs[logs.length - 1];
+                if (startLog?.event_time) {
+                    const [d, t] = String(startLog.event_time).split("T");
+                    tapeDate = d;
+                    tapeStartTime = t ? t.slice(0, 8) : null;
+                }
+                if (endLog?.event_time) {
+                    const [, t] = String(endLog.event_time).split("T");
+                    tapeEndTime = t ? t.slice(0, 8) : null;
+                }
+                logs.forEach((l: any) => {
+                    const c = Number(l.tape_counter_start || 0);
+                    if (c > maxCounter) maxCounter = c;
+                });
+            } else if (targetTape?.cr_date) {
+                tapeDate = String(targetTape.cr_date).split("T")[0];
+            }
+
+            // Fetch all insp_records on this tape
+            const { data: sourceRecords, error: fetchErr } = await supabase
+                .from("insp_records")
+                .select("insp_id, inspection_date, inspection_time, tape_count_no, inspection_data")
+                .eq("tape_id", tapeId);
+
+            if (fetchErr) throw fetchErr;
+
+            if (!sourceRecords || sourceRecords.length === 0) {
+                toast.info("No inspection events found on this tape to transfer.");
+                setIsBulkTransferring(false);
+                return;
+            }
+
+            const nowIso = new Date().toISOString();
+            const updates = sourceRecords.map(async (r: any) => {
+                const originalCounterSec = Number(r.tape_count_no || 0);
+                const clampedCounterSec = Math.max(0, Math.min(maxCounter, originalCounterSec));
+                const newDate = tapeDate || r.inspection_date || format(new Date(), "yyyy-MM-dd");
+                let newTime = r.inspection_time || "10:00:00";
+                if (tapeStartTime) {
+                    const parts = tapeStartTime.split(":").map((p: any) => parseInt(p, 10) || 0);
+                    const totalSec = (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0) + clampedCounterSec;
+                    const h = Math.floor((totalSec / 3600) % 24);
+                    const m = Math.floor((totalSec % 3600) / 60);
+                    const s = Math.floor(totalSec % 60);
+                    newTime = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+                    if (tapeEndTime && newTime > tapeEndTime) newTime = tapeEndTime;
+                }
+
+                const hC = Math.floor(clampedCounterSec / 3600);
+                const mC = Math.floor((clampedCounterSec % 3600) / 60);
+                const sC = Math.floor(clampedCounterSec % 60);
+                const newTc = `${hC.toString().padStart(2, "0")}:${mC.toString().padStart(2, "0")}:${sC.toString().padStart(2, "0")}`;
+
+                return supabase
+                    .from("insp_records")
+                    .update({
+                        tape_id: Number(bulkTargetTapeId),
+                        inspection_date: newDate,
+                        inspection_time: newTime,
+                        tape_count_no: clampedCounterSec,
+                        inspection_data: {
+                            ...(r.inspection_data || {}),
+                            _meta_timecode: newTc,
+                            tape_count_no: newTc,
+                            counter: newTc,
+                            inspection_date: newDate,
+                            inspection_time: newTime,
+                        },
+                        md_date: nowIso,
+                    })
+                    .eq("insp_id", r.insp_id);
+            });
+
+            await Promise.all(updates);
+
+            toast.success(`Successfully transferred all ${sourceRecords.length} event(s) to ${targetTapeNo}`);
+            if (syncDeploymentState) {
+                await syncDeploymentState();
+            }
+            setIsEditTapeOpen(false);
+        } catch (e: any) {
+            console.error("Bulk transfer error:", e);
+            toast.error(`Transfer failed: ${e.message || "Unknown error"}`);
+        } finally {
+            setIsBulkTransferring(false);
+        }
+    };
+
     // Wizard step and template state lifted up to control back-routing from preview dialogs
     const [wizardStep, setWizardStep] = React.useState(1);
     const [wizardSelectedTemplate, setWizardSelectedTemplate] = React.useState<any>(null);
@@ -1001,6 +1120,44 @@ export function WorkspaceDialogs({
                                     placeholder="Optional notes..."
                                     className="h-11 text-sm font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-blue-500/5 transition-all"
                                 />
+                            </div>
+
+                            {/* Bulk Move Events To Another Tape */}
+                            <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider flex items-center gap-1.5">
+                                        <ArrowRightLeft className="w-3.5 h-3.5 text-blue-500" />
+                                        Transfer All Events To Another Tape
+                                    </Label>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Select value={bulkTargetTapeId} onValueChange={setBulkTargetTapeId}>
+                                        <SelectTrigger className="h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200 flex-1">
+                                            <SelectValue placeholder="Select target destination tape..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="dark:bg-slate-950 dark:border-slate-800">
+                                            {(jobTapes || [])
+                                                .filter((t: any) => String(t.tape_id) !== String(tapeId))
+                                                .map((t: any) => (
+                                                    <SelectItem key={t.tape_id} value={String(t.tape_id)} className="text-xs font-bold py-1.5">
+                                                        {t.tape_no} (Ch: {t.chapter_no || 1})
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        disabled={!bulkTargetTapeId || isBulkTransferring}
+                                        onClick={handleTransferAllEventsFromTape}
+                                        className="h-10 px-3 text-[10px] font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                                    >
+                                        {isBulkTransferring ? <X className="w-3.5 h-3.5 animate-spin" /> : "Move All"}
+                                    </Button>
+                                </div>
+                                <p className="text-[9px] text-slate-400 leading-tight">
+                                    Moves all recorded events on this tape into the selected target tape, aligning date/time to the target tape logs.
+                                </p>
                             </div>
                         </div>
 

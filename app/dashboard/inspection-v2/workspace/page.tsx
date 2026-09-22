@@ -8411,6 +8411,11 @@ function V10PreviewLayout() {
             editingRecordId={editingRecordId}
             isPipe={isPipe}
             allComps={[...(componentsSow || []), ...(componentsNonSow || [])]}
+            jobTapes={jobTapes}
+            deployments={deployments}
+            activeDep={activeDep}
+            inspMethod={inspMethod}
+            onTransferComplete={syncDeploymentState}
           />
         );
         break;
@@ -9245,6 +9250,7 @@ function V10PreviewLayout() {
           lastStartEventForEdit,
           isMovementLogOpen,
           isEditTapeOpen,
+          jobTapes,
           editTapeNo,
           editTapeChapter,
           editTapeStatus,

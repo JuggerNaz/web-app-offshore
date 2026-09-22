@@ -25,7 +25,8 @@ import {
   Paperclip,
   Loader2,
   X,
-  Check
+  Check,
+  ArrowRightLeft,
 } from "lucide-react";
 import {
   Select,
@@ -34,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TransferToTapeModal } from "./TransferToTapeModal";
 
 interface EventsTablePanelProps {
   syncLoading: boolean;
@@ -65,6 +67,11 @@ interface EventsTablePanelProps {
   totalRecords: number;
   isPipe?: boolean;
   allComps?: any[];
+  jobTapes?: any[];
+  deployments?: any[];
+  activeDep?: any;
+  inspMethod?: "DIVING" | "ROV";
+  onTransferComplete?: () => Promise<void> | void;
 }
 
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
@@ -113,6 +120,11 @@ export function EventsTablePanel({
   editingRecordId,
   isPipe = false,
   allComps = [],
+  jobTapes = [],
+  deployments = [],
+  activeDep,
+  inspMethod = "DIVING",
+  onTransferComplete,
 }: EventsTablePanelProps) {
   function formatCounter(seconds: number | string): string {
     if (seconds === undefined || seconds === null || seconds === "") return "00:00:00";
@@ -135,7 +147,27 @@ export function EventsTablePanel({
   }
 
   const [selectedRowId, setSelectedRowId] = React.useState<number | null>(null);
+  const [selectedRecordIds, setSelectedRecordIds] = React.useState<Set<number>>(new Set());
+  const [isTransferOpen, setIsTransferOpen] = React.useState(false);
   const rowRefs = React.useRef<Record<number, HTMLTableRowElement | null>>({});
+
+  const toggleSelectRecord = (id: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedRecordIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedRecordIds.size === displayRecords.length && displayRecords.length > 0) {
+      setSelectedRecordIds(new Set());
+    } else {
+      setSelectedRecordIds(new Set(displayRecords.map((r) => r.insp_id)));
+    }
+  };
 
   // ─── Column Widths & Resizing ───────────────────────────────────────────────
   const [columnWidths, setColumnWidths] = React.useState<Record<string, number>>(() => {
@@ -595,16 +627,28 @@ export function EventsTablePanel({
     </div>
   );
 
+  const selectedRecordsList = React.useMemo(() => {
+    return displayRecords.filter((r) => selectedRecordIds.has(r.insp_id));
+  }, [displayRecords, selectedRecordIds]);
+
+  const handleAfterTransfer = async () => {
+    setSelectedRecordIds(new Set());
+    if (onTransferComplete) {
+      await onTransferComplete();
+    }
+  };
+
   const renderTableContent = () => (
-    <ScrollArea className="flex-1 w-full relative bg-white dark:bg-slate-950 overflow-auto custom-scrollbar">
-      <div className="min-w-max inline-block align-middle">
-        <table className="min-w-full border-collapse table-fixed">
-          <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
+    <div className="flex-1 w-full relative overflow-hidden flex flex-col">
+      <ScrollArea className="flex-1 w-full relative bg-white dark:bg-slate-950 overflow-auto custom-scrollbar">
+        <div className="min-w-max inline-block align-middle">
+          <table className="min-w-full border-collapse table-fixed">
+            <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
             <tr>
               {activeTableColumns.map((col) => {
                 const displayLabel = col.id === "elev" ? (isPipe ? "KP / FP" : "Elev") : col.label;
                 const colWidth = columnWidths[col.id] || DEFAULT_COLUMN_WIDTHS[col.id] || 120;
-                const minWidth = col.id === "status" ? 50 : 65;
+                const minWidth = col.id === "status" ? 65 : 65;
                 const isStatus = col.id === "status";
 
                 return (
@@ -630,17 +674,27 @@ export function EventsTablePanel({
                     onClick={() => col.id !== "actions" && !isStatus && handleSort(col.id)}
                     title={!isStatus ? "Drag column to reorder | Click to sort" : undefined}
                   >
-                    <div className="flex items-center justify-between gap-1 overflow-hidden pr-2">
-                      <div className="flex items-center gap-1.5 overflow-hidden truncate">
+                    {isStatus ? (
+                      <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={displayRecords.length > 0 && selectedRecordIds.size === displayRecords.length}
+                          onCheckedChange={toggleSelectAll}
+                          title="Select all events on page"
+                          className="h-3.5 w-3.5 data-[state=checked]:bg-blue-600 border-slate-400 dark:border-slate-600"
+                        />
                         <span className="truncate">{displayLabel}</span>
-                        {sortConfig.key === col.id && (
-                          sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3 text-blue-500 shrink-0" /> : <ChevronDown className="w-3 h-3 text-blue-500 shrink-0" />
-                        )}
                       </div>
-                      {!isStatus && (
+                    ) : (
+                      <div className="flex items-center justify-between gap-1 overflow-hidden pr-2">
+                        <div className="flex items-center gap-1.5 overflow-hidden truncate">
+                          <span className="truncate">{displayLabel}</span>
+                          {sortConfig.key === col.id && (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3 text-blue-500 shrink-0" /> : <ChevronDown className="w-3 h-3 text-blue-500 shrink-0" />
+                          )}
+                        </div>
                         <GripVertical className="w-2.5 h-2.5 opacity-0 group-hover/th:opacity-40 shrink-0" />
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {/* Resizer Handle */}
                     <div
@@ -666,11 +720,13 @@ export function EventsTablePanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-            {displayRecords.map((r) => (
+            {displayRecords.map((r) => {
+              const isSelected = selectedRecordIds.has(r.insp_id);
+              return (
               <tr 
                 key={r.insp_id} 
                 ref={(el) => { rowRefs.current[r.insp_id] = el; }}
-                className={`group cursor-pointer border-b border-slate-100 dark:border-slate-800/50 last:border-0 transition-colors ${selectedRowId === r.insp_id ? "bg-blue-50/80 dark:bg-blue-900/20" : "hover:bg-slate-50 dark:hover:bg-slate-900"}`} 
+                className={`group cursor-pointer border-b border-slate-100 dark:border-slate-800/50 last:border-0 transition-colors ${isSelected ? "bg-blue-100/50 dark:bg-blue-950/40" : selectedRowId === r.insp_id ? "bg-blue-50/80 dark:bg-blue-900/20" : "hover:bg-slate-50 dark:hover:bg-slate-900"}`} 
                 onDoubleClick={() => {
                   setSelectedRowId(r.insp_id);
                   handleEditRecord(r);
@@ -679,7 +735,7 @@ export function EventsTablePanel({
               >
                 {activeTableColumns.map((col) => {
                   const colWidth = columnWidths[col.id] || DEFAULT_COLUMN_WIDTHS[col.id] || 120;
-                  const minWidth = col.id === "status" ? 50 : 65;
+                  const minWidth = col.id === "status" ? 65 : 65;
                   const cellStyle: React.CSSProperties = {
                     width: `${colWidth}px`,
                     minWidth: `${minWidth}px`,
@@ -690,20 +746,27 @@ export function EventsTablePanel({
 
                     case "status":
                       return (
-                        <td key={col.id} style={cellStyle} className="px-3 py-3 align-top text-center overflow-hidden">
+                        <td key={col.id} style={cellStyle} className="px-2 py-2.5 align-top text-center overflow-hidden">
                           <div className="flex flex-col items-center gap-1.5 mt-0.5">
+                            <Checkbox
+                              checked={selectedRecordIds.has(r.insp_id)}
+                              onCheckedChange={() => toggleSelectRecord(r.insp_id)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="h-3.5 w-3.5 data-[state=checked]:bg-blue-600 border-slate-400 dark:border-slate-600"
+                            />
                             {r.has_anomaly ? (
-                              <div title="Anomaly/Finding Found" className="flex items-center justify-center h-6 w-6 rounded-full bg-red-100"><AlertCircle className="w-3.5 h-3.5 text-red-600" /></div>
+                              <div title="Anomaly/Finding Found" className="flex items-center justify-center h-5 w-5 rounded-full bg-red-100 dark:bg-red-950/40"><AlertCircle className="w-3 h-3 text-red-600 dark:text-red-400" /></div>
                             ) : r.status === "COMPLETED" ? (
-                              <div title="Completed Inspection" className="flex items-center justify-center h-6 w-6 rounded-full bg-green-100"><CheckCircle2 className="w-3.5 h-3.5 text-green-600" /></div>
+                              <div title="Completed Inspection" className="flex items-center justify-center h-5 w-5 rounded-full bg-green-100 dark:bg-green-950/40"><CheckCircle2 className="w-3 h-3 text-green-600 dark:text-green-400" /></div>
                             ) : (
-                              <div title="Incomplete / Draft" className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100"><FileClock className="w-3.5 h-3.5 text-amber-600" /></div>
+                              <div title="Incomplete / Draft" className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-950/40"><FileClock className="w-3 h-3 text-amber-600 dark:text-amber-400" /></div>
                             )}
                             {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
-                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 text-blue-500" onClick={async () => {
+                              <Button variant="ghost" size="sm" className="h-5 w-5 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-500" onClick={async (e) => {
+                                e.stopPropagation();
                                 const { data } = await supabase.from("attachment").select("*").eq("source_id", r.insp_id).in("source_type", ["inspection", "INSPECTION"]);
                                 if (data) setViewingRecordAttachments(data);
-                              }}><Paperclip className="w-3 h-3" /></Button>
+                              }}><Paperclip className="w-2.5 h-2.5" /></Button>
                             )}
                           </div>
                         </td>
@@ -834,15 +897,60 @@ export function EventsTablePanel({
                   }
                 })}
               </tr>
-            ))}
+            );
+          })}
             {displayRecords.length === 0 && (
               <tr><td colSpan={activeTableColumns.length} className="px-3 py-12 text-center bg-white/50">{syncLoading ? <div className="flex flex-col items-center gap-3 animate-in fade-in duration-500"><div className="relative"><div className="absolute inset-0 blur-sm bg-blue-400/20 rounded-full animate-pulse" /><Loader2 className="w-8 h-8 animate-spin text-blue-600 relative" /></div><div className="flex flex-col gap-1"><span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Synchronizing</span><span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fetching live workspace data...</span></div></div> : <div className="flex flex-col items-center gap-2 text-slate-300"><Search className="w-8 h-8 opacity-20" /><div className="flex flex-col gap-1"><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory Empty</span><p className="text-[9px] font-bold text-slate-400/60 uppercase tracking-tighter">No events match your current filter or session</p></div></div>}</td></tr>
             )}
           </tbody>
         </table>
       </div>
-      <ScrollBar orientation="horizontal" />
-    </ScrollArea>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
+
+      {/* Floating Selection Action Bar */}
+      {selectedRecordIds.size > 0 && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 text-white border border-slate-700 shadow-2xl rounded-full px-4 py-1.5 flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            <span className="text-[11px] font-bold text-slate-200">
+              <strong className="text-blue-400 font-mono">{selectedRecordIds.size}</strong> event{selectedRecordIds.size > 1 ? "s" : ""} selected
+            </span>
+          </div>
+          <div className="h-4 w-px bg-slate-700" />
+          <Button
+            size="sm"
+            className="h-7 px-3 text-[10px] font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-500 text-white rounded-full flex items-center gap-1.5 shadow-md shadow-blue-500/20"
+            onClick={() => setIsTransferOpen(true)}
+          >
+            <ArrowRightLeft className="w-3 h-3" />
+            Transfer to Tape...
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[10px] text-slate-400 hover:text-white rounded-full"
+            onClick={() => setSelectedRecordIds(new Set())}
+          >
+            Deselect All
+          </Button>
+        </div>
+      )}
+
+      {/* Transfer Modal */}
+      <TransferToTapeModal
+        open={isTransferOpen}
+        onOpenChange={setIsTransferOpen}
+        selectedRecords={selectedRecordsList}
+        jobTapes={jobTapes}
+        deployments={deployments}
+        activeDep={activeDep}
+        inspMethod={inspMethod}
+        supabase={supabase}
+        onTransferComplete={handleAfterTransfer}
+        container={isInPip ? capturedEventsPipWindow?.document.body : undefined}
+      />
+    </div>
   );
 
   return (
