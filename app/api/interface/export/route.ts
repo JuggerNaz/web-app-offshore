@@ -618,27 +618,27 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             PFIELD: sanitizeText(strObj?.pfield || "Offshore"),
             PDESC: sanitizeText(strObj?.pdesc || "Offshore Facility"),
             DEF_UNIT: strObj?.def_unit || "Metric",
-            COMP_ID: comp?.id != null ? comp.id : (code === "UCS" ? "" : 1),
-            ID_NO: sanitizeText(comp?.id_no || (code === "UCS" ? (idata.id_no || idata.serial_number || "") : `SYS-${comp?.id || 1}`)),
-            Q_ID: sanitizeText(comp?.q_id || idata.q_id || (code === "UCS" ? (idata.calib_block || "CALIB") : "M-01")),
-            CODE: sanitizeText(comp?.code || (code === "UCS" ? (idata.code || "CL") : "MB")),
-            COMPDESC: sanitizeText(meta.description || comp?.description || (code === "UCS" ? (idata.calib_block || idata.calib_equipment_type || "UT Calibration Block") : "Structural Member")),
-            S_NODE: sanitizeText(meta.s_node || (code === "UCS" ? "" : "N01")),
-            F_NODE: sanitizeText(meta.f_node || (code === "UCS" ? "" : "N02")),
-            S_LEG: sanitizeText(meta.s_leg || (code === "UCS" ? "" : "A1")),
-            F_LEG: sanitizeText(meta.f_leg || (code === "UCS" ? "" : "A2")),
-            ELV_1: meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (code === "UCS" ? "" : -12.5),
-            ELV_2: meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (code === "UCS" ? "" : -15.0),
-            DIST: meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (code === "UCS" ? "" : 0),
-            CLK_POS: meta.clk_pos != null && meta.clk_pos !== "" ? Number(meta.clk_pos) : (code === "UCS" ? "" : 12),
-            COMPTYPE: sanitizeText(recCompTypeDesc),
+            COMP_ID: code === "UCS" ? "" : (comp?.id != null ? comp.id : 1),
+            ID_NO: code === "UCS" ? "" : sanitizeText(comp?.id_no || `SYS-${comp?.id || 1}`),
+            Q_ID: code === "UCS" ? "" : sanitizeText(comp?.q_id || idata.q_id || "M-01"),
+            CODE: code === "UCS" ? "" : sanitizeText(comp?.code || "MB"),
+            COMPDESC: code === "UCS" ? "" : sanitizeText(meta.description || comp?.description || "Structural Member"),
+            S_NODE: code === "UCS" ? "" : sanitizeText(meta.s_node || "N01"),
+            F_NODE: code === "UCS" ? "" : sanitizeText(meta.f_node || "N02"),
+            S_LEG: code === "UCS" ? "" : sanitizeText(meta.s_leg || "A1"),
+            F_LEG: code === "UCS" ? "" : sanitizeText(meta.f_leg || "A2"),
+            ELV_1: code === "UCS" ? "" : (meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : -12.5),
+            ELV_2: code === "UCS" ? "" : (meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : -15.0),
+            DIST: code === "UCS" ? "" : (meta.dist != null && meta.dist !== "" ? Number(meta.dist) : 0),
+            CLK_POS: code === "UCS" ? "" : (meta.clk_pos != null && meta.clk_pos !== "" ? Number(meta.clk_pos) : 12),
+            COMPTYPE: code === "UCS" ? "" : sanitizeText(recCompTypeDesc),
             INSP_ID: r.insp_id,
             INSP_DATE: formatDateStr(r.inspection_date),
             INSP_TIME: sanitizeText(idata.insp_time || "09:30:00"),
             INSPECTOR: sanitizeText(idata.inspector || idata.diver_name || "Offshore Inspector"),
-            PROC: sanitizeText(idata.procedure || (code === "UCS" ? "PTS-UT-CLB-01" : "PETRONAS-SICS-01")),
-            EQUIP: sanitizeText(idata.equipment || (code === "UCS" ? (idata.calib_equipment_type || "UT Set") : "CP Probe / Bathycorrometer")),
-            EQ_ID: sanitizeText(idata.equipment_id || idata.serial_number || (code === "UCS" ? (idata.serial_number || "EQ-UT01") : "EQ-9921")),
+            PROC: sanitizeText(idata.procedure || "PTS-UT-CLB-01"),
+            EQUIP: sanitizeText(idata.equipment || idata.calib_equipment_type || (code === "UCS" ? "UT Set" : "CP Probe / Bathycorrometer")),
+            EQ_ID: sanitizeText(idata.equipment_id || idata.serial_number || (code === "UCS" ? "EQ-UT01" : "EQ-9921")),
             SPEC: sanitizeText(idata.spec || "PTS 11.22.02"),
             SURF_COND: sanitizeText(idata.surface_condition || "Cleaned"),
             CLEAN_MET: sanitizeText(idata.cleaning_method || "Water Jet"),
@@ -646,7 +646,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             SUPV: sanitizeText(idata.supervisor || "Offshore Supervisor"),
             DIVR: sanitizeText(idata.diver_name || "Diver 1"),
             DIVE_NO: sanitizeText(resolvedDiveNo),
-            ELEVATION: idata.elevation != null ? Number(idata.elevation) : (code === "UCS" ? "" : -12.5),
+            ELEVATION: idata.elevation != null && idata.elevation !== "" ? Number(idata.elevation) : "",
             TOP_UND: Number(idata.elevation || 0) < 0 ? "Underwater" : "Topside",
           };
 
@@ -742,7 +742,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           } else if (code === "UCS") {
             baseRow.PROBE = sanitizeText(idata.probe || idata.probe_type || "");
             baseRow.PROBE_SIZE = sanitizeText(idata.probe_size || idata.probe_dia || idata.size || "");
-            baseRow.CLB_TYPE = sanitizeText(idata.clb_type || idata.calib_equipment_type || idata.calib_type || idata.equipment_type || "UT CALIBRATION");
+            baseRow.CLB_TYPE = sanitizeText(idata.clb_type || idata.calib_equipment_type || idata.calib_type || "");
             baseRow.PROBE_FQ = sanitizeText(idata.probe_frequency || idata.probe_fq || idata.frequency || "");
             baseRow.RDG_1 = idata.reading01 != null && idata.reading01 !== "" ? Number(idata.reading01) : (idata.rdg_1 != null && idata.rdg_1 !== "" ? Number(idata.rdg_1) : (idata.reading_1 != null && idata.reading_1 !== "" ? Number(idata.reading_1) : ""));
             baseRow.RDG_2 = idata.reading02 != null && idata.reading02 !== "" ? Number(idata.reading02) : (idata.rdg_2 != null && idata.rdg_2 !== "" ? Number(idata.rdg_2) : (idata.reading_2 != null && idata.reading_2 !== "" ? Number(idata.reading_2) : ""));
@@ -750,12 +750,12 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.RDG_4 = idata.reading04 != null && idata.reading04 !== "" ? Number(idata.reading04) : (idata.rdg_4 != null && idata.rdg_4 !== "" ? Number(idata.rdg_4) : (idata.reading_4 != null && idata.reading_4 !== "" ? Number(idata.reading_4) : ""));
             baseRow.RDG_5 = idata.reading05 != null && idata.reading05 !== "" ? Number(idata.reading05) : (idata.rdg_5 != null && idata.rdg_5 !== "" ? Number(idata.rdg_5) : (idata.reading_5 != null && idata.reading_5 !== "" ? Number(idata.reading_5) : ""));
             baseRow.RDG_6 = idata.reading06 != null && idata.reading06 !== "" ? Number(idata.reading06) : (idata.rdg_6 != null && idata.rdg_6 !== "" ? Number(idata.rdg_6) : (idata.reading_6 != null && idata.reading_6 !== "" ? Number(idata.reading_6) : ""));
-            baseRow.LBL_1 = sanitizeText(idata.label01 || idata.lbl_1 || idata.label_1 || idata.lbl1 || "Step 1");
-            baseRow.LBL_2 = sanitizeText(idata.label02 || idata.lbl_2 || idata.label_2 || idata.lbl2 || "Step 2");
-            baseRow.LBL_3 = sanitizeText(idata.label03 || idata.lbl_3 || idata.label_3 || idata.lbl3 || "Step 3");
-            baseRow.LBL_4 = sanitizeText(idata.label04 || idata.lbl_4 || idata.label_4 || idata.lbl4 || "Step 4");
-            baseRow.LBL_5 = sanitizeText(idata.label05 || idata.lbl_5 || idata.label_5 || idata.lbl5 || "Step 5");
-            baseRow.LBL_6 = sanitizeText(idata.label06 || idata.lbl_6 || idata.label_6 || idata.lbl6 || "Step 6");
+            baseRow.LBL_1 = sanitizeText(idata.label01 || idata.lbl_1 || idata.label_1 || idata.lbl1 || "");
+            baseRow.LBL_2 = sanitizeText(idata.label02 || idata.lbl_2 || idata.label_2 || idata.lbl2 || "");
+            baseRow.LBL_3 = sanitizeText(idata.label03 || idata.lbl_3 || idata.label_3 || idata.lbl3 || "");
+            baseRow.LBL_4 = sanitizeText(idata.label04 || idata.lbl_4 || idata.label_4 || idata.lbl4 || "");
+            baseRow.LBL_5 = sanitizeText(idata.label05 || idata.lbl_5 || idata.label_5 || idata.lbl5 || "");
+            baseRow.LBL_6 = sanitizeText(idata.label06 || idata.lbl_6 || idata.label_6 || idata.lbl6 || "");
           }
 
           baseRow.DEFECT = linkedAnom ? "Yes" : "No";
