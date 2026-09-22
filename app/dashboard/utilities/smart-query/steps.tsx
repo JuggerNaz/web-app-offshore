@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Building2, Puzzle, Package, ClipboardList, ClipboardCheck,
   AlertTriangle, Search, Clock, ChevronUp, ChevronDown, Plus, Trash2, Sparkles, GripVertical, ListFilter, Loader2
@@ -351,9 +351,14 @@ function ValueSuggester({ category, field, onSelect }: { category: string, field
   const [values, setValues] = useState<string[]>([]);
   const [search, setSearch] = useState("");
 
+  useEffect(() => {
+    setValues([]);
+    setSearch("");
+  }, [category, field]);
+
   const handleOpen = async (isOpen: boolean) => {
     setOpen(isOpen);
-    if (isOpen && values.length === 0) {
+    if (isOpen && field) {
       setLoading(true);
       try {
         const res = await fetch(`/api/smart-query/values?category=${category}&field=${field}`);

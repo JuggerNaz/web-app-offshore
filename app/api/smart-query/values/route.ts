@@ -30,29 +30,30 @@ export const GET = withTenant(async (request, { companyId }) => {
     const isInspectionTypeField = ["inspection_type_code", "disc_type"].includes(field);
 
     if (isStructureNameField) {
-      // Fetch across platform, structure, and pipeline master tables to show all available structures
-      const [{ data: platData }, { data: structData }, { data: pipeData }, { data: viewData }] = await Promise.all([
-        (supabase as any).from("platform").select("title, name").limit(5000),
-        (supabase as any).from("structure").select("str_name, title").limit(5000),
-        (supabase as any).from("u_pipeline").select("title, name").limit(5000),
+      // Fetch across platform, structure, pipeline, and view master tables to show all available structures
+      const [{ data: platData }, { data: structData }, { data: pipeData }, { data: viewData }, { data: structViewData }] = await Promise.all([
+        (supabase as any).from("platform").select("title").limit(5000),
+        (supabase as any).from("structure").select("str_name").limit(5000),
+        (supabase as any).from("u_pipeline").select("title").limit(5000),
         (supabase as any).from(catDef.table).select(field).not(field, "is", null).limit(5000),
+        (supabase as any).from("v_smart_query_structures").select("title").limit(5000),
       ]);
 
       const valueSet = new Set<string>();
       (platData || []).forEach((p: any) => {
-        if (p.title) valueSet.add(String(p.title).trim());
-        if (p.name) valueSet.add(String(p.name).trim());
+        if (p?.title) valueSet.add(String(p.title).trim());
       });
       (structData || []).forEach((s: any) => {
-        if (s.title) valueSet.add(String(s.title).trim());
-        if (s.str_name) valueSet.add(String(s.str_name).trim());
+        if (s?.str_name) valueSet.add(String(s.str_name).trim());
       });
       (pipeData || []).forEach((pl: any) => {
-        if (pl.title) valueSet.add(String(pl.title).trim());
-        if (pl.name) valueSet.add(String(pl.name).trim());
+        if (pl?.title) valueSet.add(String(pl.title).trim());
+      });
+      (structViewData || []).forEach((sv: any) => {
+        if (sv?.title) valueSet.add(String(sv.title).trim());
       });
       (viewData || []).forEach((v: any) => {
-        if (v[field]) valueSet.add(String(v[field]).trim());
+        if (v && v[field]) valueSet.add(String(v[field]).trim());
       });
 
       const distinctValues = Array.from(valueSet).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
