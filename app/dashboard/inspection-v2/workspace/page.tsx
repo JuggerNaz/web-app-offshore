@@ -8393,6 +8393,7 @@ function V10PreviewLayout() {
             handlePopoutCapturedEvents={handlePopoutCapturedEvents}
             activeTableColumns={activeTableColumns}
             columnSettings={columnSettings}
+            setColumnSettings={setColumnSettings}
             handleMoveColumn={handleMoveColumn}
             toggleColumnVisibility={toggleColumnVisibility}
             handleSort={handleSort}

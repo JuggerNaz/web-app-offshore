@@ -367,17 +367,17 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         (t) => t.identifierCode.toUpperCase() === String(singleTableCode).toUpperCase()
       );
       if (match.length > 0) {
-        templatesToProcess = match;
+        templatesToProcess = [match[0]];
       } else {
         const idMatch = activeInterface.templates.filter((t) => t.id === singleTableCode);
-        if (idMatch.length > 0) templatesToProcess = idMatch;
+        if (idMatch.length > 0) templatesToProcess = [idMatch[0]];
       }
     } else if (singleTableId) {
       const idMatch = activeInterface.templates.filter((t) => t.id === singleTableId);
-      if (idMatch.length > 0) templatesToProcess = idMatch;
+      if (idMatch.length > 0) templatesToProcess = [idMatch[0]];
     }
 
-    const isSingleTableExport = templatesToProcess.length === 1 && (Boolean(singleTableCode) || Boolean(singleTableId));
+    const isSingleTableExport = (Boolean(singleTableCode) || Boolean(singleTableId)) && templatesToProcess.length === 1;
 
     // Helper for CSV escaping
     const escapeCsvValue = (val: any) => {
@@ -924,7 +924,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     if (isSingleTableExport && tablesOutput.length === 1) {
       const tbl = tablesOutput[0];
       if (format === "individual_xlsx" || format === "xlsx" || format === "single_xlsx") {
-        return new NextResponse(tbl.xlsxBuffer as any, {
+        return new NextResponse(new Uint8Array(tbl.xlsxBuffer), {
           status: 200,
           headers: {
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -985,7 +985,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       const outputFileName = fileName || `${clientProfile.code}_${activeInterface.code}_PACKAGE_${dateFormattedYymmdd}.xlsx`;
       const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
-      return new NextResponse(excelBuffer as any, {
+      return new NextResponse(new Uint8Array(excelBuffer), {
         status: 200,
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
