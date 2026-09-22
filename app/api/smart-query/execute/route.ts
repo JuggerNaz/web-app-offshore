@@ -98,32 +98,26 @@ export const POST = withTenant(async (request, { companyId }) => {
 
     // Apply company scoping safely depending on the view schema
     if (companyId) {
+      const [{ data: structRes }, { data: platRes }, { data: pipeRes }] = await Promise.all([
+        (supabase as any).from("structure").select("str_id").eq("company_id", companyId),
+        (supabase as any).from("platform").select("plat_id").eq("company_id", companyId),
+        (supabase as any).from("u_pipeline").select("pipe_id").eq("company_id", companyId),
+      ]);
+      const strIds = Array.from(new Set([
+        ...(structRes?.map((s: any) => s.str_id) || []),
+        ...(platRes?.map((p: any) => p.plat_id) || []),
+        ...(pipeRes?.map((pl: any) => pl.pipe_id) || [])
+      ])).filter(Boolean);
+
       if (category === "structures") {
-        // v_smart_query_structures does not have company_id column; filter by structure IDs
-        const { data: tenantStructures } = await (supabase as any)
-          .from("structure")
-          .select("str_id")
-          .eq("company_id", companyId);
-        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
         if (strIds.length > 0) {
           query = query.in("id", strIds);
-        } else {
-          query = query.eq("id", -999999);
         }
-      } else if (category === "components") {
-        // v_smart_query_components has structure_id, not company_id column
-        const { data: tenantStructures } = await (supabase as any)
-          .from("structure")
-          .select("str_id")
-          .eq("company_id", companyId);
-        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
+      } else if (category === "components" || category === "sow" || category === "inspection_records" || category === "incomplete") {
         if (strIds.length > 0) {
           query = query.in("structure_id", strIds);
-        } else {
-          query = query.eq("structure_id", -999999);
         }
       } else if (category === "jobpacks") {
-        // v_smart_query_jobpacks has id, not company_id column
         const { data: tenantJobpacks } = await (supabase as any)
           .from("jobpack")
           .select("id")
@@ -131,41 +125,8 @@ export const POST = withTenant(async (request, { companyId }) => {
         const jpIds = tenantJobpacks?.map((j: any) => j.id) || [];
         if (jpIds.length > 0) {
           query = query.in("id", jpIds);
-        } else {
-          query = query.eq("id", -999999);
-        }
-      } else if (category === "sow") {
-        // v_smart_query_sow has structure_id, not company_id column
-        const { data: tenantStructures } = await (supabase as any)
-          .from("structure")
-          .select("str_id")
-          .eq("company_id", companyId);
-        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
-        if (strIds.length > 0) {
-          query = query.in("structure_id", strIds);
-        } else {
-          query = query.eq("structure_id", -999999);
-        }
-      } else if (category === "inspection_records" || category === "incomplete") {
-        // v_smart_query_inspection_records / v_smart_query_incomplete have structure_id, not company_id column
-        const { data: tenantStructures } = await (supabase as any)
-          .from("structure")
-          .select("str_id")
-          .eq("company_id", companyId);
-        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
-        if (strIds.length > 0) {
-          query = query.in("structure_id", strIds);
-        } else {
-          query = query.eq("structure_id", -999999);
         }
       } else if (category === "anomalies" || category === "findings") {
-        // Find anomalies belonging to company directly or via tenant structures
-        const { data: tenantStructures } = await (supabase as any)
-          .from("structure")
-          .select("str_id")
-          .eq("company_id", companyId);
-        const strIds = tenantStructures?.map((s: any) => s.str_id) || [];
-
         const { data: tenantAnoms } = await (supabase as any)
           .from("insp_anomalies")
           .select("anomaly_id")
@@ -190,8 +151,6 @@ export const POST = withTenant(async (request, { companyId }) => {
         const finalAnomIds = Array.from(anomIds);
         if (finalAnomIds.length > 0) {
           query = query.in("anomaly_id", finalAnomIds);
-        } else {
-          query = query.eq("anomaly_id", -999999);
         }
       }
     }
