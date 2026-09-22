@@ -749,9 +749,9 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
           baseRow.DEFECT = r.has_anomaly === true || Boolean(linkedAnom) ? "Yes" : "No";
           baseRow.DFT_CODE_TYPE = sanitizeText(linkedAnom?.defect_type_code || linkedAnom?.defect_category_code || (linkedAnom ? "AW" : "")).substring(0, 12);
-          baseRow.DEFECT_CODE = sanitizeText(linkedAnom?.defect_category_code || linkedAnom?.defect_code || "").substring(0, 50);
+          baseRow.DEFECT_CODE = sanitizeText(code === "ITS" ? (linkedAnom?.defect_category_code || "") : (linkedAnom?.defect_category_code || linkedAnom?.defect_code || "")).substring(0, 50);
           baseRow.DEFECT_TYPE = sanitizeText(linkedAnom?.priority_code || linkedAnom?.priority || (linkedAnom ? "P3" : "")).substring(0, 20);
-          baseRow.DEFECT_DESC = sanitizeText(linkedAnom?.defect_description || linkedAnom?.description || "").substring(0, 250);
+          baseRow.DEFECT_DESC = sanitizeText(code === "ITS" ? (linkedAnom?.defect_description || "") : (linkedAnom?.defect_description || linkedAnom?.description || "")).substring(0, 250);
           baseRow.DFT_REF_NO = sanitizeText(linkedAnom?.anomaly_ref_no || "").substring(0, 30);
           baseRow.RECTIFID = linkedAnom?.is_rectified === true || linkedAnom?.status === "CLOSED" ? "Yes" : "No";
           baseRow.RECTIFID_DESC = sanitizeText(linkedAnom?.rectified_remarks || linkedAnom?.follow_up_notes || "").substring(0, 250);
@@ -760,13 +760,13 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           baseRow.JOBNAME = sanitizeText(jp?.name || `JP-${r.jobpack_id || 1}`).substring(0, 20);
           baseRow.STATUS = sanitizeText(jp?.status || "OPEN").substring(0, 10).toUpperCase();
           baseRow.INSP_DONE = String(r.status || "").toUpperCase() === "COMPLETED" ? "Yes" : (String(r.status || "").toUpperCase() === "INCOMPLETE" ? "No" : "Yes");
-          baseRow.REC_DATE = formatDateStr(r.md_date || r.updated_at || r.inspection_date);
+          baseRow.REC_DATE = formatDateStr(r.md_date || r.inspection_date);
           baseRow.INSP_COND = sanitizeText(r.description || idata.findings || idata.observations || "Inspection carried out with satisfactory results").substring(0, 1000);
           baseRow.CMNTS = sanitizeText(r.comments || idata.comments || idata.cmnts || "No critical safety anomalies noted").substring(0, 4000);
           baseRow.JOB_TYPE = sanitizeText(jp?.job_type || "MAJOR").substring(0, 20);
           baseRow.LAST_MAJOR_INSPNO = sanitizeText(jp?.last_insp_no || "INSP-PREV").substring(0, 11);
           baseRow.INSPTYPE = code;
-          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || linkedAnom?.evaluated_by || "").substring(0, 250);
+          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (code === "ITS" ? "" : (linkedAnom?.evaluated_by || ""))).substring(0, 250);
           baseRow.APPROV_BY = sanitizeText(linkedAnom?.approved_by || "").substring(0, 250);
 
           sheetRows.push(baseRow);
