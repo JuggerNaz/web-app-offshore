@@ -750,7 +750,7 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
     sheetName: "UCS_UT_CALIBRATION",
     fileNameFormat: "yymmdd-nn-UCS.txt",
     queryStrategy: "CALIBRATION",
-    inspectionTypeCode: ["UTCLB", "UCS"],
+    inspectionTypeCode: ["UTCLB", "UCS", "UT_CALIB", "UT_CLB", "UT-CLB", "CALIB", "UTC"],
     description: "UT Calibration Inspection Table Structure",
     columns: [
       ...SICS_COMMON_PREFIX,

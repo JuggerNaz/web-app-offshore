@@ -230,7 +230,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     } else if (sowReportNo && sowReportNo !== "ALL") {
       inspQuery = inspQuery.eq("sow_report_no", sowReportNo);
     }
-    if (inspectionTypes.length > 0 && !inspectionTypes.includes("ALL")) {
+    if (!singleTableCode && !singleTableId && inspectionTypes.length > 0 && !inspectionTypes.includes("ALL")) {
       inspQuery = inspQuery.in("inspection_type_code", inspectionTypes);
     }
 
@@ -557,10 +557,29 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           });
         });
       } else {
-        const validCodes = sheetDef.inspectionTypeCode || [code];
+        const validCodes = (sheetDef.inspectionTypeCode || [code]).map((c) => String(c).trim().toUpperCase());
+        if (code === "UCS") {
+          validCodes.push("UTCLB", "UCS", "UT_CLB", "UT-CLB", "UT_CALIB", "CALIB", "UT CALIBRATION", "UTC");
+        }
+
         const matchingRecords = allRecords.filter((r: any) => {
-          const recType = String(r.inspection_type_code || "").toUpperCase();
-          if (validCodes.some((c) => recType.includes(c))) return true;
+          const recType = String(r.inspection_type_code || "").trim().toUpperCase();
+          if (validCodes.some((c) => recType === c || recType.includes(c))) return true;
+
+          const itype = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
+          const itypeCode = String(itype?.code || "").trim().toUpperCase();
+          const itypeName = String(itype?.name || "").trim().toUpperCase();
+          if (validCodes.some((c) => itypeCode === c || itypeCode.includes(c) || itypeName.includes(c))) return true;
+
+          if (code === "UCS") {
+            const idata = r.inspection_data || {};
+            if (idata.calib_equipment_type || idata.probe || idata.probe_frequency || idata.reading01 !== undefined || idata.label01 !== undefined) {
+              if (recType.includes("UT") || recType.includes("CLB") || recType.includes("CALIB") || itypeCode.includes("UT") || itypeCode.includes("CLB")) {
+                return true;
+              }
+            }
+          }
+
           if (recType.includes("PGS") && ["ANS", "CPS", "DBS", "FDS", "GVS", "MGS", "SCS"].includes(code)) return true;
           if (recType.includes("SZS") && ["CPS", "UTS"].includes(code)) return true;
           if (recType.includes("BSS") && ["CPS"].includes(code)) return true;
@@ -705,6 +724,23 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.REF_NAME = "12 O'Clock Top";
             baseRow.POSITION = "Mid-Span";
             baseRow.READ_THICK = nomThk - 0.4;
+          } else if (code === "UCS") {
+            baseRow.PROBE = sanitizeText(idata.probe || idata.probe_type || "");
+            baseRow.PROBE_SIZE = sanitizeText(idata.probe_size || idata.probe_dia || idata.size || "");
+            baseRow.CLB_TYPE = sanitizeText(idata.clb_type || idata.calib_equipment_type || idata.calib_type || idata.equipment_type || "UT CALIBRATION");
+            baseRow.PROBE_FQ = sanitizeText(idata.probe_frequency || idata.probe_fq || idata.frequency || "");
+            baseRow.RDG_1 = idata.reading01 != null && idata.reading01 !== "" ? Number(idata.reading01) : (idata.rdg_1 != null && idata.rdg_1 !== "" ? Number(idata.rdg_1) : (idata.reading_1 != null && idata.reading_1 !== "" ? Number(idata.reading_1) : ""));
+            baseRow.RDG_2 = idata.reading02 != null && idata.reading02 !== "" ? Number(idata.reading02) : (idata.rdg_2 != null && idata.rdg_2 !== "" ? Number(idata.rdg_2) : (idata.reading_2 != null && idata.reading_2 !== "" ? Number(idata.reading_2) : ""));
+            baseRow.RDG_3 = idata.reading03 != null && idata.reading03 !== "" ? Number(idata.reading03) : (idata.rdg_3 != null && idata.rdg_3 !== "" ? Number(idata.rdg_3) : (idata.reading_3 != null && idata.reading_3 !== "" ? Number(idata.reading_3) : ""));
+            baseRow.RDG_4 = idata.reading04 != null && idata.reading04 !== "" ? Number(idata.reading04) : (idata.rdg_4 != null && idata.rdg_4 !== "" ? Number(idata.rdg_4) : (idata.reading_4 != null && idata.reading_4 !== "" ? Number(idata.reading_4) : ""));
+            baseRow.RDG_5 = idata.reading05 != null && idata.reading05 !== "" ? Number(idata.reading05) : (idata.rdg_5 != null && idata.rdg_5 !== "" ? Number(idata.rdg_5) : (idata.reading_5 != null && idata.reading_5 !== "" ? Number(idata.reading_5) : ""));
+            baseRow.RDG_6 = idata.reading06 != null && idata.reading06 !== "" ? Number(idata.reading06) : (idata.rdg_6 != null && idata.rdg_6 !== "" ? Number(idata.rdg_6) : (idata.reading_6 != null && idata.reading_6 !== "" ? Number(idata.reading_6) : ""));
+            baseRow.LBL_1 = sanitizeText(idata.label01 || idata.lbl_1 || idata.label_1 || idata.lbl1 || "Step 1");
+            baseRow.LBL_2 = sanitizeText(idata.label02 || idata.lbl_2 || idata.label_2 || idata.lbl2 || "Step 2");
+            baseRow.LBL_3 = sanitizeText(idata.label03 || idata.lbl_3 || idata.label_3 || idata.lbl3 || "Step 3");
+            baseRow.LBL_4 = sanitizeText(idata.label04 || idata.lbl_4 || idata.label_4 || idata.lbl4 || "Step 4");
+            baseRow.LBL_5 = sanitizeText(idata.label05 || idata.lbl_5 || idata.label_5 || idata.lbl5 || "Step 5");
+            baseRow.LBL_6 = sanitizeText(idata.label06 || idata.lbl_6 || idata.label_6 || idata.lbl6 || "Step 6");
           }
 
           baseRow.DEFECT = linkedAnom ? "Yes" : "No";
