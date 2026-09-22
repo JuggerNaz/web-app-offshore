@@ -309,6 +309,16 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       return String(val).replace(/[\r\n\t]+/g, " ").trim();
     };
 
+    const cleanCellValue = (val: any) => {
+      if (val === null || val === undefined) return "";
+      if (typeof val === "number") {
+        if (isNaN(val) || !isFinite(val)) return "";
+        return val;
+      }
+      if (typeof val === "boolean") return val ? "Yes" : "No";
+      return String(val).replace(/[\r\n\t]+/g, " ").trim();
+    };
+
     const formatInspNo = (jobpackId: any): string => {
       const numId = Number(jobpackId) || 0;
       return String(numId + 10000).padStart(11, "0");
@@ -784,7 +794,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       sheetRows.forEach((row) => {
         const rowVals = sheetDef.columns.map((c) => {
           const val = row[c.key] ?? row[c.header];
-          return sanitizeText(val);
+          return sanitizeText(cleanCellValue(val));
         });
         textLines.push(rowVals.join("\t"));
       });
@@ -795,27 +805,28 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       sheetRows.forEach((row) => {
         const rowVals = sheetDef.columns.map((c) => {
           const val = row[c.key] ?? row[c.header];
-          return escapeCsvValue(sanitizeText(val));
+          return escapeCsvValue(cleanCellValue(val));
         });
         csvLines.push(rowVals.join(","));
       });
       const csvContent = csvLines.join("\r\n");
 
       // 3. Build Individual XLSX Buffer (Always print the column header for each column as the first row even if 0 records exist)
-      const xlsxRowsData = sheetRows.length > 0
-        ? sheetRows.map((row) => {
-            const rowObj: Record<string, any> = {};
-            sheetDef.columns.forEach((c) => {
-              rowObj[c.header] = row[c.key] ?? row[c.header] ?? "";
-            });
-            return rowObj;
+      const aoaRows: any[][] = [
+        headers,
+        ...sheetRows.map((row) =>
+          sheetDef.columns.map((c) => {
+            const val = row[c.key] ?? row[c.header];
+            return cleanCellValue(val);
           })
-        : [];
+        ),
+      ];
 
       const singleWb = XLSX.utils.book_new();
-      const singleWs = XLSX.utils.json_to_sheet(xlsxRowsData, { header: headers });
-      singleWs["!cols"] = sheetDef.columns.map((c) => ({ wch: c.width || 18 }));
-      XLSX.utils.book_append_sheet(singleWb, singleWs, sheetDef.sheetName.substring(0, 31));
+      const singleWs = XLSX.utils.aoa_to_sheet(aoaRows);
+      singleWs["!cols"] = sheetDef.columns.map((c) => ({ wch: Math.max(c.width || 14, (c.header || "").length + 2) }));
+      const safeSheetName = (sheetDef.sheetName || code).replace(/[\\/?*:[\]]/g, "_").substring(0, 31);
+      XLSX.utils.book_append_sheet(singleWb, singleWs, safeSheetName);
       const xlsxBuffer = XLSX.write(singleWb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
       tablesOutput.push({
@@ -860,42 +871,43 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         } else {
           // Write all individual files to destination directory!
           if (format === "individual_xlsx" || format === "xlsx") {
-            // Write 24 individual .xlsx files to destination directory
+            // Write individual .xlsx files to destination directory
             tablesOutput.forEach((tbl) => {
               fs.writeFileSync(path.join(targetDir, tbl.xlsxFileName), tbl.xlsxBuffer);
             });
             serverSavedPath = targetDir;
           } else if (format === "individual_csv" || format === "csv" || format === "csv_zip") {
-            // Write 24 individual .csv files to destination directory
+            // Write individual .csv files to destination directory
             tablesOutput.forEach((tbl) => {
               fs.writeFileSync(path.join(targetDir, tbl.csvFileName), tbl.csvContent, "utf-8");
             });
             serverSavedPath = targetDir;
           } else if (format === "single_xlsx") {
-            // Consolidated single .xlsx with 24 tabs
+            // Consolidated single .xlsx with multiple tabs
             const combinedWb = XLSX.utils.book_new();
             tablesOutput.forEach((tbl) => {
-              const tblHeaders = tbl.columns.map((c) => c.header);
-              const tblRowsData = tbl.rows.length > 0
-                ? tbl.rows.map((row: any) => {
-                    const rowObj: Record<string, any> = {};
-                    tbl.columns.forEach((c) => {
-                      rowObj[c.header] = row[c.key] ?? row[c.header] ?? "";
-                    });
-                    return rowObj;
+              const tblHeaders = tbl.columns.map((c: any) => c.header);
+              const aoaData: any[][] = [
+                tblHeaders,
+                ...tbl.rows.map((row: any) =>
+                  tbl.columns.map((c: any) => {
+                    const val = row[c.key] ?? row[c.header];
+                    return cleanCellValue(val);
                   })
-                : [];
-              const ws = XLSX.utils.json_to_sheet(tblRowsData, { header: tblHeaders });
-              ws["!cols"] = tbl.columns.map((c) => ({ wch: c.width || 18 }));
-              XLSX.utils.book_append_sheet(combinedWb, ws, tbl.sheetName.substring(0, 31));
+                ),
+              ];
+              const ws = XLSX.utils.aoa_to_sheet(aoaData);
+              ws["!cols"] = tbl.columns.map((c: any) => ({ wch: Math.max(c.width || 14, (c.header || "").length + 2) }));
+              const safeTabName = (tbl.sheetName || tbl.code).replace(/[\\/?*:[\]]/g, "_").substring(0, 31);
+              XLSX.utils.book_append_sheet(combinedWb, ws, safeTabName);
             });
             const combinedFileName = fileName || `${clientProfile.code}_${activeInterface.code}_PACKAGE_${dateFormattedYymmdd}.xlsx`;
             const filePath = path.join(targetDir, combinedFileName);
-            const combinedBuf = XLSX.write(combinedWb, { type: "buffer", bookType: "xlsx" });
+            const combinedBuf = XLSX.write(combinedWb, { type: "buffer", bookType: "xlsx" }) as Buffer;
             fs.writeFileSync(filePath, combinedBuf);
             serverSavedPath = filePath;
           } else {
-            // Default: individual_txt / txt_zip: Write 24 individual tab-delimited .txt files
+            // Default: individual_txt / txt_zip: Write individual tab-delimited .txt files
             tablesOutput.forEach((tbl) => {
               fs.writeFileSync(path.join(targetDir, tbl.txtFileName), tbl.textContent, "utf-8");
             });
@@ -912,7 +924,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     if (isSingleTableExport && tablesOutput.length === 1) {
       const tbl = tablesOutput[0];
       if (format === "individual_xlsx" || format === "xlsx" || format === "single_xlsx") {
-        return new NextResponse(new Uint8Array(tbl.xlsxBuffer), {
+        return new NextResponse(tbl.xlsxBuffer as any, {
           status: 200,
           headers: {
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -950,29 +962,30 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       }
     }
 
-    // Case B: Full Package (All 24 Tables)
+    // Case B: Full Package (Consolidated Multi-Sheet XLSX)
     if (format === "single_xlsx") {
       const workbook = XLSX.utils.book_new();
       tablesOutput.forEach((tbl) => {
-        const tblHeaders = tbl.columns.map((c) => c.header);
-        const tblRowsData = tbl.rows.length > 0
-          ? tbl.rows.map((row: any) => {
-              const rowObj: Record<string, any> = {};
-              tbl.columns.forEach((c) => {
-                rowObj[c.header] = row[c.key] ?? row[c.header] ?? "";
-              });
-              return rowObj;
+        const tblHeaders = tbl.columns.map((c: any) => c.header);
+        const aoaData: any[][] = [
+          tblHeaders,
+          ...tbl.rows.map((row: any) =>
+            tbl.columns.map((c: any) => {
+              const val = row[c.key] ?? row[c.header];
+              return cleanCellValue(val);
             })
-          : [];
-        const worksheet = XLSX.utils.json_to_sheet(tblRowsData, { header: tblHeaders });
-        worksheet["!cols"] = tbl.columns.map((c) => ({ wch: c.width || 18 }));
-        XLSX.utils.book_append_sheet(workbook, worksheet, tbl.sheetName.substring(0, 31));
+          ),
+        ];
+        const worksheet = XLSX.utils.aoa_to_sheet(aoaData);
+        worksheet["!cols"] = tbl.columns.map((c: any) => ({ wch: Math.max(c.width || 14, (c.header || "").length + 2) }));
+        const safeTabName = (tbl.sheetName || tbl.code).replace(/[\\/?*:[\]]/g, "_").substring(0, 31);
+        XLSX.utils.book_append_sheet(workbook, worksheet, safeTabName);
       });
 
       const outputFileName = fileName || `${clientProfile.code}_${activeInterface.code}_PACKAGE_${dateFormattedYymmdd}.xlsx`;
-      const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+      const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
-      return new NextResponse(new Uint8Array(excelBuffer), {
+      return new NextResponse(excelBuffer as any, {
         status: 200,
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
