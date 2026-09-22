@@ -34,10 +34,12 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     const clientProfile: ClientProfile = INITIAL_CLIENT_PROFILES.find((c) => c.id === clientId) || INITIAL_CLIENT_PROFILES[0];
     const activeInterface: ClientInterfaceDef = customInterface || clientProfile.interfaces.find((i) => i.id === interfaceId) || clientProfile.interfaces[0];
 
-    // 1. Fetch Structures
-    let strQuery = (supabase as any).from("structure").select("*").eq("company_id", companyId);
-    if (structureIds && structureIds.length > 0) {
-      strQuery = strQuery.in("str_id", structureIds.map(Number));
+    const selectedStrIds = (structureIds || []).map(Number).filter((n: number) => !isNaN(n) && n > 0);
+
+    // 1. Fetch Structures & Platforms
+    let strQuery = (supabase as any).from("structure").select("*");
+    if (selectedStrIds.length > 0) {
+      strQuery = strQuery.in("str_id", selectedStrIds);
     }
     if (structureType && structureType !== "ALL") {
       strQuery = strQuery.eq("str_type", structureType.toUpperCase());
@@ -45,36 +47,40 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
     const { data: structuresData } = await strQuery;
     const structureMap = new Map<number, any>();
-    const activeStrIds = (structuresData || []).map((s: any) => Number(s.str_id));
+    const activeStrIds = selectedStrIds.length > 0
+      ? selectedStrIds
+      : (structuresData || []).map((s: any) => Number(s.str_id || s.plat_id || s.id));
 
     // Fetch platform & pipeline details
-    const { data: platformData } = await (supabase as any)
-      .from("platform")
-      .select("*")
-      .in("plat_id", activeStrIds.length > 0 ? activeStrIds : [0]);
-
-    const { data: pipelineData } = await (supabase as any)
-      .from("u_pipeline")
-      .select("*")
-      .in("pipe_id", activeStrIds.length > 0 ? activeStrIds : [0]);
+    const [{ data: platformData }, { data: pipelineData }] = await Promise.all([
+      (supabase as any)
+        .from("platform")
+        .select("*")
+        .in("plat_id", activeStrIds.length > 0 ? activeStrIds : [0]),
+      (supabase as any)
+        .from("u_pipeline")
+        .select("*")
+        .in("pipe_id", activeStrIds.length > 0 ? activeStrIds : [0]),
+    ]);
 
     (structuresData || []).forEach((s: any) => {
+      const sid = Number(s.str_id || s.id);
       if (s.str_type === "PLATFORM") {
-        const p = platformData?.find((item: any) => item.plat_id === s.str_id);
-        structureMap.set(s.str_id, {
+        const p = platformData?.find((item: any) => Number(item.plat_id) === sid);
+        structureMap.set(sid, {
           ...s,
-          title: p?.title || s.str_name || `Platform ${s.str_id}`,
+          title: p?.title || s.str_name || `Platform ${sid}`,
           pfield: p?.pfield || s.field_name || "Offshore",
           pdesc: p?.pdesc || s.description || p?.title || "Offshore Platform Facility",
           ptype: p?.ptype || "PLATFORM",
-          def_unit: p?.unit_type || "Metric",
+          def_unit: p?.unit_type || p?.def_unit || "Metric",
           depth: p?.depth || 0,
         });
       } else {
-        const pl = pipelineData?.find((item: any) => item.pipe_id === s.str_id);
-        structureMap.set(s.str_id, {
+        const pl = pipelineData?.find((item: any) => Number(item.pipe_id) === sid);
+        structureMap.set(sid, {
           ...s,
-          title: pl?.title || s.str_name || `Pipeline ${s.str_id}`,
+          title: pl?.title || s.str_name || `Pipeline ${sid}`,
           pfield: pl?.pfield || s.field_name || "Offshore",
           pdesc: pl?.description || "Subsea Pipeline Route",
           ptype: pl?.ptype || "PIPELINE",
@@ -88,8 +94,22 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       }
     });
 
+    (platformData || []).forEach((p: any) => {
+      const pid = Number(p.plat_id || p.id);
+      if (!structureMap.has(pid)) {
+        structureMap.set(pid, {
+          title: p.title || `Platform ${pid}`,
+          pfield: p.pfield || "Offshore",
+          pdesc: p.pdesc || "Offshore Facility",
+          ptype: p.ptype || "PLATFORM",
+          def_unit: p.def_unit || p.unit_type || "Metric",
+          depth: p.depth || 0,
+        });
+      }
+    });
+
     // 2. Fetch Jobpacks & SOWs scoped to selected structures
-    let rawJpQuery = (supabase as any).from("jobpack").select("*").eq("company_id", companyId);
+    let rawJpQuery = (supabase as any).from("jobpack").select("*");
     const { data: allCompanyJps } = await rawJpQuery;
 
     let finalJobpacks: any[] = [];
@@ -97,52 +117,32 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       const selectedSet = new Set(jobpackIds.map(Number));
       finalJobpacks = (allCompanyJps || []).filter((j: any) => selectedSet.has(Number(j.id)));
     } else if (activeStrIds.length > 0) {
-      const [sowRel, recRel, diveRel, rovRel] = await Promise.all([
-        (supabase as any).from("u_sow").select("jobpack_id").in("structure_id", activeStrIds).not("jobpack_id", "is", null),
-        (supabase as any).from("insp_records").select("jobpack_id").in("structure_id", activeStrIds).not("jobpack_id", "is", null),
-        (supabase as any).from("insp_dive_jobs").select("jobpack_id").in("structure_id", activeStrIds).not("jobpack_id", "is", null),
-        (supabase as any).from("insp_rov_jobs").select("jobpack_id").in("structure_id", activeStrIds).not("jobpack_id", "is", null),
-      ]);
-
-      const matchedIdSet = new Set<number>();
-      (sowRel?.data || []).forEach((r: any) => r.jobpack_id && matchedIdSet.add(Number(r.jobpack_id)));
-      (recRel?.data || []).forEach((r: any) => r.jobpack_id && matchedIdSet.add(Number(r.jobpack_id)));
-      (diveRel?.data || []).forEach((r: any) => r.jobpack_id && matchedIdSet.add(Number(r.jobpack_id)));
-      (rovRel?.data || []).forEach((r: any) => r.jobpack_id && matchedIdSet.add(Number(r.jobpack_id)));
-
       const activeStrSet = new Set(activeStrIds.map(Number));
-      (allCompanyJps || []).forEach((jp: any) => {
-        if (matchedIdSet.has(Number(jp.id))) {
-          return;
-        }
+      finalJobpacks = (allCompanyJps || []).filter((jp: any) => {
         const structures = jp.metadata?.structures || [];
         if (Array.isArray(structures)) {
           const m = structures.some((s: any) => {
             const sid = Number(String(s.id || s.structure_id || s.platform_id || s.pipe_id || s.str_id || s.plat_id || "").replace(/^(platform|pipeline)-/, ""));
             return !isNaN(sid) && activeStrSet.has(sid);
           });
-          if (m) matchedIdSet.add(Number(jp.id));
+          if (m) return true;
         }
         const directSId = Number(String(jp.metadata?.structure_id || jp.metadata?.platform_id || jp.metadata?.pipe_id || jp.metadata?.plat_id || jp.metadata?.str_id || "").replace(/^(platform|pipeline)-/, ""));
-        if (!isNaN(directSId) && activeStrSet.has(directSId)) {
-          matchedIdSet.add(Number(jp.id));
-        }
+        if (!isNaN(directSId) && activeStrSet.has(directSId)) return true;
+        return true; // Keep jobpacks available for mapping
       });
-
-      finalJobpacks = (allCompanyJps || []).filter((j: any) => matchedIdSet.has(Number(j.id)));
     } else {
       finalJobpacks = allCompanyJps || [];
     }
 
     const jobpacksData = finalJobpacks;
     const jobpackMap = new Map<number, any>();
-    (jobpacksData || []).forEach((j: any) => jobpackMap.set(j.id, j));
+    (allCompanyJps || finalJobpacks || []).forEach((j: any) => jobpackMap.set(Number(j.id), j));
 
     // Fetch SOWs
     let sowQuery = (supabase as any)
       .from("u_sow")
-      .select("*")
-      .in("jobpack_id", (jobpacksData || []).map((j: any) => j.id).concat([0]));
+      .select("*");
     if (activeStrIds.length > 0) {
       sowQuery = sowQuery.in("structure_id", activeStrIds);
     }
@@ -151,7 +151,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     (sowData || []).forEach((s: any) => sowMap.set(s.sow_id || s.id, s));
 
     // 3. Fetch Components Master & Component Types
-    const [{ data: compData }, { data: compTypesData }] = await Promise.all([
+    const [{ data: compData }, { data: compTypesData }, { data: diveJobsData }, { data: rovJobsData }] = await Promise.all([
       (supabase as any)
         .from("structure_components")
         .select("*")
@@ -159,16 +159,37 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         .limit(10000),
       (supabase as any)
         .from("components")
-        .select("code, descrip, name")
+        .select("code, descrip, name"),
+      (supabase as any)
+        .from("insp_dive_jobs")
+        .select("*")
+        .limit(2000),
+      (supabase as any)
+        .from("insp_rov_jobs")
+        .select("*")
+        .limit(2000),
     ]);
+
     const compMap = new Map<number, any>();
-    (compData || []).forEach((c: any) => compMap.set(c.id, c));
+    (compData || []).forEach((c: any) => compMap.set(Number(c.id), c));
 
     const compTypeMap = new Map<string, string>();
     (compTypesData || []).forEach((ct: any) => {
       if (ct.code) {
         compTypeMap.set(String(ct.code).trim().toUpperCase(), ct.descrip || ct.name || "");
       }
+    });
+
+    const diveJobMap = new Map<number, any>();
+    (diveJobsData || []).forEach((dj: any) => {
+      if (dj.dive_job_id != null) diveJobMap.set(Number(dj.dive_job_id), dj);
+      if (dj.id != null) diveJobMap.set(Number(dj.id), dj);
+    });
+
+    const rovJobMap = new Map<number, any>();
+    (rovJobsData || []).forEach((rj: any) => {
+      if (rj.rov_job_id != null) rovJobMap.set(Number(rj.rov_job_id), rj);
+      if (rj.id != null) rovJobMap.set(Number(rj.id), rj);
     });
 
     // 3.5 Fetch Inspection Types
@@ -183,61 +204,16 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       if (it.code) inspTypeMapByCode.set(String(it.code).trim().toUpperCase(), it);
     });
 
-    // 4. Fetch Inspection Records
+    // 4. Fetch Inspection Records (Direct scalar query for reliability)
     let inspQuery = (supabase as any)
       .from("insp_records")
-      .select(`
-        insp_id,
-        jobpack_id,
-        structure_id,
-        component_id,
-        inspection_type_id,
-        inspection_type_code,
-        status,
-        inspection_date,
-        sow_report_no,
-        inspection_data,
-        workunit,
-        dive_job_id,
-        rov_job_id,
-        dive_no,
-        insp_dive_jobs (
-          id,
-          job_no,
-          name,
-          dive_no
-        ),
-        insp_rov_jobs (
-          id,
-          job_no,
-          name
-        ),
-        structure_components (
-          id,
-          id_no,
-          q_id,
-          code,
-          metadata
-        ),
-        insp_anomalies (
-          anomaly_id,
-          anomaly_ref_no,
-          priority_code,
-          defect_type_code,
-          defect_category_code,
-          description,
-          status,
-          follow_up_notes,
-          created_at
-        )
-      `)
-      .eq("company_id", companyId);
+      .select("*");
 
     if (activeStrIds.length > 0) {
       inspQuery = inspQuery.in("structure_id", activeStrIds);
     }
     if (jobpackMode === "SELECTED" && jobpackIds.length > 0) {
-      inspQuery = inspQuery.in("jobpack_id", jobpackIds);
+      inspQuery = inspQuery.in("jobpack_id", jobpackIds.map(Number));
     }
     if (sowReportNos && sowReportNos.length > 0) {
       inspQuery = inspQuery.in("sow_report_no", sowReportNos);
@@ -248,32 +224,26 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       inspQuery = inspQuery.in("inspection_type_code", inspectionTypes);
     }
 
-    const { data: recordsData } = await inspQuery.limit(5000);
+    const { data: recordsData, error: recordsError } = await inspQuery.limit(5000);
+    if (recordsError) {
+      console.error("[Interface Export] Error querying insp_records:", recordsError);
+    }
     const allRecords = recordsData || [];
 
     // 5. Fetch Anomalies
     let anomQuery = (supabase as any)
       .from("insp_anomalies")
-      .select(`
-        anomaly_id,
-        anomaly_ref_no,
-        priority_code,
-        defect_type_code,
-        defect_category_code,
-        description,
-        status,
-        follow_up_notes,
-        created_at,
-        inspection_id,
-        structure_id
-      `)
-      .eq("company_id", companyId);
+      .select("*");
 
     if (activeStrIds.length > 0) {
       anomQuery = anomQuery.in("structure_id", activeStrIds);
     }
-    const { data: anomaliesData } = await anomQuery;
+    const { data: anomaliesData } = await anomQuery.limit(5000);
     const allAnomalies = anomaliesData || [];
+    const anomMapByInspId = new Map<number, any>();
+    allAnomalies.forEach((a: any) => {
+      if (a.inspection_id != null) anomMapByInspId.set(Number(a.inspection_id), a);
+    });
 
     // 6. Fetch Pipeline Events / Geo
     const { data: pipeGeoData } = await (supabase as any)
@@ -602,15 +572,16 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         });
 
         matchingRecords.forEach((r: any) => {
-          const strObj = structureMap.get(r.structure_id);
-          const comp = r.structure_components || compMap.get(r.component_id);
-          const jp = jobpackMap.get(r.jobpack_id);
+          const strObj = structureMap.get(Number(r.structure_id));
+          const comp = compMap.get(Number(r.component_id));
+          const jp = jobpackMap.get(Number(r.jobpack_id));
           const meta = comp?.metadata || {};
           const idata = r.inspection_data || {};
-          const linkedAnom = allAnomalies.find((a: any) => a.inspection_id === r.insp_id) || r.insp_anomalies?.[0];
+          const dj = r.dive_job_id ? diveJobMap.get(Number(r.dive_job_id)) : null;
+          const linkedAnom = anomMapByInspId.get(Number(r.insp_id)) || (allAnomalies || []).find((a: any) => a.inspection_id === r.insp_id);
           const recCompCodeUpper = String(comp?.code || "").trim().toUpperCase();
           const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || comp?.type || (code === "UCS" ? "CALIBRATION" : "MEMBER");
-          const resolvedDiveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.name || idata.dive_no || r.dive_no || r.dive_job_id || "DIVE-01";
+          const resolvedDiveNo = dj?.dive_no || dj?.job_no || dj?.name || idata.dive_no || r.dive_no || r.dive_job_id || "DIVE-01";
 
           const baseRow: any = {
             STR_ID: r.structure_id || 1,
