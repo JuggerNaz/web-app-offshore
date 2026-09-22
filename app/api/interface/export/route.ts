@@ -198,6 +198,20 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         sow_report_no,
         inspection_data,
         workunit,
+        dive_job_id,
+        rov_job_id,
+        dive_no,
+        insp_dive_jobs (
+          id,
+          job_no,
+          name,
+          dive_no
+        ),
+        insp_rov_jobs (
+          id,
+          job_no,
+          name
+        ),
         structure_components (
           id,
           id_no,
@@ -595,7 +609,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           const idata = r.inspection_data || {};
           const linkedAnom = allAnomalies.find((a: any) => a.inspection_id === r.insp_id) || r.insp_anomalies?.[0];
           const recCompCodeUpper = String(comp?.code || "").trim().toUpperCase();
-          const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || comp?.type || "MEMBER";
+          const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || comp?.type || (code === "UCS" ? "CALIBRATION" : "MEMBER");
+          const resolvedDiveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.name || idata.dive_no || r.dive_no || r.dive_job_id || "DIVE-01";
 
           const baseRow: any = {
             STR_ID: r.structure_id || 1,
@@ -603,35 +618,35 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             PFIELD: sanitizeText(strObj?.pfield || "Offshore"),
             PDESC: sanitizeText(strObj?.pdesc || "Offshore Facility"),
             DEF_UNIT: strObj?.def_unit || "Metric",
-            COMP_ID: comp?.id || 1,
-            ID_NO: sanitizeText(comp?.id_no || `SYS-${comp?.id || 1}`),
-            Q_ID: sanitizeText(comp?.q_id || idata.q_id || "M-01"),
-            CODE: sanitizeText(comp?.code || "MB"),
-            COMPDESC: sanitizeText(comp?.description || "Structural Member"),
-            S_NODE: sanitizeText(meta.s_node || "N01"),
-            F_NODE: sanitizeText(meta.f_node || "N02"),
-            S_LEG: sanitizeText(meta.s_leg || "A1"),
-            F_LEG: sanitizeText(meta.f_leg || "A2"),
-            ELV_1: meta.elv_1 != null ? Number(meta.elv_1) : -12.5,
-            ELV_2: meta.elv_2 != null ? Number(meta.elv_2) : -15.0,
-            DIST: meta.dist != null ? Number(meta.dist) : 0,
-            CLK_POS: meta.clk_pos != null ? Number(meta.clk_pos) : 12,
+            COMP_ID: comp?.id != null ? comp.id : (code === "UCS" ? "" : 1),
+            ID_NO: sanitizeText(comp?.id_no || (code === "UCS" ? (idata.id_no || idata.serial_number || "") : `SYS-${comp?.id || 1}`)),
+            Q_ID: sanitizeText(comp?.q_id || idata.q_id || (code === "UCS" ? (idata.calib_block || "CALIB") : "M-01")),
+            CODE: sanitizeText(comp?.code || (code === "UCS" ? (idata.code || "CL") : "MB")),
+            COMPDESC: sanitizeText(meta.description || comp?.description || (code === "UCS" ? (idata.calib_block || idata.calib_equipment_type || "UT Calibration Block") : "Structural Member")),
+            S_NODE: sanitizeText(meta.s_node || (code === "UCS" ? "" : "N01")),
+            F_NODE: sanitizeText(meta.f_node || (code === "UCS" ? "" : "N02")),
+            S_LEG: sanitizeText(meta.s_leg || (code === "UCS" ? "" : "A1")),
+            F_LEG: sanitizeText(meta.f_leg || (code === "UCS" ? "" : "A2")),
+            ELV_1: meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (code === "UCS" ? "" : -12.5),
+            ELV_2: meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (code === "UCS" ? "" : -15.0),
+            DIST: meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (code === "UCS" ? "" : 0),
+            CLK_POS: meta.clk_pos != null && meta.clk_pos !== "" ? Number(meta.clk_pos) : (code === "UCS" ? "" : 12),
             COMPTYPE: sanitizeText(recCompTypeDesc),
             INSP_ID: r.insp_id,
             INSP_DATE: formatDateStr(r.inspection_date),
             INSP_TIME: sanitizeText(idata.insp_time || "09:30:00"),
             INSPECTOR: sanitizeText(idata.inspector || idata.diver_name || "Offshore Inspector"),
-            PROC: sanitizeText(idata.procedure || "PETRONAS-SICS-01"),
-            EQUIP: sanitizeText(idata.equipment || "CP Probe / Bathycorrometer"),
-            EQ_ID: sanitizeText(idata.equipment_id || "EQ-9921"),
+            PROC: sanitizeText(idata.procedure || (code === "UCS" ? "PTS-UT-CLB-01" : "PETRONAS-SICS-01")),
+            EQUIP: sanitizeText(idata.equipment || (code === "UCS" ? (idata.calib_equipment_type || "UT Set") : "CP Probe / Bathycorrometer")),
+            EQ_ID: sanitizeText(idata.equipment_id || idata.serial_number || (code === "UCS" ? (idata.serial_number || "EQ-UT01") : "EQ-9921")),
             SPEC: sanitizeText(idata.spec || "PTS 11.22.02"),
             SURF_COND: sanitizeText(idata.surface_condition || "Cleaned"),
             CLEAN_MET: sanitizeText(idata.cleaning_method || "Water Jet"),
             SCAF: idata.scaffolding ? "Yes" : "No",
             SUPV: sanitizeText(idata.supervisor || "Offshore Supervisor"),
             DIVR: sanitizeText(idata.diver_name || "Diver 1"),
-            DIVE_NO: sanitizeText(idata.dive_no || "DIVE-01"),
-            ELEVATION: idata.elevation != null ? Number(idata.elevation) : -12.5,
+            DIVE_NO: sanitizeText(resolvedDiveNo),
+            ELEVATION: idata.elevation != null ? Number(idata.elevation) : (code === "UCS" ? "" : -12.5),
             TOP_UND: Number(idata.elevation || 0) < 0 ? "Underwater" : "Topside",
           };
 
