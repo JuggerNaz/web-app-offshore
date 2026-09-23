@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 
@@ -25,41 +25,103 @@ interface ReportConfig {
     showSignatures?: boolean;
 }
 
-// Helper to load images efficiently for reports
-const loadPhotoData = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
-    return new Promise((resolve) => {
-        if (!url || typeof url !== 'string' || !url.trim()) {
-            resolve(null);
-            return;
-        }
-        const img = new window.Image();
-        img.crossOrigin = "Anonymous";
-        const timeout = setTimeout(() => {
-            console.warn(`Photo loading timed out (5s limit) in rov-photography-report for URL: ${url}`);
-            img.onload = null;
-            img.onerror = null;
-            resolve(null);
-        }, 5000);
-        img.onload = () => {
-            clearTimeout(timeout);
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-                ctx.drawImage(img, 0, 0);
-                resolve({ data: canvas.toDataURL("image/jpeg", 0.8), width: img.width, height: img.height });
-            } else {
-                resolve(null);
+interface LoadedPhoto {
+    data: string;
+    width: number;
+    height: number;
+    aspect: number;
+}
+
+// Multi-strategy image loader for PDF generation (immune to CORS & canvas tainting)
+const loadPhotoData = async (url: string): Promise<LoadedPhoto | null> => {
+    if (!url || typeof url !== "string" || !url.trim()) {
+        return null;
+    }
+
+    const tryViaImageElement = (src: string, useCrossOrigin = true): Promise<LoadedPhoto | null> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            if (useCrossOrigin && !src.startsWith("data:")) {
+                img.crossOrigin = "Anonymous";
             }
-        };
-        img.onerror = () => {
-            clearTimeout(timeout);
-            console.warn(`Failed to load photo: ${url}`);
-            resolve(null);
-        };
-        img.src = url;
-    });
+            const timeout = setTimeout(() => {
+                img.onload = null;
+                img.onerror = null;
+                resolve(null);
+            }, 6000);
+
+            img.onload = () => {
+                clearTimeout(timeout);
+                try {
+                    const w = img.naturalWidth || img.width || 800;
+                    const h = img.naturalHeight || img.height || 600;
+                    const aspect = h > 0 ? w / h : 1.333;
+
+                    if (src.startsWith("data:")) {
+                        resolve({ data: src, width: w, height: h, aspect });
+                        return;
+                    }
+
+                    const canvas = document.createElement("canvas");
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext("2d");
+                    if (ctx) {
+                        ctx.drawImage(img, 0, 0);
+                        resolve({
+                            data: canvas.toDataURL("image/jpeg", 0.9),
+                            width: w,
+                            height: h,
+                            aspect
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                } catch {
+                    resolve(null);
+                }
+            };
+
+            img.onerror = () => {
+                clearTimeout(timeout);
+                resolve(null);
+            };
+
+            img.src = src;
+        });
+    };
+
+    // 1. Direct Base64 / Data URI
+    if (url.startsWith("data:")) {
+        return await tryViaImageElement(url, false);
+    }
+
+    // 2. Fetch as Blob -> FileReader as Data URL (immune to CORS taint for relative and proxied API endpoints)
+    try {
+        const response = await fetch(url);
+        if (response.ok) {
+            const blob = await response.blob();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            if (dataUrl) {
+                const res = await tryViaImageElement(dataUrl, false);
+                if (res) return res;
+            }
+        }
+    } catch (e) {
+        // Fallback to Image element
+    }
+
+    // 3. Fallback: Image element with crossOrigin
+    const resCrossOrigin = await tryViaImageElement(url, true);
+    if (resCrossOrigin) return resCrossOrigin;
+
+    // 4. Fallback: Image element without crossOrigin
+    return await tryViaImageElement(url, false);
 };
 
 /**
@@ -81,8 +143,26 @@ export const generateROVPhotographyReport = async (
 
         const supabase = createClient();
 
+        // Extract and flatten attachments if inspection records were passed
+        const flatPhotos: any[] = [];
+        (photos || []).forEach((item: any) => {
+            if (!item) return;
+            const atts = item.attachments || item.attachment || item.insp_attachments || item.insp_photos || item.photos;
+            if (Array.isArray(atts) && atts.length > 0) {
+                atts.forEach((a: any) => {
+                    flatPhotos.push({
+                        ...a,
+                        anomaly_ref: a.anomaly_ref || item.insp_anomalies?.[0]?.anomaly_ref_no || item.anomaly_ref || null
+                    });
+                });
+            } else if (item.path || item.file_path || item.url || item.file_url || item.storage_path || item.previewUrl || item.id) {
+                flatPhotos.push(item);
+            }
+        });
+        const resolvedPhotos = flatPhotos.length > 0 ? flatPhotos : (photos || []);
+
         // If no photos, return a document with an empty state message
-        if (!photos || photos.length === 0) {
+        if (!resolvedPhotos || resolvedPhotos.length === 0) {
             doc.setFont("helvetica", "bold");
             doc.setFontSize(16);
             doc.setTextColor(150, 150, 150);
@@ -94,7 +174,6 @@ export const generateROVPhotographyReport = async (
             if (config.returnBlob) return doc.output("blob");
             return;
         }
-
 
         const colors = {
             navy: [31, 55, 93] as [number, number, number],
@@ -108,8 +187,55 @@ export const generateROVPhotographyReport = async (
         if (companySettings.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        if (headerData.contractorLogoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        
+        let contrLogoUrl = headerData.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        if (contrLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+        }
+
+        if (!contractorLogo) {
+            const contrId = (headerData as any)?.contractorId || (headerData as any)?.contrac || headerData?.jobpack?.metadata?.contrac || (config as any)?.jobPack?.metadata?.contrac || (config as any)?.jobPackId;
+            if (contrId) {
+                try {
+                    const cid = String(contrId);
+                    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cid);
+                    let query = supabase.from('u_lib_list' as any).select('logo_url').eq('lib_code', 'CONTR_NAM');
+                    if (isUUID) {
+                        query = query.or(`id.eq.${cid},lib_id.eq.${cid}`);
+                    } else {
+                        query = query.or(`lib_id.eq.${cid},code.eq.${cid}`);
+                    }
+                    const { data: cData } = await query.maybeSingle();
+                    if ((cData as any)?.logo_url) {
+                        contractorLogo = await loadLogoWithTransparency((cData as any).logo_url);
+                    }
+                } catch (_) {}
+            }
+        }
+
+        if (!contractorLogo) {
+            try {
+                const cRes = await fetch(`/api/library/CONTR_NAM`);
+                const cJson = await cRes.json();
+                if (cJson.data && Array.isArray(cJson.data)) {
+                    const contrId = (headerData as any)?.contractorId || (headerData as any)?.contrac || headerData?.jobpack?.metadata?.contrac || (config as any)?.jobPack?.metadata?.contrac;
+                    let found: any = null;
+                    if (contrId) {
+                        found = cJson.data.find((c: any) => 
+                            String(c.lib_id) === String(contrId) || 
+                            String(c.id) === String(contrId) || 
+                            String(c.code) === String(contrId) ||
+                            String(c.lib_desc).toLowerCase() === String(contrId).toLowerCase()
+                        );
+                    }
+                    if (!found) {
+                        found = cJson.data.find((c: any) => Boolean(c.logo_url));
+                    }
+                    if (found && found.logo_url) {
+                        contractorLogo = await loadLogoWithTransparency(found.logo_url);
+                    }
+                }
+            } catch (_) {}
         }
 
         const HEADER_H = 26;
@@ -166,7 +292,7 @@ export const generateROVPhotographyReport = async (
         };
 
         const PHOTOS_PER_PAGE = 6;
-        const totalPages = Math.max(1, Math.ceil(photos.length / PHOTOS_PER_PAGE));
+        const totalPages = Math.max(1, Math.ceil(resolvedPhotos.length / PHOTOS_PER_PAGE));
         
         const imgGap = 6;
         const imgWidth = (contentWidth - imgGap) / 2;
@@ -183,9 +309,9 @@ export const generateROVPhotographyReport = async (
             let yPos = margin + HEADER_H + 15;
             
             for (let i = 0; i < PHOTOS_PER_PAGE; i++) {
-                if (currentPhotoIdx >= photos.length) break;
+                if (currentPhotoIdx >= resolvedPhotos.length) break;
                 
-                const photo = photos[currentPhotoIdx];
+                const photo = resolvedPhotos[currentPhotoIdx];
                 const col = i % 2;
                 const row = Math.floor(i / 2);
                 
@@ -198,34 +324,80 @@ export const generateROVPhotographyReport = async (
                     try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
                 }
                 
-                const title = (meta.title || photo.name || `Photo ${currentPhotoIdx + 1}`).toUpperCase();
+                const title = (meta.title || photo.name || photo.file_name || `Photo ${currentPhotoIdx + 1}`).toUpperCase();
                 doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.navy);
                 doc.text(title, xPos + imgWidth / 2, currentY - 2, { align: "center", maxWidth: imgWidth });
 
-                // 2. Image
+                // 2. Image Loading & Rendering
                 try {
-                    const path = photo.path || photo.previewUrl || "";
-                    if (!path) {
-                        console.warn("Skipping photo with empty path");
-                        continue;
+                    const rawPath = photo.path || photo.file_path || photo.url || photo.file_url || photo.storage_path || photo.previewUrl || "";
+                    const bucket = photo.bucket_id || photo.bucket || photo.meta?.bucket || "attachments";
+
+                    const urlCandidates: string[] = [];
+                    if (typeof rawPath === "string" && (rawPath.startsWith("http://") || rawPath.startsWith("https://") || rawPath.startsWith("data:") || rawPath.startsWith("blob:"))) {
+                        urlCandidates.push(rawPath);
+                    }
+                    if (photo.id) {
+                        urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(photo.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ""}`);
+                    }
+                    if (rawPath) {
+                        urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
+                    }
+                    if (rawPath && typeof rawPath === "string" && !rawPath.startsWith("http") && !rawPath.startsWith("data:")) {
+                        try {
+                            const cleanStoragePath = rawPath.replace(/^attachments\//, "");
+                            const pub = supabase.storage.from(bucket).getPublicUrl(cleanStoragePath);
+                            if (pub?.data?.publicUrl) urlCandidates.push(pub.data.publicUrl);
+                        } catch (_) {}
+                    }
+                    const fallbackUrl = getAttachmentUrl(photo, supabase);
+                    if (fallbackUrl && !urlCandidates.includes(fallbackUrl)) {
+                        urlCandidates.push(fallbackUrl);
                     }
 
-                    const url = getAttachmentUrl(photo, supabase);
+                    let imgData: LoadedPhoto | null = null;
+                    for (const testUrl of urlCandidates) {
+                        try {
+                            imgData = await loadPhotoData(testUrl);
+                            if (imgData && imgData.data) break;
+                        } catch (_) {}
+                    }
 
-                    const imgData = await loadPhotoData(url);
                     if (imgData) {
-                        doc.addImage(imgData.data, 'JPEG', xPos, currentY, imgWidth, imgHeight);
+                        // Maintain aspect ratio inside the box
+                        const boxAspect = imgWidth / imgHeight;
+                        let renderW = imgWidth;
+                        let renderH = imgHeight;
+                        let renderX = xPos;
+                        let renderY = currentY;
+
+                        if (imgData.aspect > boxAspect) {
+                            renderH = imgWidth / imgData.aspect;
+                            renderY = currentY + (imgHeight - renderH) / 2;
+                        } else {
+                            renderW = imgHeight * imgData.aspect;
+                            renderX = xPos + (imgWidth - renderW) / 2;
+                        }
+
+                        // Light border box
+                        doc.setDrawColor(220, 226, 235);
+                        doc.rect(xPos, currentY, imgWidth, imgHeight);
+                        doc.addImage(imgData.data, "JPEG", renderX, renderY, renderW, renderH);
                     } else {
-                        doc.setDrawColor(200); doc.rect(xPos, currentY, imgWidth, imgHeight);
-                        doc.setFontSize(8); doc.text("Image Load Failed", xPos + imgWidth / 2, currentY + imgHeight / 2, { align: "center" });
+                        doc.setDrawColor(200);
+                        doc.rect(xPos, currentY, imgWidth, imgHeight);
+                        doc.setFontSize(8);
+                        doc.setTextColor(150);
+                        doc.text("Image Load Failed", xPos + imgWidth / 2, currentY + imgHeight / 2, { align: "center" });
                     }
                 } catch (e) {
-                    doc.setDrawColor(200); doc.rect(xPos, currentY, imgWidth, imgHeight);
+                    doc.setDrawColor(200);
+                    doc.rect(xPos, currentY, imgWidth, imgHeight);
                 }
 
                 // 3. Description (Bottom)
-                let description = meta.description || "";
+                let description = meta.description || photo.description || "";
                 if (photo.anomaly_ref) {
                     description = description ? `${description} (Anomaly Ref: ${photo.anomaly_ref})` : `Anomaly Ref: ${photo.anomaly_ref}`;
                 }
@@ -271,7 +443,6 @@ export const generateROVPhotographyReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`ROV_Photography_Report_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
 
     } catch (e) {

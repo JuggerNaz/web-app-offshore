@@ -394,13 +394,56 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [availableSowReports, setAvailableSowReports] = useState<string[]>([]);
     const [isLoadingSowReports, setIsLoadingSowReports] = useState(false);
 
-    // Filter state for inspection reports
+    // Filter state for inspection records (distinct jobpack_id, structure_id, sow_report_no)
+    const [structureInspectionFilters, setStructureInspectionFilters] = useState<{ jobpack_id: number; structure_id: number; sow_report_no: string }[]>([]);
+    const [isLoadingJobPacksForStructure, setIsLoadingJobPacksForStructure] = useState(false);
     const [inspectionFilters, setInspectionFilters] = useState<{ structure_id: number; sow_report_no: string }[]>([]);
+
+    // Fetch inspection filters for the selected structure to determine inspected jobpacks
+    useEffect(() => {
+        if (!selections.structureId || selections.structureId === "all") {
+            setStructureInspectionFilters([]);
+            setIsLoadingJobPacksForStructure(false);
+            return;
+        }
+
+        let isCurrent = true;
+        setIsLoadingJobPacksForStructure(true);
+        const rawId = selections.structureId.replace(/^(platform|pipeline)-/, "");
+
+        fetch(`/api/reports/inspection-filters?structure_id=${rawId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!isCurrent) return;
+                if (data.success && Array.isArray(data.data)) {
+                    setStructureInspectionFilters(data.data);
+                } else {
+                    setStructureInspectionFilters([]);
+                }
+            })
+            .catch(err => {
+                if (!isCurrent) return;
+                console.error("Error fetching inspection filters for structure:", err);
+                setStructureInspectionFilters([]);
+            })
+            .finally(() => {
+                if (isCurrent) setIsLoadingJobPacksForStructure(false);
+            });
+
+        return () => {
+            isCurrent = false;
+        };
+    }, [selections.structureId]);
 
     // Fetch inspection filters when jobpack is selected and it's an inspection template (for structure badges)
     useEffect(() => {
         if (selections.jobPackId && isInspectionTemplate) {
-            fetch(`/api/reports/inspection-filters?jobpack_id=${selections.jobPackId}`)
+            const rawId = selections.structureId ? selections.structureId.replace(/^(platform|pipeline)-/, "") : "";
+            const queryUrl = rawId
+                ? `/api/reports/inspection-filters?jobpack_id=${selections.jobPackId}&structure_id=${rawId}`
+                : `/api/reports/inspection-filters?jobpack_id=${selections.jobPackId}`;
+
+            fetch(queryUrl)
                 .then(res => res.json())
                 .then(data => {
                     if (data.success && data.data) {
@@ -416,7 +459,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         } else {
             setInspectionFilters([]);
         }
-    }, [selections.jobPackId, isInspectionTemplate]);
+    }, [selections.jobPackId, selections.structureId, isInspectionTemplate]);
 
     // Fetch procedures for Defect Criteria
     const { data: proceduresData } = useSWR("/api/defect-criteria/procedures", fetcher);
@@ -449,26 +492,43 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         setAvailableSowReports([]);
         setIsLoadingSowReports(true);
 
+        const rawStructureId = selections.structureId.replace(/^(platform|pipeline)-/, "");
+
         if (isInspectionTemplate) {
-            fetch(`/api/reports/inspection-filters?jobpack_id=${selections.jobPackId}`)
+            // Check if structureInspectionFilters already contains the distinct SOW report numbers for this jobpack
+            const matchingFilters = structureInspectionFilters.filter(
+                (f: any) => f.jobpack_id?.toString() === selections.jobPackId && f.structure_id?.toString() === rawStructureId && f.sow_report_no
+            );
+
+            if (matchingFilters.length > 0) {
+                const uniqueSows = Array.from(new Set(matchingFilters.map((f: any) => f.sow_report_no).filter(Boolean))) as string[];
+                setAvailableSowReports(uniqueSows);
+                setIsLoadingSowReports(false);
+                if (uniqueSows.length > 0) {
+                    setSelections(prev => ({ ...prev, sowReportNo: prev.sowReportNo && uniqueSows.includes(prev.sowReportNo) ? prev.sowReportNo : uniqueSows[0] }));
+                } else {
+                    setSelections(prev => ({ ...prev, sowReportNo: "" }));
+                }
+                return;
+            }
+
+            fetch(`/api/reports/inspection-filters?jobpack_id=${selections.jobPackId}&structure_id=${rawStructureId}`)
                 .then(res => res.json())
                 .then(data => {
                     if (!isCurrent) return;
                     if (data.success && data.data) {
                         const filters = data.data;
-                        setInspectionFilters(filters);
                         const validSows = filters
-                            .filter((f: any) => f.structure_id?.toString() === selections.structureId && f.sow_report_no)
+                            .filter((f: any) => f.sow_report_no)
                             .map((f: any) => f.sow_report_no);
-                        const uniqueSows = Array.from(new Set(validSows)) as string[];
+                        const uniqueSows = Array.from(new Set(validSows.filter(Boolean))) as string[];
                         setAvailableSowReports(uniqueSows);
                         if (uniqueSows.length > 0) {
-                            setSelections(prev => ({ ...prev, sowReportNo: uniqueSows[0] }));
+                            setSelections(prev => ({ ...prev, sowReportNo: prev.sowReportNo && uniqueSows.includes(prev.sowReportNo) ? prev.sowReportNo : uniqueSows[0] }));
                         } else {
                             setSelections(prev => ({ ...prev, sowReportNo: "" }));
                         }
                     } else {
-                        setInspectionFilters([]);
                         setAvailableSowReports([]);
                         setSelections(prev => ({ ...prev, sowReportNo: "" }));
                     }
@@ -476,7 +536,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .catch(err => {
                     if (!isCurrent) return;
                     console.error("Error fetching inspection filters:", err);
-                    setInspectionFilters([]);
                     setAvailableSowReports([]);
                     setSelections(prev => ({ ...prev, sowReportNo: "" }));
                 })
@@ -484,15 +543,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     if (isCurrent) setIsLoadingSowReports(false);
                 });
         } else {
-            fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${selections.structureId}`)
+            fetch(`/api/sow?jobpack_id=${selections.jobPackId}&structure_id=${rawStructureId}`)
                 .then(res => res.json())
                 .then(data => {
                     if (!isCurrent) return;
                     if (data.data) {
                         const numbers = data.data.report_numbers?.map((r: any) => r.number || r) || [];
-                        setAvailableSowReports(numbers);
-                        if (numbers.length > 0) {
-                            setSelections(prev => ({ ...prev, sowReportNo: numbers[0] }));
+                        const validNumbers = numbers.filter(Boolean);
+                        setAvailableSowReports(validNumbers);
+                        if (validNumbers.length > 0) {
+                            setSelections(prev => ({ ...prev, sowReportNo: prev.sowReportNo && validNumbers.includes(prev.sowReportNo) ? prev.sowReportNo : validNumbers[0] }));
                         } else {
                             setSelections(prev => ({ ...prev, sowReportNo: "" }));
                         }
@@ -515,7 +575,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         return () => {
             isCurrent = false;
         };
-    }, [selections.jobPackId, selections.structureId, selections.templateId, isInspectionTemplate]);
+    }, [selections.jobPackId, selections.structureId, selections.templateId, isInspectionTemplate, structureInspectionFilters]);
 
     // Update Report Prefix in General Info when SOW Report No changes (or when switching templates)
     useEffect(() => {
@@ -663,13 +723,29 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         return false;
     }, [structures, inspectionFilters]);
 
+    const inspectedJobPackIdsForStructure = useMemo(() => {
+        if (structureInspectionFilters.length === 0) return [];
+        return Array.from(new Set(structureInspectionFilters.map(f => f.jobpack_id.toString())));
+    }, [structureInspectionFilters]);
+
     // Filtered Job Packs
     const filteredJobPacks = useMemo(() => {
         let result = jobPacks;
 
         // Filter by selected structure
         if (selections.structureId && selections.structureId !== "all" && getCurrentTemplate()?.requires.includes("structure")) {
-            result = result.filter((jp: any) => checkJobPackMatchesStructure(jp, selections.structureId));
+            if (isInspectionTemplate || getCurrentTemplate()?.requires.includes("sow_report")) {
+                // Strictly filter to job packs that have inspection records for this structure
+                if (structureInspectionFilters.length > 0) {
+                    result = result.filter((jp: any) => inspectedJobPackIdsForStructure.includes(jp.id.toString()));
+                } else if (isLoadingJobPacksForStructure) {
+                    result = [];
+                } else {
+                    result = [];
+                }
+            } else {
+                result = result.filter((jp: any) => checkJobPackMatchesStructure(jp, selections.structureId));
+            }
         }
 
         if (jobPackSearch) {
@@ -681,7 +757,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             );
         }
         return result;
-    }, [jobPacks, jobPackSearch, selections.structureId, selections.templateId, checkJobPackMatchesStructure]);
+    }, [jobPacks, jobPackSearch, selections.structureId, selections.templateId, isInspectionTemplate, inspectedJobPackIdsForStructure, structureInspectionFilters, isLoadingJobPacksForStructure, checkJobPackMatchesStructure]);
 
     // Category Selection State
     const [activeCategory, setActiveCategory] = useState<string>("Structure");
@@ -704,24 +780,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     }, [selections.jobPackId, selectedJobPack, isInspectionTemplate, inspectionFilters]);
 
     const handleStructureSelect = (structureId: string) => {
-        const jp = jobPacks.find((j: any) => j.id.toString() === selections.jobPackId);
-        let keepJobPack = false;
-        
-        if (jp) {
-            keepJobPack = checkJobPackMatchesStructure(jp, structureId);
-        }
-
         setAvailableSowReports([]);
-        if (keepJobPack) {
-            setIsLoadingSowReports(true);
-        }
-        setSelections({
-            ...selections,
+        setSelections(prev => ({
+            ...prev,
             structureId,
-            jobPackId: keepJobPack ? selections.jobPackId : "",
+            jobPackId: "",
             componentId: "",
             sowReportNo: ""
-        });
+        }));
     };
 
     // Render Steps
@@ -1074,10 +1140,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                             <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50/30 dark:bg-slate-900/20">
                                 {reqs.includes("structure") && !selections.structureId ? (
                                     <div className="p-4 text-sm text-center text-muted-foreground mt-10">Select a structure first</div>
+                                ) : isLoadingJobPacksForStructure ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10 flex flex-col items-center justify-center gap-2">
+                                        <div className="h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                                        <span className="text-xs">Finding inspected job packs...</span>
+                                    </div>
+                                ) : filteredJobPacks.length === 0 ? (
+                                    <div className="p-4 text-sm text-center text-muted-foreground mt-10">
+                                        No job packs with inspection records found for this structure
+                                    </div>
                                 ) : (
-                                    filteredJobPacks.length === 0 ? (
-                                        <div className="p-4 text-sm text-center text-muted-foreground mt-10">No job packs found</div>
-                                    ) : (
                                         filteredJobPacks.map((jp: any) => {
                                             const isSelected = selections.jobPackId === jp.id.toString();
                                             return (
@@ -1106,7 +1178,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                                 </div>
                                             );
                                         })
-                                    )
                                 )}
                             </div>
                         </PanelContainer>
@@ -5906,12 +5977,46 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
+            const contrId = jobPack.metadata?.contrac || jobPack.metadata?.contractor || jobPack.metadata?.contractor_id || (jobPack as any).contractor_id || (jobPack as any).contrac;
+            if (contrId) {
                 try {
-                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
-                    const cJson = await cRes.json();
-                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
-                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    const cid = String(contrId);
+                    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cid);
+                    let q = supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM');
+                    if (isUUID) {
+                        q = q.or(`id.eq.${cid},lib_id.eq.${cid}`);
+                    } else {
+                        q = q.or(`lib_id.eq.${cid},code.eq.${cid}`);
+                    }
+                    const { data: contrData } = await q.maybeSingle();
+                    if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                } catch (e) {}
+
+                if (!contractorLogoUrl) {
+                    try {
+                        const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                        const cJson = await cRes.json();
+                        const found = cJson.data?.find((c: any) => 
+                            String(c.lib_id) === String(contrId) || 
+                            String(c.id) === String(contrId) || 
+                            String(c.code) === String(contrId) ||
+                            String(c.lib_desc).toLowerCase() === String(contrId).toLowerCase()
+                        );
+                        if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    } catch (e) {}
+                }
+            }
+
+            if (!contractorLogoUrl) {
+                try {
+                    const { data: anyContr } = await supabase
+                        .from('u_lib_list')
+                        .select('logo_url')
+                        .eq('lib_code', 'CONTR_NAM')
+                        .not('logo_url', 'is', null)
+                        .limit(1)
+                        .maybeSingle();
+                    if (anyContr?.logo_url) contractorLogoUrl = anyContr.logo_url;
                 } catch (e) {}
             }
 
@@ -5937,18 +6042,42 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             const recordIds = records.map(r => r.insp_id);
 
-            const { data: attachments } = await supabase
+            let { data: attachments } = await supabase
                 .from("attachment")
                 .select("*")
                 .in("source_id", recordIds)
-                .ilike("source_type", "inspection")
                 .order("created_at", { ascending: true });
 
-            const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+            let allAttachments = attachments || [];
+            if (allAttachments.length === 0) {
+                const { data: media } = await supabase
+                    .from("insp_media" as any)
+                    .select("*")
+                    .in("inspection_id", recordIds);
+                if (media && media.length > 0) {
+                    allAttachments = media.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Media ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        source_type: "inspection",
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || "inspection-media"
+                    }));
+                }
+            }
+
+            const isImageAttachment = (a: any) => {
+                const p = a.path || a.file_path || a.url || a.file_url || a.storage_path || "";
+                return p.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/i) || p.startsWith("data:image/") || (a.file_type && a.file_type.startsWith("image/"));
+            };
+
+            const photoData = allAttachments.filter(isImageAttachment).map(a => {
                 const record = records?.find(r => r.insp_id === a.source_id);
                 return {
                     ...a,
-                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
                 };
             });
 
@@ -5978,12 +6107,46 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
+            const contrId = jobPack.metadata?.contrac || jobPack.metadata?.contractor || jobPack.metadata?.contractor_id || (jobPack as any).contractor_id || (jobPack as any).contrac;
+            if (contrId) {
                 try {
-                    const cRes  = await fetch(`/api/library/CONTR_NAM`);
-                    const cJson = await cRes.json();
-                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
-                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    const cid = String(contrId);
+                    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cid);
+                    let q = supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM');
+                    if (isUUID) {
+                        q = q.or(`id.eq.${cid},lib_id.eq.${cid}`);
+                    } else {
+                        q = q.or(`lib_id.eq.${cid},code.eq.${cid}`);
+                    }
+                    const { data: contrData } = await q.maybeSingle();
+                    if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                } catch (e) {}
+
+                if (!contractorLogoUrl) {
+                    try {
+                        const cRes  = await fetch(`/api/library/CONTR_NAM`);
+                        const cJson = await cRes.json();
+                        const found = cJson.data?.find((c: any) => 
+                            String(c.lib_id) === String(contrId) || 
+                            String(c.id) === String(contrId) || 
+                            String(c.code) === String(contrId) ||
+                            String(c.lib_desc).toLowerCase() === String(contrId).toLowerCase()
+                        );
+                        if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    } catch (e) {}
+                }
+            }
+
+            if (!contractorLogoUrl) {
+                try {
+                    const { data: anyContr } = await supabase
+                        .from('u_lib_list')
+                        .select('logo_url')
+                        .eq('lib_code', 'CONTR_NAM')
+                        .not('logo_url', 'is', null)
+                        .limit(1)
+                        .maybeSingle();
+                    if (anyContr?.logo_url) contractorLogoUrl = anyContr.logo_url;
                 } catch (e) {}
             }
 
@@ -6009,18 +6172,42 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             const recordIds = records.map(r => r.insp_id);
 
-            const { data: attachments } = await supabase
+            let { data: attachments } = await supabase
                 .from("attachment")
                 .select("*")
                 .in("source_id", recordIds)
-                .ilike("source_type", "inspection")
                 .order("created_at", { ascending: true });
 
-            const photoData = (attachments || []).filter(a => a.path && a.path.match(/\.(jpg|jpeg|png|webp)$/i)).map(a => {
+            let allAttachments = attachments || [];
+            if (allAttachments.length === 0) {
+                const { data: media } = await supabase
+                    .from("insp_media" as any)
+                    .select("*")
+                    .in("inspection_id", recordIds);
+                if (media && media.length > 0) {
+                    allAttachments = media.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Media ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        source_type: "inspection",
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || "inspection-media"
+                    }));
+                }
+            }
+
+            const isImageAttachment = (a: any) => {
+                const p = a.path || a.file_path || a.url || a.file_url || a.storage_path || "";
+                return p.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/i) || p.startsWith("data:image/") || (a.file_type && a.file_type.startsWith("image/"));
+            };
+
+            const photoData = allAttachments.filter(isImageAttachment).map(a => {
                 const record = records?.find(r => r.insp_id === a.source_id);
                 return {
                     ...a,
-                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || null
+                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
                 };
             });
 
