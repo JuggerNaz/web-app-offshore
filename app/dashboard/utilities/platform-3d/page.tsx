@@ -24,7 +24,8 @@ import {
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
-    Eye
+    Eye,
+    ClipboardCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,7 @@ import { WincairsFallbackDialog } from "@/components/dialogs/wincairs-fallback-d
 import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
 import { PlatformSpecsDialog } from "@/components/dialogs/platform-specs-dialog";
 import { InspectionStatusDialog } from "@/components/dialogs/inspection-status-dialog";
+import { InspectionTaskDialog } from "@/components/dialogs/inspection-task-dialog";
 import { ExternalLink } from "lucide-react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
@@ -160,7 +162,36 @@ export default function Platform3DPage() {
     // Inspection Status state
     const [isInspectionDialogOpen, setIsInspectionDialogOpen] = useState(false);
     const [inspectionJobpackId, setInspectionJobpackId] = useState<number | null>(null);
+    const [inspectionSowReportNo, setInspectionSowReportNo] = useState<string | null>(null);
     const [inspectionFilters, setInspectionFilters] = useState<string[]>(["Completed", "Incomplete", "Pending"]);
+
+    // Fetch SOW items for active inspection Jobpack to synchronize 3D component status colors
+    const { data: inspectionSowResponse } = useSWR(
+        selectedPlatform && inspectionJobpackId ? `/api/sow?jobpack_id=${inspectionJobpackId}&structure_id=${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const inspectionSowItems = useMemo(() => {
+        if (!inspectionSowResponse?.data) return [];
+        const s = Array.isArray(inspectionSowResponse.data) ? inspectionSowResponse.data[0] : inspectionSowResponse.data;
+        return s?.items || [];
+    }, [inspectionSowResponse]);
+
+    // Inspection Task state
+    const [isInspectionTaskDialogOpen, setIsInspectionTaskDialogOpen] = useState(false);
+    const [inspectionTaskJobpackId, setInspectionTaskJobpackId] = useState<number | null>(null);
+    const [inspectionTaskSowReportNo, setInspectionTaskSowReportNo] = useState<string | null>(null);
+    const [selectedInspectionTaskCode, setSelectedInspectionTaskCode] = useState<string | null>("ALL");
+
+    // Fetch SOW items for active inspection Task Jobpack
+    const { data: inspectionTaskSowResponse } = useSWR(
+        selectedPlatform && inspectionTaskJobpackId ? `/api/sow?jobpack_id=${inspectionTaskJobpackId}&structure_id=${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const inspectionTaskSowItems = useMemo(() => {
+        if (!inspectionTaskSowResponse?.data) return [];
+        const s = Array.isArray(inspectionTaskSowResponse.data) ? inspectionTaskSowResponse.data[0] : inspectionTaskSowResponse.data;
+        return s?.items || [];
+    }, [inspectionTaskSowResponse]);
 
     // WINCAIRS Mode state & Fallback Dialog state
     const [useWincairsMode, setUseWincairsMode] = useState(false);
@@ -812,17 +843,47 @@ export default function Platform3DPage() {
                             className={cn(
                                 "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all relative overflow-hidden",
                                 inspectionJobpackId
-                                    ? "bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:border-purple-800/50 dark:text-purple-300"
-                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300"
+                                    ? "bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:border-purple-800/50 dark:text-purple-300 shadow-xs"
+                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300 shadow-xs"
                             )}
-                            title="View and filter platform structural anomalies by Inspection Jobpack"
+                            title="View and filter platform structural anomalies & SOW component status by Inspection Jobpack"
                         >
                             <Activity className={cn("h-3.5 w-3.5", inspectionJobpackId ? "text-purple-500" : "")} />
-                            <span>Inspection Status</span>
+                            <span>
+                                {inspectionJobpackId 
+                                    ? `Jobpack #${inspectionJobpackId}${inspectionSowReportNo ? ` • ${inspectionSowReportNo}` : ""}` 
+                                    : "Inspection Status"}
+                            </span>
                             
                             {/* Active Filter Badge */}
                             {inspectionJobpackId !== null && (
                                 <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-purple-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
+                            )}
+                        </Button>
+
+                        {/* 5. Inspection Task Button */}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsInspectionTaskDialogOpen(true)}
+                            className={cn(
+                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all relative overflow-hidden",
+                                inspectionTaskJobpackId
+                                    ? "bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:hover:bg-teal-900/50 dark:border-teal-800/50 dark:text-teal-300 shadow-xs"
+                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300 shadow-xs"
+                            )}
+                            title="View, filter and highlight 3D platform components by specific Inspection Tasks (GVI, Conductor Inspection, UT, MPI, etc.)"
+                        >
+                            <ClipboardCheck className={cn("h-3.5 w-3.5", inspectionTaskJobpackId ? "text-teal-500" : "")} />
+                            <span>
+                                {inspectionTaskJobpackId 
+                                    ? `Jobpack #${inspectionTaskJobpackId}${inspectionTaskSowReportNo ? ` • ${inspectionTaskSowReportNo}` : ""}${selectedInspectionTaskCode && selectedInspectionTaskCode !== "ALL" ? ` • ${selectedInspectionTaskCode}` : ""}` 
+                                    : "Inspection Task"}
+                            </span>
+                            
+                            {/* Active Filter Badge */}
+                            {inspectionTaskJobpackId !== null && (
+                                <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-teal-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
                             )}
                         </Button>
                     </div>
@@ -846,6 +907,12 @@ export default function Platform3DPage() {
                             webapp3dData={useWebapp3dConnection ? webapp3dData : null}
                             isInspectionMode={inspectionJobpackId !== null && inspectionFilters.length > 0}
                             selectedInspectionFilters={inspectionFilters}
+                            inspectionSowItems={inspectionSowItems}
+                            selectedSowReportNo={inspectionSowReportNo}
+                            isInspectionTaskMode={inspectionTaskJobpackId !== null}
+                            selectedInspectionTaskCode={selectedInspectionTaskCode}
+                            inspectionTaskSowItems={inspectionTaskSowItems}
+                            selectedTaskSowReportNo={inspectionTaskSowReportNo}
                             isLoading={isPlatformDataLoading}
                         />
                     </div>
@@ -909,6 +976,29 @@ export default function Platform3DPage() {
                     onFiltersChange={setInspectionFilters}
                     selectedJobpackId={inspectionJobpackId}
                     onJobpackChange={setInspectionJobpackId}
+                    selectedSowReportNo={inspectionSowReportNo}
+                    onSowReportChange={setInspectionSowReportNo}
+                    onSelectComponent={handleSelectComponent}
+                />
+
+                {/* Inspection Task Dialog */}
+                <InspectionTaskDialog
+                    isOpen={isInspectionTaskDialogOpen}
+                    onClose={() => setIsInspectionTaskDialogOpen(false)}
+                    platformId={selectedPlatform.plat_id}
+                    platformTitle={selectedPlatform.title}
+                    selectedJobpackId={inspectionTaskJobpackId}
+                    onJobpackChange={setInspectionTaskJobpackId}
+                    selectedSowReportNo={inspectionTaskSowReportNo}
+                    onSowReportChange={setInspectionTaskSowReportNo}
+                    selectedTaskCode={selectedInspectionTaskCode}
+                    onTaskCodeChange={setSelectedInspectionTaskCode}
+                    onSelectComponent={handleSelectComponent}
+                    onResetColors={() => {
+                        setInspectionTaskJobpackId(null);
+                        setInspectionTaskSowReportNo(null);
+                        setSelectedInspectionTaskCode("ALL");
+                    }}
                 />
 
                 {/* Platform Specifications & Extended Data Modal */}

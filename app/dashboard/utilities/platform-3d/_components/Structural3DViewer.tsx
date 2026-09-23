@@ -35,6 +35,7 @@ import {
     clearPlatform3DSession,
     type Platform3DSessionState
 } from "../utils/platform-3d-storage";
+import { normalizeInspectionTaskCode, getTaskDefinition } from "@/components/dialogs/inspection-task-dialog";
 
 interface Component3D {
     id: number;
@@ -81,6 +82,12 @@ interface Structural3DViewerProps {
     selectedHistoricalCampaignId?: string | number;
     isInspectionMode?: boolean;
     selectedInspectionFilters?: string[];
+    inspectionSowItems?: any[];
+    selectedSowReportNo?: string | null;
+    isInspectionTaskMode?: boolean;
+    selectedInspectionTaskCode?: string | null;
+    inspectionTaskSowItems?: any[];
+    selectedTaskSowReportNo?: string | null;
     isLoading?: boolean;
 }
 
@@ -1581,6 +1588,9 @@ function InstancedComponentViewer({
     inspectionModeFilter = "BOTH",
     priorityScope = "BOTH",
     compareWithCurrent = true,
+    isInspectionTaskMode = false,
+    selectedInspectionTaskCode = "ALL",
+    sowTaskMap = null,
 }: {
     layouts: any[];
     selectedCompId?: number;
@@ -1599,6 +1609,9 @@ function InstancedComponentViewer({
     inspectionModeFilter?: "BOTH" | "ROV" | "DIVING";
     priorityScope?: "BOTH" | "ANOMALY" | "FINDING";
     compareWithCurrent?: boolean;
+    isInspectionTaskMode?: boolean;
+    selectedInspectionTaskCode?: string | null;
+    sowTaskMap?: Map<string | number, any> | null;
 }) {
     const weldRef = useRef<THREE.InstancedMesh>(null);
     const cylinderRef = useRef<THREE.InstancedMesh>(null);
@@ -1611,12 +1624,35 @@ function InstancedComponentViewer({
     const [hoveredComp, setHoveredComp] = useState<any | null>(null);
 
     const getInspectionColor = (item: any, defaultColor: string) => {
-        if (!isInspectionMode) return defaultColor;
-        const status = item.inspectionStatus || "Pending";
-        if (!selectedInspectionFilters.includes(status)) return defaultColor;
-        if (status === "Completed") return "#22c55e";
-        if (status === "Incomplete") return "#d97706";
-        return "#334155"; // Pending
+        // 1. If Inspection Task Mode is active
+        if (isInspectionTaskMode && sowTaskMap) {
+            const compId = item.comp?.id || item.comp?.comp_id || item.id;
+            const compQId = String(item.comp?.q_id || item.q_id || "").toUpperCase().trim();
+            const taskInfo = sowTaskMap.get(Number(compId)) || (compQId ? sowTaskMap.get(compQId) : null);
+
+            if (taskInfo) {
+                if (!selectedInspectionTaskCode || selectedInspectionTaskCode === "ALL") {
+                    return taskInfo.taskColor;
+                } else if (taskInfo.taskCode === selectedInspectionTaskCode) {
+                    return taskInfo.taskColor;
+                } else {
+                    return "#334155";
+                }
+            } else {
+                return "#334155";
+            }
+        }
+
+        // 2. Otherwise if Inspection Status Mode is active
+        if (isInspectionMode) {
+            const status = item.inspectionStatus || "Pending";
+            if (!selectedInspectionFilters.includes(status)) return defaultColor;
+            if (status === "Completed") return "#22c55e";
+            if (status === "Incomplete") return "#d97706";
+            return "#334155"; // Pending
+        }
+
+        return defaultColor;
     };
 
     const toVec3 = (v: any): THREE.Vector3 => {
@@ -2113,7 +2149,7 @@ function InstancedComponentViewer({
         elbowMesh.instanceMatrix.needsUpdate = true;
         if (elbowMesh.instanceColor) elbowMesh.instanceColor.needsUpdate = true;
         elbowMesh.count = elbowIndex;
-    }, [anodes, cylinders, selectedCompId, mainMemberIds, isInspectionMode, selectedInspectionFilters]);
+    }, [anodes, cylinders, selectedCompId, mainMemberIds, isInspectionMode, selectedInspectionFilters, isInspectionTaskMode, selectedInspectionTaskCode, sowTaskMap]);
 
     // Find layout of selected component for overlay label and highlight mesh
     const selectedLayout = useMemo(() => {
@@ -2959,6 +2995,12 @@ export function Structural3DViewer({
     selectedHistoricalCampaignId: externalCampaignId = "ALL",
     isInspectionMode: externalIsInspectionMode = false,
     selectedInspectionFilters: externalSelectedInspectionFilters = ["Pending", "Completed", "Incomplete"],
+    inspectionSowItems = [],
+    selectedSowReportNo = null,
+    isInspectionTaskMode = false,
+    selectedInspectionTaskCode = "ALL",
+    inspectionTaskSowItems = [],
+    selectedTaskSowReportNo = null,
     isLoading = false
 }: Structural3DViewerProps) {
     const isWorkspace = Boolean(
@@ -2966,6 +3008,46 @@ export function Structural3DViewer({
         compactMode || 
         (currentRecords && currentRecords.length > 0)
     );
+
+    const sowStatusMap = useMemo(() => {
+        if (!inspectionSowItems || inspectionSowItems.length === 0) return null;
+        const map = new Map<string | number, { status: string; report_number?: string }>();
+        inspectionSowItems.forEach((item: any) => {
+            if (selectedSowReportNo && item.report_number && item.report_number !== selectedSowReportNo) {
+                return;
+            }
+            const rawStatus = (item.status || "Pending").toLowerCase().trim();
+            let status = "Pending";
+            if (rawStatus === "completed" || rawStatus === "complete" || rawStatus === "done") status = "Completed";
+            else if (rawStatus === "incomplete" || rawStatus === "anomaly" || rawStatus === "defect") status = "Incomplete";
+
+            if (item.component_id) map.set(Number(item.component_id), { status, report_number: item.report_number });
+            if (item.component_qid) map.set(item.component_qid.toUpperCase().trim(), { status, report_number: item.report_number });
+        });
+        return map;
+    }, [inspectionSowItems, selectedSowReportNo]);
+
+    const sowTaskMap = useMemo(() => {
+        if (!inspectionTaskSowItems || inspectionTaskSowItems.length === 0) return null;
+        const map = new Map<string | number, { taskCode: string; taskName?: string; taskColor: string; report_number?: string }>();
+        inspectionTaskSowItems.forEach((item: any) => {
+            if (selectedTaskSowReportNo && item.report_number && item.report_number !== selectedTaskSowReportNo) {
+                return;
+            }
+            const taskKey = normalizeInspectionTaskCode(item.inspection_code, item.inspection_name);
+            const taskDef = getTaskDefinition(item.inspection_code, item.inspection_name);
+            const taskInfo = {
+                taskCode: taskKey,
+                taskName: item.inspection_name || taskDef.label,
+                taskColor: taskDef.color,
+                report_number: item.report_number
+            };
+
+            if (item.component_id) map.set(Number(item.component_id), taskInfo);
+            if (item.component_qid) map.set(item.component_qid.toUpperCase().trim(), taskInfo);
+        });
+        return map;
+    }, [inspectionTaskSowItems, selectedTaskSowReportNo]);
 
     const activePlatformId = useMemo(() => {
         return (
@@ -3437,19 +3519,54 @@ export function Structural3DViewer({
 
             const isInspected = Boolean(dbItem.is_inspected);
             const hasAnomaly = Boolean(dbItem.has_anomaly);
-            const inspectionStatus = hasAnomaly
-                ? "Incomplete"
-                : isInspected
-                    ? "Completed"
-                    : "Pending";
+
+            let inspectionStatus = "Pending";
+            if (sowStatusMap) {
+                const matched = sowStatusMap.get(Number(baseCompIdStr)) || 
+                                sowStatusMap.get(Number(dbItem.component_id)) || 
+                                sowStatusMap.get(qIdUpper) ||
+                                (q_id ? sowStatusMap.get(q_id.toUpperCase().trim()) : null);
+                if (matched) {
+                    inspectionStatus = matched.status;
+                }
+            } else {
+                inspectionStatus = hasAnomaly
+                    ? "Incomplete"
+                    : isInspected
+                        ? "Completed"
+                        : "Pending";
+            }
 
             let inspectionColor = "#334155"; // Pending
             if (inspectionStatus === "Completed") inspectionColor = "#22c55e"; // Green
-            if (inspectionStatus === "Incomplete") inspectionColor = "#d97706"; // Dark Yellow
+            if (inspectionStatus === "Incomplete") inspectionColor = "#d97706"; // Dark Yellow / Amber
 
             const weldColor = isWeld ? "#cbd5e1" : null;
             const clampColor = (isClamp || isGuideBucket) ? "#facc15" : null;
-            const finalColor = isInspectionMode ? dbItem.inspection_color : (clampColor || weldColor || dbItem.color_hex || "#64748b");
+
+            let finalColor = clampColor || weldColor || dbItem.color_hex || "#64748b";
+
+            // 1. Task Mode Styling
+            if (isInspectionTaskMode && sowTaskMap) {
+                const taskInfo = sowTaskMap.get(Number(baseCompIdStr)) || 
+                                 sowTaskMap.get(dbItem.component_id) || 
+                                 sowTaskMap.get(q_id.toUpperCase().trim()) || 
+                                 sowTaskMap.get(dbQIdUpper) || 
+                                 null;
+                if (taskInfo) {
+                    if (!selectedInspectionTaskCode || selectedInspectionTaskCode === "ALL") {
+                        finalColor = taskInfo.taskColor;
+                    } else if (taskInfo.taskCode === selectedInspectionTaskCode) {
+                        finalColor = taskInfo.taskColor;
+                    } else {
+                        finalColor = "#334155";
+                    }
+                } else {
+                    finalColor = "#334155";
+                }
+            } else if (isInspectionMode) {
+                finalColor = inspectionColor;
+            }
 
             let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
                 ? [Number(dbItem.start_x), Number(dbItem.start_y), Number(dbItem.start_z)]
@@ -3512,7 +3629,7 @@ export function Structural3DViewer({
             foundationMembers: webapp3dData.foundationMembers || [],
             elvMarkers: webapp3dData.elvMarkers || []
         };
-    }, [webapp3dData, rawComponents, isInspectionMode]);
+    }, [webapp3dData, rawComponents, isInspectionMode, sowStatusMap, isInspectionTaskMode, sowTaskMap, selectedInspectionTaskCode]);
 
     const availableElevations = useMemo(() => {
         const values = elevations.map((e) => sanitizeElevation(e.elv));
@@ -4097,6 +4214,9 @@ export function Structural3DViewer({
                             inspectionModeFilter={inspectionModeFilter}
                             priorityScope={priorityScope}
                             compareWithCurrent={compareWithCurrent}
+                            isInspectionTaskMode={isInspectionTaskMode}
+                            selectedInspectionTaskCode={selectedInspectionTaskCode}
+                            sowTaskMap={sowTaskMap}
                         />
                     </SelectToZoom>
                 </Bounds>
