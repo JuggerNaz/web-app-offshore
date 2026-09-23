@@ -75,9 +75,17 @@ export async function GET(request: NextRequest) {
             seenKeys.add(key);
             uniqueAnomalies.push(item);
         }
+        // Filter out completely empty ghost records without ID, reference or observations
+        const validAnomalies = uniqueAnomalies.filter(item => {
+            const hasId = Boolean(item.anomaly_id || item.id || item.insp_id);
+            const hasRef = Boolean((item.display_ref_no || item.anomaly_ref_no || item.ref_no || "").toString().trim());
+            const hasDesc = Boolean((item.description || item.observations || item.findings || item.defect_type || "").toString().trim());
+            return hasId && (hasRef || hasDesc);
+        });
+
         // Sort anomalies naturally by defect reference number
         const getRef = (item: any) => (item.display_ref_no || item.anomaly_ref_no || item.ref_no || "").toString().trim();
-        uniqueAnomalies.sort((a, b) => {
+        validAnomalies.sort((a, b) => {
             const refA = getRef(a);
             const refB = getRef(b);
             if (refA && refB) {
@@ -86,7 +94,7 @@ export async function GET(request: NextRequest) {
             return refA ? -1 : (refB ? 1 : 0);
         });
 
-        anomalies = uniqueAnomalies;
+        anomalies = validAnomalies;
 
         if (!anomalies || anomalies.length === 0) {
             return NextResponse.json({

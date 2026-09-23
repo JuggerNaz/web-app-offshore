@@ -351,16 +351,23 @@ export const generateDefectAnomalyReport = async (
                 rectified: false
             }];
         } else {
-            drawHeader(doc);
-            doc.setFontSize(12);
-            const noDataMsg = config.isFindingsReport ? "No findings found." : "No anomalies found.";
-            doc.text(noDataMsg, pageWidth / 2, 80, { align: "center" });
-            applyWatermarkAndSignaturesGlobal(doc, config);
-            if (config.returnBlob) return doc.output("blob");
-            const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
-            applyWatermarkAndSignaturesGlobal(doc, config);
-            doc.save(`${config.reportNoPrefix}_${fileNameSuffix}.pdf`);
-            return;
+            console.warn("No defect / anomaly records found to generate report.");
+            if (typeof window !== "undefined" && !config.returnBlob) {
+                alert(config.isFindingsReport ? "No findings found to generate report." : "No defect / anomaly records found to generate report.");
+            }
+            return null;
+        }
+    }
+
+    // Filter out completely invalid or empty ghost records
+    if (!config.isBlankReport) {
+        anomalies = anomalies.filter(a => a && (a.anomaly_id || a.id || a.insp_id || a.display_ref_no || a.anomaly_ref_no || a.ref_no || a.description || a.observations || a.findings));
+        if (anomalies.length === 0) {
+            console.warn("No valid defect / anomaly records found after filtering.");
+            if (typeof window !== "undefined" && !config.returnBlob) {
+                alert(config.isFindingsReport ? "No findings found to generate report." : "No defect / anomaly records found to generate report.");
+            }
+            return null;
         }
     }
 
@@ -677,6 +684,8 @@ export const generateDefectAnomalyReport = async (
         const footerH = 22; // Compact signatory height (22mm)
         const footerY = pageHeight - margin - footerH; // 260mm
 
+        const maxYForContent = footerY - 3; // 257mm max for content box before footer
+
         if (processedImages.length > 0) {
             for (let j = 0; j < processedImages.length; j++) {
                 const { data: imgData, att: attObj, aspect: imgAspect } = processedImages[j];
@@ -684,37 +693,20 @@ export const generateDefectAnomalyReport = async (
                 const title = meta.title || attObj.name || `Attachment ${j + 1}`;
                 const description = meta.description || "";
 
-                const maxBoxWidth = contentWidth; // 180mm
-                const headerH_box = 8;
-                const splitDesc = doc.splitTextToSize(description || `Photo ${j + 1}`, maxBoxWidth - 10);
-                const footerH_box = description ? (splitDesc.length * 4) + 6 : 8;
+                const headerH_box = 7;
+                const splitDesc = doc.splitTextToSize(description || `Photo ${j + 1}`, contentWidth - 10);
+                const footerH_box = description ? Math.min(14, (splitDesc.length * 3.5) + 4) : 6;
+                const boxOverhead = headerH_box + footerH_box + 4;
 
-                const maxYForContent = footerY - 4; // 256mm max for content box
                 let availableH = maxYForContent - lastY;
+                let maxPhotoSpace = availableH - boxOverhead;
 
                 const aspect = imgAspect && imgAspect > 0 ? imgAspect : (4 / 3);
 
-                // Check remaining photos in queue to optimize multi-photo page density
-                const remainingPhotos = processedImages.length - j;
-                const isFreshPage = lastY <= (margin + headerH + 12);
-
-                // If on a fresh page and there are 2 or more photos, target ~82mm per photo so BOTH fit on 1 page!
-                let targetMaxH = (isFreshPage && remainingPhotos >= 2) ? 82 : 105;
-
-                let maxPhotoSpace = availableH - headerH_box - footerH_box - 8;
-                let photoH = Math.min(targetMaxH, maxPhotoSpace);
-                let photoW = photoH * aspect;
-
-                // Ensure photo width doesn't exceed container width
-                if (photoW > maxBoxWidth - 10) {
-                    photoW = maxBoxWidth - 10;
-                    photoH = photoW / aspect;
-                }
-
-                // Minimum height threshold for a legible inspection photo (60mm):
-                // If remaining space on current page is too small (photoH < 60mm),
-                // cleanly add a page break so photos render at FULL/BALANCED size on the next page!
-                if (photoH < 60) {
+                // Minimum height threshold for a legible inspection photo (45mm):
+                // If remaining space on current page is too small (maxPhotoSpace < 45mm),
+                // cleanly add a page break so photos render at balanced size on the next page!
+                if (maxPhotoSpace < 45) {
                     doc.addPage();
                     globalPage++;
                     drawHeader(doc);
@@ -734,18 +726,21 @@ export const generateDefectAnomalyReport = async (
 
                     lastY = margin + headerH + 10;
                     availableH = maxYForContent - lastY;
+                    maxPhotoSpace = availableH - boxOverhead;
+                }
 
-                    // On the new fresh page: fit 2 photos per page if 2+ photos remain
-                    const isNewFresh = true;
-                    targetMaxH = (isNewFresh && remainingPhotos >= 2) ? 82 : 105;
+                // Check remaining photos in queue to optimize multi-photo page density
+                const remainingPhotos = processedImages.length - j;
+                // If on a fresh page and there are 2 or more photos, target ~75mm per photo so BOTH fit on 1 page!
+                const targetMaxH = (remainingPhotos >= 2) ? 75 : 98;
 
-                    maxPhotoSpace = availableH - headerH_box - footerH_box - 8;
-                    photoH = Math.min(targetMaxH, maxPhotoSpace);
-                    photoW = photoH * aspect;
-                    if (photoW > maxBoxWidth - 10) {
-                        photoW = maxBoxWidth - 10;
-                        photoH = photoW / aspect;
-                    }
+                let photoH = Math.max(35, Math.min(targetMaxH, maxPhotoSpace));
+                let photoW = photoH * aspect;
+
+                // Ensure photo width doesn't exceed container width
+                if (photoW > contentWidth - 8) {
+                    photoW = contentWidth - 8;
+                    photoH = photoW / aspect;
                 }
 
                 const totalBlockH = headerH_box + photoH + footerH_box + 4; // Total container box height
@@ -761,7 +756,7 @@ export const generateDefectAnomalyReport = async (
                 doc.setFontSize(8);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(31, 55, 93);
-                doc.text(title.toUpperCase(), pageWidth / 2, lastY + 5.5, { align: "center" });
+                doc.text(title.toUpperCase(), pageWidth / 2, lastY + 5, { align: "center" });
 
                 // 3. Draw Image (Centered horizontally within container box)
                 const imgX = margin + (contentWidth - photoW) / 2;
@@ -769,21 +764,20 @@ export const generateDefectAnomalyReport = async (
                 doc.addImage(imgData, "JPEG", imgX, imgY, photoW, photoH);
 
                 // 4. Draw Footer for Description (Centered)
-                const footerY_pos = lastY + headerH_box + photoH + 4;
-                doc.setFontSize(8);
+                const footerY_pos = lastY + headerH_box + photoH + 2;
+                doc.setFontSize(7.5);
                 doc.setTextColor(60, 60, 60);
 
                 if (description) {
                     doc.setFont("helvetica", "normal");
-                    doc.text(splitDesc, pageWidth / 2, footerY_pos + 3, { align: "center" });
+                    doc.text(splitDesc, pageWidth / 2, footerY_pos + 3.5, { align: "center" });
                 } else {
                     doc.setFont("helvetica", "italic");
-                    doc.text(`Photo ${j + 1}`, pageWidth / 2, footerY_pos + 3, { align: "center" });
+                    doc.text(`Photo ${j + 1}`, pageWidth / 2, footerY_pos + 3.5, { align: "center" });
                 }
 
                 // Update Y for next photo
-                const blockGap = 8;
-                lastY += totalBlockH + blockGap;
+                lastY += totalBlockH + 3;
             }
         }
         // Draw Signatories at the bottom of the current page (or new page if no space)
@@ -833,25 +827,8 @@ export const generateDefectAnomalyReport = async (
             });
         };
 
-        // Draw Signatories at the bottom of the current page (or new page if space is exceeded)
+        // Draw Signatories at the bottom of the current page
         if (config.showSignatures !== false) {
-            if (lastY > footerY - 1) {
-                doc.addPage();
-                drawHeader(doc);
-
-                // Continuation Sub-Header Bar
-                const subBarH = 6;
-                const subBarY = margin + headerH + 2;
-                doc.setDrawColor(200, 200, 200);
-                doc.setLineWidth(0.1);
-                doc.setFillColor(isPrintFriendly ? 250 : 240, isPrintFriendly ? 250 : 242, isPrintFriendly ? 250 : 246);
-                doc.rect(margin, subBarY, contentWidth, subBarH, 'FD');
-                doc.setFontSize(7.5);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(31, 55, 93);
-                doc.text(`${config.isFindingsReport ? "Findings Ref:" : "Anomaly Ref:"} ${ref}  |  Structure: ${install}  |  Signatures`, margin + 3, subBarY + 4.2);
-                doc.setTextColor(0, 0, 0);
-            }
             drawSignatories();
         }
 
