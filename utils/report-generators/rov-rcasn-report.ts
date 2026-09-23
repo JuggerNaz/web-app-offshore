@@ -222,9 +222,8 @@ export const generateROVCasnReport = async (
             return a.localeCompare(b);
         });
         
-        if (sortedCaissonQids.length === 0 && records.length > 0) {
-            // Fallback for records not explicitly grouped
-            caissonGroups["General"] = records;
+        if (sortedCaissonQids.length === 0) {
+            caissonGroups["General"] = [];
             sortedCaissonQids.push("General");
         }
 
@@ -261,9 +260,11 @@ export const generateROVCasnReport = async (
             // 1. Description / Findings
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
+            } else if (d.findings && d.findings.trim()) {
+                findingsParts.push(d.findings.trim());
             }
 
-            // 2. Additional CP details
+            // 2. CP Additionals
             additionals.forEach((a: any) => {
                 const val = a.reading ?? a.cp_rdg ?? "";
                 if ((val !== "" && val !== null && val !== undefined) || a.location) {
@@ -273,18 +274,19 @@ export const generateROVCasnReport = async (
                 }
             });
 
-            // 3. Anomaly & Rectified details
+            // 3. Anomaly Reference
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
 
+            // 4. Rectification
             const isRectified = linkedAnom?.is_rectified || r.rectified || false;
             if (isRectified) {
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
                 findingsParts.push(`Rectified: ${rectRem}`);
             }
 
-            const row = [
+            return [
                 String(idx + 1),
                 qid,
                 String(elevation),
@@ -294,14 +296,13 @@ export const generateROVCasnReport = async (
                 String(coatCond),
                 findingsParts.length > 0 ? findingsParts.join("\n") : "—",
             ];
-            return row;
         };
 
-        // ── Generate Pages for each Caisson Group ───────────────────────────────
+        // ── Generation ──────────────────────────────────────────────────────────
         sortedCaissonQids.forEach((caissonQid, groupIdx) => {
             if (groupIdx > 0) doc.addPage();
             
-            const groupRecords = caissonGroups[caissonQid].sort((a, b) => {
+            const groupRecords = (caissonGroups[caissonQid] || []).sort((a, b) => {
                 const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
                 const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
                 return elB - elA;
@@ -339,7 +340,9 @@ export const generateROVCasnReport = async (
                     { content: "Coating\nCondition",   styles: { halign: "center", valign: "middle" } },
                     { content: "Findings",        styles: { halign: "center", valign: "middle" } }
                 ]],
-                body: groupRecords.map(buildRow),
+                body: groupRecords.length > 0
+                    ? groupRecords.map(buildRow)
+                    : [["-", "-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
@@ -370,6 +373,7 @@ export const generateROVCasnReport = async (
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
+                    if (!r) return;
                     const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                     const isFinding  = metaStatus === "finding";

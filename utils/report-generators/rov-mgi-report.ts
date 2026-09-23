@@ -43,10 +43,7 @@ export const generateROVMGIGraphReport = async (
         });
 
         const sortedQids = Object.keys(recordsByQid).sort();
-
-        if (sortedQids.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
-        }
+        const renderQids = sortedQids.length > 0 ? sortedQids : ["Overall Elevation Profile"];
 
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -181,13 +178,13 @@ export const generateROVMGIGraphReport = async (
             return { h: '0', s: '0' };
         };
 
-        for (let i = 0; i < sortedQids.length; i++) {
-            const qid = sortedQids[i];
+        for (let i = 0; i < renderQids.length; i++) {
+            const qid = renderQids[i];
             if (i > 0) doc.addPage();
             drawPremiumHeader(doc, qid);
             const tableY = drawPremiumContext(doc, margin + HEADER_H + 2, qid);
 
-            const qidRecords = recordsByQid[qid].sort((a,b) => resolveDepth(b.elevation) - resolveDepth(a.elevation));
+            const qidRecords = (recordsByQid[qid] || []).sort((a,b) => resolveDepth(b.elevation) - resolveDepth(a.elevation));
             const plotPoints: { page: number; x: number; y: number; h: number; limitX: number; actualX: number }[] = [];
             const pagesRulerDrawn = new Set<number>();
 
@@ -272,7 +269,7 @@ export const generateROVMGIGraphReport = async (
                         { content: '9S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } }
                     ]
                 ],
-                body: tableData.map(row => {
+                body: tableData.length > 0 ? tableData.map(row => {
                     const formatReading = (v: any) => String(v ?? '-');
                     return [
                         `${row.depth.toFixed(1)}m`,
@@ -283,7 +280,9 @@ export const generateROVMGIGraphReport = async (
                         `${row.limit}mm`,
                         row.findings
                     ];
-                }),
+                }) : [
+                    ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No marine growth profile observations recorded."]
+                ],
                 theme: 'grid',
                 styles: { fontSize: 6.5, cellPadding: 1.5, textColor: [0, 0, 0], lineColor: colors.border },
                 headStyles: { fillColor: isPF ? [255,255,255] : colors.teal, textColor: isPF ? colors.navy : 255, fontStyle: 'bold', halign: 'center', valign: 'middle' },

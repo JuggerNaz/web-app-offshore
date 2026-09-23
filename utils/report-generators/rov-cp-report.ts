@@ -80,9 +80,6 @@ export const generateROVCPReport = async (
     try {
         const filteredRecords = (records || []).filter(isROVRecord);
 
-        if ((!filteredRecords || filteredRecords.length === 0) && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
-        }
 
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -268,7 +265,9 @@ export const generateROVCPReport = async (
                 { content: "CP (mV)",          styles: { halign: "center", valign: "middle" } },
                 { content: "Findings",         styles: { halign: "center", valign: "middle" } }
             ]],
-            body: sorted.map(buildRow),
+            body: sorted.length > 0 
+                ? sorted.map(buildRow) 
+                : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
             theme: "grid",
             headStyles: {
                 fillColor: isPF ? [255, 255, 255] : colors.navy,
@@ -298,6 +297,7 @@ export const generateROVCPReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
+                if (!r) return;
                 const linkedAnom = r.insp_anomalies?.[0] ?? null;
                 const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                 const isFinding  = metaStatus === "finding";

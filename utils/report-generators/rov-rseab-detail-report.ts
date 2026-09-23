@@ -82,10 +82,6 @@ export const generateROVRSEABDetailReport = async (
             return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
         });
 
-        if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
-        }
-
         // ── Pre-load logos ──
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -271,7 +267,13 @@ export const generateROVRSEABDetailReport = async (
                     { content: "Findings" }
                 ]
             ],
-            body: tableRows,
+            body: tableRows.length > 0 ? tableRows : [[
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-" },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "No seabed debris observations recorded for this scope." }
+            ]],
             theme: "grid",
             headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
             styles: { fontSize: 7.5, cellPadding: 2.5 },

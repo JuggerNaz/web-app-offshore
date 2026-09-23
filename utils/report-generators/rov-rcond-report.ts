@@ -208,14 +208,15 @@ export const generateROVCondReport = async (
         });
 
         // Filter and Sort by Parent QID for logical order
-        const sortedParentIds = Object.keys(condGroups).map(Number).sort((a, b) => {
+        let sortedParentIds = Object.keys(condGroups).map(Number).sort((a, b) => {
             const qidA = idToComp[a]?.q_id || "";
             const qidB = idToComp[b]?.q_id || "";
             return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: 'base' });
         });
 
-        if (sortedParentIds.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
+        if (sortedParentIds.length === 0) {
+            sortedParentIds = [0];
+            condGroups[0] = [];
         }
 
         const buildRow = (r: any, idx: number): string[] => {
@@ -239,19 +240,19 @@ export const generateROVCondReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            const compCond = d.component_condition || r.component_condition || "—";
-            const coatCond = d.coating_condition || r.coating_condition || "—";
+            const compCond = d.comp_cond || d.component_condition || "—";
+            const coatCond = d.coat_cond || d.coating_condition || "—";
 
             const findingsParts: string[] = [];
 
-            // 1. Findings / Description
+            // 1. Description / Findings
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
             } else if (d.findings && d.findings.trim()) {
                 findingsParts.push(d.findings.trim());
             }
 
-            // 2. CP Additional
+            // 2. CP Additionals
             additionals.forEach((a: any) => {
                 const val = a.reading ?? a.cp_rdg ?? "";
                 if ((val !== "" && val !== null && val !== undefined) || a.location) {
@@ -266,7 +267,7 @@ export const generateROVCondReport = async (
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
 
-            // 4. Rectification
+            // Rectification
             const isRectified = linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED';
             if (isRectified) {
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
@@ -289,7 +290,7 @@ export const generateROVCondReport = async (
         sortedParentIds.forEach((parentId, groupIdx) => {
             if (groupIdx > 0) doc.addPage();
             
-            const groupRecords = condGroups[parentId].sort((a, b) => {
+            const groupRecords = (condGroups[parentId] || []).sort((a, b) => {
                 const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
                 const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
                 return elB - elA;
@@ -328,7 +329,9 @@ export const generateROVCondReport = async (
                     { content: "Coating\nCondition",   styles: { halign: "center" } },
                     { content: "Findings",        styles: { halign: "center" } }
                 ]],
-                body: groupRecords.map(buildRow),
+                body: groupRecords.length > 0
+                    ? groupRecords.map(buildRow)
+                    : [["-", "-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
@@ -357,6 +360,7 @@ export const generateROVCondReport = async (
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
+                    if (!r) return;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                     const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     

@@ -83,7 +83,6 @@ export const generateROVPhotographyReport = async (
 
         // If no photos, return a document with an empty state message
         if (!photos || photos.length === 0) {
-            if (config.returnBlob && !(config as any)?.isBlankReport) return null as any;
             doc.setFont("helvetica", "bold");
             doc.setFontSize(16);
             doc.setTextColor(150, 150, 150);
@@ -95,6 +94,7 @@ export const generateROVPhotographyReport = async (
             if (config.returnBlob) return doc.output("blob");
             return;
         }
+
 
         const colors = {
             navy: [31, 55, 93] as [number, number, number],

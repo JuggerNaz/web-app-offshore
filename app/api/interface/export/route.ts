@@ -428,7 +428,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             COMP_ID: c.id,
             ID_NO: sanitizeText(c.id_no || ""),
             Q_ID: sanitizeText(c.q_id || ""),
-            CODE: sanitizeText(c.code || ""),
+            CODE: sanitizeText(c.code || "").toUpperCase(),
             COMPDESC: sanitizeText(meta.description || meta.desc || c.description || c.name || ""),
             S_NODE: sanitizeText(meta.s_node || ""),
             F_NODE: sanitizeText(meta.f_node || ""),
@@ -601,44 +601,44 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           const linkedAnom = anomMapByInspId.get(Number(r.insp_id)) || (allAnomalies || []).find((a: any) => a.inspection_id === r.insp_id);
           const recCompCodeUpper = String(comp?.code || "").trim().toUpperCase();
           const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || comp?.type || (code === "UCS" ? "CALIBRATION" : "MEMBER");
-          const resolvedDiveNo = dj?.dive_no || dj?.job_no || dj?.name || idata.dive_no || r.dive_no || r.dive_job_id || "DIVE-01";
+          const resolvedDiveNo = dj?.dive_no || dj?.job_no || dj?.name || idata.dive_no || r.dive_no || (r.dive_job_id ? String(r.dive_job_id) : "");
 
           const baseRow: any = {
             STR_ID: r.structure_id || strObj?.plat_id || 1,
             TITLE: sanitizeText(strObj?.title || `Platform ${r.structure_id}`).substring(0, 20),
-            PFIELD: sanitizeText(strObj?.pfield || "Offshore").substring(0, 20),
-            PDESC: sanitizeText(strObj?.pdesc || "Offshore Facility").substring(0, 50),
+            PFIELD: sanitizeText(strObj?.pfield || "").substring(0, 20),
+            PDESC: sanitizeText(strObj?.pdesc || "").substring(0, 50),
             DEF_UNIT: sanitizeText(strObj?.def_unit || "Metric").substring(0, 10),
-            COMP_ID: code === "UCS" ? "" : (comp?.id != null ? comp.id : (r.component_id || 1)),
-            ID_NO: code === "UCS" ? "" : sanitizeText(comp?.id_no || `SYS-${comp?.id || 1}`).substring(0, 25),
-            Q_ID: code === "UCS" ? "" : sanitizeText(comp?.q_id || idata.q_id || "M-01").substring(0, 16),
-            CODE: code === "UCS" ? "" : sanitizeText(comp?.code || "MB").substring(0, 2),
-            COMPDESC: code === "UCS" ? "" : sanitizeText(meta.description || comp?.description || "Structural Member").substring(0, 40),
-            S_NODE: code === "UCS" ? "" : sanitizeText(meta.s_node || "N01").substring(0, 6),
-            F_NODE: code === "UCS" ? "" : sanitizeText(meta.f_node || "N02").substring(0, 6),
-            S_LEG: code === "UCS" ? "" : sanitizeText(meta.s_leg || "A1").substring(0, 2),
-            F_LEG: code === "UCS" ? "" : sanitizeText(meta.f_leg || "A2").substring(0, 2),
-            ELV_1: code === "UCS" ? "" : (meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (meta.start_elevation != null && meta.start_elevation !== "" ? Number(meta.start_elevation) : -12.5)),
-            ELV_2: code === "UCS" ? "" : (meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (meta.end_elevation != null && meta.end_elevation !== "" ? Number(meta.end_elevation) : -15.0)),
-            DIST: code === "UCS" ? "" : (meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (meta.distance != null && meta.distance !== "" ? Number(meta.distance) : 0)),
-            CLK_POS: code === "UCS" ? "" : (meta.clk_pos != null && meta.clk_pos !== "" ? Number(meta.clk_pos) : (meta.clock_position != null && meta.clock_position !== "" ? Number(meta.clock_position) : 12)),
+            COMP_ID: code === "UCS" ? "" : (comp?.id != null ? comp.id : (r.component_id || "")),
+            ID_NO: code === "UCS" ? "" : sanitizeText(comp?.id_no || "").substring(0, 25),
+            Q_ID: code === "UCS" ? "" : sanitizeText(comp?.q_id || idata.q_id || "").substring(0, 16),
+            CODE: code === "UCS" ? "" : sanitizeText(comp?.code || "").substring(0, 2).toUpperCase(),
+            COMPDESC: code === "UCS" ? "" : sanitizeText(meta.description || comp?.description || "").substring(0, 40),
+            S_NODE: code === "UCS" ? "" : sanitizeText(meta.s_node || "").substring(0, 6),
+            F_NODE: code === "UCS" ? "" : sanitizeText(meta.f_node || "").substring(0, 6),
+            S_LEG: code === "UCS" ? "" : sanitizeText(meta.s_leg || "").substring(0, 2),
+            F_LEG: code === "UCS" ? "" : sanitizeText(meta.f_leg || "").substring(0, 2),
+            ELV_1: code === "UCS" ? "" : (meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (meta.start_elevation != null && meta.start_elevation !== "" ? Number(meta.start_elevation) : "")),
+            ELV_2: code === "UCS" ? "" : (meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (meta.end_elevation != null && meta.end_elevation !== "" ? Number(meta.end_elevation) : "")),
+            DIST: code === "UCS" ? "" : (meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (meta.distance != null && meta.distance !== "" ? Number(meta.distance) : "")),
+            CLK_POS: code === "UCS" ? "" : (meta.clk_pos != null && meta.clk_pos !== "" ? (String(meta.clk_pos).toUpperCase() === "N/A" ? 0 : Number(meta.clk_pos)) : (meta.clock_position != null && meta.clock_position !== "" ? (String(meta.clock_position).toUpperCase() === "N/A" ? 0 : Number(meta.clock_position)) : 0)),
             COMPTYPE: code === "UCS" ? "" : sanitizeText(recCompTypeDesc).substring(0, 30),
             INSP_ID: r.insp_id,
             INSP_DATE: formatDateStr(r.inspection_date),
-            INSP_TIME: sanitizeText(r.inspection_time || idata.insp_time || idata.time || "09:30:00").substring(0, 8),
-            INSPECTOR: sanitizeText(r.inspector || idata.inspector || idata.diver_name || dj?.diver_name || "Offshore Inspector").substring(0, 20),
-            PROC: sanitizeText(r.procedure || idata.procedure || idata.proc || (code === "UCS" ? "PTS-UT-CLB-01" : "PTS-001")).substring(0, 20),
-            EQUIP: sanitizeText(r.equipment || idata.equipment || idata.calib_equipment_type || idata.equip || (code === "UCS" ? "UT Set" : "CP Probe / Bathycorrometer")).substring(0, 20),
-            EQ_ID: sanitizeText(r.equipment_id || idata.equipment_id || idata.serial_number || idata.eq_id || (code === "UCS" ? "EQ-UT01" : "EQ-9921")).substring(0, 20),
-            SPEC: sanitizeText(r.spec || idata.spec || idata.specification || "PTS 11.22.02").substring(0, 20),
-            SURF_COND: sanitizeText(r.surf_cond || idata.surface_condition || idata.surf_cond || "Cleaned").substring(0, 30),
-            CLEAN_MET: sanitizeText(r.clean_met || idata.cleaning_method || idata.clean_met || "Water Jet").substring(0, 20),
-            SCAF: (idata.scaffolding || r.scaf || idata.scaf) ? "Yes" : "No",
-            SUPV: sanitizeText(dj?.dive_supervisor || dj?.supervisor || idata.supervisor || "Offshore Supervisor").substring(0, 20),
-            DIVR: sanitizeText(dj?.diver_name || idata.diver_name || idata.diver || "Diver 1").substring(0, 20),
+            INSP_TIME: sanitizeText(r.inspection_time || idata.insp_time || idata.time || "").substring(0, 8),
+            INSPECTOR: sanitizeText(r.inspector || idata.inspector || idata.diver_name || dj?.diver_name || "").substring(0, 20),
+            PROC: sanitizeText(r.procedure || idata.procedure || idata.proc || "").substring(0, 20),
+            EQUIP: sanitizeText(r.equipment || idata.equipment || idata.calib_equipment_type || idata.equip || "").substring(0, 20),
+            EQ_ID: sanitizeText(r.equipment_id || idata.equipment_id || idata.serial_number || idata.eq_id || "").substring(0, 20),
+            SPEC: sanitizeText(r.spec || idata.spec || idata.specification || "").substring(0, 20),
+            SURF_COND: sanitizeText(r.surf_cond || idata.surface_condition || idata.surf_cond || "").substring(0, 30),
+            CLEAN_MET: sanitizeText(r.clean_met || idata.cleaning_method || idata.clean_met || "").substring(0, 20),
+            SCAF: (idata.scaffolding || r.scaf || idata.scaf) ? "Yes" : "",
+            SUPV: sanitizeText(dj?.dive_supervisor || dj?.supervisor || idata.supervisor || "").substring(0, 20),
+            DIVR: sanitizeText(dj?.diver_name || idata.diver_name || idata.diver || "").substring(0, 20),
             DIVE_NO: sanitizeText(resolvedDiveNo).substring(0, 10),
             ELEVATION: r.elevation != null && r.elevation !== "" ? Number(r.elevation) : (idata.elevation != null && idata.elevation !== "" ? Number(idata.elevation) : ""),
-            TOP_UND: sanitizeText(meta.top_und || (Number(r.elevation || idata.elevation || 0) < 0 ? "Underwater" : "Topside")).substring(0, 8),
+            TOP_UND: sanitizeText(meta.top_und || (Number(r.elevation || idata.elevation || 0) < 0 ? "SUBSEA" : "TOPSIDE")).substring(0, 8),
           };
 
           if (code === "ANS") {
@@ -755,6 +755,27 @@ export const POST = withTenant(async (request, { companyId, user }) => {
                 : (r.cp_rdg != null && r.cp_rdg !== "" ? Number(r.cp_rdg) : ""));
             baseRow.ITEM_TYPE = sanitizeText(idata.item_type || idata.itemType || idata.item_typ || "").substring(0, 20);
             baseRow.INSPDESC = sanitizeText(idata.description || idata.item_description || idata.desc || r.description || "").substring(0, 35);
+          } else if (code === "SZS") {
+            baseRow.CP_RDG = idata.cp_rdg != null && idata.cp_rdg !== ""
+              ? Number(idata.cp_rdg)
+              : (idata.cp_reading != null && idata.cp_reading !== ""
+                ? Number(idata.cp_reading)
+                : (r.cp_rdg != null && r.cp_rdg !== "" ? Number(r.cp_rdg) : ""));
+            baseRow.ASSESS = sanitizeText(idata.assess || idata.assessment || "");
+            baseRow.C01 = idata.c01 != null && idata.c01 !== "" ? Number(idata.c01) : "";
+            baseRow.C02 = idata.c02 != null && idata.c02 !== "" ? Number(idata.c02) : "";
+            baseRow.C03 = idata.ut_3_o_clock != null && idata.ut_3_o_clock !== "" ? Number(idata.ut_3_o_clock) : (idata.c03 != null && idata.c03 !== "" ? Number(idata.c03) : "");
+            baseRow.C04 = idata.c04 != null && idata.c04 !== "" ? Number(idata.c04) : "";
+            baseRow.C05 = idata.c05 != null && idata.c05 !== "" ? Number(idata.c05) : "";
+            baseRow.C06 = idata.ut_6_o_clock != null && idata.ut_6_o_clock !== "" ? Number(idata.ut_6_o_clock) : (idata.c06 != null && idata.c06 !== "" ? Number(idata.c06) : "");
+            baseRow.C07 = idata.c07 != null && idata.c07 !== "" ? Number(idata.c07) : "";
+            baseRow.C08 = idata.c08 != null && idata.c08 !== "" ? Number(idata.c08) : "";
+            baseRow.C09 = idata.ut_9_o_clock != null && idata.ut_9_o_clock !== "" ? Number(idata.ut_9_o_clock) : (idata.c09 != null && idata.c09 !== "" ? Number(idata.c09) : "");
+            baseRow.C10 = idata.c10 != null && idata.c10 !== "" ? Number(idata.c10) : "";
+            baseRow.C11 = idata.c11 != null && idata.c11 !== "" ? Number(idata.c11) : "";
+            baseRow.C12 = idata.ut_12_o_clock != null && idata.ut_12_o_clock !== "" ? Number(idata.ut_12_o_clock) : (idata.c12 != null && idata.c12 !== "" ? Number(idata.c12) : "");
+            baseRow.NOM_THK = idata.nominal_thick != null && idata.nominal_thick !== "" ? Number(idata.nominal_thick) : (idata.nominal_thickness != null && idata.nominal_thickness !== "" ? Number(idata.nominal_thickness) : "");
+            baseRow.COAT_COVERAGE = idata.coating_coverage_percent != null && idata.coating_coverage_percent !== "" ? Number(idata.coating_coverage_percent) : (idata.coat_coverage != null && idata.coat_coverage !== "" ? Number(idata.coat_coverage) : "");
           }
 
           baseRow.DEFECT = r.has_anomaly === true || Boolean(linkedAnom) ? "Yes" : "No";
@@ -770,14 +791,17 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           baseRow.JOBNAME = sanitizeText(jp?.name || `JP-${r.jobpack_id || 1}`).substring(0, 20);
           baseRow.STATUS = sanitizeText(jp?.status || "OPEN").substring(0, 10).toUpperCase();
           baseRow.INSP_DONE = String(r.status || "").toUpperCase() === "COMPLETED" ? "Yes" : (String(r.status || "").toUpperCase() === "INCOMPLETE" ? "No" : "Yes");
-          baseRow.REC_DATE = formatDateStr(r.md_date || r.inspection_date);
-          baseRow.INSP_COND = sanitizeText(r.description || idata.findings || idata.observations || "Inspection carried out with satisfactory results").substring(0, 1000);
-          baseRow.CMNTS = sanitizeText(r.comments || idata.comments || idata.cmnts || "No critical safety anomalies noted").substring(0, 4000);
-          baseRow.JOB_TYPE = sanitizeText(jp?.job_type || "MAJOR").substring(0, 20);
-          baseRow.LAST_MAJOR_INSPNO = sanitizeText(jp?.last_insp_no || "INSP-PREV").substring(0, 11);
+          baseRow.INSP_COND = sanitizeText(r.description || idata.findings || idata.observations || "").substring(0, 1000);
+          baseRow.CMNTS = sanitizeText(r.comments || idata.comments || idata.cmnts || "").substring(0, 4000);
+          baseRow.JOB_TYPE = sanitizeText(jp?.job_type || "").substring(0, 20);
+          baseRow.LAST_MAJOR_INSPNO = sanitizeText(jp?.last_insp_no || "").substring(0, 11);
           baseRow.INSPTYPE = code;
-          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (code === "ITS" ? "" : (linkedAnom?.evaluated_by || ""))).substring(0, 250);
+          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (code === "ITS" || code === "SZS" ? "" : (linkedAnom?.evaluated_by || ""))).substring(0, 250);
           baseRow.APPROV_BY = sanitizeText(linkedAnom?.approved_by || "").substring(0, 250);
+
+          if (code === "SZS") {
+            baseRow.CMNTS = "";
+          }
 
           sheetRows.push(baseRow);
         });

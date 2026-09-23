@@ -157,12 +157,10 @@ export const generateROVRSCORV2Report = async (
         });
 
         const components = Array.from(componentMap.keys());
-        if (components.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
-        }
+        const renderComponents = components.length > 0 ? components : ["GENERAL"];
 
         const compsPerPage = 4;
-        const totalPages = Math.ceil(components.length / compsPerPage);
+        const totalPages = Math.max(1, Math.ceil(renderComponents.length / compsPerPage));
 
         // Scalable Graphics Drawer
         const drawGraphics = (d: jsPDF, x: number, y: number, w: number, h: number, compRecords: any[], compData: any) => {
@@ -338,7 +336,7 @@ export const generateROVRSCORV2Report = async (
             let currentY = drawContext(doc, margin + headerH + 2);
 
             const startCompIdx = pageIdx * compsPerPage;
-            const pageComponents = components.slice(startCompIdx, startCompIdx + compsPerPage);
+            const pageComponents = renderComponents.slice(startCompIdx, startCompIdx + compsPerPage);
 
             // Calculate heights dynamically
             // Page content height is 186 mm (210 - 24)

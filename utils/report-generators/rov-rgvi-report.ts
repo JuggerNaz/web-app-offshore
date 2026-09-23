@@ -87,10 +87,6 @@ export const generateROVRGVIReport = async (
         // Exclude components that have dedicated report templates ('AN','FD','BL','CS','SG','CD','CG','CU','RS','RG')
         const validRecords = (records || []).filter((r: any) => !isExcludedFromRGVI(r));
 
-        if ((!validRecords || validRecords.length === 0) && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
-        }
-
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -291,7 +287,7 @@ export const generateROVRGVIReport = async (
                 { content: "CP (mV)",          styles: { halign: "center", valign: "middle" } },
                 { content: "Findings",         styles: { halign: "center", valign: "middle" } },
             ]],
-            body: sorted.map(buildRow),
+            body: sorted.length > 0 ? sorted.map(buildRow) : [["-", "-", "-", "-", "-", "-", "No inspection observations recorded for this scope."]],
             theme: "grid",
             headStyles: {
                 fillColor: isPF ? [255, 255, 255] : colors.navy,

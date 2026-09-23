@@ -158,34 +158,44 @@ export function useWorkspaceReports(
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
 
-    const generateAnomalyReportBlob = async (printFriendly?: boolean, showSignatures?: boolean) => {
-        if (!previewRecord) return;
-        const record = previewRecord;
+    const generateAnomalyReport = async () => {
+        setPreviewRecord(null);
+        setPreviewOpen(true);
+    };
+
+    const generateAnomalyReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         try {
             const settings = await getReportHeaderData();
-            const config = {
-                reportNoPrefix: "ANOMALY",
+            const config: any = {
+                reportNoPrefix: headerData?.sowReportNo || "ANOMALY",
                 reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                reviewedBy: { name: "", date: "" },
-                approvedBy: { name: "", date: "" },
-                watermark: { enabled: false, text: "", transparency: 0.1 },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || new Date().toLocaleDateString() },
+                reviewedBy: reportConfig.reviewedBy || { name: "", date: "" },
+                approvedBy: reportConfig.approvedBy || { name: "", date: "" },
+                watermark: reportConfig.watermark || { enabled: false, text: "", transparency: 0.1 },
                 showContractorLogo: true,
                 showPageNumbers: true,
-                inspectionId: record.insp_id,
                 returnBlob: true,
-                printFriendly: printFriendly || false,
+                printFriendly: printFriendly ?? (reportConfig as any).printFriendly ?? false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
             };
-            return await generateDefectAnomalyReport(
+
+            if (previewRecord?.insp_id) {
+                config.inspectionId = previewRecord.insp_id;
+            } else if (previewRecord?.anomaly_id) {
+                config.anomalyId = previewRecord.anomaly_id;
+            }
+
+            const result = await generateDefectAnomalyReport(
                 { id: jobPackId || "0", name: headerData.jobpackName },
                 { id: structureId || "0", str_name: headerData.platformName },
                 headerData.sowReportNo || "",
-                { company_name: settings.companyName, logo_url: settings.companyLogo },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName, departmentName: settings.departmentName },
                 config
             );
+            return result as Blob;
         } catch (error) {
-            console.error(error);
+            console.error("Error generating anomaly report blob:", error);
             toast.error("Failed to generate report");
             return;
         }
@@ -217,11 +227,6 @@ export function useWorkspaceReports(
             return true;
         });
 
-        if (recordsToPrint.length === 0) {
-            toast.error(`No ${itemTypeFilter || "Seabed"} records found for Seabed Survey.`);
-            return;
-        }
-
         setSeabedTemplateType(tid);
         setSeabedPreviewOpen(true);
     };
@@ -251,23 +256,22 @@ export function useWorkspaceReports(
             return true;
         });
 
-        if (recordsToPrint.length === 0) return;
-
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('*').eq('id', Number(jobPackId)).single();
-        const { data: structure } = await supabase.from('structure').select('*').eq('str_id', Number(structureId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('*').eq('id', Number(jobPackId)).maybeSingle();
+        const { data: structure } = await supabase.from('structure').select('*').eq('str_id', Number(structureId)).maybeSingle();
 
-        if (!jobPack || !structure) return;
+        const finalJobPack = jobPack || { id: Number(jobPackId || 0), name: headerData?.jobpackName || "Jobpack", metadata: {} };
+        const finalStructure = structure || { id: Number(structureId || 0), str_id: Number(structureId || 0), str_name: headerData?.platformName || "Structure" };
 
         let contractorLogoUrl = '';
-        if (jobPack?.metadata?.contrac) {
-            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+        if (finalJobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', finalJobPack?.metadata?.contrac).maybeSingle();
             contractorLogoUrl = contrData?.logo_url || '';
         }
 
         const result = await generateSeabedSurveyReport(
-            { ...jobPack, id: jobPack.id },
-            { ...structure, id: structure.str_id },
+            { ...finalJobPack, id: finalJobPack.id },
+            { ...finalStructure, id: finalStructure.str_id || finalStructure.id },
             headerData.sowReportNo,
             { company_name: settings.companyName, logo_url: settings.companyLogo, departmentName: settings.departmentName },
             {
@@ -287,17 +291,6 @@ export function useWorkspaceReports(
     };
 
     const generateSeabedDetailReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || r.structure_components?.component_types?.code || "").toUpperCase();
-            if (typeCode && typeCode !== 'RSEAB' && typeCode !== 'SEABED') return false;
-            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
-            const desc = (r.description || '').toLowerCase();
-            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
-        });
-        if (records.length === 0) {
-            toast.error("No Seabed Survey Debris records found to generate report");
-            return;
-        }
         setSeabedDetailPreviewOpen(true);
     };
 
@@ -309,9 +302,8 @@ export function useWorkspaceReports(
             const desc = (r.description || '').toLowerCase();
             return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -327,17 +319,6 @@ export function useWorkspaceReports(
     };
 
     const generateSeabedGasDetailReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || r.structure_components?.component_types?.code || "").toUpperCase();
-            if (typeCode && typeCode !== 'RSEAB' && typeCode !== 'SEABED') return false;
-            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
-            const desc = (r.description || '').toLowerCase();
-            return cat === 'gas seepage' || cat === 'gas' || desc.startsWith('gas seepage') || desc.startsWith('gas');
-        });
-        if (records.length === 0) {
-            toast.error("No Seabed Survey Gas Seepage records found to generate report");
-            return;
-        }
         setSeabedGasDetailPreviewOpen(true);
     };
 
@@ -349,9 +330,8 @@ export function useWorkspaceReports(
             const desc = (r.description || '').toLowerCase();
             return cat === 'gas seepage' || cat === 'gas' || desc.startsWith('gas seepage') || desc.startsWith('gas');
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -367,17 +347,6 @@ export function useWorkspaceReports(
     };
 
     const generateSeabedCraterDetailReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || r.structure_components?.component_types?.code || "").toUpperCase();
-            if (typeCode && typeCode !== 'RSEAB' && typeCode !== 'SEABED') return false;
-            const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
-            const desc = (r.description || '').toLowerCase();
-            return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
-        });
-        if (records.length === 0) {
-            toast.error("No Seabed Survey Crater records found to generate report");
-            return;
-        }
         setSeabedCraterDetailPreviewOpen(true);
     };
 
@@ -389,9 +358,8 @@ export function useWorkspaceReports(
             const desc = (r.description || '').toLowerCase();
             return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -407,20 +375,14 @@ export function useWorkspaceReports(
     };
 
     const generateRMGIReport = async () => {
-        const rmgiRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RMGI');
-        if (rmgiRecords.length === 0) {
-            toast.error("No RMGI records found to generate report");
-            return;
-        }
         setRmgiPreviewOpen(true);
     };
 
     const generateRMGIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const rmgiRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RMGI');
-        if (rmgiRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -450,24 +412,18 @@ export function useWorkspaceReports(
     };
 
     const generateMGIReport = async () => {
-        const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
-        if (mgiRecords.length === 0) {
-            toast.error("No MGI records found to generate report");
-            return;
-        }
         setMPreviewOpen(true);
     };
 
     const generateMGIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const mgiRecords = currentRecords.filter(r => r.inspection_type_code === 'RMGI' || r.inspection_type?.code === 'RMGI');
-        if (mgiRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
         
         const profileId = mgiRecords.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
         const profile = await getMGIProfileForJobpack(supabase, jobPackId, profileId);
 
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -497,21 +453,15 @@ export function useWorkspaceReports(
     };
 
     const generateFMDReport = async () => {
-        const fmdRecords = currentRecords.filter(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD');
-        if (fmdRecords.length === 0) {
-            toast.error("No FMD records found to generate report");
-            return;
-        }
         setFmdPreviewOpen(true);
     };
 
     const generateFMDReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const fmdRecords = currentRecords.filter(r => r.inspection_type_code === 'RFMD' || r.inspection_type?.code === 'RFMD');
-        if (fmdRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
 
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -540,21 +490,15 @@ export function useWorkspaceReports(
     };
 
     const generateSZCIReport = async () => {
-        const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
-        if (szciRecords.length === 0) {
-            toast.error("No Splash Zone records found to generate report");
-            return;
-        }
         setSzciPreviewOpen(true);
     };
 
     const generateSZCIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
-        if (szciRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
         
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -583,21 +527,15 @@ export function useWorkspaceReports(
     };
 
     const generateUTWTReport = async () => {
-        const utwtRecords = currentRecords.filter(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT');
-        if (utwtRecords.length === 0) {
-            toast.error("No UTWT records found to generate report");
-            return;
-        }
         setUtwtPreviewOpen(true);
     };
 
     const generateUTWTReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const utwtRecords = currentRecords.filter(r => r.inspection_type_code === 'RUTWT' || r.inspection_type?.code === 'RUTWT');
-        if (utwtRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
         
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -626,16 +564,6 @@ export function useWorkspaceReports(
     };
 
     const generateRGReport = async () => {
-        const rgRecords = currentRecords.filter(r => {
-            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return typeCode === "RGVI" || qid.startsWith("RG") || qid.startsWith("RISG") || qid.startsWith("RISER_GUARD") || qid.startsWith("RISER-GUARD") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD" || compCode === "RG" || compCode === "RISG";
-        });
-        if (rgRecords.length === 0) {
-            toast.error("No Riser Guard records found to generate report");
-            return;
-        }
         setRgPreviewOpen(true);
     };
 
@@ -646,10 +574,9 @@ export function useWorkspaceReports(
             const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
             return typeCode === "RGVI" || qid.startsWith("RG") || qid.startsWith("RISG") || qid.startsWith("RISER_GUARD") || qid.startsWith("RISER-GUARD") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD" || compCode === "RG" || compCode === "RISG";
         });
-        if (rgRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -678,17 +605,6 @@ export function useWorkspaceReports(
     };
 
     const generateSGReport = async () => {
-        const sgRecords = currentRecords.filter(r => {
-            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
-            return qid.startsWith("SG") || qid.startsWith("CS_GUARD") || qid.startsWith("CS-GUARD") || (qid.includes("GUARD") && qid.includes("CS")) || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG" || compCode === "CS_GUARD" || compName.includes("CAISSON GUARD");
-        });
-        if (sgRecords.length === 0) {
-            toast.error("No Caisson Guard records found to generate report");
-            return;
-        }
         setSgPreviewOpen(true);
     };
 
@@ -700,10 +616,9 @@ export function useWorkspaceReports(
             const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
             return qid.startsWith("SG") || qid.startsWith("CS_GUARD") || qid.startsWith("CS-GUARD") || (qid.includes("GUARD") && qid.includes("CS")) || typeCode === "SG" || typeCode === "CAISSONGUARD" || compCode === "SG" || compCode === "CS_GUARD" || compName.includes("CAISSON GUARD");
         });
-        if (sgRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -732,17 +647,6 @@ export function useWorkspaceReports(
     };
 
     const generateCUReport = async () => {
-        const cuRecords = currentRecords.filter(r => {
-            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
-            return qid.startsWith("CU") || qid.startsWith("CD_GUARD") || qid.startsWith("CD-GUARD") || (qid.includes("GUARD") && (qid.includes("CD") || qid.includes("COND"))) || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU" || compCode === "CD_GUARD" || compName.includes("CONDUCTOR GUARD");
-        });
-        if (cuRecords.length === 0) {
-            toast.error("No Conductor Guard records found to generate report");
-            return;
-        }
         setCuPreviewOpen(true);
     };
 
@@ -754,10 +658,9 @@ export function useWorkspaceReports(
             const compName = (r.structure_components?.comp_name || r.component?.comp_name || r.structure_components?.name || r.component?.name || "").toUpperCase();
             return qid.startsWith("CU") || qid.startsWith("CD_GUARD") || qid.startsWith("CD-GUARD") || (qid.includes("GUARD") && (qid.includes("CD") || qid.includes("COND"))) || typeCode === "CU" || typeCode === "CONDUCTORGUARD" || compCode === "CU" || compCode === "CD_GUARD" || compName.includes("CONDUCTOR GUARD");
         });
-        if (cuRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData = null } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -786,20 +689,14 @@ export function useWorkspaceReports(
     };
 
     const generateBLReport = async () => {
-        const blRecords = currentRecords.filter(r => isBLRecord(r));
-        if (blRecords.length === 0) {
-            toast.error("No Boatlanding records found to generate report");
-            return;
-        }
         setBlPreviewOpen(true);
     };
 
     const generateBLReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const blRecords = currentRecords.filter(r => isBLRecord(r));
-        if (blRecords.length === 0) return;
 
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -828,19 +725,13 @@ export function useWorkspaceReports(
     };
 
     const generateRSCORReport = async () => {
-        const rscorRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RSCOR' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SCOUR');
-        if (rscorRecords.length === 0) {
-            toast.error("No Scour records found to generate report");
-            return;
-        }
         setRscorPreviewOpen(true);
     };
 
     const generateRSCORReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const rscorRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RSCOR' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SCOUR');
-        if (rscorRecords.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -863,19 +754,13 @@ export function useWorkspaceReports(
     };
 
     const generateRSCORV2Report = async () => {
-        const rscorRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RSCOR' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SCOUR');
-        if (rscorRecords.length === 0) {
-            toast.error("No Scour records found to generate report");
-            return;
-        }
         setRscorV2PreviewOpen(true);
     };
 
     const generateRSCORV2ReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const rscorRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RSCOR' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SCOUR');
-        if (rscorRecords.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -898,29 +783,14 @@ export function useWorkspaceReports(
     };
 
     const generateRRISIReport = async () => {
-        const records = currentRecords.filter(r => (r.structure_components?.q_id || "").toUpperCase().startsWith('R'));
-        if (records.length === 0) {
-            toast.error("No Riser records found to generate report");
-            return;
-        }
         setRrisiPreviewOpen(true);
     };
 
     const generateJTISIReport = async () => {
-        const records = currentRecords.filter(r => (r.structure_components?.q_id || "").toUpperCase().startsWith('J'));
-        if (records.length === 0) {
-            toast.error("No J-Tube records found to generate report");
-            return;
-        }
         setJtisiPreviewOpen(true);
     };
 
     const generateITISIReport = async () => {
-        const records = currentRecords.filter(r => (r.structure_components?.q_id || "").toUpperCase().startsWith('I'));
-        if (records.length === 0) {
-            toast.error("No I-Tube records found to generate report");
-            return;
-        }
         setItisiPreviewOpen(true);
     };
 
@@ -932,9 +802,8 @@ export function useWorkspaceReports(
             // Strict: Must be RRISI type AND (Component RS OR starts with R but NOT RISG)
             return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1009,9 +878,8 @@ export function useWorkspaceReports(
 
     const generateJTISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.structure_components?.q_id || "").toUpperCase().startsWith('J'));
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1022,9 +890,8 @@ export function useWorkspaceReports(
 
     const generateITISIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.structure_components?.q_id || "").toUpperCase().startsWith('I'));
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1034,16 +901,6 @@ export function useWorkspaceReports(
     };
 
     const generateITISIDetailReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const qid = (r.structure_components?.q_id || "").toUpperCase();
-            const compCode = (r.structure_components?.code || "").toUpperCase();
-            return typeCode === 'RRISI' && qid.startsWith('I') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
-        });
-        if (records.length === 0) {
-            toast.error("No I-Tube records found to generate report");
-            return;
-        }
         setItisiDetailPreviewOpen(true);
     };
 
@@ -1054,9 +911,8 @@ export function useWorkspaceReports(
             const compCode = (r.structure_components?.code || "").toUpperCase();
             return typeCode === 'RRISI' && qid.startsWith('I') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1066,16 +922,6 @@ export function useWorkspaceReports(
     };
 
     const generateAnodeReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
-            return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
-        });
-        if (records.length === 0) {
-            toast.error("No ROV Anode records (RGVI + component_type: AN) found to generate report");
-            return;
-        }
         setAnodePreviewOpen(true);
     };
 
@@ -1086,9 +932,8 @@ export function useWorkspaceReports(
             const isAnode = typeCode === 'RGVI' || typeCode === 'ANODE' || typeCode === 'ANOD';
             return isAnode && compCode === 'AN' && typeCode !== 'RSANI';
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1098,15 +943,6 @@ export function useWorkspaceReports(
     };
 
     const generateAnodeRsaniReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return typeCode === 'RSANI' && compCode === 'AN';
-        });
-        if (records.length === 0) {
-            toast.error("No ROV Anode CVI records (RSANI + component_type: AN) found to generate report");
-            return;
-        }
         setAnodeRsaniPreviewOpen(true);
     };
 
@@ -1116,9 +952,8 @@ export function useWorkspaceReports(
             const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
             return typeCode === 'RSANI' && compCode === 'AN';
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1128,15 +963,6 @@ export function useWorkspaceReports(
     };
 
     const generateCPReport = async () => {
-        const records = currentRecords.filter(r => {
-            const d = r.inspection_data || {};
-            const hasCP = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
-            return hasCP && isROVRecord(r);
-        });
-        if (records.length === 0) {
-            toast.error("No ROV CP records found to generate report");
-            return;
-        }
         setCpPreviewOpen(true);
     };
 
@@ -1146,9 +972,8 @@ export function useWorkspaceReports(
             const hasCP = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
             return hasCP && isROVRecord(r);
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1158,14 +983,6 @@ export function useWorkspaceReports(
     };
 
     const generateRSWNIReport = async () => {
-        const records = currentRecords.filter(r => {
-            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return code === 'RSWNI' || code === 'SWNI';
-        });
-        if (records.length === 0) {
-            toast.error("No RSWNI Selected Node records found to generate report");
-            return;
-        }
         setRswniPreviewOpen(true);
     };
 
@@ -1174,9 +991,8 @@ export function useWorkspaceReports(
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === 'RSWNI' || code === 'SWNI';
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1186,14 +1002,6 @@ export function useWorkspaceReports(
     };
 
     const generateROVRICMIReportAction = async () => {
-        const records = currentRecords.filter(r => {
-            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return code === 'RICMI';
-        });
-        if (records.length === 0) {
-            toast.error("No Inclinometer records found to generate report");
-            return;
-        }
         setRovRicmiPreviewOpen(true);
     };
 
@@ -1202,9 +1010,8 @@ export function useWorkspaceReports(
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === 'RICMI';
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1219,14 +1026,6 @@ export function useWorkspaceReports(
     };
 
     const generateDivingANMAINReportAction = async () => {
-        const records = currentRecords.filter(r => {
-            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return code === 'ANMAIN';
-        });
-        if (records.length === 0) {
-            toast.error("No Anode Maintenance records found to generate report");
-            return;
-        }
         setDivingAnmainPreviewOpen(true);
     };
 
@@ -1235,9 +1034,8 @@ export function useWorkspaceReports(
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return code === 'ANMAIN';
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1252,19 +1050,13 @@ export function useWorkspaceReports(
     };
 
     const generateRGVIReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RGVI');
-        if (records.length === 0) {
-            toast.error("No RGVI records found to generate report");
-            return;
-        }
         setRgviPreviewOpen(true);
     };
 
     const generateRGVIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RGVI');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1298,19 +1090,13 @@ export function useWorkspaceReports(
     };
 
     const generateGVINSReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'GVINS');
-        if (records.length === 0) {
-            toast.error("No GVINS records found to generate report");
-            return;
-        }
         setGvinsPreviewOpen(true);
     };
 
     const generateGVINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'GVINS');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1320,14 +1106,6 @@ export function useWorkspaceReports(
     };
 
     const generateDivingDCASNUWReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
-        });
-        if (records.length === 0) {
-            toast.error("No matching caisson records found to generate report");
-            return;
-        }
         setDivingDcasnUwPreviewOpen(true);
     };
 
@@ -1336,9 +1114,8 @@ export function useWorkspaceReports(
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1348,14 +1125,6 @@ export function useWorkspaceReports(
     };
 
     const generateDivingDCASNTSReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
-        });
-        if (records.length === 0) {
-            toast.error("No matching caisson records found to generate report");
-            return;
-        }
         setDivingDcasnTsPreviewOpen(true);
     };
 
@@ -1364,9 +1133,8 @@ export function useWorkspaceReports(
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1376,14 +1144,6 @@ export function useWorkspaceReports(
     };
 
     const generateDivingDCONDUWReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
-        });
-        if (records.length === 0) {
-            toast.error("No matching conductor records found to generate report");
-            return;
-        }
         setDivingDcondUwPreviewOpen(true);
     };
 
@@ -1392,9 +1152,8 @@ export function useWorkspaceReports(
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1404,14 +1163,6 @@ export function useWorkspaceReports(
     };
 
     const generateDivingDCONDTSReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
-        });
-        if (records.length === 0) {
-            toast.error("No matching conductor records found to generate report");
-            return;
-        }
         setDivingDcondTsPreviewOpen(true);
     };
 
@@ -1420,9 +1171,8 @@ export function useWorkspaceReports(
             const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
             return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT'].includes(typeCode);
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1576,19 +1326,13 @@ export function useWorkspaceReports(
     };
 
     const generateDivingACFMCReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'ACFMC');
-        if (records.length === 0) {
-            toast.error("No ACFMC records found to generate report");
-            return;
-        }
         setDivingAcfmcPreviewOpen(true);
     };
 
     const generateDivingACFMCReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void | null> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'ACFMC');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1598,19 +1342,13 @@ export function useWorkspaceReports(
     };
 
     const generateDivingPLCOReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'PL_CO');
-        if (records.length === 0) {
-            toast.error("No PL_CO records found to generate report");
-            return;
-        }
         setDivingPlcoPreviewOpen(true);
     };
 
     const generateDivingPLCOReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'PL_CO');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1620,19 +1358,13 @@ export function useWorkspaceReports(
     };
 
     const generateROVRWDIReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RWDI');
-        if (records.length === 0) {
-            toast.error("No RWDI records found to generate report");
-            return;
-        }
         setRovRwdiPreviewOpen(true);
     };
 
     const generateROVRWDIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RWDI');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1642,19 +1374,13 @@ export function useWorkspaceReports(
     };
 
     const generateBSINSReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'BSINS');
-        if (records.length === 0) {
-            toast.error("No BSINS records found to generate report");
-            return;
-        }
         setBsinsPreviewOpen(true);
     };
 
     const generateBSINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'BSINS');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1669,19 +1395,13 @@ export function useWorkspaceReports(
     };
 
     const generateCVINSReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'CVINS');
-        if (records.length === 0) {
-            toast.error("No CVINS records found to generate report");
-            return;
-        }
         setCvinsPreviewOpen(true);
     };
 
     const generateCVINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'CVINS');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1696,19 +1416,13 @@ export function useWorkspaceReports(
     };
 
     const generateCLEANReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'CLEAN');
-        if (records.length === 0) {
-            toast.error("No CLEAN records found to generate report");
-            return;
-        }
         setCleanPreviewOpen(true);
     };
 
     const generateCLEANReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'CLEAN');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1723,19 +1437,13 @@ export function useWorkspaceReports(
     };
 
     const generateMPINSReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'MPINS');
-        if (!records.length) {
-            toast.error("No MPINS records found to generate report");
-            return;
-        }
         setMpinsPreviewOpen(true);
     };
 
     const generateMPINSReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'MPINS');
-        if (!records.length) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1750,19 +1458,13 @@ export function useWorkspaceReports(
     };
 
     const generateUTWTKReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'UTWTK');
-        if (!records.length) {
-            toast.error("No UTWTK records found to generate report");
-            return;
-        }
         setUtwtkPreviewOpen(true);
     };
 
     const generateUTWTKReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'UTWTK');
-        if (!records.length) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1777,19 +1479,13 @@ export function useWorkspaceReports(
     };
 
     const generateSZONEReport = async () => {
-        const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SZONE');
-        if (records.length === 0) {
-            toast.error("No Splash Zone records found to generate report");
-            return;
-        }
         setSzonePreviewOpen(true);
     };
 
     const generateSZONEReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SZONE');
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1844,19 +1540,13 @@ export function useWorkspaceReports(
     };
 
     const generateDivingCPSURVReport = async () => {
-        const records = currentRecords.filter(isDivingCPSURVRecord);
-        if (records.length === 0) {
-            toast.error("No Diving CP Survey (CPSURV) records found to generate report");
-            return;
-        }
         setCpsurvDivingPreviewOpen(true);
     };
 
     const generateDivingCPSURVReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = currentRecords.filter(isDivingCPSURVRecord);
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1877,19 +1567,13 @@ export function useWorkspaceReports(
     };
 
     const generateCPCLBReport = async () => {
-        const records = await fetchCPCLBRecords();
-        if (records.length === 0) {
-            toast.error("No CP Calibration records found for this SOW/Jobpack");
-            return;
-        }
         setCpclbPreviewOpen(true);
     };
 
     const generateCPCLBReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = await fetchCPCLBRecords();
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -1943,19 +1627,13 @@ export function useWorkspaceReports(
     };
 
     const generateUTCLBReport = async () => {
-        const records = await fetchUTCLBRecords();
-        if (records.length === 0) {
-            toast.error("No UT Calibration records found for this SOW/Jobpack");
-            return;
-        }
         setUtclbPreviewOpen(true);
     };
 
     const generateUTCLBReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = await fetchUTCLBRecords();
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2009,19 +1687,13 @@ export function useWorkspaceReports(
     };
 
     const generateDivingAnodeReport_ws = async () => {
-        const records = await fetchDivingAnodeRecords();
-        if (records.length === 0) {
-            toast.error("No Diving Selected Anode (PL_AN) records found for this SOW/Jobpack");
-            return;
-        }
         setDivingAnodePreviewOpen(true);
     };
 
     const generateDivingAnodeReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
         const records = await fetchDivingAnodeRecords();
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2044,15 +1716,6 @@ export function useWorkspaceReports(
     };
 
     const generateRCASNReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || "").toUpperCase();
-            return typeCode === 'RCASN' || compCode === 'CS';
-        });
-        if (records.length === 0) {
-            toast.error("No Caisson records found to generate report");
-            return;
-        }
         setRcasnPreviewOpen(true);
     };
 
@@ -2062,9 +1725,8 @@ export function useWorkspaceReports(
             const compCode = (r.structure_components?.code || "").toUpperCase();
             return typeCode === 'RCASN' || compCode === 'CS';
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2074,15 +1736,6 @@ export function useWorkspaceReports(
     };
 
     const generateRCASNSketchReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || "").toUpperCase();
-            return typeCode === 'RCASN' || compCode === 'CS';
-        });
-        if (records.length === 0) {
-            toast.error("No Caisson records found to generate report");
-            return;
-        }
         setRcasnSketchPreviewOpen(true);
     };
 
@@ -2092,9 +1745,8 @@ export function useWorkspaceReports(
             const compCode = (r.structure_components?.code || "").toUpperCase();
             return typeCode === 'RCASN' || compCode === 'CS';
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2104,15 +1756,6 @@ export function useWorkspaceReports(
     };
 
     const generateRCONDReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || "").toUpperCase();
-            return ['RCOND', 'RCON'].includes(typeCode) || ['CD', 'CON'].includes(compCode);
-        });
-        if (records.length === 0) {
-            toast.error("No Conductor records found to generate report");
-            return;
-        }
         setRcondPreviewOpen(true);
     };
 
@@ -2122,9 +1765,8 @@ export function useWorkspaceReports(
             const compCode = (r.structure_components?.code || "").toUpperCase();
             return ['RCOND', 'RCON'].includes(typeCode) || ['CD', 'CON'].includes(compCode);
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2134,15 +1776,6 @@ export function useWorkspaceReports(
     };
 
     const generateRCONDSketchReport = async () => {
-        const records = currentRecords.filter(r => {
-            const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compCode = (r.structure_components?.code || "").toUpperCase();
-            return ['RCOND', 'RCON'].includes(typeCode) || ['CD', 'CON'].includes(compCode);
-        });
-        if (records.length === 0) {
-            toast.error("No Conductor records found to generate report");
-            return;
-        }
         setRcondSketchPreviewOpen(true);
     };
 
@@ -2152,9 +1785,8 @@ export function useWorkspaceReports(
             const compCode = (r.structure_components?.code || "").toUpperCase();
             return ['RCOND', 'RCON'].includes(typeCode) || ['CD', 'CON'].includes(compCode);
         });
-        if (records.length === 0) return;
         const settings = await getReportHeaderData();
-        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
         if (jobPack?.metadata?.contrac) {
             const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2548,6 +2180,7 @@ export function useWorkspaceReports(
 
         seabedTemplateType, setSeabedTemplateType,
         previewRecord, setPreviewRecord,
+        generateAnomalyReport,
         generateAnomalyReportBlob,
         generateMGIReport,
         generateMGIReportBlob,
@@ -2775,17 +2408,12 @@ export function useWorkspaceReports(
         },
         divingFmdPreviewOpen, setDivingFmdPreviewOpen,
         generateDivingFMDReport: async () => {
-            const fmdRecords = currentRecords.filter(r => ['FLOOD', 'FMD', 'DFMD'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
-            if (fmdRecords.length === 0) {
-                toast.error("No Flooded Member (Diving) records found to generate report");
-                return;
-            }
             setDivingFmdPreviewOpen(true);
         },
         generateDivingFMDReportBlob: async (printFriendly?: boolean) => {
             const fmdRecords = currentRecords.filter(r => ['FLOOD', 'FMD', 'DFMD'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
             const settings = await getReportHeaderData();
-            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
             let contractorLogoUrl = '';
             if (jobPack?.metadata?.contrac) {
                 const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2800,17 +2428,12 @@ export function useWorkspaceReports(
         },
         divingMeasuPreviewOpen, setDivingMeasuPreviewOpen,
         generateDivingMEASUReport: async () => {
-            const measuRecords = currentRecords.filter(r => ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
-            if (measuRecords.length === 0) {
-                toast.error("No Measurement Dimensional (Diving) records found to generate report");
-                return;
-            }
             setDivingMeasuPreviewOpen(true);
         },
         generateDivingMEASUReportBlob: async (printFriendly?: boolean) => {
             const measuRecords = currentRecords.filter(r => ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'].includes((r.inspection_type_code || r.inspection_type?.code || '').toUpperCase()));
             const settings = await getReportHeaderData();
-            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
             let contractorLogoUrl = '';
             if (jobPack?.metadata?.contrac) {
                 const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2878,7 +2501,7 @@ export function useWorkspaceReports(
         divingMgiPreviewOpen, setDivingMgiPreviewOpen,
         generateDivingMGIReport: async (printFriendly?: boolean) => {
             const settings = await getReportHeaderData();
-            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
             let contractorLogoUrl = '';
             if (jobPack?.metadata?.contrac) {
                 const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2903,7 +2526,7 @@ export function useWorkspaceReports(
         },
         generateDivingMGIReportBlob: async (printFriendly?: boolean) => {
             const settings = await getReportHeaderData();
-            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
             let contractorLogoUrl = '';
             if (jobPack?.metadata?.contrac) {
                 const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();

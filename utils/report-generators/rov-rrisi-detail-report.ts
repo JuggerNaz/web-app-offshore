@@ -236,11 +236,13 @@ export const generateROVRRISIDetailReport = async (
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
 
-        if (groups.length === 0 && config.returnBlob) {
-            return null;
-        }
+        const renderGroups = groups.length > 0 ? groups : [{
+            riserComp: { q_id: 'Riser General', name: 'Riser' },
+            records: []
+        }];
 
         const HEADER_H = 26;
+
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
@@ -326,8 +328,8 @@ export const generateROVRRISIDetailReport = async (
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: "right" });
         };
 
-        for (let gIdx = 0; gIdx < groups.length; gIdx++) {
-            const group = groups[gIdx];
+        for (let gIdx = 0; gIdx < renderGroups.length; gIdx++) {
+            const group = renderGroups[gIdx];
             const riser = group.riserComp;
             const groupRecs = group.records;
 
@@ -353,7 +355,7 @@ export const generateROVRRISIDetailReport = async (
             });
 
             // Map rows for autoTable
-            const tableRows = sortedRecords.map((r, rIdx) => {
+            const tableRows = sortedRecords.length > 0 ? sortedRecords.map((r, rIdx) => {
                 const comp = r.structure_components || {};
                 const d = r.inspection_data || {};
                 const anoms = r.insp_anomalies || [];
@@ -412,7 +414,15 @@ export const generateROVRRISIDetailReport = async (
                     { content: cpDisplay, styles: { halign: "center" as const } },
                     { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                 ];
-            });
+            }) : [[
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-" },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "No observations recorded for this scope." }
+            ]];
 
             autoTable(doc, {
                 startY: currentY,

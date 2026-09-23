@@ -158,11 +158,10 @@ export const generateROVRSCORReport = async (
         });
 
         const components = Array.from(componentMap.keys());
-        if (components.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
-        }
-        for (let i = 0; i < components.length; i++) {
-            const qid = components[i];
+        const renderComponents = components.length > 0 ? components : ["GENERAL"];
+
+        for (let i = 0; i < renderComponents.length; i++) {
+            const qid = renderComponents[i];
             const rawCompRecords = groupedMap.get(qid) || [];
             const compData = componentMap.get(qid) || {};
 
@@ -393,7 +392,7 @@ export const generateROVRSCORReport = async (
                 startY: currentY,
                 margin: { left: margin, right: margin, top: margin + headerH + 6 },
                 head: [['Location', 'Scour Depth', 'Burial %', 'Exposed Pile', 'Remarks']],
-                body: compRecords.map(r => {
+                body: compRecords.length > 0 ? compRecords.map(r => {
                     const rd = r.inspection_data || {};
                     const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
                     const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
@@ -422,7 +421,9 @@ export const generateROVRSCORReport = async (
                             }
                         }
                     ];
-                }),
+                }) : [
+                    ["-", "-", "-", "-", "No scour survey observations recorded for this scope."]
+                ],
                 theme: 'grid',
                 headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 7, halign: 'center' },
                 styles: { fontSize: 7 },

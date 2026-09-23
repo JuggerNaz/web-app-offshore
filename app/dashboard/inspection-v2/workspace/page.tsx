@@ -249,7 +249,7 @@ function V10PreviewLayout() {
   
   const isPipeline = pathname?.includes("/pipeline-workspace") || false;
 
-  const { activeCompanyId } = useUserProfile();
+  const { profile, activeCompanyId } = useUserProfile();
   const jobPackId = searchParams.get("jobpack");
   const structureId = searchParams.get("structure");
   const sowIdFull = searchParams.get("sow");
@@ -353,6 +353,67 @@ function V10PreviewLayout() {
     raw?: any;
   } | null>(null);
   const [isReadyForComps, setIsReadyForComps] = useState(false);
+
+  // User-scoped Workspace Session State Memory
+  const getWorkspaceSessionKey = useCallback(() => {
+    const uId = profile?.id || "default_user";
+    const jp = jobPackId || "0";
+    const st = structureId || "0";
+    const sow = headerData?.sowReportNo || targetReportNumber || "ALL";
+    const mode = inspMethod || "DIVING";
+    return `workspace_user_session_${uId}_${jp}_${st}_${sow}_${mode}`;
+  }, [profile?.id, jobPackId, structureId, headerData?.sowReportNo, targetReportNumber, inspMethod]);
+
+  const loadUserSession = useCallback((): {
+    lastActiveDepId?: string | number | null;
+    lastActiveTapeId?: number | null;
+    lastActiveTapeNo?: string | null;
+    lastActiveChapter?: number | null;
+    vidState?: "IDLE" | "RECORDING" | "PAUSED";
+    vidTimer?: number;
+  } | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(getWorkspaceSessionKey());
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      console.warn("Failed to load user session", e);
+      return null;
+    }
+  }, [getWorkspaceSessionKey]);
+
+  const saveUserSession = useCallback(
+    (partial: {
+      lastActiveDepId?: string | number | null;
+      lastActiveTapeId?: number | null;
+      lastActiveTapeNo?: string | null;
+      lastActiveChapter?: number | null;
+      vidState?: "IDLE" | "RECORDING" | "PAUSED";
+      vidTimer?: number;
+    }) => {
+      if (typeof window === "undefined") return;
+      try {
+        const key = getWorkspaceSessionKey();
+        const current = localStorage.getItem(key);
+        const parsed = current ? JSON.parse(current) : {};
+        const updated = { ...parsed, ...partial, lastUpdated: Date.now() };
+        localStorage.setItem(key, JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Failed to save user session", e);
+      }
+    },
+    [getWorkspaceSessionKey]
+  );
+
+  // Persist user active deployment to session
+  useEffect(() => {
+    if (activeDep?.id) {
+      saveUserSession({
+        lastActiveDepId: activeDep.id,
+      });
+    }
+  }, [activeDep?.id, saveUserSession]);
+
 
   // Live session records
   const [currentRecords, setCurrentRecords] = useState<any[]>([]);
@@ -1273,7 +1334,10 @@ function V10PreviewLayout() {
         }
       }
 
-      if (allData.length === 0) return;
+      if (allData.length === 0) {
+        setAllWorkspaceRecords([]);
+        return;
+      }
 
       // 3. Fetch anomalies for all retrieved records
       const allInspIds = allData.map((r: any) => r.insp_id).filter(Boolean);
@@ -1322,14 +1386,14 @@ function V10PreviewLayout() {
     } finally {
       setIsSearchingWorkspace(false);
     }
-  }, [jobPackId, structureId, supabase]);
+  }, [jobPackId, structureId, headerData.sowReportNo, targetReportNumber, sowParam, supabase]);
 
   // Pre-load all workspace records in the background so search is instant & complete
   useEffect(() => {
     if (jobPackId && structureId) {
       fetchFullWorkspaceRecords();
     }
-  }, [jobPackId, structureId, fetchFullWorkspaceRecords]);
+  }, [jobPackId, structureId, headerData.sowReportNo, fetchFullWorkspaceRecords]);
 
   // If user searches while not yet loaded, trigger fetch
   useEffect(() => {
@@ -1382,6 +1446,19 @@ function V10PreviewLayout() {
   const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false);
   const [rovCalibrationDialogOpen, setRovCalibrationDialogOpen] = useState(false);
 
+  // Persist user active tape & state to session
+  useEffect(() => {
+    if (tapeId) {
+      saveUserSession({
+        lastActiveTapeId: tapeId,
+        lastActiveTapeNo: tapeNo,
+        lastActiveChapter: activeChapter,
+        vidState,
+        vidTimer,
+      });
+    }
+  }, [tapeId, tapeNo, activeChapter, vidState, vidTimer, saveUserSession]);
+
   // Synchronize recording duration and vidState upon changing active tape
   useEffect(() => {
     if (!tapeId) {
@@ -1415,16 +1492,22 @@ function V10PreviewLayout() {
       }
       setVidTimer(currentCounter);
     } else {
-      setVidTimer(0);
-      setVidState("IDLE");
+      const session = loadUserSession();
+      if (session?.lastActiveTapeId === tapeId && session?.vidState) {
+        setVidState(session.vidState);
+        setVidTimer(session.vidTimer || 0);
+      } else {
+        setVidTimer(0);
+        setVidState("IDLE");
+      }
     }
-  }, [tapeId, videoEvents]);
+  }, [tapeId, videoEvents, loadUserSession]);
 
   // Auto-populate tape number when opening the new tape dialog
   useEffect(() => {
     if (isNewTapeOpen) {
-      const base = headerData.sowReportNo || "SOW_REPORT";
-      const platform = headerData.platformName || "STRUCTURE";
+      const base = String(headerData.sowReportNo || "SOW_REPORT").replace(/\s+/g, "");
+      const platform = String(headerData.platformName || "STRUCTURE").replace(/\s+/g, "");
       const postfix = inspMethod === "DIVING" ? "D" : "R";
       let maxSeq = 0;
       jobTapes.forEach((t) => {
@@ -1435,7 +1518,7 @@ function V10PreviewLayout() {
         }
       });
       const nextSeq = String(maxSeq + 1).padStart(3, "0");
-      setNewTapeNo(`${base} / ${platform} / V${nextSeq}${postfix}`);
+      setNewTapeNo(`${base}/${platform}/V${nextSeq}${postfix}`);
       setNewTapeChapter("1");
       setNewTapeRemarks("");
     }
@@ -2345,6 +2428,7 @@ function V10PreviewLayout() {
     setSeabedTemplateType,
     previewRecord,
     setPreviewRecord,
+    generateAnomalyReport,
     generateAnomalyReportBlob,
     generateMGIReport,
     generateMGIReportBlob,
@@ -2540,7 +2624,7 @@ function V10PreviewLayout() {
     jobPackId,
     structureId,
     headerData,
-    allWorkspaceRecords,
+    allWorkspaceRecords && allWorkspaceRecords.length > 0 ? allWorkspaceRecords : currentRecords,
     pendingAttachments,
     allInspectionTypes
   );
@@ -4321,14 +4405,33 @@ function V10PreviewLayout() {
       const movs = movsRes.data;
       let rawTapes = tapesRes.data || [];
 
-      // Sort tapes so that tapes matching current deployment come first, followed by other tapes in natural numerical order
-      let tapes = [...rawTapes].sort((a, b) => {
+      // Deduplicate tapes having identical (tape_no, chapter_no)
+      const uniqueTapeMap = new Map<string, any>();
+      (rawTapes as any[]).forEach((t: any) => {
+        const key = `${(t.tape_no || "").trim().toUpperCase()}__${t.chapter_no || 1}`;
+        if (!uniqueTapeMap.has(key)) {
+          uniqueTapeMap.set(key, t);
+        } else {
+          const existing = uniqueTapeMap.get(key);
+          if (t.status === "ACTIVE" && existing.status !== "ACTIVE") {
+            uniqueTapeMap.set(key, t);
+          } else if (Number(t.tape_id) > Number(existing.tape_id)) {
+            uniqueTapeMap.set(key, t);
+          }
+        }
+      });
+      const deduplicatedTapes = Array.from(uniqueTapeMap.values());
+
+      // Sort tapes so that tapes matching current deployment come first, followed by natural tape_no and chapter_no order
+      let tapes = [...deduplicatedTapes].sort((a, b) => {
         const aMatches = (inspMethod === "DIVING" ? a.dive_job_id === depId : a.rov_job_id === depId) ? 1 : 0;
         const bMatches = (inspMethod === "DIVING" ? b.dive_job_id === depId : b.rov_job_id === depId) ? 1 : 0;
         if (aMatches !== bMatches) return bMatches - aMatches;
         const nameA = a.tape_no || "";
         const nameB = b.tape_no || "";
-        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        const cmp = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+        return (Number(a.chapter_no) || 1) - (Number(b.chapter_no) || 1);
       });
 
       if (movsRes.error) {
@@ -4429,24 +4532,32 @@ function V10PreviewLayout() {
       setJobTapes(tapes || []);
 
       if (tapes && tapes.length > 0) {
-        const latestTape = tapes[0];
-        setTapeNo(latestTape.tape_no);
-        setTapeId(latestTape.tape_id);
-        setActiveChapter(latestTape.chapter_no || 1);
+        const session = loadUserSession();
+        // Priority for active tape:
+        // 1. Current tapeId if it exists in the fetched list
+        // 2. Saved tapeId from user session if it exists in the fetched list
+        // 3. First tape in the list (fallback)
+        const currentSelectedTape = tapeId ? tapes.find((t: any) => String(t.tape_id) === String(tapeId)) : null;
+        const savedTape = session?.lastActiveTapeId ? tapes.find((t: any) => String(t.tape_id) === String(session.lastActiveTapeId)) : null;
+        const activeTape = currentSelectedTape || savedTape || tapes[0];
 
-        // Fetch logs for latest tape in parallel
+        setTapeNo(activeTape.tape_no);
+        setTapeId(activeTape.tape_id);
+        setActiveChapter(activeTape.chapter_no || 1);
+
+        // Fetch logs for active tape in parallel
         const [lastLogRes, stateLogRes] = await Promise.all([
           supabase
             .from("insp_video_logs")
             .select("*")
-            .eq("tape_id", latestTape.tape_id)
+            .eq("tape_id", activeTape.tape_id)
             .order("event_time", { ascending: false })
             .limit(1)
             .maybeSingle(),
           supabase
             .from("insp_video_logs")
             .select("event_type")
-            .eq("tape_id", latestTape.tape_id)
+            .eq("tape_id", activeTape.tape_id)
             .in("event_type", ["NEW_LOG_START", "RESUME", "PAUSE", "END"])
             .order("event_time", { ascending: false })
             .limit(1)
@@ -4471,8 +4582,13 @@ function V10PreviewLayout() {
           }
           setVidTimer(currentCounter);
         } else {
-          setVidState("IDLE");
-          setVidTimer(0);
+          if (session?.lastActiveTapeId === activeTape.tape_id && session?.vidState) {
+            setVidState(session.vidState);
+            setVidTimer(session.vidTimer || 0);
+          } else {
+            setVidState("IDLE");
+            setVidTimer(0);
+          }
         }
       } else {
         setTapeId(null);
@@ -4597,14 +4713,14 @@ function V10PreviewLayout() {
       if (finalInsps) {
         const pageInspIds = finalInsps.map((r: any) => r.insp_id).filter(Boolean);
 
-        // Fetch attachment counts and anomalies in parallel strictly scoped to current page inspection IDs
-        const [attsRes, anomsRes] = await Promise.all([
+        // Fetch attachment counts, anomalies, and media in parallel strictly scoped to current page inspection IDs
+        const [attsRes, anomsRes, mediaRes] = await Promise.all([
           pageInspIds.length > 0
             ? supabase
                 .from("attachment")
-                .select("source_id")
-                .in("source_type", ["inspection", "INSPECTION"])
+                .select("source_id, source_type")
                 .in("source_id", pageInspIds)
+                .in("source_type", ["inspection", "INSPECTION", "insp_record", "INSP_RECORD", "defect", "DEFECT", "anomaly", "ANOMALY"])
             : Promise.resolve({ data: [] }),
           pageInspIds.length > 0
             ? supabase
@@ -4612,18 +4728,58 @@ function V10PreviewLayout() {
                 .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id")
                 .in("inspection_id", pageInspIds)
             : Promise.resolve({ data: [] }),
+          pageInspIds.length > 0
+            ? (supabase as any)
+                .from("insp_media")
+                .select("inspection_id, media_id")
+                .in("inspection_id", pageInspIds)
+            : Promise.resolve({ data: [] }),
         ]);
 
-        const countMap = (attsRes.data || []).reduce((acc: Record<number, number>, curr: any) => {
-          acc[curr.source_id] = (acc[curr.source_id] || 0) + 1;
-          return acc;
-        }, {});
-
         const anomMap = new Map<number, any[]>();
+        const anomToInspMap = new Map<number, number>();
+        const anomalyIds: number[] = [];
+
         (anomsRes.data || []).forEach((a: any) => {
           if (a.inspection_id) {
             if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
             anomMap.get(a.inspection_id)!.push(a);
+            if (a.anomaly_id) {
+              anomToInspMap.set(Number(a.anomaly_id), Number(a.inspection_id));
+              anomalyIds.push(Number(a.anomaly_id));
+            }
+          }
+        });
+
+        // Also fetch any attachments attached directly to anomaly IDs
+        let anomAtts: any[] = [];
+        if (anomalyIds.length > 0) {
+          const { data: anomAttsData } = await supabase
+            .from("attachment")
+            .select("source_id, source_type")
+            .in("source_id", anomalyIds);
+          anomAtts = anomAttsData || [];
+        }
+
+        const countMap: Record<number, number> = {};
+
+        // Direct inspection attachments
+        (attsRes.data || []).forEach((curr: any) => {
+          const sid = Number(curr.source_id);
+          if (sid) countMap[sid] = (countMap[sid] || 0) + 1;
+        });
+
+        // Media captures
+        (mediaRes.data || []).forEach((curr: any) => {
+          const sid = Number(curr.inspection_id);
+          if (sid) countMap[sid] = (countMap[sid] || 0) + 1;
+        });
+
+        // Anomaly attachments mapped to parent inspection
+        anomAtts.forEach((curr: any) => {
+          const parentInspId = anomToInspMap.get(Number(curr.source_id));
+          if (parentInspId) {
+            countMap[parentInspId] = (countMap[parentInspId] || 0) + 1;
           }
         });
 
@@ -5020,44 +5176,17 @@ function V10PreviewLayout() {
         }
       }
 
-      // AUTO INCREMENT CHAPTER LOGIC HERE (Before inserting the new log)
-      if (action === "Start Tape" && activeDep?.id && tId) {
-        const { data: lastLog } = await supabase
-          .from("insp_video_logs")
-          .select("event_type")
-          .eq("tape_id", tId)
-          .order("event_time", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (lastLog && lastLog.event_type === "END") {
-          const currentTape = jobTapes.find((t) => t.tape_id === tId);
-          const nextChapter = (Number(currentTape?.chapter_no) || 1) + 1;
-          const user = (await supabase.auth.getUser()).data.user;
-
-          const { data: newTape, error: insertErr } = await supabase
-            .from("insp_video_tapes")
-            .insert({
-              tape_no: currentTape?.tape_no || tapeNo || "TAPE",
-              chapter_no: nextChapter,
-              tape_type: currentTape?.tape_type || "DIGITAL - PRIMARY",
-              status: "ACTIVE",
-              [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: Number(activeDep.id),
-              cr_user: user?.id || "system",
-            })
-            .select()
-            .single();
-
-          if (insertErr) {
-            toast.error(`Auto-Chapter Error: ${insertErr.message}`);
-            console.error("[Chapter Increment]", insertErr);
-          } else if (newTape) {
-            setJobTapes((prev) => [newTape, ...prev]);
-            setTapeId(newTape.tape_id);
-            setActiveChapter(nextChapter);
-            tId = newTape.tape_id; // critical! we need the NEW log to be attached to this new tapeId
-          }
-        }
+      if (action === "Stop Tape") {
+        // Auto-increment to next chapter by default for the next recording session
+        const currentTapeNo = tapeNo;
+        const matchingTapes = jobTapes.filter((t) => (t.tape_no || "").trim().toUpperCase() === (currentTapeNo || "").trim().toUpperCase());
+        let maxCh = 0;
+        matchingTapes.forEach((t) => {
+          const ch = Number(t.chapter_no) || 1;
+          if (ch > maxCh) maxCh = ch;
+        });
+        const nextCh = Math.max(Number(activeChapter) || 1, maxCh) + 1;
+        setActiveChapter(nextCh);
       }
 
       setVideoEvents((prev) => [
@@ -5466,10 +5595,20 @@ function V10PreviewLayout() {
         });
         setDeployments(mapped);
 
-        // Set the newly created or latest deployment as active smoothly
-        setActiveDep(mapped[0]);
+        // Restore user's active deployment or fallback to the latest
+        const session = loadUserSession();
+        const savedDepId = session?.lastActiveDepId;
+        let targetDep = mapped[0];
+
+        if (savedDepId) {
+          const matched = mapped.find((d) => String(d.id) === String(savedDepId));
+          if (matched) {
+            targetDep = matched;
+          }
+        }
+        setActiveDep(targetDep);
         console.log(
-          `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
+          `[fetchDeps] Set active deployment to: ${targetDep.jobNo} (ID: ${targetDep.id})`
         );
       } else {
         console.warn("[fetchDeps] No deployment records found.");
@@ -5482,7 +5621,7 @@ function V10PreviewLayout() {
       setIsFetchingDeps(false);
       setIsReadyForComps(true);
     }
-  }, [inspMethod, jobPackId, structureId, supabase]);
+  }, [inspMethod, jobPackId, structureId, supabase, loadUserSession]);
 
   // Handle method switch overriding deps
   useEffect(() => {
@@ -7475,15 +7614,58 @@ function V10PreviewLayout() {
     setShowCriteriaConfirm(false);
     setShowRemovalConfirm(false);
 
-    // Fetch existing attachments
-    const { data: atts } = await supabase
-        .from("attachment")
-        .select("*")
-        .eq("source_id", recordId)
-        .in("source_type", ["inspection", "INSPECTION"]);
+    // Fetch existing attachments (Both inspection-level and anomaly-level attachments & media)
+    let combinedList: any[] = [];
+    try {
+      const res = await fetch(`/api/attachment/inspection/${recordId}`);
+      if (res.ok) {
+        const jsonAtts = await res.json();
+        if (Array.isArray(jsonAtts) && jsonAtts.length > 0) {
+          combinedList = jsonAtts;
+        }
+      }
+    } catch {}
 
-    if (atts && atts.length > 0) {
-      const mapped = (atts as any[]).map((a: any) => {
+    if (combinedList.length === 0) {
+      const sourceIds = [recordId];
+      const anomId = fullRecord.insp_anomalies?.[0]?.anomaly_id || fullRecord.anomaly_details?.anomaly_id || fullRecord.anomaly_id;
+      if (anomId && !sourceIds.includes(anomId)) sourceIds.push(anomId);
+
+      const { data: atts } = await supabase
+          .from("attachment")
+          .select("*")
+          .in("source_id", sourceIds)
+          .in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "defect", "DEFECT", "insp_record", "INSP_RECORD"]);
+
+      const { data: media } = await supabase
+          .from("insp_media" as any)
+          .select("*")
+          .in("inspection_id", [recordId]);
+
+      combinedList = [...(atts || [])];
+      if (media && media.length > 0) {
+        for (const m of media) {
+          if (!combinedList.some(a => a.path === m.file_path || String(a.id) === `media-${m.media_id}`)) {
+            combinedList.push({
+              id: `media-${m.media_id}`,
+              name: m.name || `Photo ${m.media_id}`,
+              path: m.file_path,
+              source_type: "INSPECTION",
+              source_id: m.inspection_id,
+              meta: {
+                ...m.meta,
+                bucket: "inspection-media",
+                is_insp_media: true,
+              },
+              created_at: m.captured_at,
+            });
+          }
+        }
+      }
+    }
+
+    if (combinedList.length > 0) {
+      const mapped = combinedList.map((a: any) => {
         const publicUrl = getAttachmentUrl(a, supabase);
         return {
           id: a.id,
@@ -9236,7 +9418,7 @@ function V10PreviewLayout() {
         sowIdFull={sowIdFull}
         headerData={headerData}
         inspMethod={inspMethod}
-        currentRecords={allWorkspaceRecords}
+        currentRecords={allWorkspaceRecords && allWorkspaceRecords.length > 0 ? allWorkspaceRecords : currentRecords}
         recordedFiles={recordedFiles}
         pendingAttachments={pendingAttachments}
         setPendingAttachments={setPendingAttachments}
@@ -9478,6 +9660,7 @@ function V10PreviewLayout() {
           syncDeploymentState,
           fetchDeployments,
           queryClient,
+          generateAnomalyReport,
           generateAnomalyReportBlob,
           generateMGIReportBlob,
           generateRMGIReportBlob,

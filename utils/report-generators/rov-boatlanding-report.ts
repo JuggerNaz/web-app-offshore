@@ -311,14 +311,15 @@ export const generateROVBoatlandingReport = async (
         });
 
         // Filter and Sort by Parent QID
-        const sortedParentIds = Object.keys(blGroups).map(Number).sort((a, b) => {
+        let sortedParentIds = Object.keys(blGroups).map(Number).sort((a, b) => {
             const qidA = idToComp[a]?.q_id || "";
             const qidB = idToComp[b]?.q_id || "";
             return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: 'base' });
         });
 
-        if (sortedParentIds.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
+        if (sortedParentIds.length === 0) {
+            sortedParentIds = [0];
+            blGroups[0] = [];
         }
 
         const buildRow = (r: any, idx: number): string[] => {
@@ -390,7 +391,7 @@ export const generateROVBoatlandingReport = async (
         sortedParentIds.forEach((parentId, groupIdx) => {
             if (groupIdx > 0) doc.addPage();
             
-            const groupRecords = blGroups[parentId].sort((a, b) => {
+            const groupRecords = (blGroups[parentId] || []).sort((a, b) => {
                 const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
                 const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
                 return elB - elA;
@@ -433,7 +434,9 @@ export const generateROVBoatlandingReport = async (
                     { content: "CP (mV)",         styles: { halign: "center" } },
                     { content: "Findings",        styles: { halign: "center" } }
                 ]],
-                body: groupRecords.map(buildRow),
+                body: groupRecords.length > 0
+                    ? groupRecords.map(buildRow)
+                    : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
@@ -461,12 +464,15 @@ export const generateROVBoatlandingReport = async (
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
+                    if (!r) return;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                     const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     
                     if (metaStatus === "finding") {
                         data.cell.styles.textColor = colors.finding;
                         data.cell.styles.fontStyle = "bold";
+                    } else if (r.has_anomaly && metaStatus !== "finding") {
+                        data.cell.styles.textColor = colors.anomaly;
                     } else if (r.has_anomaly && metaStatus !== "finding") {
                         data.cell.styles.textColor = colors.anomaly;
                         data.cell.styles.fontStyle = "bold";

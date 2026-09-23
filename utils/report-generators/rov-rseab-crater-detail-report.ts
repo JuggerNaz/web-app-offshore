@@ -75,10 +75,6 @@ export const generateROVRSEABCraterDetailReport = async (
             return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
         });
 
-        if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
-        }
-
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -269,7 +265,13 @@ export const generateROVRSEABCraterDetailReport = async (
                     { content: "Findings" }
                 ]
             ],
-            body: tableRows,
+            body: tableRows.length > 0 ? tableRows : [[
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-" },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "No seabed crater observations recorded for this scope." }
+            ]],
             theme: "grid",
             headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
             styles: { fontSize: 7.5, cellPadding: 2.5 },

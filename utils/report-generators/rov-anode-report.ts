@@ -35,10 +35,6 @@ export const generateROVAnodeReport = async (
     config: ReportConfig
 ) => {
     try {
-        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
-        }
-
         const isPF = config.printFriendly;
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -152,31 +148,30 @@ export const generateROVAnodeReport = async (
                 'Item No.', 'QID', 'Elevation (m)', 'Depletion (%)', 
                 'Anode CP (mV)', 'Anode Type', 'Anomaly', 'Dive No.', 'Findings'
             ]],
-            body: sortedRecords.map((r, idx) => {
+            body: sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
-                const qid = r.structure_components?.q_id || 'N/A';
-                const elev = r.elevation || '-';
-                const depletion = d.anode_depletion_percent !== undefined ? `${d.anode_depletion_percent}%` : (d.anode_depletion || '-');
+                const qid = r.structure_components?.q_id || r.component?.q_id || 'N/A';
+                const elev = r.elevation ?? d.elevation ?? '-';
                 
-                // Format Primary + Additional CP readings in the CP column
-                const primaryCP = d.cp_reading_mv || d.cp_rdg || '';
-                const rawAddCPs = d.cp_rdg_additional || d.cp_readings || [];
-                const additionalCPs = Array.isArray(rawAddCPs) 
-                    ? rawAddCPs.map((cr: any) => cr.reading ?? cr.cp_rdg ?? '').filter((v: any) => v !== undefined && v !== null && v !== '') 
-                    : [];
-                const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
-                const cp = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+                // Formulate Depletion
+                const depl = d.depletion_percent ?? d.anode_depletion ?? d.depletion;
+                const depletion = depl !== undefined && depl !== null && depl !== '' ? `${depl}%` : '-';
+
+                // Formulate CP
+                const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? '';
+                const rawAddCPs = d.cp_rdg_additional || d.cp_additional || d.cp_readings || [];
+                const addCPs = Array.isArray(rawAddCPs) ? rawAddCPs.map((cr: any) => cr.reading ?? cr.cp_rdg ?? '').filter((v: any) => v !== undefined && v !== null && v !== '') : [];
+                const cpList = [cpVal, ...addCPs].filter(Boolean);
+                const cp = cpList.length > 0 ? cpList.map(v => String(v).toLowerCase().includes('mv') ? String(v) : `${v} mV`).join('\n') : '-';
+
+                const anodeType = d.anode_type || r.structure_components?.metadata?.type || r.structure_components?.code || 'Sacrificial';
                 
-                const anodeType = d.anode_type || '-';
-                
-                const isAnomaly = r.has_anomaly === true || r.is_anomaly === true || r.component_condition === 'Anomalous' || (r.description && r.description.toLowerCase().includes('anomaly')) || (r.insp_anomalies && r.insp_anomalies.length > 0);
-                const isDefect = r.has_defect === true || r.is_defect === true || (r.description && r.description.toLowerCase().includes('defect'));
-                
-                // Get linked anomaly data if exists
-                const linkedAnomaly = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                const isRectified = linkedAnomaly ? linkedAnomaly.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-                
-                const anomalyRef = linkedAnomaly?.anomaly_ref_no || linkedAnomaly?.anomaly_ref_n || r.anomaly_ref_no || r.ref_no || r.anomaly_no || (d._meta_ref_no) || '';
+                // Linked anomaly
+                const linkedAnomaly = (r.insp_anomalies && r.insp_anomalies.length > 0) ? r.insp_anomalies[0] : null;
+                const isAnomaly = r.has_anomaly || !!linkedAnomaly;
+                const isDefect = d.is_defect || r.is_defect;
+                const isRectified = linkedAnomaly ? linkedAnomaly.is_rectified : (r.rectified || false);
+                const anomalyRef = linkedAnomaly?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectifiedComments = linkedAnomaly?.rectified_remarks || linkedAnomaly?.rectified_remar || r.rectified_comments || '';
 
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
@@ -220,7 +215,9 @@ export const generateROVAnodeReport = async (
                     diveNo,
                     findings
                 ];
-            }),
+            }) : [
+                ["-", "-", "-", "-", "-", "-", "-", "-", "No anode observations recorded for this scope."]
+            ],
             theme: 'grid',
             headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7, cellPadding: 2, textColor: colors.text, lineColor: colors.border },

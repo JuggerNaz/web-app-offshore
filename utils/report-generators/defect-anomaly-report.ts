@@ -39,47 +39,76 @@ interface LoadedImageData {
     aspect: number;
 }
 
-const loadImage = (url: string): Promise<LoadedImageData | null> => {
-    return new Promise((resolve) => {
-        if (!url || typeof url !== 'string' || !url.trim()) {
-            resolve(null);
-            return;
-        }
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        const timeout = setTimeout(() => {
-            console.warn(`Image loading timed out (5s limit) in defect-anomaly-report for URL: ${url}`);
-            img.onload = null;
-            img.onerror = null;
-            resolve(null);
-        }, 5000);
-        img.onload = () => {
-            clearTimeout(timeout);
-            const canvas = document.createElement("canvas");
-            const w = img.naturalWidth || img.width || 800;
-            const h = img.naturalHeight || img.height || 600;
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-                ctx.drawImage(img, 0, 0);
-                const aspect = h > 0 ? w / h : 1.333;
-                resolve({
-                    data: canvas.toDataURL("image/jpeg", 0.95),
-                    width: w,
-                    height: h,
-                    aspect
-                });
-            } else {
+const loadImage = async (url: string): Promise<LoadedImageData | null> => {
+    if (!url || typeof url !== 'string' || !url.trim()) return null;
+
+    // Helper using standard Image element
+    const tryLoadViaImage = (src: string): Promise<LoadedImageData | null> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            const timeout = setTimeout(() => {
+                img.onload = null;
+                img.onerror = null;
                 resolve(null);
+            }, 4000);
+            img.onload = () => {
+                clearTimeout(timeout);
+                try {
+                    const canvas = document.createElement("canvas");
+                    const w = img.naturalWidth || img.width || 800;
+                    const h = img.naturalHeight || img.height || 600;
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext("2d");
+                    if (ctx) {
+                        ctx.drawImage(img, 0, 0);
+                        const aspect = h > 0 ? w / h : 1.333;
+                        resolve({
+                            data: canvas.toDataURL("image/jpeg", 0.95),
+                            width: w,
+                            height: h,
+                            aspect
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                } catch {
+                    resolve(null);
+                }
+            };
+            img.onerror = () => {
+                clearTimeout(timeout);
+                resolve(null);
+            };
+            img.src = src;
+        });
+    };
+
+    // 1. Try normal image load
+    const result1 = await tryLoadViaImage(url);
+    if (result1) return result1;
+
+    // 2. Fallback: Fetch as Blob and convert to Data URL (bypasses browser canvas taint & CORS issues)
+    try {
+        const response = await fetch(url);
+        if (response.ok) {
+            const blob = await response.blob();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            if (dataUrl) {
+                return await tryLoadViaImage(dataUrl);
             }
-        };
-        img.onerror = () => {
-            clearTimeout(timeout);
-            resolve(null);
-        };
-        img.src = url;
-    });
+        }
+    } catch {
+        // Fallback failed
+    }
+
+    return null;
 };
 
 export const generateDefectAnomalyReport = async (
@@ -136,10 +165,6 @@ export const generateDefectAnomalyReport = async (
             }
             return refA ? -1 : (refB ? 1 : 0);
         });
-    }
-
-    if ((!anomalies || anomalies.length === 0) && config.returnBlob && !(config as any).isBlankReport) {
-        return null;
     }
 
     // Load Client Logo (Right Side)
@@ -595,26 +620,56 @@ export const generateDefectAnomalyReport = async (
 
         // Removed redundant text as requested
 
-        const images = record.attachments || [];
+        const images = Array.isArray(record.attachments) && record.attachments.length > 0
+            ? record.attachments
+            : Array.isArray(record.photos) && record.photos.length > 0
+            ? record.photos
+            : Array.isArray(record.insp_attachments) && record.insp_attachments.length > 0
+            ? record.insp_attachments
+            : Array.isArray(record.insp_photos) && record.insp_photos.length > 0
+            ? record.insp_photos
+            : [];
         const processedImages: { data: string; att: any; aspect: number }[] = [];
 
         // Load images while maintaining association with their metadata and aspect ratio
         for (const att of images) {
-            if (!att.path) continue;
-            const bucket = att.bucket_id || "attachments";
-            const url = `/api/attachment/download?path=${encodeURIComponent(att.path)}&bucket=${bucket}`;
-            try {
-                const imgRes = await loadImage(url);
-                if (imgRes && imgRes.data) {
-                    // Robust meta parsing
-                    let meta = att.meta || {};
-                    if (typeof meta === 'string') {
-                        try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+            const rawPath = att.path || att.file_path || att.file_url || att.url || att.storage_path;
+            if (!rawPath && !att.id) continue;
+            const bucket = att.bucket_id || att.bucket || "attachments";
+
+            const urlCandidates: string[] = [];
+            if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:'))) {
+                urlCandidates.push(rawPath);
+            }
+            if (att.id) {
+                urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ''}`);
+            }
+            if (rawPath) {
+                urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
+            }
+
+            let loadedImgRes: LoadedImageData | null = null;
+            for (const testUrl of urlCandidates) {
+                try {
+                    const imgRes = await loadImage(testUrl);
+                    if (imgRes && imgRes.data) {
+                        loadedImgRes = imgRes;
+                        break;
                     }
-                    processedImages.push({ data: imgRes.data, att: { ...att, meta }, aspect: imgRes.aspect });
+                } catch {
+                    // Try next candidate
                 }
-            } catch (e) {
-                console.warn("Failed to load image for report", att.name);
+            }
+
+            if (loadedImgRes && loadedImgRes.data) {
+                // Robust meta parsing
+                let meta = att.meta || {};
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                }
+                processedImages.push({ data: loadedImgRes.data, att: { ...att, meta }, aspect: loadedImgRes.aspect });
+            } else {
+                console.warn("Failed to load image for report", att.name || rawPath || att.id);
             }
         }
 

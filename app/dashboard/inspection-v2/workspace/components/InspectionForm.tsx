@@ -2083,16 +2083,53 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             </div>
                             {pendingAttachments.length > 0 && (
                                 <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
-                                    {pendingAttachments.map(att => (
-                                        <div key={att.id} className="relative group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 dark:hover:border-blue-700 transition-all">
-                                            <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all" onClick={() => setEditingAttachment(att)}>{att.type === 'PHOTO' && att.previewUrl ? <img src={att.previewUrl} className="w-full h-full object-cover" /> : att.type === 'VIDEO' && att.previewUrl ? <div className="w-full h-full relative"><video src={att.previewUrl} className="w-full h-full object-cover" /><div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video className="w-5 h-5 text-white opacity-80" /></div></div> : <div className="w-full h-full flex items-center justify-center bg-slate-200 dark:bg-slate-800">{att.type === 'VIDEO' ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}</div>}</div>
-                                            <div className="flex-1 min-w-0 pr-6 flex flex-col gap-0.5">
-                                                <Input value={att.title} onChange={(e) => setPendingAttachments((prev: any[]) => prev.map(a => a.id === att.id ? { ...a, title: e.target.value } : a))} className="h-5 text-[10px] font-black border-none bg-slate-50/50 dark:bg-slate-950/50 rounded-sm px-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-800 dark:text-slate-200" placeholder="Title..." />
-                                                <Input value={att.description} onChange={(e) => setPendingAttachments((prev: any[]) => prev.map(a => a.id === att.id ? { ...a, description: e.target.value } : a))} className="h-4 text-[9px] font-medium italic border-none bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-500" placeholder="Remark..." />
+                                    {pendingAttachments.map(att => {
+                                        const resolvedPreview = att.previewUrl || (att.id ? `/api/attachment/url?id=${encodeURIComponent(att.id)}${att.path ? `&path=${encodeURIComponent(att.path)}` : ''}` : (att.path ? `/api/attachment/download?path=${encodeURIComponent(att.path)}` : ''));
+                                        return (
+                                            <div key={att.id} className="relative group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                                                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all flex items-center justify-center" onClick={() => setEditingAttachment(att)}>
+                                                    {att.type === 'PHOTO' && resolvedPreview ? (
+                                                        <>
+                                                            <img 
+                                                                src={resolvedPreview} 
+                                                                alt="" 
+                                                                className="w-full h-full object-cover" 
+                                                                onError={(e) => {
+                                                                    const target = e.currentTarget;
+                                                                    if (att.id && !target.src.includes('/api/attachment/url')) {
+                                                                        target.src = `/api/attachment/url?id=${encodeURIComponent(att.id)}`;
+                                                                    } else if (att.path && !target.src.includes('/api/attachment/download')) {
+                                                                        target.src = `/api/attachment/download?path=${encodeURIComponent(att.path)}`;
+                                                                    } else {
+                                                                        target.style.display = 'none';
+                                                                        const fallback = target.parentElement?.querySelector('.img-fallback') as HTMLElement;
+                                                                        if (fallback) fallback.style.display = 'flex';
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <div className="img-fallback hidden w-full h-full items-center justify-center bg-slate-200 dark:bg-slate-800 text-slate-500">
+                                                                <FileText className="w-5 h-5 opacity-50" />
+                                                            </div>
+                                                        </>
+                                                    ) : att.type === 'VIDEO' && resolvedPreview ? (
+                                                        <div className="w-full h-full relative">
+                                                            <video src={resolvedPreview} className="w-full h-full object-cover" />
+                                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video className="w-5 h-5 text-white opacity-80" /></div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center bg-slate-200 dark:bg-slate-800">
+                                                            {att.type === 'VIDEO' ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0 pr-6 flex flex-col gap-0.5">
+                                                    <Input value={att.title} onChange={(e) => setPendingAttachments((prev: any[]) => prev.map(a => a.id === att.id ? { ...a, title: e.target.value } : a))} className="h-5 text-[10px] font-black border-none bg-slate-50/50 dark:bg-slate-950/50 rounded-sm px-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-800 dark:text-slate-200" placeholder="Title..." />
+                                                    <Input value={att.description} onChange={(e) => setPendingAttachments((prev: any[]) => prev.map(a => a.id === att.id ? { ...a, description: e.target.value } : a))} className="h-4 text-[9px] font-medium italic border-none bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-500" placeholder="Remark..." />
+                                                </div>
+                                                <button onClick={() => { if (att.isExisting) setDeletedAttachmentIds(prev => [...prev, att.id]); setPendingAttachments((prev: any[]) => prev.filter(a => a.id !== att.id)); }} className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-sm"><X className="w-3 h-3" /></button>
                                             </div>
-                                            <button onClick={() => { if (att.isExisting) setDeletedAttachmentIds(prev => [...prev, att.id]); setPendingAttachments((prev: any[]) => prev.filter(a => a.id !== att.id)); }} className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-sm"><X className="w-3 h-3" /></button>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                             {pendingAttachments.length === 0 && (

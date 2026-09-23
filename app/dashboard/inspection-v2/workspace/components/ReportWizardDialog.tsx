@@ -417,6 +417,7 @@ interface ReportWizardDialogProps {
         generateSeabedDetailReport: () => void;
         generateSeabedGasDetailReport: () => void;
         generateSeabedCraterDetailReport: () => void;
+        generateAnomalyReport?: () => void;
         generateFullInspectionReport: () => void;
         generateInspectionReportByType: (id: any) => void;
     };
@@ -672,9 +673,9 @@ export function ReportWizardDialog({
             }) },
 
             { id: 'insp_report', code: 'INSP', name: 'Inspection Report', description: 'Detailed inspection findings, observations and results.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
-            { id: 'defect_summary', code: 'DEFECT', name: 'Defect Summary Report', description: 'Priority-ordered summary of all anomalies with status.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
-            { id: 'findings', code: 'FINDINGS', name: 'Findings Summary Report', description: 'Consolidated summary of all findings across the SOW.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
-            { id: 'anomaly', code: 'ANOM', name: 'Defect / Anomaly Report', description: 'Detailed defect and anomaly report including images.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
+            { id: 'defect_summary', code: 'DEFECT', name: 'Defect Summary Report', description: 'Priority-ordered summary of all anomalies with status.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateAnomalyReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
+            { id: 'findings', code: 'FINDINGS', name: 'Findings Summary Report', description: 'Consolidated summary of all findings across the SOW.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateAnomalyReport || handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
+            { id: 'anomaly', code: 'ANOM', name: 'Defect / Anomaly Report', description: 'Detailed defect and anomaly report including images.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateAnomalyReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
             { id: 'photo', code: 'PHOTO', name: 'Photography Report', description: 'Visual documentation of all inspection points.', mode: 'BOTH', category: 'Inspection', handler: handlers.generatePhotographyReport, available: currentRecords.some(r => (r.photos && r.photos.length > 0) || (r.attachments && r.attachments.length > 0) || r.has_photo || r.photo_count > 0 || currentRecords.length > 0) },
             { id: 'compliance', code: 'COMP', name: 'Compliance Report', description: 'Regulatory compliance and standards documentation.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
 

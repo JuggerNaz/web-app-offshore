@@ -212,14 +212,17 @@ export const generateROVCondSketchReport = async (
             return y + (rH * 2) + 4;
         };
 
-        if (groups.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
-        }
+        const renderGroups = groups.length > 0 ? groups : [{
+            parentId: "GENERAL",
+            parentComp: { q_id: "GENERAL", name: "Conductor" },
+            records: []
+        }];
 
-        for (let i = 0; i < groups.length; i++) {
-            const group = groups[i];
+        for (let i = 0; i < renderGroups.length; i++) {
+            const group = renderGroups[i];
             const parent = group.parentComp;
             const recordsInGroup = group.records;
+
             if (i > 0) doc.addPage();
             drawHeader(doc);
             let currentY = drawContext(doc, margin + hH + 2, recordsInGroup);
@@ -388,7 +391,7 @@ export const generateROVCondSketchReport = async (
                 margin: { left: dX, right: margin, top: margin + hH + 6 },
                 tableWidth: dW,
                 head: [['Item No.', 'Elev (m)', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
-                body: sortedR.map((r, idx) => {
+                body: sortedR.length > 0 ? sortedR.map((r, idx) => {
                     const itemNo = idx + 1;
                     const rd = r.inspection_data || {};
                     const anoms = r.insp_anomalies || [];
@@ -437,7 +440,13 @@ export const generateROVCondSketchReport = async (
                         { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
-                }),
+                }) : [[
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "No observations recorded for this scope.", styles: { textColor: colors.text } }
+                ]],
                 theme: 'grid',
                 headStyles: { 
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy, 

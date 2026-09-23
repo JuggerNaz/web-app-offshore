@@ -284,13 +284,15 @@ export const generateROVRiserGuardReport = async (
         });
 
         // Filter and Sort by Parent QID
-        const sortedParentKeys = Object.keys(rgGroups).sort((a, b) => {
+        let sortedParentKeys = Object.keys(rgGroups).sort((a, b) => {
             return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
         });
 
         if (sortedParentKeys.length === 0) {
-            if (config.returnBlob) return null as any;
+            sortedParentKeys = ["GENERAL"];
+            rgGroups["GENERAL"] = [];
         }
+
 
         const buildRow = (r: any, idx: number): string[] => {
             const d   = r.inspection_data || {};
@@ -419,7 +421,9 @@ export const generateROVRiserGuardReport = async (
                     { content: "CP (mV)",         styles: { halign: "center" } },
                     { content: "Findings",        styles: { halign: "center" } }
                 ]],
-                body: groupRecords.map(buildRow),
+                body: groupRecords.length > 0
+                    ? groupRecords.map(buildRow)
+                    : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
@@ -447,6 +451,7 @@ export const generateROVRiserGuardReport = async (
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
+                    if (!r) return;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                     const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     

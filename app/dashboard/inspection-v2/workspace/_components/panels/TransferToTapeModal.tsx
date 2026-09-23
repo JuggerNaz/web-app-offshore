@@ -337,7 +337,8 @@ export function TransferToTapeModal({
     const user = userRes.data?.user;
     const targetDepObj = deployments.find((d) => String(d.id || d.dive_job_id || d.rov_job_id) === String(diveIdNum));
     const postfix = isDiving ? "D" : "R";
-    const tapeName = `${targetDepObj?.jobNo || `JOB-${diveIdNum}`} / V001${postfix}`;
+    const rawJob = targetDepObj?.jobNo || `JOB-${diveIdNum}`;
+    const tapeName = `${String(rawJob).replace(/\s+/g, "")}/V001${postfix}`;
 
     const { data: newTape, error } = await supabase
       .from("insp_video_tapes")

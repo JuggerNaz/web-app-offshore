@@ -210,15 +210,17 @@ export const generateROVCaissonGuardReport = async (
         });
 
         // Filter and Sort by Parent QID
-        const sortedParentIds = Object.keys(sgGroups).map(Number).sort((a, b) => {
+        let sortedParentIds = Object.keys(sgGroups).map(Number).sort((a, b) => {
             const qidA = idToComp[a]?.q_id || "";
             const qidB = idToComp[b]?.q_id || "";
             return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: 'base' });
         });
 
         if (sortedParentIds.length === 0) {
-            if (config.returnBlob) return null as any;
+            sortedParentIds = [0];
+            sgGroups[0] = [];
         }
+
 
         const buildRow = (r: any, idx: number): string[] => {
             const d   = r.inspection_data || {};
@@ -327,7 +329,9 @@ export const generateROVCaissonGuardReport = async (
                     { content: "CP (mV)",         styles: { halign: "center" } },
                     { content: "Findings",        styles: { halign: "center" } }
                 ]],
-                body: groupRecords.map(buildRow),
+                body: (groupRecords || []).length > 0
+                    ? groupRecords.map(buildRow)
+                    : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
@@ -354,7 +358,8 @@ export const generateROVCaissonGuardReport = async (
                 },
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
-                    const r = groupRecords[data.row.index];
+                    const r = (groupRecords || [])[data.row.index];
+                    if (!r) return;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                     const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     

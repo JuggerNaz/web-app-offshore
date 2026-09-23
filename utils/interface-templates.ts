@@ -651,7 +651,7 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
     sheetName: "SZS_SPLASHZONE",
     fileNameFormat: "yymmdd-nn-SZS.txt",
     queryStrategy: "INSP_RECORDS",
-    inspectionTypeCode: ["SPLASH", "SZS"],
+    inspectionTypeCode: ["SPLASH", "SZS", "SZONE", "PL_SZ"],
     description: "Splash Zone Inspection Table Structure",
     columns: [
       ...SICS_COMMON_PREFIX,
@@ -671,7 +671,7 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
       { key: "C12", header: "C12", dataType: "number", width: 10, dataSize: 9, decSize: 3, description: "UTWT 12 O'clock (mm/in)" },
       { key: "NOM_THK", header: "NOM_THK", dataType: "number", width: 12, dataSize: 9, decSize: 3, description: "Nominal Thick (mm/in)" },
       { key: "COAT_COVERAGE", header: "COAT_COVERAGE", dataType: "number", width: 14, dataSize: 3, description: "Coating Condition %" },
-      ...SICS_COMMON_SUFFIX,
+      ...SICS_COMMON_SUFFIX.filter((c) => !["JOB_TYPE", "LAST_MAJOR_INSPNO", "INSPTYPE"].includes(c.key)),
     ],
   },
 
@@ -689,7 +689,7 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
       { key: "CP_RDG", header: "CP_RDG", dataType: "number", width: 12, dataSize: 7, decSize: 0, description: "CP Reading (mV)" },
       { key: "ITEM_TYPE", header: "ITEM_TYPE", dataType: "string", width: 16, dataSize: 20, description: "Type of Item" },
       { key: "INSPDESC", header: "INSPDESC", dataType: "string", width: 22, dataSize: 35, description: "Description" },
-      ...SICS_COMMON_SUFFIX,
+      ...SICS_COMMON_SUFFIX.filter((c) => !["JOB_TYPE", "LAST_MAJOR_INSPNO", "INSPTYPE"].includes(c.key)),
     ],
   },
 

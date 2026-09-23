@@ -54,6 +54,9 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
     const [currentPath, setCurrentPath] = useState<any[]>([]);
 
+    const [isLoadingImage, setIsLoadingImage] = useState(false);
+    const [imageLoadError, setImageLoadError] = useState(false);
+
     useEffect(() => {
         if (open && attachment) {
             setTitle(attachment.title || attachment.name || '');
@@ -61,19 +64,80 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
             setBrightness(100);
             setContrast(100);
             setDrawHistory([]);
+            setImageLoadError(false);
             
             if (attachment.type === 'PHOTO' || !attachment.type) {
-                const img = new Image();
-                img.crossOrigin = "anonymous";
-                const url = attachment.previewUrl || (attachment.publicUrl);
-                if (url) {
-                    img.src = url;
-                    img.onload = () => {
-                        setImageObj(img);
-                        // Use a small delay to ensure refs are ready
-                        setTimeout(() => initCanvas(img), 100);
-                    };
+                setIsLoadingImage(true);
+
+                const candidates: string[] = [];
+                if (attachment.previewUrl) candidates.push(attachment.previewUrl);
+                if (attachment.id) {
+                    candidates.push(`/api/attachment/url?id=${encodeURIComponent(attachment.id)}${attachment.path ? `&path=${encodeURIComponent(attachment.path)}` : ''}`);
                 }
+                if (attachment.path) {
+                    if (attachment.path.startsWith('http://') || attachment.path.startsWith('https://') || attachment.path.startsWith('blob:') || attachment.path.startsWith('data:')) {
+                        candidates.push(attachment.path);
+                    }
+                    candidates.push(`/api/attachment/download?path=${encodeURIComponent(attachment.path)}`);
+                }
+                if (attachment.file && attachment.file instanceof File) {
+                    candidates.push(URL.createObjectURL(attachment.file));
+                }
+
+                const tryLoadCandidate = async (url: string): Promise<HTMLImageElement | null> => {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.crossOrigin = "anonymous";
+                        const timeout = setTimeout(() => {
+                            img.onload = null;
+                            img.onerror = null;
+                            resolve(null);
+                        }, 4000);
+                        img.onload = () => {
+                            clearTimeout(timeout);
+                            resolve(img);
+                        };
+                        img.onerror = async () => {
+                            clearTimeout(timeout);
+                            // Fallback: try fetching as blob
+                            try {
+                                const resp = await fetch(url);
+                                if (resp.ok) {
+                                    const blob = await resp.blob();
+                                    const dataUrl = await new Promise<string>((res, rej) => {
+                                        const reader = new FileReader();
+                                        reader.onloadend = () => res(reader.result as string);
+                                        reader.onerror = rej;
+                                        reader.readAsDataURL(blob);
+                                    });
+                                    const blobImg = new Image();
+                                    blobImg.onload = () => resolve(blobImg);
+                                    blobImg.onerror = () => resolve(null);
+                                    blobImg.src = dataUrl;
+                                    return;
+                                }
+                            } catch {}
+                            resolve(null);
+                        };
+                        img.src = url;
+                    });
+                };
+
+                (async () => {
+                    let loadedImg: HTMLImageElement | null = null;
+                    for (const cand of candidates) {
+                        loadedImg = await tryLoadCandidate(cand);
+                        if (loadedImg) break;
+                    }
+
+                    setIsLoadingImage(false);
+                    if (loadedImg) {
+                        setImageObj(loadedImg);
+                        setTimeout(() => initCanvas(loadedImg!), 100);
+                    } else {
+                        setImageLoadError(true);
+                    }
+                })();
             }
         }
     }, [open, attachment]);
@@ -444,6 +508,26 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                             Open in New Tab
                                         </a>
                                     </Button>
+                                </div>
+                            ) : isLoadingImage ? (
+                                <div className="flex flex-col items-center justify-center p-12 gap-3 text-slate-400">
+                                    <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                    <span className="text-xs font-bold uppercase tracking-wider">Loading image...</span>
+                                </div>
+                            ) : imageLoadError ? (
+                                <div className="flex flex-col items-center justify-center p-12 gap-4 bg-slate-900 border border-white/5 rounded-xl text-slate-400 max-w-md text-center">
+                                    <FileText className="w-16 h-16 text-slate-600" />
+                                    <div>
+                                        <p className="text-white font-bold text-sm mb-1">{attachment.title || attachment.name || "Attachment"}</p>
+                                        <p className="text-xs text-slate-400">Image preview cannot be decoded directly. You can still view or edit the details on the right.</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button asChild size="sm" variant="secondary">
+                                            <a href={attachment.previewUrl || (attachment.id ? `/api/attachment/url?id=${attachment.id}` : '')} target="_blank" rel="noopener noreferrer">
+                                                Open Raw URL
+                                            </a>
+                                        </Button>
+                                    </div>
                                 </div>
                             ) : (
                                 <canvas 

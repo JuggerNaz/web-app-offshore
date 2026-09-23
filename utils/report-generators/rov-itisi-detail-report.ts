@@ -236,9 +236,7 @@ export const generateROVRRISIITubeDetailReport = async (
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
 
-        if (groups.length === 0 && config.returnBlob) {
-            return null;
-        }
+        const renderGroups = groups.length > 0 ? groups : [{ itubeComp: { q_id: "GENERAL" }, records: [] }];
 
         const HEADER_H = 26;
 
@@ -313,25 +311,21 @@ export const generateROVRRISIITubeDetailReport = async (
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
-            const footerY = pageHeight - 10;
+            const footerY = pageHeight - 8;
             d.setDrawColor(...colors.border);
-            d.setLineWidth(0.1);
-            d.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+            d.setLineWidth(0.2);
+            d.line(margin, footerY - 3, pageWidth - margin, footerY - 3);
 
             d.setFontSize(7);
-            d.setTextColor(...colors.text);
-            d.setFont("helvetica", "bold");
-            d.text("CONFIDENTIAL", margin, footerY);
-
             d.setFont("helvetica", "normal");
+            d.text(`Report ID: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin, footerY);
+            d.text(`Printed: ${format(new Date(), "dd MMM yyyy HH:mm")}`, margin + contentWidth / 2, footerY, { align: "center" });
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: "right" });
-            d.text(`Structure: ${headerData.platformName || "N/A"}`, margin + 35, footerY);
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + 85, footerY);
         };
 
         // ── Render each I-Tube group ──
-        for (let i = 0; i < groups.length; i++) {
-            const g = groups[i];
+        for (let i = 0; i < renderGroups.length; i++) {
+            const g = renderGroups[i];
             if (i > 0) doc.addPage();
             drawPageHeader(doc);
 
@@ -355,7 +349,7 @@ export const generateROVRRISIITubeDetailReport = async (
             });
 
             // Map records to autoTable RowInput[]
-            const tableRows = sortedRecords.map((r, rIdx) => {
+            const tableRows = sortedRecords.length > 0 ? sortedRecords.map((r, rIdx) => {
                 const comp = r.structure_components || {};
                 const d = r.inspection_data || {};
                 const anoms = r.insp_anomalies || [];
@@ -413,7 +407,15 @@ export const generateROVRRISIITubeDetailReport = async (
                     { content: cpDisplay, styles: { halign: "center" as const } },
                     { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                 ];
-            });
+            }) : [[
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-" },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "No observations recorded for this scope." }
+            ]];
 
             autoTable(doc, {
                 startY: currentY,

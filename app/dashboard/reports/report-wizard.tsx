@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     ChevronRight,
@@ -372,14 +372,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const INSPECTION_CATEGORIES = ["inspection", "final_report"];
     const isInspectionTemplate = INSPECTION_CATEGORIES.includes(selections.category);
 
-    // Data Fetching for JobPacks - two variants
+    // Data Fetching for JobPacks - load all jobpacks so all relevant job packs are available
     const { data: allJobPacksData } = useSWR("/api/jobpack?limit=1000", fetcher);
     const { data: inspJobPacksData } = useSWR("/api/jobpack?limit=1000&has_inspection=true", fetcher);
 
-    // Show only jobpacks with inspection data for inspection report templates
-    const jobPacks = isInspectionTemplate
-        ? (inspJobPacksData?.data || [])
-        : (allJobPacksData?.data || []);
+    // Show all jobpacks (prefer allJobPacksData, fallback to inspJobPacksData)
+    const jobPacks = (allJobPacksData?.data && allJobPacksData.data.length > 0)
+        ? allJobPacksData.data
+        : (inspJobPacksData?.data || []);
 
     const plannings = [
         { id: "1", name: "Q1 2024 Inspection Plan" },
@@ -605,18 +605,71 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         return result;
     }, [structures, structureSearch]);
 
+    // Helper to check if a job pack is associated with a given structure
+    const checkJobPackMatchesStructure = useCallback((jp: any, targetStructureId: string) => {
+        if (!targetStructureId || targetStructureId === "all") return true;
+
+        const selStruct = structures.find((s: any) => s.id?.toString() === targetStructureId || s.str_id?.toString() === targetStructureId || s.str_name === targetStructureId);
+        const selStructName = (selStruct?.str_name || selStruct?.title || selStruct?.name || "").toLowerCase().trim();
+        const selStructId = targetStructureId.toString().trim();
+
+        // 1. Direct structure columns on jobpack
+        if (jp.structure_id !== undefined && jp.structure_id !== null && jp.structure_id.toString() === selStructId) return true;
+        if (Array.isArray(jp.structure_ids) && jp.structure_ids.some((id: any) => id?.toString() === selStructId)) return true;
+
+        const meta = jp.metadata || {};
+
+        // 2. Direct structure IDs in metadata
+        if (meta.structure_id !== undefined && meta.structure_id !== null && meta.structure_id.toString() === selStructId) return true;
+        if (meta.platform_id !== undefined && meta.platform_id !== null && meta.platform_id.toString() === selStructId) return true;
+        if (Array.isArray(meta.structure_ids) && meta.structure_ids.some((id: any) => id?.toString() === selStructId)) return true;
+
+        // 3. Structures list in metadata (structures or structure_list)
+        const structuresList = Array.isArray(meta.structures) 
+            ? meta.structures 
+            : Array.isArray(meta.structure_list) 
+            ? meta.structure_list 
+            : meta.structures 
+            ? [meta.structures] 
+            : [];
+
+        if (structuresList.length > 0) {
+            for (const s of structuresList) {
+                if (!s) continue;
+                if (typeof s === 'string' || typeof s === 'number') {
+                    if (s.toString() === selStructId) return true;
+                    if (selStructName && s.toString().toLowerCase().trim() === selStructName) return true;
+                } else if (typeof s === 'object') {
+                    const sid = s.id ?? s.str_id ?? s.structure_id ?? s.plat_id;
+                    if (sid !== undefined && sid !== null && sid.toString() === selStructId) return true;
+                    const sName = s.name ?? s.title ?? s.str_name ?? s.platform_name;
+                    if (selStructName && sName && sName.toString().toLowerCase().trim() === selStructName) return true;
+                }
+            }
+        }
+
+        // 4. Platform / Structure name in metadata strings
+        const metaPlatform = meta.platform || meta.platform_name || meta.structure_name || meta.platformName;
+        if (selStructName && metaPlatform && metaPlatform.toString().toLowerCase().trim() === selStructName) return true;
+
+        // 5. Check if jobpack name or description mentions the structure
+        if (selStructName && jp.name && jp.name.toLowerCase().includes(selStructName)) return true;
+
+        // 6. If inspectionFilters exist for this jobpack, check if it matches
+        if (inspectionFilters.length > 0 && inspectionFilters.some(f => f.structure_id?.toString() === selStructId)) {
+            return true;
+        }
+
+        return false;
+    }, [structures, inspectionFilters]);
+
     // Filtered Job Packs
     const filteredJobPacks = useMemo(() => {
         let result = jobPacks;
 
         // Filter by selected structure
         if (selections.structureId && selections.structureId !== "all" && getCurrentTemplate()?.requires.includes("structure")) {
-            result = result.filter((jp: any) => {
-                if (jp.metadata?.structures) {
-                    return jp.metadata.structures.some((s: any) => s.id.toString() === selections.structureId);
-                }
-                return false;
-            });
+            result = result.filter((jp: any) => checkJobPackMatchesStructure(jp, selections.structureId));
         }
 
         if (jobPackSearch) {
@@ -628,7 +681,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             );
         }
         return result;
-    }, [jobPacks, jobPackSearch, selections.structureId, selections.templateId]);
+    }, [jobPacks, jobPackSearch, selections.structureId, selections.templateId, checkJobPackMatchesStructure]);
 
     // Category Selection State
     const [activeCategory, setActiveCategory] = useState<string>("Structure");
@@ -640,11 +693,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     const jobPackStructureIds = useMemo(() => {
         if (!selections.jobPackId) return [];
-        if (isInspectionTemplate) {
+        if (isInspectionTemplate && inspectionFilters.length > 0) {
             return Array.from(new Set(inspectionFilters.map(f => f.structure_id.toString())));
         }
         if (selectedJobPack && selectedJobPack.metadata?.structures) {
-            return selectedJobPack.metadata.structures.map((s: any) => s.id.toString());
+            const list = Array.isArray(selectedJobPack.metadata.structures) ? selectedJobPack.metadata.structures : [selectedJobPack.metadata.structures];
+            return list.map((s: any) => (s?.id ?? s?.str_id ?? s?.structure_id ?? s)?.toString()).filter(Boolean);
         }
         return [];
     }, [selections.jobPackId, selectedJobPack, isInspectionTemplate, inspectionFilters]);
@@ -654,17 +708,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         let keepJobPack = false;
         
         if (jp) {
-            if (isInspectionTemplate) {
-                const validStructureIds = inspectionFilters.map(f => f.structure_id.toString());
-                if (validStructureIds.includes(structureId)) {
-                    keepJobPack = true;
-                }
-            } else if (jp.metadata?.structures) {
-                const structIds = jp.metadata.structures.map((s: any) => s.id.toString());
-                if (structIds.includes(structureId)) {
-                    keepJobPack = true;
-                }
-            }
+            keepJobPack = checkJobPackMatchesStructure(jp, structureId);
         }
 
         setAvailableSowReports([]);

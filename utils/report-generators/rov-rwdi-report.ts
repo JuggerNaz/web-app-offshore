@@ -36,10 +36,6 @@ export const generateROVRWDIReport = async (
     config: ReportConfig
 ): Promise<Blob | void> => {
     try {
-        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
-        }
-
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -191,7 +187,7 @@ export const generateROVRWDIReport = async (
                 { content: "Water Depth",       styles: { halign: "center", valign: "middle" } },
                 { content: "Findings",          styles: { halign: "center", valign: "middle" } },
             ]],
-            body: sorted.map(buildRow),
+            body: sorted.length > 0 ? sorted.map(buildRow) : [["-", "-", "-", "-", "-", "No water depth survey observations recorded for this scope."]],
             theme: "grid",
             headStyles: {
                 fillColor: isPF ? [255, 255, 255] : colors.navy,

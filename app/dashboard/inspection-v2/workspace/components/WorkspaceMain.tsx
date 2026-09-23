@@ -963,7 +963,17 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                       size="sm" 
                                       className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-500"
                                       onClick={async () => {
-                                        const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).in('source_type', ['inspection', 'INSPECTION']);
+                                        try {
+                                          const res = await fetch(`/api/attachment/inspection/${r.insp_id}`);
+                                          if (res.ok) {
+                                            const atts = await res.json();
+                                            if (Array.isArray(atts) && atts.length > 0) {
+                                              setViewingRecordAttachments(atts);
+                                              return;
+                                            }
+                                          }
+                                        } catch {}
+                                        const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).in('source_type', ['inspection', 'INSPECTION', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'insp_record', 'INSP_RECORD']);
                                         if (data) setViewingRecordAttachments(data);
                                       }}
                                     >
@@ -1328,7 +1338,17 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                           size="sm" 
                                           className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-500"
                                           onClick={async () => {
-                                            const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).in('source_type', ['inspection', 'INSPECTION']);
+                                            try {
+                                              const res = await fetch(`/api/attachment/inspection/${r.insp_id}`);
+                                              if (res.ok) {
+                                                const atts = await res.json();
+                                                if (Array.isArray(atts) && atts.length > 0) {
+                                                  setViewingRecordAttachments(atts);
+                                                  return;
+                                                }
+                                              }
+                                            } catch {}
+                                            const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).in('source_type', ['inspection', 'INSPECTION', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'insp_record', 'INSP_RECORD']);
                                             if (data) setViewingRecordAttachments(data);
                                           }}
                                         >

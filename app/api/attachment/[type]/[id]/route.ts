@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient, createClient } from "@/utils/supabase/server";
 
 export async function GET(
   request: Request,
@@ -7,11 +7,72 @@ export async function GET(
 ) {
   const { id, type } = await params;
 
-  const supabase = createClient();
+  const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = useAdmin ? createAdminClient() : createClient();
+  const numericId = Number(id);
+
+  if (isNaN(numericId)) {
+    return NextResponse.json({ error: "Invalid source ID" }, { status: 400 });
+  }
+
+  let data: any[] = [];
+
+  if (type.toLowerCase() === "inspection") {
+    // 1. Fetch anomaly IDs linked to this inspection record
+    const { data: anomalies } = await (supabase as any)
+      .from("insp_anomalies")
+      .select("anomaly_id")
+      .eq("inspection_id", numericId);
+
+    const anomalyIds = (anomalies || []).map((a: any) => a.anomaly_id).filter(Boolean);
+    const allSourceIds = [numericId, ...anomalyIds];
+
+    // 2. Fetch all attachments for inspection + its anomalies
+    const { data: directData } = await supabase
+      .from("attachment")
+      .select("*")
+      .in("source_id", allSourceIds)
+      .in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "defect", "DEFECT", "insp_record", "INSP_RECORD"]);
+
+    if (directData && directData.length > 0) {
+      data.push(...directData);
+    }
+
+    // 3. Fetch from insp_media
+    const { data: media } = await (supabase as any)
+      .from("insp_media")
+      .select("*")
+      .or(`inspection_id.eq.${numericId}${anomalyIds.length > 0 ? `,anomaly_id.in.(${anomalyIds.join(',')})` : ''}`);
+
+    if (media && media.length > 0) {
+      const normalizedMedia = (media as any[]).map((m: any) => ({
+        id: `media-${m.media_id}`,
+        name: m.name || m.file_name || `Snapshot ${m.media_id}`,
+        path: m.file_path,
+        source_id: m.inspection_id || numericId,
+        source_type: "INSPECTION",
+        meta: {
+          ...m.meta,
+          bucket: "inspection-media",
+          is_insp_media: true,
+        },
+        cr_date: m.captured_at,
+        created_at: m.captured_at || new Date().toISOString(),
+      }));
+      for (const nm of normalizedMedia) {
+        if (!data.some(d => d.path === nm.path || String(d.id) === String(nm.id))) {
+          data.push(nm);
+        }
+      }
+    }
+
+    return NextResponse.json(data);
+  }
+
   const { data: directData, error } = await supabase
     .from("attachment")
     .select("*")
-    .eq("source_id", Number(id))
+    .eq("source_id", numericId)
     .in("source_type", [type.toLowerCase(), type.toUpperCase()]);
 
   if (error) {
@@ -26,32 +87,7 @@ export async function GET(
       );
   }
 
-  let data: any[] = directData ? [...directData] : [];
-
-  if (type === "inspection" || type === "INSPECTION") {
-    const { data: media, error: mediaError } = await (supabase as any)
-      .from("insp_media")
-      .select("*")
-      .eq("inspection_id", Number(id));
-
-    if (media && media.length > 0) {
-      const normalizedMedia = (media as any[]).map((m: any) => ({
-        id: `media-${m.media_id}`,
-        name: m.name || `Snapshot ${m.media_id}`,
-        path: m.file_path,
-        source_id: m.inspection_id,
-        source_type: "INSPECTION",
-        meta: {
-          ...m.meta,
-          bucket: "inspection-media",
-          is_insp_media: true,
-        },
-        cr_date: m.captured_at,
-        created_at: m.captured_at || new Date().toISOString(),
-      }));
-      data = [...data, ...normalizedMedia];
-    }
-  }
+  data = directData ? [...directData] : [];
 
   if (type.toLowerCase() === "component" || type.toLowerCase() === "structure_component") {
     // 1. Fetch component details

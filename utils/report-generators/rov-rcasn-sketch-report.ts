@@ -214,15 +214,18 @@ export const generateROVCasnSketchReport = async (
             return y + (rH * 2) + 4;
         };
 
-        if (groups.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
-        }
+        const renderGroups = groups.length > 0 ? groups : [{
+            caissonId: "GENERAL",
+            caissonComp: { q_id: "GENERAL", name: "Caisson" },
+            records: []
+        }];
 
-        for (let i = 0; i < groups.length; i++) {
-            const group = groups[i];
+        for (let i = 0; i < renderGroups.length; i++) {
+            const group = renderGroups[i];
             const caisson = group.caissonComp;
             const recordsInGroup = group.records;
             if (i > 0) doc.addPage();
+
             drawHeader(doc);
             let currentY = drawContext(doc, margin + HEADER_H + 2, recordsInGroup);
 
@@ -468,7 +471,7 @@ export const generateROVCasnSketchReport = async (
                 margin: { left: dX, right: margin, top: margin + HEADER_H + 6 },
                 tableWidth: dW,
                 head: [['Item No.', 'Elev (m)', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
-                body: sortedR.map((r, idx) => {
+                body: sortedR.length > 0 ? sortedR.map((r, idx) => {
                     const itemNo = idx + 1;
                     const rd = r.inspection_data || {};
                     const anoms = r.insp_anomalies || [];
@@ -487,7 +490,11 @@ export const generateROVCasnSketchReport = async (
                     const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
 
                     let findingsParts: string[] = [];
-                    if (r.description && r.description.trim()) findingsParts.push(r.description.trim());
+                    if (r.description && r.description.trim()) {
+                        findingsParts.push(r.description.trim());
+                    } else if (rd.findings && rd.findings.trim()) {
+                        findingsParts.push(rd.findings.trim());
+                    }
 
                     additionals.forEach((a: any) => {
                         const val = a.reading ?? a.cp_rdg ?? "";
@@ -499,7 +506,9 @@ export const generateROVCasnSketchReport = async (
                     });
 
                     if (isAnom && anoms.length > 0) {
-                        findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`));
+                        anoms.forEach((a: any) => {
+                            findingsParts.push(`[Anom Ref: ${a.anomaly_ref_no || a.ref_no || 'N/A'}]${a.is_rectified ? ` (Rectified: ${a.rectified_remarks || a.rect_comments || ''})` : ''}`);
+                        });
                     }
 
                     const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
@@ -511,7 +520,13 @@ export const generateROVCasnSketchReport = async (
                         { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
-                }),
+                }) : [[
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "No observations recorded for this scope.", styles: { textColor: colors.text } }
+                ]],
                 theme: 'grid',
                 headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, halign: 'center' },
                 styles: { fontSize: 7, cellPadding: 2 },

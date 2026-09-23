@@ -34,10 +34,6 @@ export const generateROVSZCIReport = async (
     config: ReportConfig
 ) => {
     try {
-        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
-        }
-
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -166,7 +162,7 @@ export const generateROVSZCIReport = async (
                     { content: '9 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
                 ]
             ],
-            body: sortedRecords.map((r, idx) => {
+            body: sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
                 const qid = r.structure_components?.q_id || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
@@ -231,7 +227,9 @@ export const generateROVSZCIReport = async (
                     diveNo,
                     findings
                 ];
-            }),
+            }) : [
+                ["-", "-", "-", "-", "-", "-", "-", "-", "-", "No splash zone observations recorded for this scope."]
+            ],
             theme: 'grid',
             headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -34,10 +34,6 @@ export const generateROVUTWTReport = async (
     config: ReportConfig
 ) => {
     try {
-        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
-        }
-
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -67,8 +63,8 @@ export const generateROVUTWTReport = async (
         // Calculate date range
         let startDate: Date | null = null;
         let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records.map(r => new Date(r.cr_date)).filter(d => !isNaN(d.getTime()));
+        if (records && records.length > 0) {
+            const dates = records.map(r => new Date(r.cr_date || r.created_at)).filter(d => !isNaN(d.getTime()));
             if (dates.length > 0) {
                 startDate = min(dates);
                 endDate = max(dates);
@@ -81,7 +77,6 @@ export const generateROVUTWTReport = async (
 
         const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -141,11 +136,62 @@ export const generateROVUTWTReport = async (
         const isPF = config.printFriendly;
 
         // --- 2. Sorting & Mapping ---
-        const sortedRecords = [...records].sort((a, b) => {
+        const safeRecords = records || [];
+        const sortedRecords = [...safeRecords].sort((a, b) => {
             const elevA = parseFloat(a.elevation) || 0;
             const elevB = parseFloat(b.elevation) || 0;
             return elevB - elevA; // Top to bottom
         });
+
+        const bodyRows = sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
+            const d = r.inspection_data || r.inspection_dat || {};
+            const qid = r.structure_components?.q_id || 'N/A';
+            const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
+                           r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
+                           r.rov_job_id || r.dive_job_id || 'N/A';
+            
+            const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+            const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+            const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
+            const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
+
+            // Construct findings
+            let findingsParts: string[] = [];
+            if (r.description) findingsParts.push(r.description);
+            
+            // Add Additional UT
+            const addUT = d.ut_readings_additional || d.ut_additional || [];
+            if (Array.isArray(addUT)) {
+                addUT.forEach((item: any) => {
+                    if (item.reading) findingsParts.push(`Add. UT: ${item.reading}mm${item.location ? ` (${item.location})` : ''}`);
+                });
+            }
+
+            if (isAnomaly && anomRef) {
+                findingsParts.push(`[Reference: ${anomRef}]`);
+            }
+            if (isRectified) {
+                findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
+            }
+
+            const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
+            
+            return [
+                idx + 1,
+                qid,
+                r.elevation || '-',
+                diveNo,
+                d.ut_12_o_clock || '-',
+                d.ut_3_o_clock || '-',
+                d.ut_6_o_clock || '-',
+                d.ut_9_o_clock || '-',
+                d.nominal_thickness || '-',
+                findings
+            ];
+        }) : [
+            ["-", "-", "-", "-", "-", "-", "-", "-", "-", "No UT wall thickness observations recorded for this scope."]
+        ];
 
         autoTable(doc, {
             startY: startY,
@@ -167,69 +213,25 @@ export const generateROVUTWTReport = async (
                     { content: '9 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
                 ]
             ],
-            body: sortedRecords.map((r, idx) => {
-                const d = r.inspection_data || r.inspection_dat || {};
-                const qid = r.structure_components?.q_id || 'N/A';
-                const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
-                               r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
-                               r.rov_job_id || r.dive_job_id || 'N/A';
-                
-                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
-
-                // Construct findings
-                let findingsParts: string[] = [];
-                if (r.description) findingsParts.push(r.description);
-                
-                // Add Additional UT
-                const addUT = d.ut_readings_additional || d.ut_additional || [];
-                if (Array.isArray(addUT)) {
-                    addUT.forEach((item: any) => {
-                        if (item.reading) findingsParts.push(`Add. UT: ${item.reading}mm${item.location ? ` (${item.location})` : ''}`);
-                    });
-                }
-
-                if (isAnomaly && anomRef) {
-                    findingsParts.push(`[Reference: ${anomRef}]`);
-                }
-                if (isRectified) {
-                    findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
-                }
-
-                const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
-                
-                return [
-                    idx + 1,
-                    qid,
-                    r.elevation || '-',
-                    diveNo,
-                    d.ut_12_o_clock || '-',
-                    d.ut_3_o_clock || '-',
-                    d.ut_6_o_clock || '-',
-                    d.ut_9_o_clock || '-',
-                    d.nominal_thickness || '-',
-                    findings
-                ];
-            }),
+            body: bodyRows,
             theme: 'grid',
             headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
             didParseCell: (data) => {
-                if (data.section === 'body') {
+                if (data.section === 'body' && sortedRecords.length > 0) {
                     const r = sortedRecords[data.row.index];
-                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                    const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
+                    if (r) {
+                        const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
+                        const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
+                        const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
 
-                    if (isAnom) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = 'bold';
-                    } else if (isRect) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = 'bold';
+                        if (isAnom) {
+                            data.cell.styles.textColor = colors.anomaly;
+                            data.cell.styles.fontStyle = 'bold';
+                        } else if (isRect) {
+                            data.cell.styles.textColor = colors.rectified;
+                            data.cell.styles.fontStyle = 'bold';
+                        }
                     }
                 }
             },
