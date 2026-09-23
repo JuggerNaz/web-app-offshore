@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import {
   Building2, Puzzle, Package, ClipboardList, ClipboardCheck,
-  AlertTriangle, Search, Clock, ChevronUp, ChevronDown, Plus, Trash2, Sparkles, GripVertical, ListFilter, Loader2
+  AlertTriangle, Search, Clock, ChevronUp, ChevronDown, Plus, Trash2, Sparkles, GripVertical, ListFilter, Loader2,
+  ArrowUp, ArrowDown, ArrowUpDown, Check, X, ArrowLeftRight, CheckCheck, ListOrdered, MoveRight, MoveLeft,
+  ChevronsUpDown, SlidersHorizontal, RefreshCw, Eye, EyeOff, LayoutGrid, Columns, ArrowDownAZ, RotateCcw
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -131,60 +133,610 @@ export function StepCategory({
   );
 }
 
-// ─── STEP 2: FIELDS ─────────────────────────────────────────────────────────────
+// ─── STEP 2: FIELDS WITH DRAG-AND-DROP REORDERING & ENHANCED GUI ───────────────
 
 export function StepFields({ category, selected, onChange }: { category: string; selected: string[]; onChange: (v: string[]) => void }) {
-  const [search, setSearch] = useState("");
+  const [searchAvailable, setSearchAvailable] = useState("");
+  const [searchSelected, setSearchSelected] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"dual" | "grid">("dual");
+  const [draggedItem, setDraggedItem] = useState<{ key: string; source: "available" | "selected"; index?: number } | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isOverSelectedPanel, setIsOverSelectedPanel] = useState(false);
+
   const cat = QUERY_CATEGORIES.find(c => c.id === category);
   if (!cat) return null;
 
-  const filtered = cat.fields.filter(f =>
-    f.label.toLowerCase().includes(search.toLowerCase()) || f.key.toLowerCase().includes(search.toLowerCase())
+  // Split into available & selected definitions
+  const fieldMap = new Map(cat.fields.map(f => [f.key, f]));
+  const selectedFieldDefs = selected.map(k => fieldMap.get(k)).filter(Boolean) as FieldDef[];
+
+  // Filter available fields
+  const availableFields = cat.fields.filter(f => {
+    const matchesSearch = f.label.toLowerCase().includes(searchAvailable.toLowerCase()) || 
+                          f.key.toLowerCase().includes(searchAvailable.toLowerCase());
+    const matchesType = typeFilter === "all" || f.dataType === typeFilter;
+    return matchesSearch && matchesType;
+  });
+
+  // Filter selected fields for search in right panel
+  const displayedSelectedDefs = selectedFieldDefs.filter(f => 
+    !searchSelected || 
+    f.label.toLowerCase().includes(searchSelected.toLowerCase()) || 
+    f.key.toLowerCase().includes(searchSelected.toLowerCase())
   );
 
-  const toggle = (key: string) => {
-    onChange(selected.includes(key) ? selected.filter(k => k !== key) : [...selected, key]);
+  const toggleField = (key: string) => {
+    if (selected.includes(key)) {
+      onChange(selected.filter(k => k !== key));
+    } else {
+      onChange([...selected, key]);
+    }
+  };
+
+  const addField = (key: string, targetIndex?: number) => {
+    if (selected.includes(key)) return;
+    if (targetIndex !== undefined && targetIndex >= 0 && targetIndex <= selected.length) {
+      const next = [...selected];
+      next.splice(targetIndex, 0, key);
+      onChange(next);
+    } else {
+      onChange([...selected, key]);
+    }
+  };
+
+  const removeField = (key: string) => {
+    onChange(selected.filter(k => k !== key));
+  };
+
+  const moveField = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= selected.length) return;
+    const next = [...selected];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    onChange(next);
+  };
+
+  const moveToTop = (index: number) => {
+    moveField(index, 0);
+  };
+
+  const moveToBottom = (index: number) => {
+    moveField(index, selected.length - 1);
+  };
+
+  const selectAll = () => {
+    onChange(cat.fields.map(f => f.key));
+  };
+
+  const selectMatching = () => {
+    const newKeys = availableFields.map(f => f.key).filter(k => !selected.includes(k));
+    onChange([...selected, ...newKeys]);
+  };
+
+  const clearAll = () => {
+    onChange([]);
+  };
+
+  const sortAlphabetical = () => {
+    const sorted = [...selected].sort((a, b) => {
+      const labelA = fieldMap.get(a)?.label || a;
+      const labelB = fieldMap.get(b)?.label || b;
+      return labelA.localeCompare(labelB);
+    });
+    onChange(sorted);
+  };
+
+  const resetToDefaultOrder = () => {
+    const originalOrder = cat.fields.map(f => f.key).filter(k => selected.includes(k));
+    onChange(originalOrder);
+  };
+
+  // Drag Handlers
+  const handleDragStart = (e: React.DragEvent, key: string, source: "available" | "selected", index?: number) => {
+    setDraggedItem({ key, source, index });
+    e.dataTransfer.setData("text/plain", key);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOverItem = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDropOnItem = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedItem) return;
+
+    if (draggedItem.source === "selected" && draggedItem.index !== undefined) {
+      moveField(draggedItem.index, targetIndex);
+    } else if (draggedItem.source === "available") {
+      if (!selected.includes(draggedItem.key)) {
+        addField(draggedItem.key, targetIndex);
+      } else {
+        const currentIndex = selected.indexOf(draggedItem.key);
+        moveField(currentIndex, targetIndex);
+      }
+    }
+    setDraggedItem(null);
+    setDragOverIndex(null);
+    setIsOverSelectedPanel(false);
+  };
+
+  const handleDropOnPanel = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+
+    if (draggedItem.source === "available" && !selected.includes(draggedItem.key)) {
+      addField(draggedItem.key);
+    }
+    setDraggedItem(null);
+    setDragOverIndex(null);
+    setIsOverSelectedPanel(false);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setDragOverIndex(null);
+    setIsOverSelectedPanel(false);
+  };
+
+  const getTypeBadgeColor = (type: string) => {
+    switch (type) {
+      case "number": return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      case "date": return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+      case "boolean": return "bg-purple-500/10 text-purple-500 border-purple-500/20";
+      default: return "bg-sky-500/10 text-sky-500 border-sky-500/20";
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-black text-slate-900 dark:text-white">Select Fields</h2>
-        <p className="text-sm text-slate-500 mt-1">Choose which columns to include in your query results</p>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <Input placeholder="Search fields..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 rounded-xl" />
-        </div>
-        <Button variant="outline" size="sm" className="rounded-xl" onClick={() => onChange(cat.fields.map(f => f.key))}>Select All</Button>
-        <Button variant="outline" size="sm" className="rounded-xl" onClick={() => onChange([])}>Clear</Button>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-        {filtered.map(field => {
-          const isSelected = selected.includes(field.key);
-          return (
-            <div key={field.key} onClick={() => toggle(field.key)}
-              role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggle(field.key); }}
-              className={cn(
-                "flex items-center gap-3 p-3 rounded-xl border transition-all text-left cursor-pointer",
-                isSelected
-                  ? "border-cyan-500/40 bg-cyan-50 dark:bg-cyan-900/20"
-                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
-              )}>
-              <Checkbox checked={isSelected} className="pointer-events-none" />
-              <div className="flex-1 min-w-0">
-                <p className={cn("text-sm font-medium truncate", isSelected ? "text-cyan-700 dark:text-cyan-300" : "text-slate-700 dark:text-slate-300")}>{field.label}</p>
-                <p className="text-[10px] text-slate-400 font-mono">{field.key}</p>
-              </div>
-              <Badge variant="outline" className="text-[9px] shrink-0">{field.dataType}</Badge>
+    <div className="space-y-5">
+      {/* Top Header & Mode Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-800 backdrop-blur-sm">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+              <ListOrdered className="w-4 h-4" />
             </div>
-          );
-        })}
+            <h2 className="text-xl font-black text-white">Select & Arrange Columns</h2>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Drag fields to reorder how columns appear in your query results & Excel exports.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          {/* Quick Counter Badges */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs">
+            <span className="text-slate-400">Selected:</span>
+            <span className="font-mono font-bold text-cyan-400">{selected.length}</span>
+            <span className="text-slate-600">/</span>
+            <span className="text-slate-400 font-mono">{cat.fields.length}</span>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex rounded-xl bg-slate-800/90 p-1 border border-slate-700">
+            <button
+              onClick={() => setViewMode("dual")}
+              className={cn(
+                "px-3 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all",
+                viewMode === "dual"
+                  ? "bg-cyan-500 text-white shadow-md"
+                  : "text-slate-400 hover:text-white"
+              )}
+            >
+              <Columns className="w-3.5 h-3.5" />
+              Studio Order View
+            </button>
+            <button
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "px-3 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all",
+                viewMode === "grid"
+                  ? "bg-cyan-500 text-white shadow-md"
+                  : "text-slate-400 hover:text-white"
+              )}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              Grid View
+            </button>
+          </div>
+        </div>
       </div>
-      {selected.length > 0 && (
-        <p className="text-xs text-slate-500"><span className="font-bold text-cyan-600">{selected.length}</span> field{selected.length > 1 ? "s" : ""} selected</p>
+
+      {viewMode === "dual" ? (
+        /* ════════════════════ DUAL-PANEL STUDIO VIEW (DRAG & DROP) ════════════════════ */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          
+          {/* ◄ LEFT PANEL: AVAILABLE FIELDS POOL (5 COLS) */}
+          <div className="lg:col-span-6 bg-slate-900/60 rounded-2xl border border-slate-800/80 p-4 space-y-3.5 flex flex-col h-[560px]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-300">Available Pool</span>
+                <Badge variant="outline" className="text-[10px] font-mono text-slate-400 bg-slate-800/50">
+                  {cat.fields.length - selected.length} unselected
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 px-2"
+                  onClick={selectAll}
+                >
+                  <Plus className="w-3 h-3 mr-1" /> Add All
+                </Button>
+                {searchAvailable && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-7 text-xs text-slate-400 hover:text-white px-2"
+                    onClick={selectMatching}
+                  >
+                    Add Matching
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Search & Type Filters */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <Input
+                  placeholder="Filter available fields..."
+                  value={searchAvailable}
+                  onChange={e => setSearchAvailable(e.target.value)}
+                  className="pl-8 text-xs h-8 rounded-xl bg-slate-950/70 border-slate-800 text-slate-200 placeholder:text-slate-500"
+                />
+                {searchAvailable && (
+                  <button 
+                    onClick={() => setSearchAvailable("")}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Type Filter Pills */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 custom-scrollbar text-[11px]">
+                {["all", "text", "number", "date", "boolean"].map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTypeFilter(t)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg font-medium capitalize shrink-0 transition-colors",
+                      typeFilter === t
+                        ? "bg-slate-700 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                    )}
+                  >
+                    {t === "all" ? "All Types" : t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Available Fields List */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
+              {availableFields.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                  <Search className="w-8 h-8 mb-2 opacity-40" />
+                  <p className="text-xs">No fields match your search filter</p>
+                </div>
+              ) : (
+                availableFields.map(field => {
+                  const isSelected = selected.includes(field.key);
+                  const selectedIndex = selected.indexOf(field.key);
+
+                  return (
+                    <div
+                      key={field.key}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, field.key, "available")}
+                      onDragEnd={handleDragEnd}
+                      onClick={() => toggleField(field.key)}
+                      className={cn(
+                        "group relative flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer select-none",
+                        isSelected
+                          ? "border-cyan-500/30 bg-cyan-950/20 text-cyan-200 opacity-60 hover:opacity-100"
+                          : "border-slate-800/90 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-850 text-slate-300 hover:shadow-md"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <GripVertical className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 shrink-0 cursor-grab active:cursor-grabbing" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold truncate group-hover:text-white transition-colors">
+                            {field.label}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono truncate">{field.key}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 uppercase font-mono font-bold", getTypeBadgeColor(field.dataType))}>
+                          {field.dataType}
+                        </Badge>
+                        {isSelected ? (
+                          <div className="flex items-center gap-1 bg-cyan-500/20 text-cyan-300 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                            <Check className="w-3 h-3" />
+                            <span>#{selectedIndex + 1}</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addField(field.key);
+                            }}
+                            className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-white flex items-center justify-center text-slate-400 transition-colors"
+                            title="Add to column sequence"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* ► RIGHT PANEL: SELECTED & ORDERED FIELDS SEQUENCE (7 COLS) */}
+          <div 
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsOverSelectedPanel(true);
+            }}
+            onDragLeave={() => setIsOverSelectedPanel(false)}
+            onDrop={handleDropOnPanel}
+            className={cn(
+              "lg:col-span-6 bg-slate-900/80 rounded-2xl border p-4 space-y-3.5 flex flex-col h-[560px] transition-all",
+              isOverSelectedPanel ? "border-cyan-500 ring-2 ring-cyan-500/20 bg-slate-900/90" : "border-slate-800/90"
+            )}
+          >
+            {/* Header with quick sequence tools */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-cyan-400">Column Output Order</span>
+                <Badge className="bg-cyan-500 text-white font-mono text-[10px] font-bold">
+                  {selected.length} columns
+                </Badge>
+              </div>
+              
+              {/* Preset actions */}
+              <div className="flex items-center gap-1">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs text-slate-400 hover:text-white px-2"
+                  onClick={sortAlphabetical}
+                  title="Sort selected columns A to Z"
+                  disabled={selected.length <= 1}
+                >
+                  <ArrowDownAZ className="w-3 h-3 mr-1" /> A-Z
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs text-slate-400 hover:text-white px-2"
+                  onClick={resetToDefaultOrder}
+                  title="Reset to category schema order"
+                  disabled={selected.length <= 1}
+                >
+                  <RotateCcw className="w-3 h-3 mr-1" /> Reset
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2"
+                  onClick={clearAll}
+                  disabled={selected.length === 0}
+                >
+                  <Trash2 className="w-3 h-3 mr-1" /> Clear
+                </Button>
+              </div>
+            </div>
+
+            {/* Selected Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Input
+                placeholder="Filter selected order list..."
+                value={searchSelected}
+                onChange={e => setSearchSelected(e.target.value)}
+                className="pl-8 text-xs h-8 rounded-xl bg-slate-950/70 border-slate-800 text-slate-200 placeholder:text-slate-500"
+              />
+              {searchSelected && (
+                <button 
+                  onClick={() => setSearchSelected("")}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Draggable Ordered List */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
+              {selected.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-slate-800 rounded-xl bg-slate-950/30">
+                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-3">
+                    <ListOrdered className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-300">No Columns Selected</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-[280px]">
+                    Click or drag fields from the left to build your table column order.
+                  </p>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="mt-4 rounded-xl text-xs border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+                    onClick={selectAll}
+                  >
+                    Select All Recommended
+                  </Button>
+                </div>
+              ) : (
+                displayedSelectedDefs.map((field, idx) => {
+                  const actualIndex = selected.indexOf(field.key);
+                  const isBeingDragged = draggedItem?.key === field.key;
+                  const isDropTarget = dragOverIndex === actualIndex;
+
+                  return (
+                    <div
+                      key={field.key}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, field.key, "selected", actualIndex)}
+                      onDragOver={(e) => handleDragOverItem(e, actualIndex)}
+                      onDrop={(e) => handleDropOnItem(e, actualIndex)}
+                      onDragEnd={handleDragEnd}
+                      className={cn(
+                        "group relative flex items-center justify-between p-2.5 rounded-xl border transition-all select-none bg-slate-950/70",
+                        isDropTarget && "border-cyan-400 ring-2 ring-cyan-400/30 scale-[1.01] bg-cyan-950/30",
+                        isBeingDragged && "opacity-40 border-dashed border-cyan-500",
+                        !isDropTarget && !isBeingDragged && "border-slate-800 hover:border-slate-700 hover:bg-slate-900"
+                      )}
+                    >
+                      {/* Drag Handle & Order Badge */}
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div 
+                          className="cursor-grab active:cursor-grabbing p-1 text-slate-500 hover:text-cyan-400 rounded transition-colors"
+                          title="Drag to reorder column position"
+                        >
+                          <GripVertical className="w-4 h-4" />
+                        </div>
+
+                        {/* Position Number */}
+                        <div className="w-6 h-6 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-bold flex items-center justify-center shrink-0">
+                          {actualIndex + 1}
+                        </div>
+
+                        {/* Title & Key */}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-slate-200 truncate group-hover:text-white">
+                            {field.label}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono truncate">{field.key}</p>
+                        </div>
+                      </div>
+
+                      {/* Controls (Move Up/Down, DataType, Delete) */}
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 uppercase font-mono font-bold hidden sm:inline-flex", getTypeBadgeColor(field.dataType))}>
+                          {field.dataType}
+                        </Badge>
+
+                        {/* Move Up */}
+                        <button
+                          onClick={() => moveField(actualIndex, actualIndex - 1)}
+                          disabled={actualIndex === 0}
+                          className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-20 disabled:hover:bg-transparent"
+                          title="Move column left / up"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Move Down */}
+                        <button
+                          onClick={() => moveField(actualIndex, actualIndex + 1)}
+                          disabled={actualIndex === selected.length - 1}
+                          className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-20 disabled:hover:bg-transparent"
+                          title="Move column right / down"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Remove Button */}
+                        <button
+                          onClick={() => removeField(field.key)}
+                          className="p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors ml-0.5"
+                          title="Remove from query"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ════════════════════ GRID SELECTOR VIEW ════════════════════ */
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search fields by name or database key..."
+                value={searchAvailable}
+                onChange={e => setSearchAvailable(e.target.value)}
+                className="pl-9 rounded-xl bg-slate-900 border-slate-800 text-slate-200"
+              />
+            </div>
+            <Button variant="outline" size="sm" className="rounded-xl border-slate-700" onClick={selectAll}>Select All</Button>
+            <Button variant="outline" size="sm" className="rounded-xl border-slate-700" onClick={clearAll}>Clear</Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[480px] overflow-y-auto custom-scrollbar pr-2">
+            {cat.fields
+              .filter(f => !searchAvailable || f.label.toLowerCase().includes(searchAvailable.toLowerCase()) || f.key.toLowerCase().includes(searchAvailable.toLowerCase()))
+              .map(field => {
+                const isSelected = selected.includes(field.key);
+                const orderIndex = selected.indexOf(field.key);
+                return (
+                  <div
+                    key={field.key}
+                    onClick={() => toggleField(field.key)}
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-xl border transition-all text-left cursor-pointer",
+                      isSelected
+                        ? "border-cyan-500/50 bg-cyan-950/30 text-white shadow-sm shadow-cyan-500/10"
+                        : "border-slate-800 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-850 text-slate-300"
+                    )}
+                  >
+                    <Checkbox checked={isSelected} className="pointer-events-none" />
+                    <div className="flex-1 min-w-0">
+                      <p className={cn("text-xs font-bold truncate", isSelected ? "text-cyan-300" : "text-slate-300")}>
+                        {field.label}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-mono truncate">{field.key}</p>
+                    </div>
+                    {isSelected && (
+                      <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/30 text-[10px] font-mono shrink-0">
+                        #{orderIndex + 1}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className={cn("text-[9px] shrink-0 uppercase font-mono", getTypeBadgeColor(field.dataType))}>
+                      {field.dataType}
+                    </Badge>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
       )}
+
+      {/* Helper Footer Bar */}
+      <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-800/80">
+        <p>
+          💡 Tip: Drag and drop items in <span className="text-cyan-400 font-semibold">Column Output Order</span> or use <span className="text-slate-300 font-semibold">↑ / ↓</span> to customize your table layout.
+        </p>
+        <span className="font-mono font-bold text-slate-400">
+          {selected.length} columns active
+        </span>
+      </div>
     </div>
   );
 }

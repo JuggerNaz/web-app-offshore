@@ -178,7 +178,16 @@ export default function SmartQueryPage() {
         <div className="flex-1 min-h-0 bg-white dark:bg-slate-900/60 rounded-[1.5rem] border border-slate-200/60 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-black/20 p-6 md:p-8 overflow-y-auto custom-scrollbar">
           {step === 1 && <StepCategory 
             value={category} 
-            onChange={v => { setCategory(v); setSelectedFields([]); setComputedFields([]); setSorting([]); setConditions([]); setCurrentQueryName(undefined); setCurrentQueryId(undefined); }} 
+            onChange={v => { 
+              setCategory(v); 
+              const catDef = QUERY_CATEGORIES.find(c => c.id === v);
+              setSelectedFields(catDef ? catDef.fields.map(f => f.key) : []); 
+              setComputedFields([]); 
+              setSorting([]); 
+              setConditions([]); 
+              setCurrentQueryName(undefined); 
+              setCurrentQueryId(undefined); 
+            }} 
             savedQueries={savedQueries} 
             onLoadQuery={loadQuery}
             onDeleteQuery={async (id) => {

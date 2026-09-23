@@ -23,7 +23,8 @@ export function StepResults({ category, selectedFields, computedFields, data, co
 }) {
   const [tableSearch, setTableSearch] = useState("");
   const [page, setPage] = useState(0);
-  const pageSize = 50;
+  const [pageSize, setPageSize] = useState(100);
+  const [jumpPage, setJumpPage] = useState("");
   const cat = QUERY_CATEGORIES.find(c => c.id === category);
   if (!cat) return null;
 
@@ -39,8 +40,20 @@ export function StepResults({ category, selectedFields, computedFields, data, co
       }))
     : data;
 
-  const pagedData = filteredData.slice(page * pageSize, (page + 1) * pageSize);
-  const totalPages = Math.ceil(filteredData.length / pageSize);
+  const effectivePageSize = pageSize === -1 ? (filteredData.length || 1) : pageSize;
+  const pagedData = filteredData.slice(page * effectivePageSize, (page + 1) * effectivePageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / effectivePageSize));
+
+  const handleExportQuick = (format: ExportFormat) => {
+    const filename = (templateName || `${category}_results_${new Date().toISOString().slice(0, 10)}`).replace(/[^a-zA-Z0-9_-]/g, "_");
+    exportQueryResults({
+      filename,
+      format,
+      columns,
+      data: filteredData,
+    });
+    toast.success(`Exported ${filteredData.length.toLocaleString()} records to ${format.toUpperCase()}`);
+  };
 
   if (loading) {
     return (
@@ -51,7 +64,7 @@ export function StepResults({ category, selectedFields, computedFields, data, co
         </div>
         <div className="text-center">
           <p className="text-lg font-bold text-slate-700 dark:text-slate-300">Retrieving Data...</p>
-          <p className="text-sm text-slate-400 mt-1">Querying database records</p>
+          <p className="text-sm text-slate-400 mt-1">Fetching records from database in fast batches</p>
         </div>
       </div>
     );
@@ -59,7 +72,7 @@ export function StepResults({ category, selectedFields, computedFields, data, co
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-black text-slate-900 dark:text-white">Query Results</h2>
@@ -76,16 +89,56 @@ export function StepResults({ category, selectedFields, computedFields, data, co
             )}
           </div>
           <p className="text-sm text-slate-500 mt-0.5">
-            <span className="font-bold text-cyan-600">{filteredData.length.toLocaleString()}</span> record{filteredData.length !== 1 ? "s" : ""} found
+            <span className="font-bold text-cyan-600">{filteredData.length.toLocaleString()}</span> record{filteredData.length !== 1 ? "s" : ""} loaded
             {tableSearch && data.length !== filteredData.length && (
               <span className="text-xs text-slate-400 ml-1.5">(filtered from {data.length.toLocaleString()} total)</span>
             )}
-            {truncated && <span className="text-amber-500 ml-2">(showing first 10,000)</span>}
+            {truncated && <span className="text-amber-500 ml-2 font-bold">(capped at 50,000 maximum)</span>}
           </p>
         </div>
-        <div className="relative w-48">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <Input placeholder="Search results..." value={tableSearch} onChange={e => { setTableSearch(e.target.value); setPage(0); }} className="pl-9 rounded-xl text-sm h-9" />
+
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Quick Export Button Dropdown */}
+          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <Button
+              size="sm"
+              onClick={() => handleExportQuick("xlsx")}
+              className="h-8 px-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-sm flex items-center gap-1.5"
+              title="Export all records to Excel (.xls/.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Export Excel</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleExportQuick("csv")}
+              className="h-8 px-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-white rounded-lg"
+              title="Export to CSV"
+            >
+              CSV
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleExportQuick("json")}
+              className="h-8 px-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-white rounded-lg"
+              title="Export to JSON"
+            >
+              JSON
+            </Button>
+          </div>
+
+          {/* Search Input */}
+          <div className="relative w-44">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <Input 
+              placeholder="Search results..." 
+              value={tableSearch} 
+              onChange={e => { setTableSearch(e.target.value); setPage(0); }} 
+              className="pl-9 rounded-xl text-sm h-9 bg-white dark:bg-slate-900" 
+            />
+          </div>
         </div>
       </div>
 
@@ -97,21 +150,23 @@ export function StepResults({ category, selectedFields, computedFields, data, co
         </div>
       ) : (
         <>
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="overflow-x-auto max-h-[420px] overflow-y-auto custom-scrollbar">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
-                  <tr className="bg-slate-50 dark:bg-slate-800/80 backdrop-blur">
-                    <th className="px-3 py-2.5 text-left text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-700 w-12">#</th>
+                  <tr className="bg-slate-100 dark:bg-slate-800/90 backdrop-blur border-b border-slate-200 dark:border-slate-700">
+                    <th className="px-3 py-2.5 text-left text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-700 w-14">#</th>
                     {columns.map(col => (
-                      <th key={col.key} className="px-3 py-2.5 text-left text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">{col.label}</th>
+                      <th key={col.key} className="px-3 py-2.5 text-left text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">{col.label}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {pagedData.map((row, rowIdx) => (
-                    <tr key={rowIdx} className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-cyan-50/30 dark:hover:bg-cyan-900/5 transition-colors">
-                      <td className="px-3 py-2 text-xs text-slate-400 font-mono">{page * pageSize + rowIdx + 1}</td>
+                    <tr key={rowIdx} className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-cyan-50/40 dark:hover:bg-cyan-900/10 transition-colors">
+                      <td className="px-3 py-2 text-xs text-slate-400 font-mono font-bold">
+                        {(page * effectivePageSize + rowIdx + 1).toLocaleString()}
+                      </td>
                       {columns.map(col => {
                         const val = row[col.key];
                         const isDateKey = col.key.endsWith("_date") || col.key.endsWith("_at") || ["inst_date", "start_date", "end_date", "disc_date", "inspection_date"].includes(col.key);
@@ -126,8 +181,8 @@ export function StepResults({ category, selectedFields, computedFields, data, co
                         }
 
                         return (
-                          <td key={col.key} className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[200px] truncate whitespace-nowrap">
-                            {formattedVal === null || formattedVal === undefined || formattedVal === "" ? <span className="text-slate-300 italic">—</span>
+                          <td key={col.key} className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[220px] truncate whitespace-nowrap text-xs">
+                            {formattedVal === null || formattedVal === undefined || formattedVal === "" ? <span className="text-slate-300 dark:text-slate-600 italic">—</span>
                               : typeof formattedVal === "boolean" ? <Badge variant={formattedVal ? "default" : "outline"} className="text-[10px]">{formattedVal ? "Yes" : "No"}</Badge>
                               : typeof formattedVal === "object" ? <span className="text-xs font-mono text-slate-400">{JSON.stringify(formattedVal).substring(0, 50)}...</span>
                               : String(formattedVal)}
@@ -141,18 +196,104 @@ export function StepResults({ category, selectedFields, computedFields, data, co
             </div>
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-400">
-                Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filteredData.length)} of {filteredData.length}
-              </p>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" className="rounded-lg h-8 text-xs" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Prev</Button>
-                <span className="text-xs text-slate-500 px-2">Page {page + 1} / {totalPages}</span>
-                <Button variant="outline" size="sm" className="rounded-lg h-8 text-xs" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next</Button>
+          {/* Enhanced Pagination Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span>
+                Showing <strong className="text-slate-700 dark:text-slate-200">{(page * effectivePageSize + 1).toLocaleString()}</strong>–<strong className="text-slate-700 dark:text-slate-200">{Math.min((page + 1) * effectivePageSize, filteredData.length).toLocaleString()}</strong> of <strong className="text-slate-700 dark:text-slate-200">{filteredData.length.toLocaleString()}</strong> records
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">|</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs">Per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(0);
+                  }}
+                  className="h-7 px-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={500}>500</option>
+                  <option value={1000}>1,000</option>
+                  <option value={-1}>All ({filteredData.length.toLocaleString()})</option>
+                </select>
               </div>
             </div>
-          )}
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="rounded-lg h-7 px-2 text-xs font-bold" 
+                  disabled={page === 0} 
+                  onClick={() => setPage(0)}
+                  title="First Page"
+                >
+                  « First
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="rounded-lg h-7 px-2.5 text-xs font-bold" 
+                  disabled={page === 0} 
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                >
+                  ‹ Prev
+                </Button>
+                
+                <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 px-2">
+                  Page {page + 1} / {totalPages}
+                </span>
+
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="rounded-lg h-7 px-2.5 text-xs font-bold" 
+                  disabled={page >= totalPages - 1} 
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                >
+                  Next ›
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="rounded-lg h-7 px-2 text-xs font-bold" 
+                  disabled={page >= totalPages - 1} 
+                  onClick={() => setPage(totalPages - 1)}
+                  title="Last Page"
+                >
+                  Last »
+                </Button>
+
+                {/* Jump to page */}
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const target = parseInt(jumpPage, 10);
+                    if (!isNaN(target) && target >= 1 && target <= totalPages) {
+                      setPage(target - 1);
+                      setJumpPage("");
+                    }
+                  }}
+                  className="flex items-center gap-1 ml-2"
+                >
+                  <Input 
+                    placeholder="Go to" 
+                    value={jumpPage} 
+                    onChange={(e) => setJumpPage(e.target.value)}
+                    className="h-7 w-14 text-xs font-mono text-center px-1 rounded-lg" 
+                  />
+                  <Button type="submit" variant="ghost" size="sm" className="h-7 px-2 text-xs font-bold">
+                    Go
+                  </Button>
+                </form>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

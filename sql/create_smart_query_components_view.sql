@@ -25,7 +25,7 @@ SELECT
   s.str_type as structure_base_type,
 
   -- Extracted Metadata JSON Fields (cast where appropriate)
-  c.metadata->>'description' as description,
+  COALESCE(c.metadata->>'description', c.metadata->>'desc', c.metadata->>'component_description', c.comp_id, c.id_no) as description,
   c.metadata->>'material' as material,
   c.metadata->>'installedType' as installed_type,
   (c.metadata->>'life')::numeric as life,
@@ -39,13 +39,13 @@ SELECT
   c.metadata->>'structuralGroup' as structural_group,
   c.metadata->>'position' as position,
 
-  -- Pipeline Location Fields
-  c.metadata->>'startNode' as start_node,
-  c.metadata->>'endNode' as end_node,
-  c.metadata->>'startLeg' as start_leg,
-  c.metadata->>'endLeg' as end_leg,
-  (c.metadata->>'elevation1')::numeric as elevation1,
-  (c.metadata->>'elevation2')::numeric as elevation2,
+  -- Pipeline / Structural Location Fields
+  COALESCE(c.metadata->>'startNode', c.metadata->>'s_node', c.metadata->>'start_node', c.metadata->>'sNode', c.metadata->>'s_leg', c.metadata->>'startLeg') as start_node,
+  COALESCE(c.metadata->>'endNode', c.metadata->>'f_node', c.metadata->>'e_node', c.metadata->>'end_node', c.metadata->>'fNode', c.metadata->>'eNode', c.metadata->>'f_leg', c.metadata->>'endLeg') as end_node,
+  COALESCE(c.metadata->>'startLeg', c.metadata->>'s_leg') as start_leg,
+  COALESCE(c.metadata->>'endLeg', c.metadata->>'f_leg', c.metadata->>'e_leg') as end_leg,
+  COALESCE(c.metadata->>'elevation1', c.metadata->>'elv_1', c.metadata->>'elev_1', c.metadata->>'elevation_1', c.metadata->>'start_elevation', c.metadata->>'elev1') as elevation1,
+  COALESCE(c.metadata->>'elevation2', c.metadata->>'elv_2', c.metadata->>'elev_2', c.metadata->>'elevation_2', c.metadata->>'end_elevation', c.metadata->>'elev2') as elevation2,
   (c.metadata->>'distance')::numeric as distance,
   c.metadata->>'clockPosition' as clock_position,
 

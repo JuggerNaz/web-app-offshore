@@ -9,7 +9,7 @@ import {
 } from "@/utils/smart-query-schema";
 import { withTenant } from "@/utils/tenant-auth";
 
-const MAX_ROWS = 10000;
+const MAX_ROWS = 50000;
 
 const USER_FIELDS = new Set([
   "cr_user",
@@ -292,14 +292,41 @@ export const POST = withTenant(async (request, { companyId }) => {
       }
     }
 
-    query = query.limit(MAX_ROWS);
+    // Fetch all matching rows in paginated chunks to bypass PostgREST's 1000-row limit
+    const BATCH_SIZE = 1000;
+    let allRows: any[] = [];
+    let totalCount = 0;
 
-    const { data, error, count } = await query;
+    // 1. First batch with exact count
+    const { data: firstBatch, error: firstErr, count: exactCount } = await query.range(0, BATCH_SIZE - 1);
 
-    if (error) {
-      console.error("[SmartQuery] Execute error:", error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (firstErr) {
+      console.error("[SmartQuery] Execute error:", firstErr);
+      return NextResponse.json({ error: firstErr.message }, { status: 400 });
     }
+
+    allRows = firstBatch || [];
+    totalCount = exactCount !== null && exactCount !== undefined ? exactCount : allRows.length;
+
+    // 2. Subsequent batches if totalCount > 1000
+    if (totalCount > BATCH_SIZE && allRows.length < MAX_ROWS) {
+      let currentOffset = BATCH_SIZE;
+      while (currentOffset < totalCount && currentOffset < MAX_ROWS) {
+        const to = Math.min(currentOffset + BATCH_SIZE - 1, totalCount - 1, MAX_ROWS - 1);
+        const { data: nextBatch, error: nextErr } = await query.range(currentOffset, to);
+        if (nextErr || !nextBatch || nextBatch.length === 0) {
+          break;
+        }
+        allRows.push(...nextBatch);
+        if (nextBatch.length < BATCH_SIZE) {
+          break;
+        }
+        currentOffset += BATCH_SIZE;
+      }
+    }
+
+    const data = allRows;
+    const count = totalCount;
 
     let results: Record<string, any>[] = (data || []).map((row: any) => {
       const item = { ...row };
@@ -320,6 +347,99 @@ export const POST = withTenant(async (request, { companyId }) => {
       }
       return item;
     });
+
+    // Enrich component fields (start_node, end_node, elevation1, elevation2, component_description)
+    const COMPONENT_COLS = new Set(["start_node", "end_node", "elevation1", "elevation2", "component_description", "description"]);
+    const hasComponentCols = selectFields.some(f => COMPONENT_COLS.has(f));
+
+    if (hasComponentCols && results.length > 0) {
+      if (category === "components") {
+        // Enrich directly from row.metadata
+        for (const item of results) {
+          let meta = item.metadata;
+          if (typeof meta === "string") {
+            try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+          }
+          if (meta && typeof meta === "object") {
+            if (!item.start_node) item.start_node = meta.startNode || meta.s_node || meta.start_node || meta.sNode || meta.s_leg || meta.startLeg || null;
+            if (!item.end_node) item.end_node = meta.endNode || meta.f_node || meta.e_node || meta.end_node || meta.fNode || meta.eNode || meta.f_leg || meta.endLeg || null;
+            if (item.elevation1 === undefined || item.elevation1 === null) item.elevation1 = meta.elevation1 ?? meta.elv_1 ?? meta.elev_1 ?? meta.elevation_1 ?? meta.start_elevation ?? meta.elev1 ?? null;
+            if (item.elevation2 === undefined || item.elevation2 === null) item.elevation2 = meta.elevation2 ?? meta.elv_2 ?? meta.elev_2 ?? meta.elevation_2 ?? meta.end_elevation ?? meta.elev2 ?? null;
+            if (!item.description) item.description = meta.description || meta.desc || meta.component_description || item.comp_id || item.id_no || null;
+          }
+
+          // Fallback parsing from component string/code if start_node / end_node still missing
+          if (!item.start_node || !item.end_node) {
+            const compStr = String(item.comp_id || item.id_no || item.code || item.description || "");
+            const spanMatch = compStr.match(/\b([A-Z]*\d+)\s*[-/]\s*([A-Z]*\d+)\b/i);
+            const singleMatch = compStr.match(/\b(?:WN|NODE|LEG)\s+([A-Z]*\d+)\b/i);
+            if (spanMatch) {
+              if (!item.start_node) item.start_node = spanMatch[1];
+              if (!item.end_node) item.end_node = spanMatch[2];
+            } else if (singleMatch && !item.start_node) {
+              item.start_node = singleMatch[1];
+            }
+          }
+        }
+      } else if (category === "inspection_records" || category === "incomplete" || category === "anomalies" || category === "findings") {
+        // Collect component_ids from inspection records
+        const compIdsToFetch = new Set<number>();
+        for (const item of results) {
+          const cId = Number(item.component_id);
+          if (cId && (!item.start_node || !item.end_node || item.elevation1 === undefined || item.elevation1 === null || item.elevation2 === undefined || item.elevation2 === null || !item.component_description)) {
+            compIdsToFetch.add(cId);
+          }
+        }
+
+        let compMap = new Map<number, any>();
+        if (compIdsToFetch.size > 0) {
+          const idList = Array.from(compIdsToFetch);
+          const chunkSize = 500;
+          for (let i = 0; i < idList.length; i += chunkSize) {
+            const chunk = idList.slice(i, i + chunkSize);
+            const { data: compRows } = await supabase
+              .from("structure_components")
+              .select("id, q_id, comp_id, id_no, code, metadata")
+              .in("id", chunk);
+            compRows?.forEach((c: any) => compMap.set(Number(c.id), c));
+          }
+        }
+
+        for (const item of results) {
+          const cId = Number(item.component_id);
+          const comp = cId ? compMap.get(cId) : null;
+          let meta = comp?.metadata || item.metadata;
+          if (typeof meta === "string") {
+            try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+          }
+          let idata = item.inspection_data || item.inspection_dat;
+          if (typeof idata === "string") {
+            try { idata = JSON.parse(idata); } catch (e) { idata = {}; }
+          }
+
+          if (meta && typeof meta === "object") {
+            if (!item.start_node) item.start_node = meta.startNode || meta.s_node || meta.start_node || meta.sNode || meta.s_leg || meta.startLeg || idata?.start_node || idata?.s_node || null;
+            if (!item.end_node) item.end_node = meta.endNode || meta.f_node || meta.e_node || meta.end_node || meta.fNode || meta.eNode || meta.f_leg || meta.endLeg || idata?.end_node || idata?.f_node || null;
+            if (item.elevation1 === undefined || item.elevation1 === null) item.elevation1 = meta.elevation1 ?? meta.elv_1 ?? meta.elev_1 ?? meta.elevation_1 ?? meta.start_elevation ?? meta.elev1 ?? idata?.elevation1 ?? idata?.elv_1 ?? null;
+            if (item.elevation2 === undefined || item.elevation2 === null) item.elevation2 = meta.elevation2 ?? meta.elv_2 ?? meta.elev_2 ?? meta.elevation_2 ?? meta.end_elevation ?? meta.elev2 ?? idata?.elevation2 ?? idata?.elv_2 ?? null;
+            if (!item.component_description) item.component_description = meta.description || meta.desc || meta.component_description || comp?.id_no || comp?.comp_id || item.component_id_str || item.component_id_no || null;
+          }
+
+          // Fallback parsing from component string/code if start_node / end_node still missing
+          if (!item.start_node || !item.end_node) {
+            const compStr = String(item.component_id_str || item.component_id_no || comp?.comp_id || comp?.id_no || comp?.code || item.component_description || "");
+            const spanMatch = compStr.match(/\b([A-Z]*\d+)\s*[-/]\s*([A-Z]*\d+)\b/i);
+            const singleMatch = compStr.match(/\b(?:WN|NODE|LEG)\s+([A-Z]*\d+)\b/i);
+            if (spanMatch) {
+              if (!item.start_node) item.start_node = spanMatch[1];
+              if (!item.end_node) item.end_node = spanMatch[2];
+            } else if (singleMatch && !item.start_node) {
+              item.start_node = singleMatch[1];
+            }
+          }
+        }
+      }
+    }
 
     // Resolve user IDs / usernames / emails to User Full Names for display
     const activeUserCols = selectFields.filter(f => USER_FIELDS.has(f));

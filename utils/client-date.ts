@@ -146,3 +146,8 @@ export function toUtcIsoTimestamp(dateInput?: string | Date | null): string {
   }
   return new Date().toISOString();
 }
+
+/**
+ * Alias for parseClientDate for backwards compatibility.
+ */
+export const parseDbDate = parseClientDate;
