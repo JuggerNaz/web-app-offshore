@@ -207,122 +207,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             });
         }
 
-        const sowItems = allSowItems;
 
-        const isRovSowItem = (item: any) => {
-            const code = String(item.inspection_code || "").trim().toUpperCase();
-            const name = String(item.inspection_name || "").toUpperCase();
-            if (code.startsWith("R") && code !== "RISER" && code !== "RB") return true;
-            if (name.includes("ROV")) return true;
-            return false;
-        };
-
-        const isDivingSowItem = (item: any) => {
-            const code = String(item.inspection_code || "").trim().toUpperCase();
-            const name = String(item.inspection_name || "").toUpperCase();
-            if (code.startsWith("D") && code !== "DEBRIS" && code !== "DK") return true;
-            if (["BSINS", "CVINS", "ACFMC", "MPINS", "SZONE", "SANI", "ANMAIN"].includes(code)) return true;
-            if (name.includes("DIVING") || name.includes("DIVE")) return true;
-            return false;
-        };
-
-        const totalSow = sowItems.length;
-        const completedSow = sowItems.filter((i: any) => i.status === "completed").length;
-        const incompleteSow = sowItems.filter((i: any) => i.status === "incomplete").length;
-        const pendingSow = sowItems.filter((i: any) => i.status === "pending").length;
-
-        const completionPct = totalSow > 0 ? Math.round(((completedSow + incompleteSow) / totalSow) * 100) : 0;
-        const completedPct = totalSow > 0 ? Math.round((completedSow / totalSow) * 100) : 0;
-        const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
-        const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
-
-        // ROV SOW Breakdown
-        const rovSowItems = sowItems.filter(isRovSowItem);
-        const rovSowTotal = rovSowItems.length;
-        const rovSowCompleted = rovSowItems.filter((i: any) => i.status === "completed").length;
-        const rovSowIncomplete = rovSowItems.filter((i: any) => i.status === "incomplete").length;
-        const rovSowPending = rovSowItems.filter((i: any) => i.status === "pending").length;
-        const rovSowCompletionPct = rovSowTotal > 0 ? Math.round(((rovSowCompleted + rovSowIncomplete) / rovSowTotal) * 100) : 0;
-
-        // Diving SOW Breakdown
-        const diveSowItems = sowItems.filter(isDivingSowItem);
-        const diveSowTotal = diveSowItems.length;
-        const diveSowCompleted = diveSowItems.filter((i: any) => i.status === "completed").length;
-        const diveSowIncomplete = diveSowItems.filter((i: any) => i.status === "incomplete").length;
-        const diveSowPending = diveSowItems.filter((i: any) => i.status === "pending").length;
-        const diveSowCompletionPct = diveSowTotal > 0 ? Math.round(((diveSowCompleted + diveSowIncomplete) / diveSowTotal) * 100) : 0;
-
-        const outstandingTasks: any[] = [];
-        sowItemsToProcess.forEach((item: any) => {
-            const statusStr = String(item.status || "").toLowerCase().trim();
-            if (statusStr === "incomplete" || statusStr === "pending") {
-                let comp = compMap.get(String(item.component_id));
-                if (!comp && item.component_qid) {
-                    comp = qidMap.get(String(item.component_qid).trim().toUpperCase());
-                }
-                const compMeta = comp?.metadata || {};
-                const elv1 = compMeta.elv_1 !== undefined && compMeta.elv_1 !== null ? compMeta.elv_1 : null;
-                const elv2 = compMeta.elv_2 !== undefined && compMeta.elv_2 !== null ? compMeta.elv_2 : null;
-
-                // Prefer negative elevation if either is negative (e.g. spans sea level)
-                let compElv: any = null;
-                if (elv1 !== null && parseFloat(String(elv1)) < 0) {
-                    compElv = elv1;
-                } else if (elv2 !== null && parseFloat(String(elv2)) < 0) {
-                    compElv = elv2;
-                } else {
-                    compElv = elv1 !== null ? elv1 : elv2;
-                }
-                
-                const formatElevation = (val: any) => {
-                    if (val === undefined || val === null || String(val).trim() === "" || String(val).trim() === "-") return "-";
-                    const num = parseFloat(String(val));
-                    if (isNaN(num)) return String(val);
-                    if (num < 0) return `(-)${Math.abs(num)}`;
-                    return String(val);
-                };
-
-                if (item.elevation_required && Array.isArray(item.elevation_data) && item.elevation_data.length > 0) {
-                    item.elevation_data.forEach((elev: any) => {
-                        const elevStatus = String(elev.status || "").toLowerCase().trim();
-                        if (elevStatus === "incomplete" || elevStatus === "pending") {
-                            const hasStart = elev.start !== undefined && elev.start !== null && String(elev.start).trim() !== "" && String(elev.start).trim() !== "-";
-                            outstandingTasks.push({
-                                qid: item.component_qid || "N/A",
-                                elevation: formatElevation(hasStart ? elev.start : compElv),
-                                comments: elev.comments || elev.notes || item.notes || `Unable to inspect due to access/visibility constraint`,
-                                inspectionType: item.inspection_name || item.inspection_code || "General Inspection"
-                            });
-                        }
-                    });
-                } else {
-                    outstandingTasks.push({
-                        qid: item.component_qid || "N/A",
-                        elevation: formatElevation(compElv),
-                        comments: item.notes || `Unable to inspect due to access/visibility constraint`,
-                        inspectionType: item.inspection_name || item.inspection_code || "General Inspection"
-                    });
-                }
-            }
-        });
-
-        outstandingTasks.sort((a, b) => {
-            const parseElevationForSort = (elvStr: string) => {
-                if (!elvStr || elvStr === "-") return null;
-                const cleaned = elvStr.replace(/\(-\)/g, "-").replace(/[^\d.-]/g, "");
-                const num = parseFloat(cleaned);
-                return isNaN(num) ? null : num;
-            };
-
-            const valA = parseElevationForSort(a.elevation);
-            const valB = parseElevationForSort(b.elevation);
-
-            if (valA === null && valB === null) return 0;
-            if (valA === null) return 1;
-            if (valB === null) return -1;
-
-            return valB - valA;
-        });
 
         const selectCols = `
             insp_id,
@@ -452,6 +337,176 @@ export const GET = withTenant(async (request, { companyId }) => {
                 return recRep === filterRep;
               })
             : rawRecords;
+
+        const isRovSowItem = (item: any) => {
+            const code = String(item.inspection_code || "").trim().toUpperCase();
+            const name = String(item.inspection_name || "").toUpperCase();
+            if (code.startsWith("R") && code !== "RISER" && code !== "RB") return true;
+            if (name.includes("ROV")) return true;
+            return false;
+        };
+
+        const isDivingSowItem = (item: any) => {
+            const code = String(item.inspection_code || "").trim().toUpperCase();
+            const name = String(item.inspection_name || "").toUpperCase();
+            if (code.startsWith("D") && code !== "DEBRIS" && code !== "DK") return true;
+            if (["BSINS", "CVINS", "ACFMC", "MPINS", "SZONE", "SANI", "ANMAIN"].includes(code)) return true;
+            if (name.includes("DIVING") || name.includes("DIVE")) return true;
+            return false;
+        };
+
+        // Determine target scope items based on whether user selected a specific report or All
+        const targetSowItems = isReportSpecific ? sowItemsToProcess : allSowItems;
+        const targetRecords = isReportSpecific ? records : rawRecords;
+
+        // Map actual records to resolve SOW item completion accurately
+        const availableRecords: Array<{
+            compId: string;
+            qid: string;
+            inspCode: string;
+            status: string;
+            hasAnomaly: boolean;
+            used: boolean;
+        }> = targetRecords.map((r: any) => {
+            const comp = r.structure_components || {};
+            const qid = (comp.q_id || r.inspection_data?.q_id || "").trim().toUpperCase();
+            const compId = r.component_id ? String(r.component_id) : "";
+            const inspCode = (r.inspection_type_code || r.inspection_type?.code || "").trim().toUpperCase();
+            const status = (r.status || "").toUpperCase();
+            const hasAnomaly = !!r.has_anomaly;
+            return { compId, qid, inspCode, status, hasAnomaly, used: false };
+        });
+
+        // Determine effective status for each SOW item
+        const resolvedSowItems = targetSowItems.map((item: any) => {
+            const itemQid = String(item.component_qid || "").trim().toUpperCase();
+            const itemCompId = item.component_id ? String(item.component_id) : "";
+            const itemInspCode = String(item.inspection_code || "").trim().toUpperCase();
+
+            // Find matching available inspection record
+            const match = availableRecords.find(rec => {
+                if (rec.used) return false;
+                const matchesCode = !itemInspCode || !rec.inspCode || rec.inspCode === itemInspCode;
+                if (!matchesCode) return false;
+
+                const matchesQid = itemQid && rec.qid && (itemQid === rec.qid);
+                const matchesCompId = itemCompId && rec.compId && (itemCompId === rec.compId);
+                return matchesQid || matchesCompId;
+            });
+
+            let effectiveStatus = String(item.status || "pending").toLowerCase();
+            if (match) {
+                match.used = true;
+                if (match.status === "INCOMPLETE") {
+                    effectiveStatus = "incomplete";
+                } else {
+                    effectiveStatus = "completed";
+                }
+            }
+
+            return {
+                ...item,
+                effectiveStatus
+            };
+        });
+
+        const totalSow = resolvedSowItems.length;
+        const completedSow = resolvedSowItems.filter((i: any) => i.effectiveStatus === "completed").length;
+        const incompleteSow = resolvedSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
+        const pendingSow = resolvedSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
+
+        const completionPct = totalSow > 0 ? Math.round(((completedSow + incompleteSow) / totalSow) * 100) : (targetRecords.length > 0 ? 100 : 0);
+        const completedPct = totalSow > 0 ? Math.round((completedSow / totalSow) * 100) : (targetRecords.length > 0 ? 100 : 0);
+        const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
+        const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
+
+        // ROV SOW Breakdown
+        const rovSowItems = resolvedSowItems.filter(isRovSowItem);
+        const rovSowTotal = rovSowItems.length;
+        const rovSowCompleted = rovSowItems.filter((i: any) => i.effectiveStatus === "completed").length;
+        const rovSowIncomplete = rovSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
+        const rovSowPending = rovSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
+        const rovSowCompletionPct = rovSowTotal > 0 ? Math.round(((rovSowCompleted + rovSowIncomplete) / rovSowTotal) * 100) : 0;
+
+        // Diving SOW Breakdown
+        const diveSowItems = resolvedSowItems.filter(isDivingSowItem);
+        const diveSowTotal = diveSowItems.length;
+        const diveSowCompleted = diveSowItems.filter((i: any) => i.effectiveStatus === "completed").length;
+        const diveSowIncomplete = diveSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
+        const diveSowPending = diveSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
+        const diveSowCompletionPct = diveSowTotal > 0 ? Math.round(((diveSowCompleted + diveSowIncomplete) / diveSowTotal) * 100) : 0;
+
+        const outstandingTasks: any[] = [];
+        resolvedSowItems.forEach((item: any) => {
+            const statusStr = item.effectiveStatus;
+            if (statusStr === "incomplete" || statusStr === "pending") {
+                let comp = compMap.get(String(item.component_id));
+                if (!comp && item.component_qid) {
+                    comp = qidMap.get(String(item.component_qid).trim().toUpperCase());
+                }
+                const compMeta = comp?.metadata || {};
+                const elv1 = compMeta.elv_1 !== undefined && compMeta.elv_1 !== null ? compMeta.elv_1 : null;
+                const elv2 = compMeta.elv_2 !== undefined && compMeta.elv_2 !== null ? compMeta.elv_2 : null;
+
+                // Prefer negative elevation if either is negative (e.g. spans sea level)
+                let compElv: any = null;
+                if (elv1 !== null && parseFloat(String(elv1)) < 0) {
+                    compElv = elv1;
+                } else if (elv2 !== null && parseFloat(String(elv2)) < 0) {
+                    compElv = elv2;
+                } else {
+                    compElv = elv1 !== null ? elv1 : elv2;
+                }
+                
+                const formatElevation = (val: any) => {
+                    if (val === undefined || val === null || String(val).trim() === "" || String(val).trim() === "-") return "-";
+                    const num = parseFloat(String(val));
+                    if (isNaN(num)) return String(val);
+                    if (num < 0) return `(-)${Math.abs(num)}`;
+                    return String(val);
+                };
+
+                if (item.elevation_required && Array.isArray(item.elevation_data) && item.elevation_data.length > 0) {
+                    item.elevation_data.forEach((elev: any) => {
+                        const elevStatus = String(elev.status || "").toLowerCase().trim();
+                        if (elevStatus === "incomplete" || elevStatus === "pending") {
+                            const hasStart = elev.start !== undefined && elev.start !== null && String(elev.start).trim() !== "" && String(elev.start).trim() !== "-";
+                            outstandingTasks.push({
+                                qid: item.component_qid || "N/A",
+                                elevation: formatElevation(hasStart ? elev.start : compElv),
+                                comments: elev.comments || elev.notes || item.notes || `Unable to inspect due to access/visibility constraint`,
+                                inspectionType: item.inspection_name || item.inspection_code || "General Inspection"
+                            });
+                        }
+                    });
+                } else {
+                    outstandingTasks.push({
+                        qid: item.component_qid || "N/A",
+                        elevation: formatElevation(compElv),
+                        comments: item.notes || `Unable to inspect due to access/visibility constraint`,
+                        inspectionType: item.inspection_name || item.inspection_code || "General Inspection"
+                    });
+                }
+            }
+        });
+
+        outstandingTasks.sort((a, b) => {
+            const parseElevationForSort = (elvStr: string) => {
+                if (!elvStr || elvStr === "-") return null;
+                const cleaned = elvStr.replace(/\(-\)/g, "-").replace(/[^\d.-]/g, "");
+                const num = parseFloat(cleaned);
+                return isNaN(num) ? null : num;
+            };
+
+            const valA = parseElevationForSort(a.elevation);
+            const valB = parseElevationForSort(b.elevation);
+
+            if (valA === null && valB === null) return 0;
+            if (valA === null) return 1;
+            if (valB === null) return -1;
+
+            return valB - valA;
+        });
 
         // ─── 3. INSPECTIONS BY MODE ────────────────────────────────────────────
         let minDate: string | null = null;
@@ -1343,10 +1398,11 @@ export const GET = withTenant(async (request, { companyId }) => {
                 incomplete: number;
                 anomaly: number;
                 pending: number;
+                _scoped: number;
             }>
         }>> = {};
 
-        // 1. Initialize from SOW items for selected SOW Report (to capture pending items)
+        // 1. Initialize from SOW items for selected SOW Report (to capture scoped tasks)
         sowItemsToProcess.forEach((item: any) => {
             const dbComp = compMap.get(item.component_id) || qidMap.get(String(item.component_qid || "").trim().toUpperCase());
             
@@ -1382,13 +1438,12 @@ export const GET = withTenant(async (request, { companyId }) => {
                     completed: 0,
                     incomplete: 0,
                     anomaly: 0,
-                    pending: 0
+                    pending: 0,
+                    _scoped: 0
                 };
             }
             
-            if (item.status === "pending" || item.status === "incomplete") {
-                componentSummary[compType][qid].inspectionTypes[inspCode].pending++;
-            }
+            componentSummary[compType][qid].inspectionTypes[inspCode]._scoped++;
         });
 
         // 2. Populate from actual inspection records for the current SOW Report
@@ -1425,7 +1480,8 @@ export const GET = withTenant(async (request, { companyId }) => {
                     completed: 0,
                     incomplete: 0,
                     anomaly: 0,
-                    pending: 0
+                    pending: 0,
+                    _scoped: 0
                 };
             }
 
@@ -1443,15 +1499,26 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
+        // 3. Reconcile remaining pending count: pending = max(0, scoped - (completed + incomplete + anomaly))
+        Object.values(componentSummary).forEach(qids => {
+            Object.values(qids).forEach(qidData => {
+                Object.values(qidData.inspectionTypes).forEach(stats => {
+                    const totalInspected = stats.completed + stats.incomplete + stats.anomaly;
+                    stats.pending = Math.max(0, stats._scoped - totalInspected);
+                });
+            });
+        });
+
         const inspectionTypeSummary: Record<string, Record<string, Record<string, {
             completed: number;
             incomplete: number;
             anomaly: number;
             pending: number;
             total: number;
+            _scoped: number;
         }>>> = {};
 
-        // 1. Initialize from SOW items (to capture any pending items)
+        // 1. Initialize from SOW items (to capture any scoped items)
         allSowItems.forEach((item: any) => {
             const inspCode = item.inspection_code || "UNKNOWN";
             const dbComp = compMap.get(item.component_id);
@@ -1471,14 +1538,12 @@ export const GET = withTenant(async (request, { companyId }) => {
                     incomplete: 0,
                     anomaly: 0,
                     pending: 0,
-                    total: 0
+                    total: 0,
+                    _scoped: 0
                 };
             }
             
-            if (item.status === "pending" || item.status === "incomplete") {
-                inspectionTypeSummary[inspCode][compType][qid].pending++;
-                inspectionTypeSummary[inspCode][compType][qid].total++;
-            }
+            inspectionTypeSummary[inspCode][compType][qid]._scoped++;
         });
 
         // 2. Populate from actual inspection records
@@ -1501,14 +1566,14 @@ export const GET = withTenant(async (request, { companyId }) => {
                     incomplete: 0,
                     anomaly: 0,
                     pending: 0,
-                    total: 0
+                    total: 0,
+                    _scoped: 0
                 };
             }
 
             const isAnomaly = !!r.has_anomaly;
             const status = (r.status || "").toUpperCase();
             
-            inspectionTypeSummary[inspCode][compType][qid].total++;
             if (isAnomaly) {
                 inspectionTypeSummary[inspCode][compType][qid].anomaly++;
             } else if (status === "COMPLETED") {
@@ -1516,6 +1581,17 @@ export const GET = withTenant(async (request, { companyId }) => {
             } else if (status === "INCOMPLETE") {
                 inspectionTypeSummary[inspCode][compType][qid].incomplete++;
             }
+        });
+
+        // 3. Reconcile remaining pending count and total
+        Object.values(inspectionTypeSummary).forEach(compGroup => {
+            Object.values(compGroup).forEach(qidGroup => {
+                Object.values(qidGroup).forEach(stats => {
+                    const inspected = stats.completed + stats.incomplete + stats.anomaly;
+                    stats.pending = Math.max(0, stats._scoped - inspected);
+                    stats.total = Math.max(stats._scoped, inspected);
+                });
+            });
         });
 
         const sowSummaryMap = new Map<string, {
