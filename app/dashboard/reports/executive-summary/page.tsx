@@ -75,24 +75,22 @@ export default function ExecutiveSummaryPage() {
     const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
 
     // Fetch context data
-    const { data: jobpacksData } = useSWR("/api/jobpack?has_inspection=true", fetcher);
+    const { data: allJobpacksRes } = useSWR("/api/jobpack?limit=1000", fetcher);
+    const { data: inspJobpacksRes } = useSWR("/api/jobpack?limit=1000&has_inspection=true", fetcher);
     const { data: companySettings } = useSWR("/api/company-settings", fetcher);
     const { data: templatesRes } = useSWR("/api/report-templates", fetcher);
     const { data: structuresRes } = useSWR("/api/structures", fetcher);
-    const { data: sowsData } = useSWR(
-        selections.jobpackId && selections.structureId 
-            ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${selections.structureId}` 
-            : null, 
-        fetcher
-    );
     const { data: contractorsRes } = useSWR("/api/jobpack/utils/contractors", fetcher);
     const contractors = useMemo(() => contractorsRes?.data || [], [contractorsRes]);
 
     const jobpacks = useMemo(() => {
-        return [...(jobpacksData?.data || [])].sort((a, b) => 
+        const list = (allJobpacksRes?.data && allJobpacksRes.data.length > 0)
+            ? allJobpacksRes.data
+            : (inspJobpacksRes?.data || []);
+        return [...list].sort((a, b) => 
             (a.name || "").localeCompare(b.name || "", undefined, { numeric: true })
         );
-    }, [jobpacksData]);
+    }, [allJobpacksRes, inspJobpacksRes]);
 
     const structures = useMemo(() => {
         return [...(structuresRes?.data || [])].sort((a, b) => 
@@ -100,29 +98,149 @@ export default function ExecutiveSummaryPage() {
         );
     }, [structuresRes]);
 
-    const { data: sowsForStructureData } = useSWR(
-        selections.structureId ? `/api/sow?structure_id=${selections.structureId}` : null,
+    const cleanStructureId = useMemo(() => {
+        if (!selections.structureId) return "";
+        return selections.structureId.replace(/^(platform|pipeline)-/, "");
+    }, [selections.structureId]);
+
+    // Fetch distinct inspection records combinations (jobpack_id, structure_id, sow_report_no)
+    const { data: structureInspectionFiltersRes } = useSWR(
+        cleanStructureId ? `/api/reports/inspection-filters?structure_id=${cleanStructureId}` : null,
         fetcher
     );
 
+    const { data: sowsForStructureData } = useSWR(
+        cleanStructureId ? `/api/sow?structure_id=${cleanStructureId}` : null,
+        fetcher
+    );
+
+    const checkJobPackMatchesStructure = (jp: any, structureIdStr: string) => {
+        if (!jp || !structureIdStr) return false;
+        const selStructId = structureIdStr.replace(/^(platform|pipeline)-/, "");
+        const structObj = structures.find((s: any) => s.id?.toString() === selStructId);
+        const selStructName = structObj?.str_name?.toLowerCase().trim();
+
+        // 1. Direct structure columns on jobpack
+        if (jp.structure_id !== undefined && jp.structure_id !== null && jp.structure_id.toString() === selStructId) return true;
+        if (Array.isArray(jp.structure_ids) && jp.structure_ids.some((id: any) => id?.toString() === selStructId)) return true;
+
+        const meta = jp.metadata || {};
+
+        // 2. Direct structure IDs in metadata
+        if (meta.structure_id !== undefined && meta.structure_id !== null && meta.structure_id.toString() === selStructId) return true;
+        if (meta.platform_id !== undefined && meta.platform_id !== null && meta.platform_id.toString() === selStructId) return true;
+        if (Array.isArray(meta.structure_ids) && meta.structure_ids.some((id: any) => id?.toString() === selStructId)) return true;
+
+        // 3. Structures list in metadata (structures or structure_list)
+        const structuresList = Array.isArray(meta.structures) 
+            ? meta.structures 
+            : Array.isArray(meta.structure_list) 
+            ? meta.structure_list 
+            : meta.structures 
+            ? [meta.structures] 
+            : [];
+
+        if (structuresList.length > 0) {
+            for (const s of structuresList) {
+                if (!s) continue;
+                if (typeof s === 'string' || typeof s === 'number') {
+                    if (s.toString() === selStructId) return true;
+                    if (selStructName && s.toString().toLowerCase().trim() === selStructName) return true;
+                } else if (typeof s === 'object') {
+                    const sid = s.id ?? s.str_id ?? s.structure_id ?? s.plat_id;
+                    if (sid !== undefined && sid !== null && sid.toString() === selStructId) return true;
+                    const sName = s.name ?? s.title ?? s.str_name ?? s.platform_name;
+                    if (selStructName && sName && sName.toString().toLowerCase().trim() === selStructName) return true;
+                }
+            }
+        }
+
+        // 4. Platform / Structure name in metadata strings
+        const metaPlatform = meta.platform || meta.platform_name || meta.structure_name || meta.platformName;
+        if (selStructName && metaPlatform && metaPlatform.toString().toLowerCase().trim() === selStructName) return true;
+
+        // 5. Check if jobpack name mentions the structure
+        if (selStructName && jp.name && jp.name.toLowerCase().includes(selStructName)) return true;
+
+        return false;
+    };
+
     const filteredJobpacks = useMemo(() => {
-        if (!selections.structureId || !sowsForStructureData?.data || !Array.isArray(sowsForStructureData.data)) return [];
+        if (!selections.structureId) return jobpacks;
         
-        const jobpackIds = new Set(sowsForStructureData.data.map((sow: any) => Number(sow.jobpack_id)));
+        const inspectedJpIds = new Set(
+            (structureInspectionFiltersRes?.data || []).map((f: any) => f.jobpack_id?.toString()).filter(Boolean)
+        );
+        const sowJpIds = new Set(
+            (Array.isArray(sowsForStructureData?.data) ? sowsForStructureData.data : [])
+                .map((s: any) => s.jobpack_id?.toString())
+                .filter(Boolean)
+        );
         
-        return jobpacks.filter((jp: any) => jobpackIds.has(Number(jp.id)));
-    }, [selections.structureId, sowsForStructureData, jobpacks]);
+        const matches = jobpacks.filter((jp: any) => {
+            const idStr = jp.id?.toString();
+            if (inspectedJpIds.has(idStr)) return true;
+            if (sowJpIds.has(idStr)) return true;
+            return checkJobPackMatchesStructure(jp, selections.structureId);
+        });
+
+        // Fallback to all jobpacks if nothing matched so user isn't locked out
+        return matches.length > 0 ? matches : jobpacks;
+    }, [selections.structureId, jobpacks, structureInspectionFiltersRes, sowsForStructureData, structures]);
+
+    // Fetch SOW and inspection filters for the selected Jobpack and Structure
+    const { data: jobpackInspFiltersRes } = useSWR(
+        selections.jobpackId && cleanStructureId
+            ? `/api/reports/inspection-filters?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}`
+            : null,
+        fetcher
+    );
+
+    const { data: sowsData } = useSWR(
+        selections.jobpackId && cleanStructureId 
+            ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}` 
+            : null, 
+        fetcher
+    );
 
     const availableSowReports = useMemo(() => {
-        if (!sowsData?.data || typeof sowsData.data !== 'object') return [];
-        const reportNumbers = sowsData.data.report_numbers;
-        if (!Array.isArray(reportNumbers)) return [];
-        
-        const reports = reportNumbers.map((r: any) => r.number || r) || [];
-        return [...reports].sort((a, b) => 
+        const reportsSet = new Set<string>();
+
+        // 1. From SOW data report_numbers
+        if (sowsData?.data && typeof sowsData.data === 'object') {
+            const reportNumbers = sowsData.data.report_numbers;
+            if (Array.isArray(reportNumbers)) {
+                reportNumbers.forEach((r: any) => {
+                    const val = r?.number || r;
+                    if (val && typeof val === 'string' && val.trim()) {
+                        reportsSet.add(val.trim());
+                    }
+                });
+            }
+        }
+
+        // 2. From inspection filters (distinct sow_report_no in insp_records)
+        if (jobpackInspFiltersRes?.data && Array.isArray(jobpackInspFiltersRes.data)) {
+            jobpackInspFiltersRes.data.forEach((f: any) => {
+                if (f.sow_report_no && typeof f.sow_report_no === 'string' && f.sow_report_no.trim()) {
+                    reportsSet.add(f.sow_report_no.trim());
+                }
+            });
+        }
+
+        // 3. From structure-level inspection filters if matches jobpack
+        if (structureInspectionFiltersRes?.data && Array.isArray(structureInspectionFiltersRes.data)) {
+            structureInspectionFiltersRes.data.forEach((f: any) => {
+                if (f.jobpack_id?.toString() === selections.jobpackId && f.sow_report_no?.trim()) {
+                    reportsSet.add(f.sow_report_no.trim());
+                }
+            });
+        }
+
+        return Array.from(reportsSet).sort((a, b) => 
             String(a).localeCompare(String(b), undefined, { numeric: true })
         );
-    }, [sowsData]);
+    }, [sowsData, jobpackInspFiltersRes, structureInspectionFiltersRes, selections.jobpackId]);
 
     // Fetch existing summary
     const { data: summaryData, mutate: refreshSummary } = useSWR(
