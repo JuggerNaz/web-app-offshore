@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -20,9 +21,11 @@ import {
     LayoutGrid,
     RotateCcw,
     Edit2,
-    Globe
+    Globe,
+    ExternalLink
 } from "lucide-react";
-import Link from 'next/link';
+import { PlatformSpecsDialog } from "@/components/dialogs/platform-specs-dialog";
+import { PipelineSpecsDialog } from "@/components/dialogs/pipeline-specs-dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -173,6 +176,115 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     const [isEditSowOpen, setIsEditSowOpen] = useState(false);
     const [editedReportNo, setEditedReportNo] = useState(headerData.sowReportNo || "");
     const [isSavingSow, setIsSavingSow] = useState(false);
+
+    // Structure Specs Popup Modal State (Platform & Pipeline)
+    const [isPlatformSpecsOpen, setIsPlatformSpecsOpen] = useState(false);
+    const [platformDetails, setPlatformDetails] = useState<any>(null);
+    const [isPlatformDetailLoading, setIsPlatformDetailLoading] = useState(false);
+
+    const [isPipelineSpecsOpen, setIsPipelineSpecsOpen] = useState(false);
+    const [pipelineDetails, setPipelineDetails] = useState<any>(null);
+    const [isPipelineDetailLoading, setIsPipelineDetailLoading] = useState(false);
+
+    const handleOpenStructureSpecs = async () => {
+        const isPipe = isPipeline || headerData?.structureType === "pipeline";
+        const rawStrId = structureId?.includes("-") ? structureId.split("-")[1] : structureId;
+        const supabase = createClient();
+
+        if (isPipe) {
+            setIsPipelineSpecsOpen(true);
+            setIsPipelineDetailLoading(true);
+            try {
+                let pipeData = null;
+                if (rawStrId && !isNaN(Number(rawStrId))) {
+                    try {
+                        const res = await fetch(`/api/pipeline/${rawStrId}`);
+                        if (res.ok) {
+                            const json = await res.json();
+                            if (json?.data) pipeData = json.data;
+                        }
+                    } catch (e) {
+                        console.error("API pipeline fetch failed, fallback to DB:", e);
+                    }
+                }
+
+                if (!pipeData) {
+                    let query = supabase.from("u_pipeline").select("*");
+                    if (rawStrId && !isNaN(Number(rawStrId))) {
+                        query = query.eq("pipe_id", Number(rawStrId));
+                    } else if (headerData.platformName && headerData.platformName !== "N/A") {
+                        query = query.ilike("title", headerData.platformName);
+                    }
+                    const { data } = await query.maybeSingle();
+                    if (data) pipeData = data;
+                }
+
+                if (pipeData) {
+                    setPipelineDetails(pipeData);
+                } else {
+                    setPipelineDetails({
+                        title: headerData.platformName,
+                        pipe_id: rawStrId && !isNaN(Number(rawStrId)) ? Number(rawStrId) : undefined,
+                        depth: headerData.waterDepth,
+                    });
+                }
+            } catch (err) {
+                console.error("Error fetching pipeline specs:", err);
+                setPipelineDetails({
+                    title: headerData.platformName,
+                    depth: headerData.waterDepth,
+                });
+            } finally {
+                setIsPipelineDetailLoading(false);
+            }
+        } else {
+            setIsPlatformSpecsOpen(true);
+            setIsPlatformDetailLoading(true);
+            try {
+                let platData = null;
+                if (rawStrId && !isNaN(Number(rawStrId))) {
+                    try {
+                        const res = await fetch(`/api/platform/${rawStrId}`);
+                        if (res.ok) {
+                            const json = await res.json();
+                            if (json?.data) platData = json.data;
+                        }
+                    } catch (e) {
+                        console.error("API platform fetch failed, fallback to DB:", e);
+                    }
+                }
+
+                if (!platData) {
+                    let query = supabase.from("platform").select("*");
+                    if (rawStrId && !isNaN(Number(rawStrId))) {
+                        query = query.eq("plat_id", Number(rawStrId));
+                    } else if (headerData.platformName && headerData.platformName !== "N/A") {
+                        query = query.ilike("title", headerData.platformName);
+                    }
+                    const { data } = await query.maybeSingle();
+                    if (data) platData = data;
+                }
+
+                if (platData) {
+                    setPlatformDetails(platData);
+                } else {
+                    setPlatformDetails({
+                        title: headerData.platformName,
+                        plat_id: rawStrId && !isNaN(Number(rawStrId)) ? Number(rawStrId) : undefined,
+                        depth: headerData.waterDepth,
+                    });
+                }
+            } catch (err) {
+                console.error("Error fetching platform specs:", err);
+                setPlatformDetails({
+                    title: headerData.platformName,
+                    depth: headerData.waterDepth,
+                });
+            } finally {
+                setIsPlatformDetailLoading(false);
+            }
+        }
+    };
 
     useEffect(() => {
         setEditedReportNo(headerData.sowReportNo || "");
@@ -361,10 +473,17 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                         <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Jobpack:</span>
                         <span className="font-mono font-bold text-slate-200">{headerData.jobpackName}</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Structure Title:</span>
-                        <span className="font-mono font-bold text-slate-200">{headerData.platformName}</span>
-                    </div>
+                    <button
+                        onClick={handleOpenStructureSpecs}
+                        className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/60 hover:border-cyan-500/50 transition-all text-left group cursor-pointer select-none"
+                        title={isPipeline || headerData?.structureType === "pipeline" ? "Click to view & edit Pipeline Specifications" : "Click to view & edit Platform Specifications"}
+                    >
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] group-hover:text-cyan-400 transition-colors">Structure Title:</span>
+                        <span className="font-mono font-bold text-slate-100 group-hover:text-cyan-300 transition-colors flex items-center gap-1">
+                            {headerData.platformName}
+                            <ExternalLink className="w-2.5 h-2.5 text-slate-400 group-hover:text-cyan-300 opacity-60 group-hover:opacity-100 transition-all" />
+                        </span>
+                    </button>
                     <div className="flex items-center gap-1.5 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700 group">
                         <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">SOW Report:</span>
                         <span className="font-mono font-black text-cyan-400">{headerData.sowReportNo}</span>
@@ -586,6 +705,22 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                     </Button>
                 )}
             </div>
+
+            {/* Platform Specifications Popup Modal */}
+            <PlatformSpecsDialog
+                open={isPlatformSpecsOpen}
+                onOpenChange={setIsPlatformSpecsOpen}
+                platformDetails={platformDetails}
+                isLoading={isPlatformDetailLoading}
+            />
+
+            {/* Pipeline Specifications Popup Modal */}
+            <PipelineSpecsDialog
+                open={isPipelineSpecsOpen}
+                onOpenChange={setIsPipelineSpecsOpen}
+                pipelineDetails={pipelineDetails}
+                isLoading={isPipelineDetailLoading}
+            />
         </header>
     );
 };

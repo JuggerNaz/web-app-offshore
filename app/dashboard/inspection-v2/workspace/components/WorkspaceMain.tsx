@@ -278,38 +278,100 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
   }, [columnSettings, isPipeline]);
 
   const displayRecords = React.useMemo(() => {
-    if (!recordSearchQuery) return sortedRecords;
-    const q = recordSearchQuery.toLowerCase();
+    const rawQuery = recordSearchQuery.trim();
+    if (!rawQuery) return sortedRecords;
+    const qLower = rawQuery.toLowerCase();
+
+    // 1. Helper to extract structured component metadata safely
+    const extractCompMetadata = (comp: any) => {
+      if (!comp) return {};
+      let md = comp.metadata;
+      if (typeof md === "string") {
+        try {
+          md = JSON.parse(md);
+        } catch (e) {
+          md = {};
+        }
+      }
+      return md || {};
+    };
+
     return sortedRecords.filter((r: any) => {
-      const typeName = (r.inspection_type?.name || "").toLowerCase();
-      const typeCode = (r.inspection_type_code || r.inspection_type?.code || "").toLowerCase();
-      const componentId = (r.structure_components?.q_id || "").toLowerCase();
-      const elev = (r.elevation || "").toString().toLowerCase();
-      const status = r.has_anomaly ? "anomaly" : (r.status === 'COMPLETED' ? "complete" : "incomplete");
-      const remarks = (r.inspection_data?.observation || r.inspection_data?.findings || "").toLowerCase();
-      const refNo = (r.insp_anomalies?.[0]?.anomaly_ref_no || "").toLowerCase();
-      const cpReading = (r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp ?? "").toString().toLowerCase();
-      const diveNo = (r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "").toLowerCase();
-      const tapeNo = (r.insp_video_tapes?.tape_no || "").toLowerCase();
+      const comp = r.structure_components || r.component || {};
+      const cMeta = extractCompMetadata(comp);
+      const d = r.inspection_data || r.inspection_dat || {};
 
-      // Add date and timecode for completeness
-      const crDateStr = r.cr_date ? new Date(r.cr_date).toLocaleDateString() + " " + new Date(r.cr_date).toLocaleTimeString() : "";
-      const timecode = (r.inspection_data?._meta_timecode || r.tape_count_no || "").toString().toLowerCase();
+      const tokens: string[] = [];
+      const add = (...items: any[]) => {
+        items.forEach(item => {
+          if (!item) return;
+          if (Array.isArray(item)) item.forEach(sub => add(sub));
+          else if (typeof item === "object") Object.values(item).forEach(v => add(v));
+          else {
+            const s = String(item).toLowerCase().trim();
+            if (s) tokens.push(s);
+          }
+        });
+      };
 
-      return (
-        typeName.includes(q) ||
-        typeCode.includes(q) ||
-        componentId.includes(q) ||
-        elev.includes(q) ||
-        status.includes(q) ||
-        remarks.includes(q) ||
-        refNo.includes(q) ||
-        cpReading.includes(q) ||
-        diveNo.includes(q) ||
-        tapeNo.includes(q) ||
-        crDateStr.toLowerCase().includes(q) ||
-        timecode.includes(q)
+      // Extract QID, Component, Type, Hierarchy
+      const sLeg = String(cMeta.start_leg || cMeta.s_leg || cMeta.leg_1 || cMeta.StartLeg || comp.start_leg || "").trim();
+      const fLeg = String(cMeta.end_leg || cMeta.f_leg || cMeta.leg_2 || cMeta.EndLeg || comp.end_leg || "").trim();
+      const legNo = String(cMeta.leg_no || cMeta.leg || cMeta.leg_name || comp.leg_no || comp.leg || "").trim();
+      const sNode = String(cMeta.start_node || cMeta.s_node || cMeta.node_1 || comp.start_node || "").trim();
+      const fNode = String(cMeta.end_node || cMeta.f_node || cMeta.node_2 || comp.end_node || "").trim();
+      const face = String(comp.face || cMeta.face || cMeta.face_name || cMeta.face_code || d.platform_face || "").trim();
+
+      add(
+        comp.q_id, comp.code, comp.name, r.qid, r.component_name,
+        sLeg && `leg ${sLeg}`, sLeg && `leg: ${sLeg}`, sLeg,
+        fLeg && `leg ${fLeg}`, fLeg && `leg: ${fLeg}`, fLeg,
+        legNo && `leg ${legNo}`, legNo && `leg: ${legNo}`, legNo,
+        sNode && `node ${sNode}`, sNode,
+        fNode && `node ${fNode}`, fNode,
+        face && `face ${face}`, face,
+        r.inspection_type?.name,
+        r.inspection_type_code, r.inspection_type?.code,
+        r.elevation, d.water_depth, d.scour_location, d.scour_depth && `${d.scour_depth} mm`, d.scour_depth,
+        d.Exposed_pile, d.Burial_percent,
+        r.has_anomaly ? "anomaly defect anom" : (r.status === 'COMPLETED' ? "complete completed" : "incomplete draft pending"),
+        r.status,
+        d.event_description, r.description, d.findings, r.observation, d.comments, d.remarks, d.event_name, d.event_type, d.event_position,
+        r.insp_anomalies?.map((a: any) => `${a.anomaly_ref_no} ${a.defect_description} ${a.priority_code ? `P${a.priority_code} Priority ${a.priority_code}` : ""}`),
+        d.cp_rdg, d.cp_reading_mv, d.cp,
+        r.insp_dive_jobs?.job_no, r.insp_rov_jobs?.job_no, r.insp_dive_jobs?.diver_name, r.insp_rov_jobs?.rov_operator,
+        r.insp_video_tapes?.tape_no, r.tape_count_no, d._meta_timecode,
+        r.inspection_date, r.inspection_time, r.cr_date
       );
+
+      // Deep inspection data values
+      add(d);
+
+      const allText = tokens.join(" ");
+
+      // Check structural leg targeting
+      const legMatch = qLower.match(/\bleg\s*[:\- ]*\s*([a-z0-9]+)\b/i);
+      if (legMatch && legMatch[1]) {
+        const targetLeg = legMatch[1].toLowerCase();
+        const matchesLeg = 
+          String(comp.q_id || "").toLowerCase().includes(`leg ${targetLeg}`) ||
+          String(comp.q_id || "").toLowerCase().includes(`leg:${targetLeg}`) ||
+          String(comp.q_id || "").toLowerCase().includes(`-${targetLeg}`) ||
+          String(comp.q_id || "").toLowerCase().endsWith(targetLeg) ||
+          sLeg.toLowerCase() === targetLeg ||
+          fLeg.toLowerCase() === targetLeg ||
+          legNo.toLowerCase() === targetLeg ||
+          String(d.scour_location || "").toLowerCase().includes(targetLeg) ||
+          String(d.event_description || r.description || r.observation || "").toLowerCase().includes(`leg ${targetLeg}`);
+
+        if (matchesLeg) return true;
+        // If query was strictly "Leg A1", exclude non-matching records
+        if (!qLower.includes('"') && qLower.split(/\s+/).length <= 2) return false;
+      }
+
+      // Check all terms
+      const terms = qLower.split(/\s+/).filter(Boolean);
+      return terms.every((t) => allText.includes(t));
     });
   }, [sortedRecords, recordSearchQuery]);
 

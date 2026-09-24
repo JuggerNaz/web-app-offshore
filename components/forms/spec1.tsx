@@ -59,6 +59,16 @@ export default function Spec1({ data }: Props) {
     defaultValues: initialData,
   });
 
+  // Re-sync form state when data prop loads or changes
+  useEffect(() => {
+    if (data) {
+      form.reset({
+        ...data,
+        inst_date: normalizeDate((data as any).inst_date)
+      });
+    }
+  }, [data, form]);
+
   const legsCountRaw = form.watch("plegs");
   const legsCount = Number(legsCountRaw) || 0;
   const isLegDisabled = (legNumber: number) => legNumber > legsCount;

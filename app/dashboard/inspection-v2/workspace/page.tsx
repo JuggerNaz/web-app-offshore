@@ -984,210 +984,273 @@ function V10PreviewLayout() {
       return !excludedCodes.includes(code);
     });
 
-    // Helper to extract all searchable data from a record across every table column
-    const getSearchableText = (r: any) => {
-      const texts: string[] = [];
-      const d = r.inspection_data || {};
+    // 1. Helper to extract structured component metadata safely
+    const extractCompMetadata = (comp: any) => {
+      if (!comp) return {};
+      let md = comp.metadata;
+      if (typeof md === "string") {
+        try {
+          md = JSON.parse(md);
+        } catch (e) {
+          md = {};
+        }
+      }
+      return md || {};
+    };
+
+    // 2. Comprehensive search text and field extractor
+    const getSearchableFields = (r: any) => {
+      const comp = r.structure_components || r.component || {};
+      const cMeta = extractCompMetadata(comp);
+      const d = r.inspection_data || r.inspection_dat || {};
       
-      // 1. Column: Status & Anomalies
-      texts.push(r.status || "");
-      const isAnom = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toLowerCase().includes("anom") || String(r.status || "").toLowerCase().includes("defect");
-      if (isAnom) {
-        texts.push("anomaly defect anom");
-      } else if (r.status === "COMPLETED") {
-        texts.push("complete completed");
-      } else {
-        texts.push("incomplete draft pending");
-      }
+      const qid = String(comp.q_id || comp.id_no || comp.name || r.qid || "").trim();
+      const compCode = String(comp.code || comp.component_type || "").trim();
+      const compName = String(comp.name || r.component_name || "").trim();
+      
+      // Structural hierarchy & framing members
+      const sLeg = String(cMeta.start_leg || cMeta.s_leg || cMeta.leg_1 || cMeta.StartLeg || comp.start_leg || "").trim();
+      const fLeg = String(cMeta.end_leg || cMeta.f_leg || cMeta.leg_2 || cMeta.EndLeg || comp.end_leg || "").trim();
+      const legNo = String(cMeta.leg_no || cMeta.leg || cMeta.leg_name || comp.leg_no || comp.leg || "").trim();
+      const sNode = String(cMeta.start_node || cMeta.s_node || cMeta.node_1 || comp.start_node || "").trim();
+      const fNode = String(cMeta.end_node || cMeta.f_node || cMeta.node_2 || comp.end_node || "").trim();
+      const face = String(comp.face || cMeta.face || cMeta.face_name || cMeta.face_code || d.platform_face || "").trim();
+      const level = String(cMeta.level || cMeta.level_name || "").trim();
 
-      // Anomaly details (Ref, Defect Code, Category, Priority, Description)
-      if (r.insp_anomalies && r.insp_anomalies.length > 0) {
-        texts.push("anomaly defect anom");
-        r.insp_anomalies.forEach((anom: any) => {
-          texts.push(anom.anomaly_ref_no || "");
-          texts.push(anom.defect_description || "");
-          texts.push(anom.defect_type_code || anom.defect_code || "");
-          texts.push(anom.defect_category_code || "");
-          texts.push(anom.record_category || "");
-          texts.push(anom.priority || "");
-          texts.push(anom.priority_code || "");
-          texts.push(anom.priority_name || "");
-          if (anom.priority_code) {
-            texts.push(`priority ${anom.priority_code}`);
-            texts.push(`p${anom.priority_code}`);
+      // Scour & inspection specifics
+      const scourLoc = String(d.scour_location || "").trim();
+      const scourDepth = d.scour_depth !== undefined && d.scour_depth !== null ? String(d.scour_depth).trim() : "";
+      const exposedPile = String(d.Exposed_pile || d.exposed_pile || "").trim();
+      const burial = d.Burial_percent !== undefined && d.Burial_percent !== null ? String(d.Burial_percent).trim() : "";
+      
+      // Observations, findings and descriptions
+      const eventDesc = String(d.event_description || r.description || d.findings || r.observation || d.comments || d.remarks || d.raw_descr || "").trim();
+      const eventName = String(d.event_name || d.actionName || d.event || d.name || "").trim();
+      const eventType = String(d.event_type || d.raw_type || d.type || "").trim();
+      const eventPos = String(d.event_position || d.position || d.clock_position || d.side || "").trim();
+      
+      // Inspection Type
+      const typeName = String(r.inspection_type?.name || "").trim();
+      const typeCode = String(r.inspection_type_code || r.inspection_type?.code || "").trim();
+      
+      // Status & Anomalies
+      const status = String(r.status || "").trim();
+      const anoms = r.insp_anomalies || [];
+      const anomRefs = anoms.map((a: any) => a.anomaly_ref_no).filter(Boolean);
+      const anomDescs = anoms.map((a: any) => a.defect_description).filter(Boolean);
+      const anomPriorities = anoms.map((a: any) => a.priority_code ? `P${a.priority_code} Priority ${a.priority_code}` : "").filter(Boolean);
+      
+      // Depth / Elevation / CP / Job / Tape
+      const waterDepth = String(d.water_depth || d.measured_depth || d.corrected_depth || r.elevation || "").trim();
+      const cpVal = String(d.cp_rdg ?? d.cp_reading_mv ?? d.cp_reading ?? d.cp ?? "").trim();
+      const jobNo = String(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "").trim();
+      const operator = String(r.insp_dive_jobs?.diver_name || r.insp_rov_jobs?.rov_operator || "").trim();
+      const tapeNo = String(r.insp_video_tapes?.tape_no || "").trim();
+      const sowReportNo = String(r.sow_report_no || "").trim();
+
+      // Date / Time
+      const dateStr = r.inspection_date ? String(r.inspection_date).trim() : "";
+      const timeStr = r.inspection_time ? String(r.inspection_time).trim() : "";
+
+      return {
+        qid,
+        compCode,
+        compName,
+        sLeg,
+        fLeg,
+        legNo,
+        sNode,
+        fNode,
+        face,
+        level,
+        scourLoc,
+        scourDepth,
+        exposedPile,
+        burial,
+        eventDesc,
+        eventName,
+        eventType,
+        eventPos,
+        typeName,
+        typeCode,
+        status,
+        anomRefs,
+        anomDescs,
+        anomPriorities,
+        waterDepth,
+        cpVal,
+        jobNo,
+        operator,
+        tapeNo,
+        sowReportNo,
+        dateStr,
+        timeStr,
+        rawInspectionData: d,
+      };
+    };
+
+    // 3. Smart Evaluator
+    const evaluateRecord = (r: any, qStr: string, mode: "ANY" | "ALL" | "EXACT") => {
+      const f = getSearchableFields(r);
+      const qLower = qStr.toLowerCase().trim();
+      
+      // Build searchable tokens
+      const tokens: string[] = [];
+      const add = (...items: any[]) => {
+        items.forEach(item => {
+          if (!item) return;
+          if (Array.isArray(item)) item.forEach(sub => add(sub));
+          else if (typeof item === "object") Object.values(item).forEach(v => add(v));
+          else {
+            const s = String(item).toLowerCase().trim();
+            if (s) tokens.push(s);
           }
-          if (anom.follow_up_notes) texts.push(anom.follow_up_notes);
         });
-      }
+      };
 
-      // 2. Column: Date & Time (in multiple formats: DD MMM YYYY, YYYY-MM-DD, month names, times)
-      if (r.inspection_date) {
-        texts.push(r.inspection_date);
-        const dStr = String(r.inspection_date).trim().split('T')[0];
-        const match = dStr.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-        if (match) {
-          const year = match[1];
-          const monthIdx = parseInt(match[2], 10) - 1;
-          const day = match[3].padStart(2, '0');
-          const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-          const shortMonthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-          const fullMonth = monthNames[monthIdx] || "";
-          const shortMonth = shortMonthNames[monthIdx] || "";
-          texts.push(`${day} ${shortMonth} ${year}`);
-          texts.push(`${day} ${fullMonth} ${year}`);
-          texts.push(`${shortMonth} ${year}`);
-          texts.push(`${fullMonth} ${year}`);
-          texts.push(year);
-        }
-        const dateObj = new Date(r.inspection_date);
-        if (!isNaN(dateObj.getTime())) {
-          texts.push(dateObj.toLocaleDateString());
-        }
-      }
-      if (r.inspection_time) {
-        texts.push(r.inspection_time);
-        texts.push(r.inspection_time.slice(0, 5));
-      }
+      add(
+        f.qid, f.compCode, f.compName,
+        f.sLeg && `leg ${f.sLeg}`, f.sLeg && `leg: ${f.sLeg}`, f.sLeg,
+        f.fLeg && `leg ${f.fLeg}`, f.fLeg && `leg: ${f.fLeg}`, f.fLeg,
+        f.legNo && `leg ${f.legNo}`, f.legNo && `leg: ${f.legNo}`, f.legNo,
+        f.sNode && `node ${f.sNode}`, f.sNode,
+        f.fNode && `node ${f.fNode}`, f.fNode,
+        f.face && `face ${f.face}`, f.face,
+        f.level && `level ${f.level}`, f.level,
+        f.scourLoc,
+        f.scourDepth && `${f.scourDepth} mm`, f.scourDepth && `${f.scourDepth}mm`, f.scourDepth,
+        f.exposedPile,
+        f.exposedPile.toLowerCase().includes("no") && "no exposed pile observed",
+        f.exposedPile.toLowerCase().includes("no") && "not exposed",
+        f.burial && `${f.burial}%`, f.burial,
+        f.eventDesc,
+        f.eventName,
+        f.eventType,
+        f.eventPos,
+        f.typeName,
+        f.typeCode,
+        f.status,
+        f.status === "COMPLETED" && "complete completed",
+        (r.has_anomaly || f.anomRefs.length > 0) && "anomaly defect anom",
+        f.anomRefs,
+        f.anomDescs,
+        f.anomPriorities,
+        f.waterDepth && `${f.waterDepth}m`, f.waterDepth && `${f.waterDepth} m`, f.waterDepth,
+        f.cpVal && `${f.cpVal}mv`, f.cpVal && `${f.cpVal} mv`, f.cpVal,
+        f.jobNo && `job ${f.jobNo}`, f.jobNo && `dive ${f.jobNo}`, f.jobNo,
+        f.operator,
+        f.tapeNo && `tape ${f.tapeNo}`, f.tapeNo,
+        f.sowReportNo,
+        f.dateStr,
+        f.timeStr
+      );
 
-      // 3. Column: Event Name (Pipeline & General)
-      const eventName = d.event_name || d.actionName || d.event || d.name || d.raw_event || "";
-      if (eventName) texts.push(eventName);
-
-      // 4. Column: Event Type
-      const eventType = d.event_type || d.raw_type || d.type || "";
-      if (eventType) texts.push(eventType);
-
-      // 5. Column: Event Position
-      const eventPos = d.event_position || d.eventCategory || d.position || d.clock_position || d.side || d.raw_pos || "";
-      if (eventPos) texts.push(eventPos);
-
-      // 6. Column: Event Description / Findings / Comments / Description
-      const eventDesc = d.event_description || r.description || d.findings || r.observation || d.comments || d.raw_descr || "";
-      if (eventDesc) texts.push(eventDesc);
-      if (r.description) texts.push(r.description);
-      if (r.observation) texts.push(r.observation);
-
-      // 7. Column: Type (Inspection Type Name & Code)
-      texts.push(r.inspection_type?.name || "");
-      texts.push(r.inspection_type_code || r.inspection_type?.code || "");
-
-      // 8. Column: Component (QID, Code, Name, Type, Leg, Face, Level, Drawing No)
-      texts.push(r.structure_components?.q_id || "");
-      texts.push(r.structure_components?.code || "");
-      texts.push(r.structure_components?.name || "");
-      texts.push(r.component_name || "");
-      texts.push(r.component_type || r.structure_components?.type || "");
-
-      // Component metadata (e.g. Leg, Face, Level, Drawing, Notes)
-      const cMeta = r.structure_components?.metadata || {};
-      if (typeof cMeta === 'object') {
-        if (cMeta.face) texts.push(`face ${cMeta.face} ${cMeta.face}`);
-        if (cMeta.level || cMeta.level_name) texts.push(`level ${cMeta.level || cMeta.level_name}`);
-        if (cMeta.leg || cMeta.leg_name) texts.push(`leg ${cMeta.leg || cMeta.leg_name}`);
-        if (cMeta.elv_1) texts.push(cMeta.elv_1.toString(), `${cMeta.elv_1}m`);
-        if (cMeta.elv_2) texts.push(cMeta.elv_2.toString(), `${cMeta.elv_2}m`);
-        if (cMeta.drawing_no) texts.push(cMeta.drawing_no);
-        if (cMeta.group || cMeta.comp_group) texts.push(cMeta.group || cMeta.comp_group);
-      }
-
-      // 9. Column: Elevation & KP (Platform elevations e.g. (+)15m, (-)30m, EL 12.5)
-      if (r.elevation !== undefined && r.elevation !== null && r.elevation !== "") {
-        const elvStr = r.elevation.toString();
-        texts.push(elvStr);
-        texts.push(`${elvStr}m`);
-        texts.push(`el ${elvStr}`);
-        texts.push(`elv ${elvStr}`);
-        const numElv = parseFloat(elvStr);
-        if (!isNaN(numElv)) {
-          if (numElv < 0) texts.push(`(-) ${Math.abs(numElv)}m`, `(-)${Math.abs(numElv)}`);
-          else texts.push(`(+) ${numElv}m`, `(+)${numElv}`);
+      // Date variants
+      if (f.dateStr) {
+        const dMatch = f.dateStr.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        if (dMatch) {
+          const y = dMatch[1];
+          const mIdx = parseInt(dMatch[2], 10) - 1;
+          const d = dMatch[3].padStart(2, "0");
+          const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const fullMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+          const mShort = months[mIdx] || "";
+          const mFull = fullMonths[mIdx] || "";
+          add(`${d} ${mShort} ${y}`, `${d} ${mFull} ${y}`, `${mShort} ${y}`, `${mFull} ${y}`, y);
         }
       }
-      if (r.kp !== undefined && r.kp !== null && r.kp !== "") {
-        texts.push(r.kp.toString());
-        texts.push(`${r.kp}km`);
-      }
-      if (r.fp_kp !== undefined && r.fp_kp !== null && r.fp_kp !== "") {
-        texts.push(r.fp_kp.toString());
-      }
-      if (d.kp) texts.push(d.kp.toString());
-      if (d.fp_kp) texts.push(d.fp_kp.toString());
-      if (d.elevation) texts.push(d.elevation.toString());
 
-      // 10. Column: CP Reading
-      const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp_reading ?? d.cp ?? d.cp_fg_rdg;
-      if (cpVal !== undefined && cpVal !== null && cpVal !== "") {
-        texts.push(cpVal.toString());
-        texts.push(`${cpVal}mv`);
+      add(f.rawInspectionData);
+      const allText = tokens.join(" ");
+
+      // EXACT MATCH MODE
+      if (mode === "EXACT") {
+        if (allText.includes(qLower)) return 100;
+        return 0;
       }
 
-      // 11. Column: Dive / ROV Job No & Operator
-      texts.push(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "");
-      texts.push(r.insp_dive_jobs?.name || r.insp_rov_jobs?.name || "");
-      texts.push(r.insp_dive_jobs?.diver_name || r.insp_rov_jobs?.rov_operator || "");
+      // Parse quoted phrases
+      const phraseRegex = /"([^"]+)"|'([^']+)'/g;
+      const phrases: string[] = [];
+      let pMatch;
+      while ((pMatch = phraseRegex.exec(qLower)) !== null) {
+        phrases.push((pMatch[1] || pMatch[2]).trim());
+      }
+      const unquoted = qLower.replace(phraseRegex, " ").trim();
+      const terms = unquoted.split(/\s+/).filter(Boolean);
 
-      // 12. Column: Tape No & Counter / Timecode
-      texts.push(r.insp_video_tapes?.tape_no || "");
-      if (r.tape_count_no) texts.push(r.tape_count_no.toString());
-      const timecode = d._meta_timecode || d.counter_no || d.counter || d.timecode;
-      if (timecode) texts.push(timecode.toString());
-
-      // 13. SOW Report Number
-      if (r.sow_report_no) texts.push(r.sow_report_no);
-
-      // 14. Deep scan all remaining nested values in inspection_data (MGI, UTWT, RFMD, CP, MPI, ACFMC, etc.)
-      if (d && typeof d === 'object') {
-        const extractValues = (obj: any) => {
-          Object.values(obj).forEach(val => {
-            if (val === null || val === undefined) return;
-            if (typeof val === 'object') extractValues(val);
-            else texts.push(val.toString());
-          });
-        };
-        extractValues(d);
+      let score = 0;
+      if (allText.includes(qLower)) {
+        score += 80;
+        if (f.qid.toLowerCase().includes(qLower)) score += 100;
+        if (f.scourLoc.toLowerCase().includes(qLower)) score += 60;
+        if (f.eventDesc.toLowerCase().includes(qLower)) score += 40;
+        if (f.typeName.toLowerCase().includes(qLower)) score += 40;
       }
 
-      return texts.map(t => String(t).toLowerCase()).join(" ");
+      // Structural leg targeting logic (e.g. "leg a1", "leg: a1", "leg-a1")
+      const legMatch = qLower.match(/\bleg\s*[:\- ]*\s*([a-z0-9]+)\b/i);
+      if (legMatch && legMatch[1]) {
+        const targetLeg = legMatch[1].toLowerCase();
+        const matchesLeg = 
+          f.qid.toLowerCase().includes(`leg ${targetLeg}`) ||
+          f.qid.toLowerCase().includes(`leg:${targetLeg}`) ||
+          f.qid.toLowerCase().includes(`-${targetLeg}`) ||
+          f.qid.toLowerCase().endsWith(targetLeg) ||
+          f.sLeg.toLowerCase() === targetLeg ||
+          f.fLeg.toLowerCase() === targetLeg ||
+          f.legNo.toLowerCase() === targetLeg ||
+          f.scourLoc.toLowerCase().includes(targetLeg) ||
+          f.eventDesc.toLowerCase().includes(`leg ${targetLeg}`) ||
+          f.eventDesc.toLowerCase().includes(`leg: ${targetLeg}`);
+
+        if (matchesLeg) {
+          score += 150;
+        } else if (mode === "ALL" && phrases.length === 0 && terms.length <= 2) {
+          // If query was strictly "Leg A1" and this record does not belong to Leg A1, exclude
+          return 0;
+        }
+      }
+
+      // ANY MATCH MODE
+      if (mode === "ANY") {
+        let anyMatched = false;
+        phrases.forEach(p => {
+          if (allText.includes(p)) { anyMatched = true; score += 50; }
+        });
+        terms.forEach(t => {
+          if (allText.includes(t)) { anyMatched = true; score += 20; }
+        });
+        return anyMatched ? Math.max(score, 10) : 0;
+      }
+
+      // ALL MATCH MODE (Default)
+      for (const p of phrases) {
+        if (!allText.includes(p)) return 0;
+        score += 50;
+      }
+
+      for (const t of terms) {
+        if (!allText.includes(t)) return 0;
+        score += 20;
+      }
+
+      return Math.max(score, 10);
     };
 
-    // Helper for boundary-aware or substring matching
-    const matchesTerm = (text: string, term: string) => {
-      const lowerTerm = term.toLowerCase();
-      if (!lowerTerm) return true;
-      try {
-        const escaped = lowerTerm.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(escaped, 'i').test(text);
-      } catch (e) {
-        return text.includes(lowerTerm);
+    // Filter and score records
+    const scoredRecords: { record: any; score: number }[] = [];
+    sourceRecords.forEach((r: any) => {
+      const score = evaluateRecord(r, rawQuery, searchMode);
+      if (score > 0) {
+        scoredRecords.push({ record: r, score });
       }
-    };
+    });
 
-    // Support comma-separated conditions or space-separated terms
-    const conditions = rawQuery.includes(",")
-      ? rawQuery.split(",").map((s) => s.trim()).filter(Boolean)
-      : rawQuery.split(/\s+/).map((s) => s.trim()).filter(Boolean);
-
-    let filtered: any[] = [];
-    if (conditions.length === 0) {
-      filtered = sourceRecords;
-    } else if (searchMode === "EXACT") {
-      filtered = sourceRecords.filter((r) => matchesTerm(getSearchableText(r), rawQuery));
-    } else if (searchMode === "ANY") {
-      filtered = sourceRecords.filter((r) => {
-        const fullText = getSearchableText(r);
-        return conditions.some((cond) => matchesTerm(fullText, cond));
-      });
-    } else {
-      // Default "ALL" - Multi-condition AND search
-      filtered = sourceRecords.filter((r) => {
-        const fullText = getSearchableText(r);
-        return conditions.every((cond) => matchesTerm(fullText, cond));
-      });
-    }
-
-    // Sort matching records according to active sortConfig
-    const sortableRecords = [...filtered];
-    sortableRecords.sort((a, b) => {
+    // Sort matching records according to active sortConfig with relevance score secondary
+    scoredRecords.sort((itemA, itemB) => {
+      const a = itemA.record;
+      const b = itemB.record;
       let aVal: any;
       let bVal: any;
 
@@ -1214,10 +1277,10 @@ function V10PreviewLayout() {
           bVal = isNaN(bE) ? b.fp_kp || "" : bE;
           break;
         case "status": {
-          const getStatusWeight = (r: any) => {
-            if (r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0)) return 3;
-            if (r.status === "INCOMPLETE") return 2;
-            if (r.status === "COMPLETED") return 1;
+          const getStatusWeight = (rec: any) => {
+            if (rec.has_anomaly || (rec.insp_anomalies && rec.insp_anomalies.length > 0)) return 3;
+            if (rec.status === "INCOMPLETE") return 2;
+            if (rec.status === "COMPLETED") return 1;
             return 0;
           };
           aVal = getStatusWeight(a);
@@ -1260,10 +1323,10 @@ function V10PreviewLayout() {
 
       if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
       if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
-      return 0;
+      return itemB.score - itemA.score; // Rank by relevance when sort values tie
     });
 
-    return sortableRecords;
+    return scoredRecords.map((item) => item.record);
   }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig]);
 
   const [isSearchingWorkspace, setIsSearchingWorkspace] = useState(false);
