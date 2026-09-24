@@ -145,7 +145,24 @@ export const generateDivingANMAINReport = async (
                 r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.name ||
                 r.dive_job_id || "—";
 
-            const anodeType = d.anode_type || "—";
+            const candidateType = d.anode_type ?? d.anodeType ?? d.anode_typ ?? d.an_type ?? d["Anode Type"] ?? d["anode type"] ?? d.anode_type_name;
+            let anodeType = "—";
+            if (candidateType !== undefined && candidateType !== null && String(candidateType).trim() !== '') {
+                const str = String(candidateType).trim();
+                if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                    anodeType = str;
+                }
+            }
+            if (anodeType === "—") {
+                const compMeta = r.structure_components?.metadata || r.component?.metadata || {};
+                const metaType = compMeta.anode_type ?? compMeta.anodeType ?? compMeta.thetype ?? compMeta.anode_type_name ?? compMeta.type;
+                if (metaType !== undefined && metaType !== null && String(metaType).trim() !== '') {
+                    const str = String(metaType).trim();
+                    if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                        anodeType = str;
+                    }
+                }
+            }
             
             let instDateStr = "—";
             if (d.installed_date) {
@@ -204,7 +221,7 @@ export const generateDivingANMAINReport = async (
 
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 10, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
                 { content: "Item No.",       styles: { halign: "center" as const, valign: "middle" as const } },
                 { content: "Component QID",  styles: { halign: "center" as const, valign: "middle" as const } },
@@ -288,16 +305,8 @@ export const generateDivingANMAINReport = async (
         });
 
         if (config.showSignatures !== false) {
-            const sigH   = 20;
             const sigW   = contentWidth / 3;
-            let finalY   = (doc as any).lastAutoTable?.finalY ?? (margin + HEADER_H + 20);
-            
-            if (finalY + sigH + 15 > pageHeight) {
-                doc.addPage();
-                drawPageHeader(doc);
-            }
-
-            const sigY = pageHeight - 38; // Fixed position near bottom
+            const sigY   = pageHeight - 34; // Fixed position near bottom
 
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);

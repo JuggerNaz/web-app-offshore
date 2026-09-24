@@ -145,7 +145,7 @@ export const generateROVAnodeRSANIReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + headerH + 6 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
                 'Item No.', 'QID', 'Elevation (m)', 'Depletion (%)', 
                 'Anode CP (mV)', 'Anode Type', 'Anomaly', 'Dive No.', 'Findings'
@@ -157,7 +157,7 @@ export const generateROVAnodeRSANIReport = async (
                 
                 // Formulate Depletion
                 const depl = d.depletion_percent ?? d.anode_depletion ?? d.depletion;
-                const depletion = depl !== undefined && depl !== null && depl !== '' ? `${depl}%` : '-';
+                const depletion = depl !== undefined && depl !== null && depl !== '' ? (String(depl).includes('%') ? String(depl) : `${depl}%`) : '-';
 
                 // Formulate CP
                 const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? '';
@@ -166,7 +166,25 @@ export const generateROVAnodeRSANIReport = async (
                 const cpList = [cpVal, ...addCPs].filter(Boolean);
                 const cp = cpList.length > 0 ? cpList.map(v => String(v).toLowerCase().includes('mv') ? String(v) : `${v} mV`).join('\n') : '-';
 
-                const anodeType = d.anode_type || r.structure_components?.metadata?.type || r.structure_components?.code || 'Sacrificial';
+                // Formulate Anode Type from inspection form fields (anode_type / anodeType / etc.)
+                const candidateType = d.anode_type ?? d.anodeType ?? d.anode_typ ?? d.an_type ?? d["Anode Type"] ?? d["anode type"] ?? d.anode_type_name;
+                let anodeType = '-';
+                if (candidateType !== undefined && candidateType !== null && String(candidateType).trim() !== '') {
+                    const str = String(candidateType).trim();
+                    if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                        anodeType = str;
+                    }
+                }
+                if (anodeType === '-') {
+                    const compMeta = r.structure_components?.metadata || r.component?.metadata || {};
+                    const metaType = compMeta.anode_type ?? compMeta.anodeType ?? compMeta.thetype ?? compMeta.anode_type_name ?? compMeta.type;
+                    if (metaType !== undefined && metaType !== null && String(metaType).trim() !== '') {
+                        const str = String(metaType).trim();
+                        if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                            anodeType = str;
+                        }
+                    }
+                }
                 
                 // Linked anomaly
                 const linkedAnomaly = (r.insp_anomalies && r.insp_anomalies.length > 0) ? r.insp_anomalies[0] : null;
@@ -252,14 +270,8 @@ export const generateROVAnodeRSANIReport = async (
             }
             });
 
-        const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
-            let sigY = pageHeight - 38;
-            if (finalY > sigY - 10) {
-                doc.addPage();
-                drawHeader(doc);
-                sigY = pageHeight - 38;
-            }
+            const sigY = pageHeight - 34;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
@@ -288,7 +300,6 @@ export const generateROVAnodeRSANIReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`ROV_Anode_RSANI_Report_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
 

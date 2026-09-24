@@ -152,13 +152,31 @@ export const generateDivingAnodeReport = async (
 
             const isSecured = d.anode_secured_to_structure ?? d.anode_secured ?? d.secured;
             const secured = (isSecured === true || isSecured === "Yes") ? "Yes" : "No";
-            const anodeType = d.anode_type || "—";
+            const candidateType = d.anode_type ?? d.anodeType ?? d.anode_typ ?? d.an_type ?? d["Anode Type"] ?? d["anode type"] ?? d.anode_type_name;
+            let anodeType = "—";
+            if (candidateType !== undefined && candidateType !== null && String(candidateType).trim() !== '') {
+                const str = String(candidateType).trim();
+                if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                    anodeType = str;
+                }
+            }
+            if (anodeType === "—") {
+                const compMeta = r.structure_components?.metadata || r.component?.metadata || {};
+                const metaType = compMeta.anode_type ?? compMeta.anodeType ?? compMeta.thetype ?? compMeta.anode_type_name ?? compMeta.type;
+                if (metaType !== undefined && metaType !== null && String(metaType).trim() !== '') {
+                    const str = String(metaType).trim();
+                    if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                        anodeType = str;
+                    }
+                }
+            }
 
             const wLen = d.anode_length ?? d.wastage_length ?? "—";
             const wC1 = d.circumference_c1 ?? d.wastage_c1 ?? "—";
             const wC2 = d.circumference_c2 ?? d.wastage_c2 ?? "—";
             const wC3 = d.circumference_c3 ?? d.wastage_c3 ?? "—";
-            const depletion = d.anode_depletion_percent !== undefined ? `${d.anode_depletion_percent}%` : (d.anode_depletion ?? "—");
+            const depl = d.anode_depletion_percent ?? d.anode_depletion ?? d.depletion;
+            const depletion = depl !== undefined && depl !== null && depl !== "" ? (String(depl).includes("%") ? String(depl) : `${depl}%`) : "—";
 
             const pitDepthAvg = d.avg_pitting_depth ?? d.pitting_depth_avg ?? "—";
             const pitDepthMax = d.max_pitting_depth ?? d.pitting_depth_max ?? "—";
@@ -339,14 +357,8 @@ export const generateDivingAnodeReport = async (
             },
         });
 
-        const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
-            let sigY = pageHeight - 38;
-            if (finalY > sigY - 10) {
-                doc.addPage();
-                drawPageHeader(doc);
-                sigY = pageHeight - 38;
-            }
+            const sigY = pageHeight - 34;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
@@ -375,7 +387,6 @@ export const generateDivingAnodeReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`Diving_Anode_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving Anode Report] Error:", err);
