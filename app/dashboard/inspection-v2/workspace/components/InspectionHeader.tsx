@@ -12,6 +12,7 @@ import {
     Layout,
     History,
     ChevronDown,
+    ChevronUp,
     Check,
     Grid3X3,
     BarChart3,
@@ -108,6 +109,9 @@ interface InspectionHeaderProps {
     onUpdateSowReportNo?: (newReportNo: string) => void;
     onOpenGeodetic?: () => void;
     onGlobalVoiceCommand?: (parsedResult: any) => void;
+    isCollapsed?: boolean;
+    onToggleCollapse?: () => void;
+    activeDep?: any;
 }
 
 export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
@@ -118,6 +122,9 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     setInspectionDirection,
     inspectionLocation = "Pipeline",
     setInspectionLocation,
+    isCollapsed = false,
+    onToggleCollapse,
+    activeDep,
     router,
     searchParams,
     allInspectionTypes = [],
@@ -364,8 +371,190 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
         }
     };
 
+    if (isCollapsed) {
+        return (
+            <header className="bg-slate-900/95 backdrop-blur text-white px-3 py-1 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800 h-9 transition-all duration-300">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Link href="/dashboard/inspection-v2">
+                        <Button variant="outline" size="sm" className="bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-6 px-2 rounded flex items-center gap-1 text-[10px] font-bold shadow-xs">
+                            <ArrowLeft className="w-3 h-3" /> <span>Back</span>
+                        </Button>
+                    </Link>
+                    <div className="h-3.5 w-px bg-slate-700 hidden sm:block"></div>
+
+                    <div className="flex items-center gap-1">
+                        <Activity className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="text-[11px] font-black uppercase tracking-wider text-blue-400 hidden md:inline">INSPECTION</span>
+                    </div>
+
+                    <div className="flex bg-slate-800 rounded p-0.5 border border-slate-700 h-6 items-center">
+                        <button
+                            onClick={() => {
+                                setInspMethod("DIVING");
+                                const params = new URLSearchParams(searchParams.toString());
+                                params.set("mode", "DIVING");
+                                router.replace(`?${params.toString()}`);
+                            }}
+                            className={`px-2 py-0.5 h-5 text-[9px] font-bold rounded uppercase tracking-wider ${inspMethod === "DIVING" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        >
+                            DIVING
+                        </button>
+                        <button
+                            onClick={() => {
+                                setInspMethod("ROV");
+                                const params = new URLSearchParams(searchParams.toString());
+                                params.set("mode", "ROV");
+                                router.replace(`?${params.toString()}`);
+                            }}
+                            className={`px-2 py-0.5 h-5 text-[9px] font-bold rounded uppercase tracking-wider ${inspMethod === "ROV" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+                        >
+                            ROV
+                        </button>
+                    </div>
+
+                    {/* Structure Title Quick Button */}
+                    <button
+                        onClick={handleOpenStructureSpecs}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500/50 transition-all text-left group cursor-pointer h-6 shadow-xs"
+                        title={isPipeline || headerData?.structureType === "pipeline" ? "Click to view Pipeline Specs" : "Click to view Platform Specs"}
+                    >
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[8px] group-hover:text-cyan-400 hidden sm:inline">Str:</span>
+                        <span className="font-mono font-bold text-[11px] text-slate-100 group-hover:text-cyan-300 flex items-center gap-1">
+                            {headerData.platformName}
+                            <ExternalLink className="w-2.5 h-2.5 text-slate-400 group-hover:text-cyan-300 opacity-60" />
+                        </span>
+                    </button>
+
+                    {/* SOW Report No Quick Pill */}
+                    {headerData.sowReportNo && (
+                        <div className="hidden lg:flex items-center gap-1 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 h-6 text-xs">
+                            <span className="text-slate-400 font-bold uppercase text-[8px]">SOW:</span>
+                            <span className="font-mono font-black text-cyan-400 text-[10px]">{headerData.sowReportNo}</span>
+                        </div>
+                    )}
+
+                    {/* Active Dive Badge (if available in collapsed mode) */}
+                    {activeDep && (
+                        <div className="hidden xl:flex items-center gap-1.5 bg-blue-950/40 border border-blue-800/80 rounded px-2 py-0.5 h-6">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)] animate-pulse" />
+                            <span className="font-black uppercase text-[9px] text-blue-200">{activeDep.jobNo || activeDep.id}</span>
+                            <span className="text-[8px] text-blue-400/80 font-medium">({activeDep.name || "Active"})</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex gap-1.5 items-center">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-gradient-to-r from-cyan-600 to-teal-600 border-cyan-500 text-white hover:from-cyan-500 hover:to-teal-500 h-6 px-2 rounded font-bold shadow-xs flex items-center gap-1 text-[10px]"
+                        onClick={onSummaryOpen}
+                        title="Inspection Summary Dashboard"
+                    >
+                        <BarChart3 className="w-3 h-3" /> <span className="hidden md:inline">Summary</span>
+                    </Button>
+
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-6 px-2 rounded flex items-center gap-1 text-[10px] font-bold"
+                                title="Reports Wizard"
+                            >
+                                <Printer className="w-3 h-3 text-cyan-400" /> <span className="hidden md:inline">Reports</span> <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64 bg-slate-900 border-slate-700 text-slate-200 shadow-xl">
+                            <DropdownMenuItem 
+                                onClick={() => setIsReportWizardOpen(true)}
+                                className="text-xs font-bold hover:bg-slate-800 cursor-pointer py-2 text-cyan-400 flex items-center gap-2"
+                            >
+                                <Printer className="w-4 h-4 text-cyan-400" /> Open Report Wizard...
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {jobPackId && structureId && (
+                        <div className="flex items-center bg-slate-800 rounded p-0.5 border border-slate-700 h-6">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className={`text-slate-300 hover:text-white h-5 px-1.5 text-[9px] font-black uppercase tracking-wider flex items-center gap-1 hover:bg-slate-700/50 rounded ${
+                                            closedPanels && closedPanels.length > 0 ? "bg-amber-500/10 text-amber-300 border border-amber-500/30" : ""
+                                        }`}
+                                        title="Dock station settings"
+                                    >
+                                        <LayoutGrid className="w-2.5 h-2.5 text-blue-400" />
+                                        <span className="hidden md:inline">Dock</span>
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-64 bg-slate-900 border-slate-700 text-slate-200 shadow-xl">
+                                    <div className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                                        <span>Dock Station Controls</span>
+                                    </div>
+                                    <DropdownMenuItem 
+                                        onClick={onResetLayout}
+                                        className="text-xs font-semibold hover:bg-slate-800 cursor-pointer text-slate-200 py-2 px-3"
+                                    >
+                                        <RotateCcw className="w-3.5 h-3.5 mr-2 text-amber-400" />
+                                        <span>Reset All Windows</span>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <div className="w-px h-3 bg-slate-700 my-auto mx-0.5" />
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="bg-blue-600/90 text-white hover:bg-blue-600 h-5 px-1.5 text-[8px] font-black uppercase tracking-widest rounded"
+                                onClick={() => {
+                                    const structType = headerData.structureType === 'pipeline' ? 'PIPELINE' : 'PLATFORM';
+                                    const currentUrl = window.location.href;
+                                    const returnTo = encodeURIComponent(currentUrl);
+                                    router.push(`/dashboard/jobpack/${jobPackId}?tab=sow&structure=${structType}-${structureId}&returnTo=${returnTo}`);
+                                }}
+                            >
+                                <Grid3X3 className="w-2.5 h-2.5 mr-1" /> WS
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Expand Header Button */}
+                    {onToggleCollapse && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={onToggleCollapse}
+                            className="bg-cyan-950/80 border-cyan-500/80 hover:bg-cyan-900 text-cyan-300 hover:text-white h-6 px-2 rounded flex items-center gap-1 text-[10px] font-black uppercase tracking-wider shadow-sm transition-all"
+                            title="Expand Header (Show Full Details)"
+                        >
+                            <ChevronDown className="w-3 h-3 text-cyan-400" />
+                            <span>Expand</span>
+                        </Button>
+                    )}
+                </div>
+
+                {/* Modals */}
+                <PlatformSpecsDialog
+                    open={isPlatformSpecsOpen}
+                    onOpenChange={setIsPlatformSpecsOpen}
+                    platformDetails={platformDetails}
+                    isLoading={isPlatformDetailLoading}
+                />
+                <PipelineSpecsDialog
+                    open={isPipelineSpecsOpen}
+                    onOpenChange={setIsPipelineSpecsOpen}
+                    pipelineDetails={pipelineDetails}
+                    isLoading={isPipelineDetailLoading}
+                />
+            </header>
+        );
+    }
+
     return (
-        <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800">
+        <header className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shadow-md z-20 shrink-0 border-b border-slate-800 transition-all duration-300">
             <div className="flex items-center gap-3 flex-wrap">
                 <Link href="/dashboard/inspection-v2">
                     <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white h-8 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-bold shadow-sm">
@@ -702,6 +891,20 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                 ) : (
                     <Button variant="outline" size="sm" className="bg-slate-800 border-slate-700 text-slate-400 h-8 cursor-not-allowed opacity-50 rounded-md" disabled>
                         <Grid3X3 className="w-4 h-4 mr-2" /> Workspace
+                    </Button>
+                )}
+
+                {/* Collapse Header Toggle Button */}
+                {onToggleCollapse && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onToggleCollapse}
+                        className="bg-slate-800/90 border-slate-700 hover:bg-slate-700 hover:border-slate-600 text-slate-300 hover:text-white h-8 px-2.5 rounded-md flex items-center gap-1.5 text-[11px] font-bold shadow-xs transition-all"
+                        title="Collapse Header (Maximize Workspace Screen Space)"
+                    >
+                        <ChevronUp className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="hidden xl:inline">Collapse</span>
                     </Button>
                 )}
             </div>

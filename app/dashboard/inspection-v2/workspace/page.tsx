@@ -516,6 +516,22 @@ function V10PreviewLayout() {
   const [layoutModel, setLayoutModel] = useState<Model | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [videoLogExpanded, setVideoLogExpanded] = useState(false);
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("insp_header_collapsed") === "true";
+    }
+    return false;
+  });
+
+  const handleToggleHeaderCollapse = () => {
+    setIsHeaderCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("insp_header_collapsed", String(next));
+      }
+      return next;
+    });
+  };
 
   const isPipe = Boolean(
     isPipeline ||
@@ -9065,6 +9081,9 @@ function V10PreviewLayout() {
         closedPanels={closedPanels}
         onRestorePanel={handleRestorePanel}
         onRestoreAllPanels={handleRestoreAllPanels}
+        isCollapsed={isHeaderCollapsed}
+        onToggleCollapse={handleToggleHeaderCollapse}
+        activeDep={activeDep}
         onGlobalVoiceCommand={(parsed: any) => {
           if (!parsed) return;
           const actionIntent = parsed.action_intent || {};
@@ -9189,7 +9208,8 @@ function V10PreviewLayout() {
       />
 
       {/* DEPLOYMENTS SUB-HEADER */}
-      <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0">
+      {!isHeaderCollapsed && (
+        <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0 transition-all duration-300">
         {deployments.length === 0 && !activeDep && isFetchingDeps && (
           <div className="flex items-center gap-2 text-slate-400 px-2 py-1">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -9480,7 +9500,20 @@ function V10PreviewLayout() {
             <MapPin className="w-3.5 h-3.5 mr-1.5" /> {isPipeline || headerData?.structureType === "pipeline" ? "Pipeline Seabed Map" : "Seabed Map"}
           </Button>
         )}
+
+        {/* Quick Collapse Header Button on sub-bar */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleToggleHeaderCollapse}
+          className="text-slate-400 hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 h-7 px-2 text-[10px] font-bold rounded flex items-center gap-1 shrink-0 ml-1"
+          title="Collapse Header & Sub-bar (Maximize Workspace Screen Space)"
+        >
+          <ChevronUp className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="hidden sm:inline">Compact</span>
+        </Button>
       </div>
+      )}
 
       {/* ROV Data String Bar (Dynamic based on Data Acquisition settings) */}
       {inspMethod === "ROV" && (
