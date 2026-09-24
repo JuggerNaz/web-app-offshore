@@ -65,11 +65,12 @@ const InspectionField = ({
     const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
     const isDebris = fieldName === 'debris' || fieldName.includes('debris_type') || fieldName.includes('debris_desc') || fieldName === 'debris description';
     const isDebrisMaterial = fieldName.includes('debris_material') || fieldName.includes('debris material') || fieldName === 'material' || fieldName.includes('material type');
+    const isPlatformFace = fieldName === 'platform face' || fieldName === 'platform_face' || fieldName === 'face';
     const isCpField = fieldName.includes('cp');
 
     const isTimeField = fieldName.includes('time') || fieldName.includes('counter') || p.type === 'time' || p.name === 'tape_count_no' || p.name === 'inspection_time';
 
-    const isComboEligible = p.type !== 'number' && p.type !== 'time' && (isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || isDebris || isDebrisMaterial || p.type === 'select' || p.type === 'combo' || !!p.lib_code || !!p.optionsSource);
+    const isComboEligible = p.type !== 'number' && p.type !== 'time' && (isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || isDebris || isDebrisMaterial || isPlatformFace || p.type === 'select' || p.type === 'combo' || !!p.lib_code || !!p.optionsSource);
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
 
@@ -110,7 +111,15 @@ const InspectionField = ({
         if (p.optionsSource) {
             const srcOpts = libOptionsMap[p.optionsSource];
             if (srcOpts && Array.isArray(srcOpts)) {
-                const names = srcOpts.map((o: any) => o.name || o.label || o);
+                const names = srcOpts.map((o: any) => o.face || o.face_name || o.name || o.label || o);
+                options = Array.from(new Set([...options, ...names]));
+            }
+        }
+
+        if (isPlatformFace) {
+            const faceList = libOptionsMap.platform_faces || libOptionsMap.faces || [];
+            if (Array.isArray(faceList) && faceList.length > 0) {
+                const names = faceList.map((o: any) => o.face || o.face_name || o.name || o.label || o);
                 options = Array.from(new Set([...options, ...names]));
             }
         }
@@ -251,22 +260,34 @@ const InspectionField = ({
                                 </div>
                             ) : filteredOptions.length > 0 ? (
                                 <div className="space-y-0.5">
-                                    {filteredOptions.map((opt) => (
-                                        <button
-                                            key={opt}
-                                            className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors font-medium flex items-center justify-between group dark:text-slate-300"
-                                            onClick={() => {
-                                                handler(p.name || p.label, opt);
-                                                if (type === 'primary') {
-                                                    setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: opt }));
-                                                }
-                                                setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: false }));
-                                            }}
-                                        >
-                                            {opt}
-                                            {currentValue === opt && <div className={`w-1.5 h-1.5 ${type === 'secondary' ? 'bg-amber-500' : 'bg-slate-800'} rounded-full`} />}
-                                        </button>
-                                    ))}
+                                    {filteredOptions.map((opt) => {
+                                        const faceObj = isPlatformFace 
+                                            ? (libOptionsMap.platform_faces || libOptionsMap.faces || []).find((f: any) => (f.face || f.name) === opt)
+                                            : null;
+                                        return (
+                                            <button
+                                                key={opt}
+                                                className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors font-medium flex items-center justify-between group dark:text-slate-300"
+                                                onClick={() => {
+                                                    handler(p.name || p.label, opt);
+                                                    if (type === 'primary') {
+                                                        setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: opt }));
+                                                    }
+                                                    setOpenPopovers((prev: any) => ({ ...prev, [p.name || p.label]: false }));
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between w-full pr-2">
+                                                    <span>{opt}</span>
+                                                    {faceObj && (faceObj.face_from || faceObj.face_to) && (
+                                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                                                            {faceObj.face_from || "?"} → {faceObj.face_to || "?"}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {currentValue === opt && <div className={`w-1.5 h-1.5 shrink-0 ${type === 'secondary' ? 'bg-amber-500' : 'bg-slate-800 dark:bg-slate-200'} rounded-full`} />}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             ) : searchTerm ? (
                                 <div className="p-1">

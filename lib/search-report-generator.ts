@@ -126,7 +126,8 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
   ],
   // Multi-template: ROV Scour
   RSCOR: [
-    { templateId: "rscor", label: "Scour Survey Sketch Report", code: "RSCOR", mode: "ROV" },
+    { templateId: "rscor-survey", label: "Scour Survey Report", code: "RSCOR", mode: "ROV" },
+    { templateId: "rscor", label: "Scour Survey Sketch Report", code: "RSCOR-SKETCH", mode: "ROV" },
     { templateId: "rscor-v2", label: "Scour Survey Sketch v2", code: "RSCOR-V2", mode: "ROV" },
   ],
   // Multi-template: ROV Riser
@@ -615,6 +616,13 @@ async function routeToGenerator(
       if (!recs.length) return;
       const { generateROVAnodeRSANIReport } = await import("@/utils/report-generators/rov-anode-rsani-report");
       return await generateROVAnodeRSANIReport(recs, headerData, companyInfo, opts) as Blob;
+    }
+    case "rscor-survey":
+    case "rov-rscor-survey-report": {
+      const recs = filterByCode(["RSCOR", "SCOUR"]);
+      if (!recs.length) return;
+      const { generateROVRSCORSurveyReport } = await import("@/utils/report-generators/rov-rscor-survey-report");
+      return await generateROVRSCORSurveyReport(recs, headerData, companyInfo, opts) as Blob;
     }
     case "rscor": {
       const recs = filterByCode(["RSCOR", "SCOUR"]);

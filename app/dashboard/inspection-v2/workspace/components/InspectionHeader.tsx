@@ -65,6 +65,7 @@ interface InspectionHeaderProps {
     generateSZCIReport: () => void;
     generateUTWTReport: () => void;
     generateRSCORReport: () => void;
+    generateRSCORSurveyReport?: () => void;
     generateRRISIReport: () => void;
     generateJTISIReport: () => void;
     generateITISIReport: () => void;
@@ -126,6 +127,7 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
     generateSZCIReport,
     generateUTWTReport,
     generateRSCORReport,
+    generateRSCORSurveyReport,
     generateRRISIReport,
     generateJTISIReport,
     generateITISIReport,

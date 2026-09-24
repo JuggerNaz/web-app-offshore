@@ -13,6 +13,7 @@ import { generateROVSZCIReport } from "@/utils/report-generators/rov-szci-report
 import { generateROVUTWTReport } from "@/utils/report-generators/rov-utwt-report";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVRSCORV2Report } from "@/utils/report-generators/rov-rscor-v2-report";
+import { generateROVRSCORSurveyReport } from "@/utils/report-generators/rov-rscor-survey-report";
 import { generateROVRRISIReport } from "@/utils/report-generators/rov-rrisi-report";
 import { generateROVRRISIDetailReport } from "@/utils/report-generators/rov-rrisi-detail-report";
 import { generateROVRRISIJTubeDetailReport } from "@/utils/report-generators/rov-jtisi-detail-report";
@@ -95,6 +96,7 @@ export function useWorkspaceReports(
     const [utwtPreviewOpen, setUtwtPreviewOpen] = useState(false);
     const [rscorPreviewOpen, setRscorPreviewOpen] = useState(false);
     const [rscorV2PreviewOpen, setRscorV2PreviewOpen] = useState(false);
+    const [rscorSurveyPreviewOpen, setRscorSurveyPreviewOpen] = useState(false);
     const [rrisiPreviewOpen, setRrisiPreviewOpen] = useState(false);
     const [rrisiDetailPreviewOpen, setRrisiDetailPreviewOpen] = useState(false);
     const [jtisiPreviewOpen, setJtisiPreviewOpen] = useState(false);
@@ -780,6 +782,35 @@ export function useWorkspaceReports(
             (window as any).__reportConfig = generatedConfig;
         }
         return await generateROVRSCORV2Report(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, generatedConfig as any) as Blob;
+    };
+
+    const generateRSCORSurveyReport = async () => {
+        setRscorSurveyPreviewOpen(true);
+    };
+
+    const generateRSCORSurveyReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const rscorRecords = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RSCOR' || (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'SCOUR');
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        const generatedConfig = {
+            returnBlob: true,
+            printFriendly,
+            structureId: Number(structureId),
+            showSignatures: showSignatures ?? reportConfig.showSignatures,
+            preparedBy: reportConfig.preparedBy,
+            reviewedBy: reportConfig.reviewedBy,
+            approvedBy: reportConfig.approvedBy,
+            watermark: reportConfig.watermark
+        };
+        if (typeof window !== 'undefined') {
+            (window as any).__reportConfig = generatedConfig;
+        }
+        return await generateROVRSCORSurveyReport(rscorRecords, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, generatedConfig as any) as Blob;
     };
 
     const generateRRISIReport = async () => {
@@ -1974,8 +2005,8 @@ export function useWorkspaceReports(
             await generateUTWTReport();
             return;
         }
-        if (typeCode === 'RSCOR' || typeCode === 'SCOUR') {
-            await generateRSCORReport();
+        if (typeCode === 'RSCOR' || typeCode === 'RSCOUR' || typeCode === 'SCOUR') {
+            await generateRSCORSurveyReport();
             return;
         }
         if (typeCode === 'RRISI' || typeCode === 'RISER') {
@@ -2127,6 +2158,7 @@ export function useWorkspaceReports(
         utwtPreviewOpen, setUtwtPreviewOpen,
         rscorPreviewOpen, setRscorPreviewOpen,
         rscorV2PreviewOpen, setRscorV2PreviewOpen,
+        rscorSurveyPreviewOpen, setRscorSurveyPreviewOpen,
         rrisiPreviewOpen, setRrisiPreviewOpen,
         rrisiDetailPreviewOpen, setRrisiDetailPreviewOpen,
         jtisiPreviewOpen, setJtisiPreviewOpen,
@@ -2205,6 +2237,8 @@ export function useWorkspaceReports(
         generateRSCORReportBlob,
         generateRSCORV2Report,
         generateRSCORV2ReportBlob,
+        generateRSCORSurveyReport,
+        generateRSCORSurveyReportBlob,
         generateRRISIReport,
         generateRRISIReportBlob,
         generateRRISIDetailReport,

@@ -5,6 +5,8 @@ import { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "rea
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import useSWR from "swr";
+import { fetcher } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/client";
 
 import {
@@ -1887,6 +1889,30 @@ function V10PreviewLayout() {
     }
   }, [allComps, selectedComp, activeSpec]);
 
+  // Fetch Platform Structural Faces from the extended platform specs
+  const { data: platformFacesData } = useSWR(
+    structureId ? `/api/platform/faces/${structureId}` : null,
+    fetcher
+  );
+
+  useEffect(() => {
+    if (platformFacesData?.data && Array.isArray(platformFacesData.data)) {
+      const facesList = platformFacesData.data.map((f: any) => ({
+        name: f.face,
+        label: f.face,
+        face: f.face,
+        face_desc: f.face_desc,
+        face_from: f.face_from,
+        face_to: f.face_to,
+      }));
+      setLibOptionsMap((prev) => ({
+        ...prev,
+        platform_faces: facesList,
+        faces: facesList,
+      }));
+    }
+  }, [platformFacesData]);
+
   // Helper to handle prop changes and track user interaction
   const handleDynamicPropChange = (name: string, value: any) => {
     setIsFormModified(true);
@@ -2137,6 +2163,57 @@ function V10PreviewLayout() {
 
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
 
+  // Auto-assign component face details when selected component changes for a new record
+  useEffect(() => {
+    if (!selectedComp || editingRecordId) return;
+
+    const md =
+      (typeof selectedComp.raw?.metadata === "string"
+        ? JSON.parse(selectedComp.raw.metadata)
+        : selectedComp.raw?.metadata) || {};
+    let compFace =
+      selectedComp.face ||
+      md.face ||
+      md.face_name ||
+      md.face_code ||
+      md.Face ||
+      md.additionalInfo?.face ||
+      md.additionalInfo?.face_pos ||
+      selectedComp.raw?.face ||
+      "";
+
+    if (!compFace || compFace === "-" || compFace === "N/A") {
+      const sLeg = md.start_leg || md.s_leg || md.leg_1 || md.StartLeg || md.Leg_1 || selectedComp.start_leg || selectedComp.startLeg || selectedComp.s_leg || "";
+      const fLeg = md.end_leg || md.f_leg || md.leg_2 || md.EndLeg || md.Leg_2 || selectedComp.end_leg || selectedComp.endLeg || selectedComp.f_leg || "";
+      const legNo = md.leg_no || md.leg || md.leg_name || selectedComp.leg_no || selectedComp.leg || "";
+
+      const cleanLeg = (l: string) => String(l).trim().replace(/^leg\s*/i, "").toUpperCase();
+      const sLegClean = sLeg ? cleanLeg(sLeg) : "";
+      const fLegClean = fLeg ? cleanLeg(fLeg) : "";
+
+      if (sLegClean && fLegClean && sLegClean !== fLegClean) {
+        compFace = `Face ${sLegClean}-${fLegClean}`;
+      } else if (sLegClean) {
+        compFace = `Face Leg ${sLegClean}`;
+      } else if (fLegClean) {
+        compFace = `Face Leg ${fLegClean}`;
+      } else if (legNo && String(legNo).trim()) {
+        compFace = `Face Leg ${cleanLeg(legNo)}`;
+      }
+    }
+
+    if (compFace && compFace !== "-" && compFace !== "N/A") {
+      setDynamicProps((prev: any) => {
+        if (prev.platform_face === compFace) return prev;
+        return { ...prev, platform_face: compFace };
+      });
+      setDebouncedProps((prev: any) => {
+        if (prev.platform_face === compFace) return prev;
+        return { ...prev, platform_face: compFace };
+      });
+    }
+  }, [selectedComp, editingRecordId]);
+
   // Resolve or Auto-Create Pipeline Component based on KP / FP location
   const resolvePipelineComponent = useCallback(
     async (targetKp?: number | string | null) => {
@@ -2353,6 +2430,8 @@ function V10PreviewLayout() {
     setRscorPreviewOpen,
     rscorV2PreviewOpen,
     setRscorV2PreviewOpen,
+    rscorSurveyPreviewOpen,
+    setRscorSurveyPreviewOpen,
     rrisiPreviewOpen,
     setRrisiPreviewOpen,
     rrisiDetailPreviewOpen,
@@ -2494,6 +2573,8 @@ function V10PreviewLayout() {
     generateRSCORReportBlob,
     generateRSCORV2Report,
     generateRSCORV2ReportBlob,
+    generateRSCORSurveyReport,
+    generateRSCORSurveyReportBlob,
     generateRRISIReport,
     generateRRISIReportBlob,
     generateRRISIDetailReport,
@@ -3687,6 +3768,30 @@ function V10PreviewLayout() {
     // 4. Reset current form & switch to the newly selected component
     resetForm();
     setSelectedComp(c);
+
+    const compMd =
+      (typeof c.raw?.metadata === "string" ? JSON.parse(c.raw.metadata) : c.raw?.metadata) || {};
+    const compFace =
+      c.face ||
+      compMd.face ||
+      compMd.face_name ||
+      compMd.face_code ||
+      compMd.Face ||
+      compMd.additionalInfo?.face ||
+      compMd.additionalInfo?.face_pos ||
+      c.raw?.face ||
+      "";
+
+    if (compFace && compFace !== "-" && compFace !== "N/A") {
+      setDynamicProps((prev: any) => ({
+        ...prev,
+        platform_face: compFace,
+      }));
+      setDebouncedProps((prev: any) => ({
+        ...prev,
+        platform_face: compFace,
+      }));
+    }
 
     if (c.taskStatuses && c.taskStatuses.length > 0) {
       const validTasks = c.taskStatuses.filter((ts: any) => {
@@ -5700,14 +5805,37 @@ function V10PreviewLayout() {
 
       if (!allCompsDataRaw || allCompsDataRaw.length === 0) return { assigned: [], unassigned: [], all: [] };
 
-      // Further filter legacy 'del' flag from metadata
+      // Filter out deleted/archived components
       const allCompsData = allCompsDataRaw.filter((c: any) => {
+        // 1. If is_deleted boolean column is explicitly set, it is the primary source of truth
         if (c.is_deleted === true || c.is_deleted === 1) return false;
+        if (c.is_deleted === false || c.is_deleted === 0) return true;
+
+        // 2. Legacy fallback only if is_deleted is null / undefined
+        const md =
+          typeof c.metadata === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(c.metadata);
+                } catch {
+                  return {};
+                }
+              })()
+            : c.metadata;
+
         if (
-          c.metadata &&
-          (c.metadata.del === 1 || c.metadata.del === "1" || c.metadata.del === true)
-        )
+          md &&
+          (md.del === 1 ||
+            md.del === "1" ||
+            md.del === true ||
+            md.is_deleted === true ||
+            md.is_deleted === "1" ||
+            md.status === "archived" ||
+            md.status === "deleted")
+        ) {
           return false;
+        }
+
         return true;
       });
 
@@ -5888,6 +6016,16 @@ function V10PreviewLayout() {
           displayDepth = `${elv2Num}m`;
         }
 
+        const face =
+          md.face ||
+          md.face_name ||
+          md.face_code ||
+          md.Face ||
+          md.additionalInfo?.face ||
+          md.additionalInfo?.face_pos ||
+          comp.face ||
+          "";
+
         const compQId = comp.q_id || comp.name || `Node ${comp.id}`;
         const obj = {
           id: comp.id,
@@ -5895,6 +6033,7 @@ function V10PreviewLayout() {
           q_id: compQId,
           code: comp.code || comp.type || "-",
           type: comp.type || comp.code || "-",
+          face: face && face !== "-" && face !== "N/A" ? face : "",
           depth: displayDepth,
           lowestElev,
           startNode,
@@ -5917,9 +6056,34 @@ function V10PreviewLayout() {
       const combined = [...assigned, ...unassigned];
       return { assigned, unassigned, all: combined };
     },
-    staleTime: 60000, // 1 minute cache
-    refetchOnWindowFocus: false,
+    staleTime: 5000, // 5 seconds cache to keep data fresh
+    refetchOnWindowFocus: true, // Automatically refetch when returning to the tab / window
   });
+
+  // Realtime subscription for structure_components to reflect unarchive / modifications immediately
+  useEffect(() => {
+    if (!structureId) return;
+
+    const channel = supabase
+      .channel(`realtime-components-${structureId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "structure_components",
+          filter: `structure_id=eq.${structureId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [structureId, queryClient, supabase]);
 
   // Populate local states whenever query data resolves
   useEffect(() => {
@@ -8801,6 +8965,7 @@ function V10PreviewLayout() {
         generateSZCIReport={generateSZCIReport}
         generateUTWTReport={generateUTWTReport}
         generateRSCORReport={() => setRscorPreviewOpen(true)}
+        generateRSCORSurveyReport={() => setRscorSurveyPreviewOpen(true)}
         generateRRISIReport={() => setRrisiPreviewOpen(true)}
         generateJTISIReport={() => setJtisiPreviewOpen(true)}
         generateITISIReport={() => setItisiPreviewOpen(true)}
@@ -9468,6 +9633,7 @@ function V10PreviewLayout() {
           pendingRule,
           rscorPreviewOpen,
           rscorV2PreviewOpen,
+          rscorSurveyPreviewOpen,
           anodePreviewOpen,
           anodeRsaniPreviewOpen,
           cpPreviewOpen,
@@ -9588,6 +9754,7 @@ function V10PreviewLayout() {
           setShowCriteriaConfirm,
           setRscorPreviewOpen,
           setRscorV2PreviewOpen,
+          setRscorSurveyPreviewOpen,
           setAnodePreviewOpen,
           setAnodeRsaniPreviewOpen,
           setCpPreviewOpen,
@@ -9690,6 +9857,7 @@ function V10PreviewLayout() {
           generateBLReportBlob,
           generateRSCORReportBlob,
           generateRSCORV2ReportBlob,
+          generateRSCORSurveyReportBlob,
           generateRRISIReportBlob,
           generateRRISIDetailReportBlob,
           generateJTISIReportBlob,

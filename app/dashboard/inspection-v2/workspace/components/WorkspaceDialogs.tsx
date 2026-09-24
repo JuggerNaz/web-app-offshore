@@ -131,6 +131,7 @@ interface WorkspaceDialogsProps {
         pendingRule: any;
         rscorPreviewOpen: boolean;
         rscorV2PreviewOpen: boolean;
+        rscorSurveyPreviewOpen?: boolean;
         anodePreviewOpen: boolean;
         anodeRsaniPreviewOpen: boolean;
         cpPreviewOpen: boolean;
@@ -250,6 +251,7 @@ interface WorkspaceDialogsProps {
         setShowCriteriaConfirm: (open: boolean) => void;
         setRscorPreviewOpen: (open: boolean) => void;
         setRscorV2PreviewOpen: (open: boolean) => void;
+        setRscorSurveyPreviewOpen?: (open: boolean) => void;
         setAnodePreviewOpen: (open: boolean) => void;
         setAnodeRsaniPreviewOpen: (open: boolean) => void;
         setCpPreviewOpen: (open: boolean) => void;
@@ -353,6 +355,7 @@ interface WorkspaceDialogsProps {
         generateBLReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORV2ReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRSCORSurveyReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -501,6 +504,7 @@ export function WorkspaceDialogs({
         pendingRule,
         rscorPreviewOpen,
         rscorV2PreviewOpen,
+        rscorSurveyPreviewOpen,
         anodePreviewOpen,
         anodeRsaniPreviewOpen,
         cpPreviewOpen,
@@ -611,6 +615,7 @@ export function WorkspaceDialogs({
         setShowCriteriaConfirm,
         setRscorPreviewOpen,
         setRscorV2PreviewOpen,
+        setRscorSurveyPreviewOpen,
         setAnodePreviewOpen,
         setAnodeRsaniPreviewOpen,
         setCpPreviewOpen,
@@ -700,6 +705,7 @@ export function WorkspaceDialogs({
         generateBLReportBlob,
         generateRSCORReportBlob,
         generateRSCORV2ReportBlob,
+        generateRSCORSurveyReportBlob,
         generateRRISIReportBlob,
         generateRRISIDetailReportBlob,
         generateJTISIReportBlob,
@@ -2190,9 +2196,20 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rscorPreviewOpen} 
                 onOpenChange={setRscorPreviewOpen} 
-                title="ROV Scour Survey Report Preview" 
-                fileName={`ROV_Scour_Report_${headerData.sowReportNo}`} 
+                title="ROV Scour Survey Sketch Report Preview" 
+                fileName={`ROV_Scour_Sketch_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRSCORReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={rscorSurveyPreviewOpen || false} 
+                onOpenChange={setRscorSurveyPreviewOpen || (() => {})} 
+                title="ROV Scour Survey Report Preview" 
+                fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRSCORSurveyReportBlob || generateRSCORReportBlob} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2890,6 +2907,7 @@ export function WorkspaceDialogs({
                     generateSZCIReport: () => setters.setSzciPreviewOpen(true),
                     generateRSCORReport: () => setters.setRscorPreviewOpen(true),
                     generateRSCORV2Report: () => setters.setRscorV2PreviewOpen(true),
+                    generateRSCORSurveyReport: () => setters.setRscorSurveyPreviewOpen ? setters.setRscorSurveyPreviewOpen(true) : handlers.generateRSCORSurveyReportBlob?.(),
                     generateRRISIReport: () => setters.setRrisiPreviewOpen(true),
                     generateRRISIDetailReport: () => setRrisiDetailPreviewOpen(true),
                     generateJTISIReport: () => setters.setJtisiPreviewOpen(true),
@@ -2974,7 +2992,23 @@ export function WorkspaceDialogs({
                             case 'MGI': setters.setMPreviewOpen(true); break;
                             case 'RMGI': setters.setRmgiPreviewOpen(true); break;
                             case 'SZCI': setters.setSzciPreviewOpen(true); break;
-                            case 'RSCOR': setters.setRscorPreviewOpen(true); break;
+                            case 'RSCOR':
+                            case 'RSCOUR':
+                            case 'SCOUR':
+                                if (setters.setRscorSurveyPreviewOpen) {
+                                    setters.setRscorSurveyPreviewOpen(true);
+                                } else {
+                                    setters.setRscorPreviewOpen(true);
+                                }
+                                break;
+                            case 'RSCOR-SKETCH':
+                            case 'RSCOR_SKETCH':
+                                setters.setRscorPreviewOpen(true);
+                                break;
+                            case 'RSCOR-V2':
+                            case 'RSCOR_V2':
+                                setters.setRscorV2PreviewOpen(true);
+                                break;
                             case 'RRISI': setters.setRrisiPreviewOpen(true); break;
                             case 'JTISI': setters.setJtisiPreviewOpen(true); break;
                             case 'ITISI': setters.setItisiPreviewOpen(true); break;

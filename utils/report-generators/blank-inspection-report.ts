@@ -351,6 +351,33 @@ function getTemplateTableSpec(templateId: string): {
                 }
             };
 
+        case "rov-rscor-survey-report":
+        case "rscor-survey":
+        case "rscor_survey_rov":
+        case "RSCOUR":
+            return {
+                orientation: "portrait",
+                sampleRowCount: 14,
+                head: [
+                    [
+                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
+                        { content: "Component QID", styles: { halign: "center", valign: "middle" } },
+                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
+                        { content: "Tape No.", styles: { halign: "center", valign: "middle" } },
+                        { content: "Findings", styles: { halign: "center", valign: "middle" } },
+                    ]
+                ],
+                columnStyles: {
+                    0: { cellWidth: 15, halign: "center" },
+                    1: { cellWidth: 32 },
+                    2: { cellWidth: 22, halign: "center" },
+                    3: { cellWidth: 22, halign: "center" },
+                    4: { cellWidth: 22, halign: "center" },
+                    5: { cellWidth: "auto" },
+                }
+            };
+
         // Standard Default Inspection Table layout
         default:
             return {
@@ -640,6 +667,12 @@ export const generateBlankInspectionReport = async (
             case "rov-itisi-detail-report": {
                 const { generateROVRRISIITubeDetailReport } = await import("./rov-itisi-detail-report");
                 return await generateROVRRISIITubeDetailReport(blankRecords, headerData, companySettings, generatorConfig as any);
+            }
+            case "rov-rscor-survey-report":
+            case "rscor-survey":
+            case "rscor_survey_rov": {
+                const { generateROVRSCORSurveyReport } = await import("./rov-rscor-survey-report");
+                return await generateROVRSCORSurveyReport(blankRecords, headerData, companySettings, generatorConfig as any);
             }
             case "rov-scour-report": {
                 const { generateROVRSCORReport } = await import("./rov-rscor-report");

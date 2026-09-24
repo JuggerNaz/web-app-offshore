@@ -186,7 +186,9 @@ export const mapInspectionDataForDocx = async (
         'diving-itisi-detail-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'ITISI'],
         'rov-jtisi-detail-report': ['RRISI'],
         'rov-itisi-detail-report': ['RRISI'],
-        'rov-scour-report': ['RSCOR'],
+        'rov-scour-report': ['RSCOR', 'SCOUR'],
+        'rov-rscor-survey-report': ['RSCOR', 'SCOUR'],
+        'rscor-survey': ['RSCOR', 'SCOUR'],
         'rov-caisson-report': ['RCASN'],
         'rov-conductor-report': ['RCOND'],
         'rov-splash-zone-report': ['RSZCI'],
@@ -433,7 +435,10 @@ export const mapInspectionDataForDocx = async (
                 pdfBlob = await generateROVRMGIReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-scour-report') {
                 const { generateROVRSCORReport } = await import("./rov-rscor-report");
-                pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (templateId === 'rov-rscor-survey-report' || templateId === 'rscor-survey') {
+                const { generateROVRSCORSurveyReport } = await import("./rov-rscor-survey-report");
+                pdfBlob = await generateROVRSCORSurveyReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-selected-node-report') {
                 const { generateROVSelectedNodeReport } = await import("./rov-selected-node-report");
                 pdfBlob = await generateROVSelectedNodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSWNI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);

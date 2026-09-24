@@ -392,6 +392,7 @@ interface ReportWizardDialogProps {
         generateSZCIReport: () => void;
         generateRSCORReport: () => void;
         generateRSCORV2Report: () => void;
+        generateRSCORSurveyReport?: () => void;
         generateRRISIReport: () => void;
         generateRRISIDetailReport: () => void;
         generateJTISIReport: () => void;
@@ -571,8 +572,9 @@ export function ReportWizardDialog({
             { id: 'mgi_rov', code: 'RMGI-GRAPH', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'szci_rov', code: 'RSZCI', name: 'Splash Zone Inspection Report (ROV)', description: 'Splash zone wall thickness and CP inspection summary with clock positions', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI', 'SZCI']) },
-            { id: 'rscor_rov', code: 'RSCOR', name: 'Scour Survey Sketch Report (ROV)', description: 'ROV Scour Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
-            { id: 'rscor_v2_rov', code: 'RSCOR_V2', name: 'Scour Survey Sketch Report v2 (ROV)', description: 'ROV Scour Survey Sketch v2 Report with side-by-side layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rscor_survey_rov', code: 'RSCOR', name: 'Scour Survey Report (ROV)', description: 'Standard portrait tabular ROV Scour Survey report (RSCOUR/RSCOR) with Item No., QID, Elevation, Dive No., Tape No., and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORSurveyReport || handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rscor_rov', code: 'RSCOR-SKETCH', name: 'Scour Survey Sketch Report (ROV)', description: 'Detailed landscape graphical ROV scour survey of horizontal members with graphical mudline profiles.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rscor_v2_rov', code: 'RSCOR-V2', name: 'Scour Survey Sketch Report v2 (ROV)', description: 'Detailed landscape ROV scour survey sketch report v2 with side-by-side graphical layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
             { id: 'rrisi_rov', code: 'RRISI', name: 'Riser Survey Inspection Sketch Report (ROV)', description: 'ROV Riser inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI', 'DRISI']) },
             { id: 'rrisi_detail_rov', code: 'RRISI-DETAIL', name: 'Riser Inspection Report (ROV)', description: 'Detailed portrait Riser inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIDetailReport, available: hasRecords(['RRISI', 'DRISI']) },
             { id: 'jtisi_rov', code: 'JTISI', name: 'J-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI']) },

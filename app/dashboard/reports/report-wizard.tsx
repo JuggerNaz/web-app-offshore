@@ -142,7 +142,8 @@ export const REPORT_TEMPLATES = {
         { id: "rov-jtisi-detail-report", name: "J-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-itisi-report", name: "I-Tube Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-scour-report", name: "Scour Survey Report (ROV)", icon: FileBarChart, description: "Detailed ROV scour survey of horizontal members with graphical mudline profiles", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-rscor-survey-report", name: "Scour Survey Report (ROV)", icon: FileBarChart, description: "Standard portrait tabular ROV Scour Survey report (RSCOUR/RSCOR) with Item No., QID, Elevation, Dive No., Tape No., and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-scour-report", name: "Scour Survey Sketch Report (ROV)", icon: FileBarChart, description: "Detailed landscape graphical ROV scour survey of horizontal members with graphical mudline profiles.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-rsani-report", name: "Selected Anode Report (ROV)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (CVI) summary (SANI) with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "CP Survey Report (ROV)",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
@@ -262,7 +263,8 @@ const TOC_SECTIONS = [
       { id: "diving-mgi-report", name: "Marine Growth Inspection Graph Report (Diving)", mode: "Diving" }
   ]},
   { id: 10, name: "Base Level Survey", templates: [
-      { id: "rov-scour-report", name: "Scour Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-rscor-survey-report", name: "Scour Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-scour-report", name: "Scour Survey Sketch Report (ROV)", mode: "ROV" },
       { id: "rov-rwdi-report", name: "Water Depth Measurement Survey Report (ROV)", mode: "ROV" },
       { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }
   ]},
@@ -1802,6 +1804,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRSEABGasDetailReport } = await import("@/utils/report-generators/rov-rseab-gas-detail-report");
             const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
             const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
+            const { generateROVRSCORSurveyReport } = await import("@/utils/report-generators/rov-rscor-survey-report");
             const { generateROVCPReport, isROVRecord } = await import("@/utils/report-generators/rov-cp-report");
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
             const { generateROVCondReport }  = await import("@/utils/report-generators/rov-rcond-report");
@@ -3263,7 +3266,87 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-        // ROV Scour Survey Report (New)
+        // ROV Scour Survey Report (Portrait Standard)
+        if (currentTemplateId === "rov-rscor-survey-report" || currentTemplateId === "rscor-survey") {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack   = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
+
+            let scourRecords: any[] = [];
+            if (!selections.printBlankReport) {
+                const structId = Number(selections.structureId);
+                if (isNaN(structId)) {
+                    alert("Invalid Structure selection. Please ensure a structure is selected.");
+                    return null;
+                }
+
+                let { data: records, error: fetchError } = await supabase
+                    .from('insp_records')
+                    .select(`
+                        *,
+                        inspection_type:inspection_type_id!left(id, code, name),
+                        structure_components:component_id!left(id, q_id, code, metadata),
+                        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                        insp_video_tapes:tape_id!left(tape_no),
+                        insp_anomalies(*)
+                    `)
+                    .eq('structure_id', structId);
+
+                if (fetchError) {
+                    console.error("Fetch Error:", fetchError);
+                    alert(`Database error: ${fetchError.message || 'Unknown fetching error'}`);
+                    return null;
+                }
+
+                scourRecords = records?.filter(r => {
+                    const sowMatches = !selections.sowReportNo || 
+                        String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
+                    const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                    const isRSCOR = code === 'RSCOR' || code === 'SCOUR';
+                    return sowMatches && jobPackMatches && isRSCOR;
+                }) || [];
+
+                if (scourRecords.length === 0) {
+                    alert(`No ROV Scour records (RSCOR) found for structure "${structure.str_name}" in this SOW.`);
+                    return null;
+                }
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) { console.error("Error fetching contractor logo", e); }
+            }
+
+            const headerData = {
+                jobpackName: jobPack.name || jobPack.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure.str_name || structure.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            try {
+                return await generateROVRSCORSurveyReport(
+                    scourRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                    headerData,
+                    companySettings,
+                    { ...reportConfig, isBlankReport: selections.printBlankReport, returnBlob } as any
+                );
+            } catch (error) {
+                console.error("RSCOR Survey Generator Error:", error);
+                throw error;
+            }
+        }
+
+        // ROV Scour Survey Sketch Report
         if (currentTemplateId === "rov-scour-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
