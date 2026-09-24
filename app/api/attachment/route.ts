@@ -396,16 +396,28 @@ export const DELETE = withTenant(async (request, { companyId }) => {
 
     console.log(`[DELETE] Attempting to delete attachment ID: ${attachmentId}`);
 
-    const { data: attachment, error: fetchError } = await (supabase as any)
+    let query = (supabase as any)
       .from("attachment")
-      .select("path, meta")
-      .eq("id", attachmentId)
-      .eq("company_id", companyId)
-      .single();
+      .select("path, meta, company_id")
+      .eq("id", attachmentId);
 
-    if (fetchError) {
-      console.error(`[DELETE] Fetch error for ID ${attachmentId}:`, fetchError);
-      return handleSupabaseError(fetchError, "Attachment not found");
+    if (companyId) {
+      query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+    }
+
+    let { data: attachment, error: fetchError } = await query.maybeSingle();
+
+    if (!attachment) {
+      const { data: directItem, error: directErr } = await (supabase as any)
+        .from("attachment")
+        .select("path, meta, company_id")
+        .eq("id", attachmentId)
+        .maybeSingle();
+
+      if (directErr || !directItem) {
+        return handleSupabaseError(fetchError || directErr, "Attachment not found");
+      }
+      attachment = directItem;
     }
 
     const storagePath = (attachment.meta as any)?.file_path || attachment.path;
@@ -415,7 +427,7 @@ export const DELETE = withTenant(async (request, { companyId }) => {
         .from("company_settings")
         .select("storage_provider, storage_config")
         .eq("company_id", companyId)
-        .single();
+        .maybeSingle();
 
       const handler = await getStorageHandler((settings as any)?.storage_provider, (settings as any)?.storage_config);
       console.log(`[DELETE] Using storage provider: ${(settings as any)?.storage_provider || 'Supabase'}`);
@@ -427,12 +439,16 @@ export const DELETE = withTenant(async (request, { companyId }) => {
       }
     }
 
-    const { data: deleteResult, error: deleteError } = await (supabase as any)
+    let deleteQuery = (supabase as any)
       .from("attachment")
       .delete()
-      .eq("id", attachmentId)
-      .eq("company_id", companyId)
-      .select();
+      .eq("id", attachmentId);
+
+    if (companyId && attachment.company_id) {
+      deleteQuery = deleteQuery.eq("company_id", companyId);
+    }
+
+    const { data: deleteResult, error: deleteError } = await deleteQuery.select();
 
     if (deleteError) {
       console.error(`[DELETE] DB delete error for ID ${attachmentId}:`, deleteError);
@@ -471,31 +487,46 @@ export const PATCH = withTenant(async (request, { companyId }) => {
     return NextResponse.json({ error: "No ID provided" }, { status: 400 });
   }
 
-  const { data: current, error: fetchError } = await (supabase as any)
+  // 1. Fetch current attachment
+  let query = (supabase as any)
     .from("attachment")
-    .select("meta, name")
-    .eq("id", id)
-    .eq("company_id", companyId)
-    .single();
+    .select("id, meta, name, company_id")
+    .eq("id", id);
 
-  if (fetchError) {
-    return handleSupabaseError(fetchError, "Attachment not found");
+  if (companyId) {
+    query = query.or(`company_id.eq.${companyId},company_id.is.null`);
   }
 
+  let { data: current, error: fetchError } = await query.maybeSingle();
+
+  if (!current) {
+    const { data: directItem, error: directErr } = await (supabase as any)
+      .from("attachment")
+      .select("id, meta, name, company_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (directErr || !directItem) {
+      return handleSupabaseError(fetchError || directErr, "Attachment not found");
+    }
+    current = directItem;
+  }
+
+  const currentMeta = typeof current.meta === "object" && current.meta !== null ? current.meta : {};
   const updatedMeta = {
-    ...(current.meta as object || {}),
-    title: title !== undefined ? title : (current.meta as any)?.title,
-    description: description !== undefined ? description : (current.meta as any)?.description,
+    ...currentMeta,
+    title: title !== undefined ? title : currentMeta.title,
+    description: description !== undefined ? description : currentMeta.description,
   };
 
   const { data, error } = await (supabase as any)
     .from("attachment")
     .update({
-      name: name || current.name,
-      meta: updatedMeta
+      name: name || current.name || title || "Attachment",
+      meta: updatedMeta,
+      ...(companyId && !current.company_id ? { company_id: companyId } : {})
     })
     .eq("id", id)
-    .eq("company_id", companyId)
     .select()
     .single();
 

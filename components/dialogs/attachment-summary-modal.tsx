@@ -39,17 +39,35 @@ export function AttachmentSummaryModal({
   structureId,
 }: AttachmentSummaryModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "Component" | "Inspection">("ALL");
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "Component" | "Inspection" | "Anomaly">("ALL");
 
-  // Fetch all attachments for this component (direct + linked inspections)
+  // Fetch all attachments for this component (direct + linked inspections + anomalies)
+  const compIdentifier = component?.id || component?.comp_id;
   const { data: attachmentsData, isLoading } = useSWR(
-    open && component?.id ? `/api/attachment/component/${component.id}` : null,
+    open && compIdentifier
+      ? `/api/attachment/component/${compIdentifier}${structureId ? `?structure_id=${structureId}` : ""}`
+      : null,
     fetcher
   );
 
   const attachments: any[] = useMemo(() => {
-    return attachmentsData?.data || [];
+    if (Array.isArray(attachmentsData)) return attachmentsData;
+    if (Array.isArray(attachmentsData?.data)) return attachmentsData.data;
+    return [];
   }, [attachmentsData]);
+
+  const compCount = useMemo(
+    () => attachments.filter((a) => a.source_type?.toLowerCase() === "component").length,
+    [attachments]
+  );
+  const inspCount = useMemo(
+    () => attachments.filter((a) => a.source_type?.toLowerCase() === "inspection").length,
+    [attachments]
+  );
+  const anomCount = useMemo(
+    () => attachments.filter((a) => ["anomaly", "defect"].includes(a.source_type?.toLowerCase())).length,
+    [attachments]
+  );
 
   // Filter attachments
   const filteredAttachments = useMemo(() => {
@@ -60,13 +78,16 @@ export function AttachmentSummaryModal({
         (att.name && att.name.toLowerCase().includes(q)) ||
         (att.source_name && att.source_name.toLowerCase().includes(q)) ||
         (att.user_name && att.user_name.toLowerCase().includes(q)) ||
-        (att.source_type && att.source_type.toLowerCase().includes(q));
+        (att.source_type && att.source_type.toLowerCase().includes(q)) ||
+        (att.meta?.description && String(att.meta.description).toLowerCase().includes(q));
 
       if (!matchesSearch) return false;
 
+      const rawType = (att.source_type || "").toLowerCase();
       if (activeFilter === "ALL") return true;
-      if (activeFilter === "Component") return att.source_type?.toLowerCase() === "component";
-      if (activeFilter === "Inspection") return att.source_type?.toLowerCase() === "inspection";
+      if (activeFilter === "Component") return rawType === "component";
+      if (activeFilter === "Inspection") return rawType === "inspection";
+      if (activeFilter === "Anomaly") return ["anomaly", "defect"].includes(rawType);
 
       return true;
     });
@@ -74,10 +95,12 @@ export function AttachmentSummaryModal({
 
   const isImageFile = (path?: string, name?: string) => {
     const ext = (path || name || "").split(".").pop()?.toLowerCase();
-    return ["jpg", "jpeg", "png", "webp", "gif", "svg"].includes(ext || "");
+    return ["jpg", "jpeg", "png", "webp", "gif", "svg", "bmp"].includes(ext || "");
   };
 
   const getAttachmentUrl = (att: any) => {
+    if (att.file_url) return att.file_url;
+    if (att.url) return att.url;
     if (att.meta?.bucket && att.path) {
       return `/api/attachment/download?path=${encodeURIComponent(att.path)}&bucket=${encodeURIComponent(att.meta.bucket)}`;
     }
@@ -108,7 +131,7 @@ export function AttachmentSummaryModal({
                 )}
               </DialogTitle>
               <p className="text-xs text-slate-400 font-medium mt-0.5">
-                {component?.id_no ? `System ID: ${component.id_no}` : "Component and Inspection Media Records"}
+                {component?.id_no ? `System ID: ${component.id_no}` : "Component, Inspection & Anomaly Media Records"}
               </p>
             </div>
           </div>
@@ -156,7 +179,7 @@ export function AttachmentSummaryModal({
                   : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
               )}
             >
-              Direct Component ({attachments.filter(a => a.source_type?.toLowerCase() === "component").length})
+              Direct Component ({compCount})
             </button>
             <button
               onClick={() => setActiveFilter("Inspection")}
@@ -167,8 +190,21 @@ export function AttachmentSummaryModal({
                   : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
               )}
             >
-              Inspection ({attachments.filter(a => a.source_type?.toLowerCase() === "inspection").length})
+              Inspection ({inspCount})
             </button>
+            {anomCount > 0 && (
+              <button
+                onClick={() => setActiveFilter("Anomaly")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap",
+                  activeFilter === "Anomaly"
+                    ? "bg-amber-600 text-white shadow-md shadow-amber-500/20"
+                    : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
+                )}
+              >
+                Anomaly ({anomCount})
+              </button>
+            )}
           </div>
         </div>
 

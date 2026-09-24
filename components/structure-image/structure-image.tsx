@@ -203,7 +203,8 @@ export default function StructureImage() {
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to update");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Failed to update");
 
       toast.success("Visual meta updated successfully");
       mutate();

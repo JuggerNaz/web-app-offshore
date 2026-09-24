@@ -213,7 +213,8 @@ export default function ComponentContent() {
     data: componentsData,
     error: componentsError,
     isLoading: isLoadingComponents,
-  } = useSWR(apiUrl, fetcher);
+    mutate: mutateComponents,
+  } = useSWR(apiUrl, fetcher, { revalidateOnFocus: true, revalidateIfStale: true });
 
   const components = componentsData?.data || [];
   const processedCompIdRef = useRef<string | null>(null);
