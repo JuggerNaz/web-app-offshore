@@ -33,8 +33,12 @@ export const generateROVAnodeRSANIReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     try {
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const isPF = config.printFriendly;
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();

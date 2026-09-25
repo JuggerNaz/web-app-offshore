@@ -312,7 +312,7 @@ export const generateROVNavigReport = async (
         };
     });
 
-    if (rawRecords.length === 0 && config?.returnBlob && !config?.isBlankReport && !config?.printBlankReport) {
+    if (rawRecords.length === 0 && !config?.isBlankReport && !config?.printBlankReport) {
         return null as any;
     }
 

@@ -11,6 +11,7 @@ export interface SeabedSurveyReportOptions extends Partial<ReportConfig> {
     comparisonRecords?: any[];
     currentPage?: number;
     headerData?: any;
+    isBlankReport?: boolean;
 }
 
 export const generateSeabedSurveyReport = async (
@@ -20,7 +21,7 @@ export const generateSeabedSurveyReport = async (
     companySettings: CompanySettings,
     config: SeabedSurveyReportOptions = {},
     itemTypeFilter: string = ""
-) => {
+): Promise<Blob | void | null> => {
     const supabase = createClient();
     const doc = new jsPDF("l", "mm", "a4");
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -135,6 +136,10 @@ export const generateSeabedSurveyReport = async (
         compRecords = config.comparisonRecords.filter(r => 
             itemTypeFilter === '' || itemTypeFilter.toLowerCase() === 'all' || r.type.toLowerCase().includes(itemTypeFilter.toLowerCase())
         );
+    }
+
+    if (!config.isBlankReport && (!records || records.length === 0) && (!compRecords || compRecords.length === 0)) {
+        return null;
     }
 
     // ── Logos ────────────────────────────────────────────────────────────────

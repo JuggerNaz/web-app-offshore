@@ -44,8 +44,8 @@ export const generateDivingItemReport = async (
             return code === 'PL_IC' || code === 'ITEM' || code === '';
         });
 
-        if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
+        if (!config?.isBlankReport && filteredRecords.length === 0) {
+            return null;
         }
 
         const doc = new jsPDF({ orientation: "portrait" });

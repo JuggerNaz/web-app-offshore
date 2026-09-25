@@ -48,7 +48,7 @@ export const generateDiverLogReport = async (
         console.error("Error fetching diver log data", e);
     }
 
-    if ((!diveJobs || diveJobs.length === 0) && config.returnBlob && !config.isBlankReport) {
+    if (!config.isBlankReport && (!diveJobs || diveJobs.length === 0)) {
         return null;
     }
 

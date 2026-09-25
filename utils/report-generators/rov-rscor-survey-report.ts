@@ -37,6 +37,10 @@ export const generateROVRSCORSurveyReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const isBlank = config.isBlankReport || !records || records.length === 0;
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();

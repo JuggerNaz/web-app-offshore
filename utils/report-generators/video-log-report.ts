@@ -30,7 +30,7 @@ export const generateVideoLogReport = async (
     sowReportNo: string,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     const supabase = createClient();
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -183,15 +183,7 @@ export const generateVideoLogReport = async (
                 }))
             }];
         } else {
-            drawHeader(doc);
-            doc.setFontSize(12);
-            doc.setTextColor(0, 0, 0);
-            doc.text("No video log records found.", pageWidth / 2, 80, { align: "center" });
-            applyWatermarkAndSignaturesGlobal(doc, config);
-            if (config.returnBlob) return doc.output("blob");
-            applyWatermarkAndSignaturesGlobal(doc, config);
-            doc.save(`${config.reportNoPrefix}_VideoLog.pdf`);
-            return;
+            return null;
         }
     }
 

@@ -655,7 +655,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     // Filtered Structures for Selection
     const filteredStructures = useMemo(() => {
-        let result = structures;
+        let result = Array.isArray(structures) ? [...structures] : [];
 
         if (structureSearch) {
             const lower = structureSearch.toLowerCase();
@@ -664,6 +664,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 s.str_type?.toLowerCase().includes(lower)
             );
         }
+
+        // Natural alphabetical sorting by structure name A-Z
+        result.sort((a: any, b: any) => 
+            (a.str_name || "").localeCompare(b.str_name || "", undefined, { numeric: true, sensitivity: 'base' })
+        );
+
         return result;
     }, [structures, structureSearch]);
 
@@ -1077,16 +1083,17 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                             return (
                                                 <div
                                                     key={s.id}
+                                                    ref={isSelected ? (el) => { if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } : undefined}
                                                     onClick={() => handleStructureSelect(s.id.toString())}
                                                     className={`
                                                         p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group
                                                         ${isSelected
-                                                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-500"
                                                             : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
                                                     `}
                                                 >
                                                     <div className="overflow-hidden">
-                                                        <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{s.str_name}</div>
+                                                        <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300 font-semibold" : "text-slate-700 dark:text-slate-300"}`}>{s.str_name}</div>
                                                         <div className="text-xs text-slate-500 truncate mt-0.5">{s.str_type}</div>
                                                     </div>
                                                     {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}
@@ -1210,15 +1217,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                         return (
                                             <div
                                                 key={`${reportNo}-${idx}`}
+                                                ref={isSelected ? (el) => { if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } : undefined}
                                                 onClick={() => setSelections({ ...selections, sowReportNo: reportNo })}
                                                 className={`
                                                     p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between
                                                     ${isSelected
-                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-500"
                                                         : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
                                                 `}
                                             >
-                                                <div className={`font-medium text-sm ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{reportNo}</div>
+                                                <div className={`font-medium text-sm ${isSelected ? "text-blue-700 dark:text-blue-300 font-semibold" : "text-slate-700 dark:text-slate-300"}`}>{reportNo}</div>
                                                 {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0" />}
                                             </div>
                                         );
@@ -1258,16 +1266,17 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                         return (
                                             <div
                                                 key={comp.id}
+                                                ref={isSelected ? (el) => { if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } : undefined}
                                                 onClick={() => setSelections({ ...selections, componentId: comp.id })}
                                                 className={`
                                                     p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between
                                                     ${isSelected
-                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm"
+                                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm ring-1 ring-blue-500"
                                                         : "border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50"}
                                                 `}
                                             >
                                                 <div className="overflow-hidden">
-                                                    <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>{comp.name}</div>
+                                                    <div className={`font-medium text-sm truncate ${isSelected ? "text-blue-700 dark:text-blue-300 font-semibold" : "text-slate-700 dark:text-slate-300"}`}>{comp.name}</div>
                                                     <div className="text-xs text-slate-500 truncate">{comp.q_id}</div>
                                                 </div>
                                                 {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0 ml-2" />}

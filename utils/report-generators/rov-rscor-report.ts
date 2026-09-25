@@ -30,8 +30,12 @@ export const generateROVRSCORReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     try {
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const sowReportNo = headerData?.sowReportNo || headerData?.sow_report_no || config?.sowReportNo || 'N/A';
         const isPF = config.printFriendly;
         const doc = new jsPDF({ orientation: "landscape" });

@@ -75,6 +75,10 @@ export const generateROVRSEABGasDetailReport = async (
             return cat === 'gas seepage' || cat === 'gas' || desc.startsWith('gas seepage') || desc.startsWith('gas');
         });
 
+        if (!config.isBlankReport && (!filteredRecords || filteredRecords.length === 0)) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

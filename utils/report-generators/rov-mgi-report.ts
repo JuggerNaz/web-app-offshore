@@ -33,8 +33,12 @@ export const generateROVMGIGraphReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     try {
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const recordsByQid: Record<string, any[]> = {};
         (records || []).forEach(r => {
             const qid = r.structure_components?.q_id || r.component?.q_id || "Unassigned";

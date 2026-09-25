@@ -75,6 +75,10 @@ export const generateROVRSEABCraterDetailReport = async (
             return cat === 'crater' || desc.startsWith('crater') || desc.startsWith('seabed crater');
         });
 
+        if (!config.isBlankReport && (!filteredRecords || filteredRecords.length === 0)) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

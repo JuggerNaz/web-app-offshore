@@ -44,8 +44,8 @@ export const generateDivingITMAINReport = async (
             return code === 'ITMAIN' || code === '';
         });
 
-        if (filteredRecords.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null as any;
+        if (!config?.isBlankReport && filteredRecords.length === 0) {
+            return null;
         }
 
         const doc = new jsPDF({ orientation: "portrait" });

@@ -35,7 +35,7 @@ export const generateDivingCPCLBReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void | null> => {
-    if ((!records || records.length === 0) && config.returnBlob && !config.isBlankReport) {
+    if (!config.isBlankReport && (!records || records.length === 0)) {
         return null;
     }
     try {

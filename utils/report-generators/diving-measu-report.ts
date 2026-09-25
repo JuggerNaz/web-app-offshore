@@ -34,9 +34,9 @@ export const generateDivingMEASUReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     try {
-        if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
+        if (!config?.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
 

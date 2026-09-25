@@ -34,7 +34,7 @@ export const generateROVRSEABDetailReport = async (
     headerData: any,
     companySettingsOrConfig: any = {},
     maybeConfig?: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     try {
         let companySettings: CompanySettings = {};
         let config: ReportConfig = {};
@@ -81,6 +81,10 @@ export const generateROVRSEABDetailReport = async (
             // Include if category is Debris, or if no category is set (legacy default is Debris), or not gas/crater
             return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
         });
+
+        if (!config.isBlankReport && (!filteredRecords || filteredRecords.length === 0)) {
+            return null;
+        }
 
         // ── Pre-load logos ──
         let companyLogo: any = null;

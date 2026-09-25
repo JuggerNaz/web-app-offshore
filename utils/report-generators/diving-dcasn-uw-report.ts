@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -64,6 +65,10 @@ export const generateDivingDCASNUWReport = async (
             if (!validTypes.includes(typeCode)) return false;
             const elevationVal = parseFloat(r.elevation ?? r.inspection_data?.elevation ?? 0); return elevationVal < 0;
         });
+
+        if (!config.isBlankReport && (!filteredRecords || filteredRecords.length === 0)) {
+            return null;
+        }
 
         // Pre-load logos
         let companyLogo: any = null;
