@@ -1114,7 +1114,7 @@ export function useWorkspaceReports(
                     printFriendly: printFriendly || false,
                     showSignatures: showSignatures ?? reportConfig.showSignatures
                 }
-            );
+            ) as Blob;
         }
 
         return await generateROVRGVIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
@@ -1376,7 +1376,7 @@ export function useWorkspaceReports(
         setDivingPlcoPreviewOpen(true);
     };
 
-    const generateDivingPLCOReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+    const generateDivingPLCOReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void | null> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'PL_CO');
         const settings = await getReportHeaderData();
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
@@ -1392,7 +1392,7 @@ export function useWorkspaceReports(
         setRovRwdiPreviewOpen(true);
     };
 
-    const generateROVRWDIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+    const generateROVRWDIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void | null> => {
         const records = currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RWDI');
         const settings = await getReportHeaderData();
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();

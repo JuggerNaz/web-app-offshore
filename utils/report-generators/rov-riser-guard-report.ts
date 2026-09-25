@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -36,7 +37,7 @@ export const generateROVRiserGuardReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -56,6 +57,10 @@ export const generateROVRiserGuardReport = async (
             rectified: [22,  163, 74]  as [number, number, number],
             finding:   [124, 58,  237] as [number, number, number],
         };
+
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -289,6 +294,7 @@ export const generateROVRiserGuardReport = async (
         });
 
         if (sortedParentKeys.length === 0) {
+            if (!config?.isBlankReport) return null;
             sortedParentKeys = ["GENERAL"];
             rgGroups["GENERAL"] = [];
         }

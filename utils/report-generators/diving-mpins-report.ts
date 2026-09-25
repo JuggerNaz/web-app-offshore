@@ -33,7 +33,7 @@ export const generateDivingMPINSReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
             return null as any;

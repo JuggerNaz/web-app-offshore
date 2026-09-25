@@ -246,8 +246,12 @@ export const generateDivingRRISIReport = async (
             }
         });
 
-        // Seed from allComps if risersMap is empty
-        if (risersMap.size === 0 && allComps && allComps.length > 0) {
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
+        // Seed from allComps if risersMap is empty (only for blank report)
+        if (config.isBlankReport && risersMap.size === 0 && allComps && allComps.length > 0) {
             allComps.forEach((c: any) => {
                 const q = (c.q_id || '').trim();
                 const qUpper = q.toUpperCase();
@@ -264,7 +268,7 @@ export const generateDivingRRISIReport = async (
 
         // Fallback default group if still empty
         if (risersMap.size === 0) {
-            if (config.returnBlob && !config.isBlankReport) return null;
+            if (!config.isBlankReport) return null;
             const fallbackQid = `${typeConfig.label}-1`;
             risersMap.set(fallbackQid, { parentQid: fallbackQid, records: [] });
         }
@@ -276,7 +280,7 @@ export const generateDivingRRISIReport = async (
         const sortedGroups: RiserGroup[] = Array.from(risersMap.values())
             .sort((a, b) => a.parentQid.localeCompare(b.parentQid, undefined, { numeric: true, sensitivity: 'base' }));
 
-        if (filteredRecords.length === 0 && config.returnBlob && !config.isBlankReport) {
+        if (filteredRecords.length === 0 && !config.isBlankReport) {
             return null;
         }
 

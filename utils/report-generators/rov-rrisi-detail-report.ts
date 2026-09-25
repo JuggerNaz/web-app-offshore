@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -64,6 +65,10 @@ export const generateROVRRISIDetailReport = async (
             const compCode = (r.structure_components?.code || "").toUpperCase();
             return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
         });
+
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
 
         // ── Pre-load logos ──
         let companyLogo: any = null;
@@ -235,6 +240,10 @@ export const generateROVRRISIDetailReport = async (
             const qB = b.riserComp?.q_id || '';
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
+
+        if (!config.isBlankReport && groups.length === 0) {
+            return null;
+        }
 
         const renderGroups = groups.length > 0 ? groups : [{
             riserComp: { q_id: 'Riser General', name: 'Riser' },

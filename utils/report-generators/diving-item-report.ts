@@ -36,7 +36,7 @@ export const generateDivingItemReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         // ── Filter to PL_IC records strictly if mixed ───────────────────────────
         const filteredRecords = (records || []).filter(r => {

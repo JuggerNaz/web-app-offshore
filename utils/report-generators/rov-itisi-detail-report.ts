@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -64,6 +65,10 @@ export const generateROVRRISIITubeDetailReport = async (
             const compCode = (r.structure_components?.code || "").toUpperCase();
             return typeCode === 'RRISI' && qid.startsWith('I') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
         });
+
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
 
         // ── Pre-load logos ──
         let companyLogo: any = null;
@@ -235,6 +240,10 @@ export const generateROVRRISIITubeDetailReport = async (
             const qB = b.itubeComp?.q_id || '';
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
+
+        if (!config.isBlankReport && groups.length === 0) {
+            return null;
+        }
 
         const renderGroups = groups.length > 0 ? groups : [{ itubeComp: { q_id: "GENERAL" }, records: [] }];
 

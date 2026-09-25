@@ -57,7 +57,7 @@ export const generateROVNavigReport = async (
     companySettings: CompanySettings = {},
     config: ROVNavigReportOptions = {},
     recordsOverride?: any[]
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     const supabase = createClient();
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth(); // 297mm

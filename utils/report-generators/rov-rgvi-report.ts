@@ -87,6 +87,10 @@ export const generateROVRGVIReport = async (
         // Exclude components that have dedicated report templates ('AN','FD','BL','CS','SG','CD','CG','CU','RS','RG')
         const validRecords = (records || []).filter((r: any) => !isExcludedFromRGVI(r));
 
+        if (!config.isBlankReport && validRecords.length === 0) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();

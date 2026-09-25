@@ -65,6 +65,10 @@ export const generateROVCasnSketchReport = async (
             return typeCode === 'RCASN' || compCode === 'CS';
         });
 
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
         // 1. Context & Grouping
         const compRegistry = new Map<number, any>();
@@ -213,6 +217,10 @@ export const generateROVCasnSketchReport = async (
             drawBox('Insp. Date Range:', dr, margin + half, half, y + rH);
             return y + (rH * 2) + 4;
         };
+
+        if (!config.isBlankReport && groups.length === 0) {
+            return null;
+        }
 
         const renderGroups = groups.length > 0 ? groups : [{
             caissonId: "GENERAL",

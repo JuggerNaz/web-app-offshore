@@ -65,6 +65,10 @@ export const generateROVCasnReport = async (
             return typeCode === 'RCASN' || compCode === 'CS';
         });
 
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -223,12 +227,9 @@ export const generateROVCasnReport = async (
         });
         
         if (sortedCaissonQids.length === 0) {
+            if (!config?.isBlankReport) return null;
             caissonGroups["General"] = [];
             sortedCaissonQids.push("General");
-        }
-
-        if (sortedCaissonQids.length === 0 && config?.returnBlob && !config?.isBlankReport) {
-            return null;
         }
 
         const buildRow = (r: any, idx: number): string[] => {

@@ -80,6 +80,9 @@ export const generateROVCPReport = async (
     try {
         const filteredRecords = (records || []).filter(isROVRecord);
 
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
 
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();

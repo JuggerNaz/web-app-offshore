@@ -58,6 +58,10 @@ export const generateROVCondReport = async (
             finding:   [124, 58,  237] as [number, number, number],
         };
 
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -215,6 +219,7 @@ export const generateROVCondReport = async (
         });
 
         if (sortedParentIds.length === 0) {
+            if (!config?.isBlankReport) return null;
             sortedParentIds = [0];
             condGroups[0] = [];
         }

@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     reportType?: 'R' | 'J' | 'I'; // 'R' = Riser, 'J' = J-Tube, 'I' = I-Tube
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 export const generateROVRRISIReport = async (
@@ -88,6 +89,10 @@ export const generateROVRRISIReport = async (
             }
             return false;
         });
+
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
 
         // Helper to extract identifier key (e.g., '11' from 'R11-SK358-WLP-A' or 'RIS-11-SUPP 1M')
         const extractTubeKey = (qid: string, prefix: 'R' | 'J' | 'I') => {
@@ -271,6 +276,10 @@ export const generateROVRRISIReport = async (
             const qA = a.riserComp?.q_id || ''; const qB = b.riserComp?.q_id || '';
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
+
+        if (!config.isBlankReport && groups.length === 0) {
+            return null;
+        }
 
         const renderGroups = groups.length > 0 ? groups : [{
             riserComp: { q_id: 'Riser General', name: 'Riser' },

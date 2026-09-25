@@ -35,7 +35,7 @@ export const generateDivingSZONEReport = async (
     companySettings: CompanySettings,
     config: ReportConfig,
     supabase?: any
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         if ((!records || records.length === 0) && config?.returnBlob && !config?.isBlankReport) {
             return null as any;

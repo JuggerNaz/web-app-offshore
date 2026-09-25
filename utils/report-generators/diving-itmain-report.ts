@@ -36,7 +36,7 @@ export const generateDivingITMAINReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         // ── Filter to ITMAIN records ───────────────────────────────────────────
         const filteredRecords = (records || []).filter(r => {

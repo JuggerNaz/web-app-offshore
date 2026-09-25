@@ -6333,11 +6333,19 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .eq('sow_report_no', selections.sowReportNo);
 
             if (error) throw error;
-            const caissonRecords = records || [];
+            const caissonRecords = (records || []).filter((r: any) => {
+                const typeCode = (r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const compCode = (r.structure_components?.code || '').toUpperCase();
+                return typeCode === 'RCASN' || compCode === 'CS';
+            });
 
             if (caissonRecords.length === 0) {
-                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
+                if (!reportConfig.isBlankReport) {
+                    if (!isFinalDatasheet && !returnBlob) {
+                        alert(`No Caisson inspection records found for structure "${structure.str_name}" in this SOW.`);
+                    }
+                    return null;
+                }
             }
 
             let contractorLogoUrl = "";
@@ -6397,13 +6405,19 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .eq('sow_report_no', selections.sowReportNo);
 
             if (error) throw error;
-            const condRecords = (records || []).filter((r: any) => 
-                ['RCOND', 'RCON'].includes(String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase())
-            );
+            const condRecords = (records || []).filter((r: any) => {
+                const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const compCode = String(r.structure_components?.code || '').toUpperCase();
+                return ['RCOND', 'RCON'].includes(typeCode) || ['CD', 'CON'].includes(compCode);
+            });
 
             if (condRecords.length === 0) {
-                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
+                if (!reportConfig.isBlankReport) {
+                    if (!isFinalDatasheet && !returnBlob) {
+                        alert(`No Conductor inspection records found for structure "${structure.str_name}" in this SOW.`);
+                    }
+                    return null;
+                }
             }
 
             let contractorLogoUrl = "";

@@ -56,6 +56,10 @@ export const generateROVCondSketchReport = async (
         const supabase = createClient();
 
         // 1. Context & Fetching
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
@@ -211,6 +215,10 @@ export const generateROVCondSketchReport = async (
             drawBox('Insp. Date Range:', dr, margin + half, half, y + rH);
             return y + (rH * 2) + 4;
         };
+
+        if (!config.isBlankReport && groups.length === 0) {
+            return null;
+        }
 
         const renderGroups = groups.length > 0 ? groups : [{
             parentId: "GENERAL",

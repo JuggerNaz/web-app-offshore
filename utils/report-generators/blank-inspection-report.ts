@@ -779,7 +779,7 @@ async function generateCustomFallbackBlank(
     companySettings: CompanySettings,
     config: ReportConfig,
     headerData: any
-): Promise<Blob | void> {
+): Promise<Blob | void | null> {
     const spec = getTemplateTableSpec(templateId);
     const doc = new jsPDF({ orientation: spec.orientation, unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
