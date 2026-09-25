@@ -64,12 +64,61 @@ export const GET = withTenant(async (request, { companyId, params }) => {
                 .order("created_at", { ascending: false })
                 .limit(5) as any;
 
-            const { data: attachments } = await supabase
+            // Fetch all attachments linked to this platform / structure
+            const { data: rawAttachments, error: attError } = await supabase
                 .from("attachment" as any)
                 .select("*")
-                .eq("company_id", companyId)
                 .eq("source_id", structureId)
-                .eq("source_type", "platform_structure_image") as any;
+                .in("source_type", [
+                    "platform_structure_image",
+                    "structure_image",
+                    "platform",
+                    "PLATFORM",
+                    "structure",
+                    "STRUCTURE",
+                    "platform_visual",
+                    "visual",
+                    "VISUAL",
+                    "photo",
+                    "PHOTO",
+                    "attachment",
+                    "ATTACHMENT"
+                ]);
+
+            if (attError) {
+                console.error("Error fetching platform attachments in structures API:", attError);
+            }
+
+            const attachments = (rawAttachments || []).map((a: any) => {
+                let metaObj = a.meta;
+                if (typeof metaObj === "string") {
+                    try { metaObj = JSON.parse(metaObj); } catch {}
+                }
+                let directUrl = metaObj?.file_url || a.file_url || "";
+                if (!directUrl && a.path) {
+                    let p = String(a.path).trim().replace(/\\/g, '/');
+                    if (p.startsWith("http://") || p.startsWith("https://") || p.startsWith("data:")) {
+                        directUrl = p;
+                    } else {
+                        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+                        const cleanP = p.replace(/^\/?(attachments\/)?/, "");
+                        if (supabaseUrl) {
+                            directUrl = `${supabaseUrl}/storage/v1/object/public/attachments/${cleanP}`;
+                        }
+                    }
+                }
+                const proxyUrl = a.id ? `/api/attachment/url?id=${a.id}` : (a.path ? `/api/attachment/url?path=${encodeURIComponent(a.path)}` : directUrl);
+
+                return {
+                    ...a,
+                    id: a.id,
+                    url: proxyUrl || directUrl,
+                    file_url: directUrl || proxyUrl,
+                    proxy_url: proxyUrl,
+                    path: a.path,
+                    title: metaObj?.title || a.title || a.name || metaObj?.original_file_name || "Platform Visual"
+                };
+            });
 
             const legs: any[] = [];
             const legsCount = platform.plegs || 0;
@@ -132,7 +181,8 @@ export const GET = withTenant(async (request, { companyId, params }) => {
                 discussions: discussions || [],
 
                 visuals: attachments || [],
-                photo_url: platform.photo_url || (attachments && attachments.length > 0 ? (attachments[0].file_url || attachments[0].meta?.file_url) : null),
+                photos: attachments || [],
+                photo_url: platform.photo_url || (attachments && attachments.length > 0 ? (attachments[0].file_url || attachments[0].meta?.file_url || attachments[0].path) : null),
 
                 specifications: {
                     "Title": platform.title || "N/A",
@@ -193,13 +243,42 @@ export const GET = withTenant(async (request, { companyId, params }) => {
                 .order("created_at", { ascending: false })
                 .limit(5) as any;
 
-            const { data: attachments } = await supabase
+            const { data: rawPipeAtts, error: pipeAttError } = await supabase
                 .from("attachment" as any)
                 .select("*")
-                .eq("company_id", companyId)
-                .eq("str_id", structureId)
-                .eq("category", "visual")
-                .limit(3) as any;
+                .eq("source_id", structureId)
+                .in("source_type", [
+                    "pipeline_structure_image",
+                    "structure_image",
+                    "pipeline",
+                    "PIPELINE",
+                    "structure",
+                    "STRUCTURE",
+                    "visual",
+                    "VISUAL",
+                    "photo",
+                    "PHOTO",
+                    "attachment",
+                    "ATTACHMENT"
+                ]);
+
+            if (pipeAttError) {
+                console.error("Error fetching pipeline attachments in structures API:", pipeAttError);
+            }
+
+            const attachments = (rawPipeAtts || []).map((a: any) => {
+                let fileUrl = a.meta?.file_url || a.file_url || a.path || "";
+                if (fileUrl && !fileUrl.startsWith("http://") && !fileUrl.startsWith("https://") && !fileUrl.startsWith("data:")) {
+                    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+                    if (supabaseUrl) fileUrl = `${supabaseUrl}/storage/v1/object/public/attachments/${fileUrl}`;
+                }
+                return {
+                    ...a,
+                    url: fileUrl,
+                    file_url: fileUrl,
+                    title: a.meta?.title || a.title || a.name || a.meta?.original_file_name || "Pipeline Photo"
+                };
+            });
 
             const { data: pipeGeo } = await supabase
                 .from("pipe_geo" as any)
@@ -251,7 +330,8 @@ export const GET = withTenant(async (request, { companyId, params }) => {
 
                 discussions: discussions || [],
                 visuals: attachments || [],
-                photo_url: pipeline.photo_url || (attachments && attachments.length > 0 ? attachments[0].file_url : null),
+                photos: attachments || [],
+                photo_url: pipeline.photo_url || (attachments && attachments.length > 0 ? (attachments[0].file_url || attachments[0].meta?.file_url || attachments[0].path) : null),
 
                 specifications: {
                     "Pipeline Title": pipeline.title || "N/A",
