@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -11,71 +11,106 @@ interface CompanySettings {
 }
 
 interface ReportConfig {
-    reportNoPrefix?: string;
+    orientation?: "portrait" | "landscape";
+    includeCover?: boolean;
     printFriendly?: boolean;
-    jobPackId?: number;
+    companySettings?: CompanySettings;
+    returnBlob?: boolean;
+    isBlankReport?: boolean;
+    reportNoPrefix?: string;
+    showSignatures?: boolean;
+    showPageNumbers?: boolean;
+    preparedBy?: { name?: string; date?: string };
+    reviewedBy?: { name?: string; date?: string };
+    approvedBy?: { name?: string; date?: string };
+    watermarkText?: string;
+    customSignatures?: any[];
     structureId?: number;
     sowReportNo?: string;
-    preparedBy?: { name: string; date: string };
-    reviewedBy?: { name: string; date: string };
-    approvedBy?: { name: string; date: string };
-    returnBlob?: boolean;
-    showPageNumbers?: boolean;
-    showSignatures?: boolean;
 }
 
-/**
- * ROV Seabed Survey Debris Inspection Report (Portrait)
- * Columns: Item No. | QID | Dive No. | Tape No. | Findings
- *
- * Filtered by item category = Debris. Ordered by leg name and distance.
- */
 export const generateROVRSEABDetailReport = async (
     records: any[],
     headerData: any,
-    companySettings: CompanySettings,
-    config: ReportConfig
-): Promise<Blob | void> => {
-    const supabase = createClient();
-    console.log("[ROV Seabed Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
+    companySettingsOrConfig: any = {},
+    maybeConfig?: ReportConfig
+): Promise<Blob | void | null> => {
     try {
-        const doc = new jsPDF({ orientation: "portrait" });
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
-        const contentWidth = pageWidth - margin * 2;
+        let companySettings: CompanySettings = {};
+        let config: ReportConfig = {};
+        if (maybeConfig !== undefined) {
+            companySettings = companySettingsOrConfig || {};
+            config = maybeConfig || {};
+        } else {
+            config = companySettingsOrConfig || {};
+            companySettings = config.companySettings || {};
+        }
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
-            teal: [20, 184, 166] as [number, number, number],
-            lightGray: [248, 250, 252] as [number, number, number],
-            border: [203, 213, 225] as [number, number, number],
-            text: [30, 41, 59] as [number, number, number],
-            anomaly: [220, 38, 38] as [number, number, number],
-            rectified: [22, 163, 74] as [number, number, number],
+            navy: config.printFriendly ? [0, 0, 0] as [number, number, number] : [27, 54, 93] as [number, number, number],
+            lightGray: [245, 247, 250] as [number, number, number],
+            border: [200, 205, 215] as [number, number, number],
+            text: [30, 40, 55] as [number, number, number],
+            anomaly: [180, 40, 40] as [number, number, number]
         };
 
-        // ── Filter Records (Strict Seabed Filter: RSEAB + Debris category only) ──
+        const doc = new jsPDF({
+            orientation: "portrait",
+            unit: "mm",
+            format: "a4",
+        });
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 10;
+        const contentWidth = pageWidth - (margin * 2);
+
+        // Filter specifically for Seabed Survey Debris records
         const filteredRecords = records.filter(r => {
-            const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-            if (typeCode !== 'RSEAB') return false;
+            const typeCode = (
+                r.inspection_type?.code ||
+                r.inspection_type_code ||
+                r.structure_components?.component_types?.code ||
+                r.structure_components?.component_type ||
+                r.component_type ||
+                ''
+            ).toUpperCase();
+            if (typeCode && typeCode !== 'RSEAB' && typeCode !== 'SEABED') return false;
             const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
             const desc = (r.description || '').toLowerCase();
-            // Include if category is Debris, or if no category is set (legacy default is Debris)
-            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || !desc.startsWith('gas') && !desc.startsWith('crater')));
+            // Include if category is Debris, or if no category is set (legacy default is Debris), or not gas/crater
+            return cat === 'debris' || cat === '' || (!cat && (desc.startsWith('debris') || desc.startsWith('seabed debris') || (!desc.startsWith('gas') && !desc.startsWith('crater'))));
         });
+
+        if (!config.isBlankReport && (!filteredRecords || filteredRecords.length === 0)) {
+            return null;
+        }
 
         // ── Pre-load logos ──
         let companyLogo: any = null;
         let contractorLogo: any = null;
-        if (companySettings.logo_url) {
+        if (companySettings?.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        if (headerData.contractorLogoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        const contrLogoUrl = headerData?.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        if (contrLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+        }
+        if (!contractorLogo && (headerData?.jobpackId || (config as any)?.jobPackId || filteredRecords?.[0]?.jobpack_id)) {
+            try {
+                const jId = headerData?.jobpackId || (config as any)?.jobPackId || filteredRecords?.[0]?.jobpack_id;
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                const { data: jp } = await supabase.from('jobpack').select('metadata').eq('id', Number(jId)).maybeSingle();
+                if (jp?.metadata?.contrac) {
+                    const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jp.metadata.contrac).maybeSingle();
+                    if (contrData?.logo_url) {
+                        contractorLogo = await loadLogoWithTransparency(contrData.logo_url);
+                    }
+                }
+            } catch (_) {}
         }
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
@@ -90,17 +125,17 @@ export const generateROVRSEABDetailReport = async (
                 d.setTextColor(255);
             }
 
-            if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
+            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
 
-            d.setFontSize(9); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Division", margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13); d.setFont("helvetica", "bold");
-            d.text("Seabed Survey Debris Inspection Report (ROV)", margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("Seabed Survey Debris Inspection Report (ROV)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -171,6 +206,7 @@ export const generateROVRSEABDetailReport = async (
 
         // Helper to extract legs and distance from QID
         const parseQid = (q: string) => {
+            if (!q) return { legs: "", distance: 0 };
             const match = q.match(/S\/BED\(([^)]+)\)-(\d+)M/i);
             if (match) {
                 return { legs: match[1].trim(), distance: parseInt(match[2], 10) };
@@ -184,8 +220,8 @@ export const generateROVRSEABDetailReport = async (
 
         // Sort records by leg name and distance value
         const sortedRecords = [...filteredRecords].sort((a, b) => {
-            const qA = (a.structure_components?.q_id || a.qid || '').toUpperCase();
-            const qB = (b.structure_components?.q_id || b.qid || '').toUpperCase();
+            const qA = (a.structure_components?.q_id || a.qid || a.q_id || '').toUpperCase();
+            const qB = (b.structure_components?.q_id || b.qid || b.q_id || '').toUpperCase();
             
             const parsedA = parseQid(qA);
             const parsedB = parseQid(qB);
@@ -199,16 +235,16 @@ export const generateROVRSEABDetailReport = async (
         // Map records to autoTable RowInput[]
         const tableRows = sortedRecords.map((r, rIdx) => {
             const comp = r.structure_components || {};
-            const d = r.inspection_data || {};
+            const d = r.inspection_data || r.inspection_dat || {};
             const anoms = r.insp_anomalies || [];
             const isAnom = anoms.length > 0;
 
             // Dive & Tape No
-            const diveNo = r.insp_rov_jobs?.job_no || r.dive_no || "—";
+            const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || r.dive_no || r.dive_job_id || r.rov_job_id || "—";
             const tapeNo = r.insp_video_tapes?.tape_no || r.tape_no || d.tape_no || r.tape_id || "—";
 
             // Format Findings
-            let findings = r.description || d.findings || "No significant findings";
+            let findings = r.description || d.findings || d.description || d.debris_desc || "No significant findings";
             
             if (anoms.length > 0) {
                 findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || a.anomaly_ref_no || "N/A"}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ""})` : ""}`).join("\n");
@@ -216,7 +252,7 @@ export const generateROVRSEABDetailReport = async (
 
             return [
                 { content: String(rIdx + 1), styles: { halign: "center" as const } },
-                { content: comp.q_id || r.qid || "—" },
+                { content: comp.q_id || r.qid || r.q_id || "—" },
                 { content: String(diveNo), styles: { halign: "center" as const } },
                 { content: String(tapeNo), styles: { halign: "center" as const } },
                 { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
@@ -235,7 +271,13 @@ export const generateROVRSEABDetailReport = async (
                     { content: "Findings" }
                 ]
             ],
-            body: tableRows,
+            body: tableRows.length > 0 ? tableRows : [[
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-" },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "No seabed debris observations recorded for this scope." }
+            ]],
             theme: "grid",
             headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
             styles: { fontSize: 7.5, cellPadding: 2.5 },

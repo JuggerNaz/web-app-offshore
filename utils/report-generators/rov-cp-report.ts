@@ -23,7 +23,49 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
+
+/**
+ * Filter helper to ensure record was inspected by ROV only.
+ */
+export const isROVRecord = (r: any): boolean => {
+    if (!r) return false;
+
+    // Explicit dive job link with no ROV job link
+    if (r.dive_job_id && !r.rov_job_id) return false;
+    if (r.insp_dive_jobs && !r.insp_rov_jobs && !r.rov_job_id) return false;
+
+    // Explicit ROV job link
+    if (r.rov_job_id && Number(r.rov_job_id) > 0) return true;
+    if (r.insp_rov_jobs && (r.insp_rov_jobs.job_no || r.insp_rov_jobs.name || r.insp_rov_jobs.deployment_no)) return true;
+
+    // Method / Mode checks
+    const method = String(r.insp_method || r.inspection_method || r.method || r.mode || "").toUpperCase();
+    if (method === "ROV") return true;
+    if (method === "DIVING" || method === "DIVE") return false;
+
+    // Inspection type code checks
+    const typeCode = String(
+        r.inspection_type?.code || 
+        r.inspection_type_code || 
+        r.inspection_data?.insp_type || 
+        r.inspection_data?.INSP_TYPE || 
+        ""
+    ).toUpperCase();
+
+    if (typeCode.startsWith("R") && typeCode !== "RISER" && typeCode !== "RB") return true;
+    if (typeCode.startsWith("D") || ["CPCLB", "DCPSURV", "CPSURV_DIVE", "GVINS", "BSINS", "CVINS", "CLEAN", "MPINS", "UTWTK", "ACFMC", "PLCO"].includes(typeCode)) {
+        return false;
+    }
+
+    // Dive / Deployment number prefix check
+    const diveNo = String(r.inspection_data?.dive_no || r.inspection_data?.DIVE_NO || r.inspection_data?.deployment_no || r.dive_no || "").toUpperCase();
+    if (diveNo.startsWith("R") || diveNo.includes("ROV")) return true;
+    if (diveNo.startsWith("D") && !diveNo.includes("ROV")) return false;
+
+    return !r.dive_job_id;
+};
 
 /**
  * ROV CP Survey Report (Portrait)
@@ -34,8 +76,14 @@ export const generateROVCPReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
+        const filteredRecords = (records || []).filter(isROVRecord);
+
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -58,8 +106,8 @@ export const generateROVCPReport = async (
         // ── Date range ──────────────────────────────────────────────────────────
         let startDate: Date | null = null;
         let endDate:   Date | null = null;
-        if (records.length > 0) {
-            const dates = records
+        if (filteredRecords.length > 0) {
+            const dates = filteredRecords
                 .map(r => new Date(r.cr_date || r.created_at))
                 .filter(d => !isNaN(d.getTime()));
             if (dates.length > 0) {
@@ -71,7 +119,7 @@ export const generateROVCPReport = async (
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
             : "N/A";
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -100,14 +148,14 @@ export const generateROVCPReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
             if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
 
-            d.setFontSize(9);   d.setFont("helvetica", "bold");
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(7);   d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("CP Survey Report (ROV)",                                margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(8.5);   d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10.5, { align: "center" });
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
+            d.text("CP Survey Report (ROV)",                                margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         // ── Context info boxes ─────────────────────────────────────────────────
@@ -134,7 +182,7 @@ export const generateROVCPReport = async (
         };
 
         // ── Sort records by elevation (top → bottom) ───────────────────────────
-        const sorted = [...records].sort((a, b) => {
+        const sorted = [...filteredRecords].sort((a, b) => {
             const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
             const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
             return elB - elA;
@@ -148,9 +196,8 @@ export const generateROVCPReport = async (
             const elevation = r.elevation ?? d.elevation ?? "—";
 
             const diveNo =
-                r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.name  ||
-                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
-                r.rov_job_id || r.dive_job_id || "—";
+                r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.deployment_no || r.insp_rov_jobs?.name ||
+                r.rov_job_id || d.dive_no || d.deployment_no || r.dive_no || "—";
 
             const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
 
@@ -221,7 +268,9 @@ export const generateROVCPReport = async (
                 { content: "CP (mV)",          styles: { halign: "center", valign: "middle" } },
                 { content: "Findings",         styles: { halign: "center", valign: "middle" } }
             ]],
-            body: sorted.map(buildRow),
+            body: sorted.length > 0 
+                ? sorted.map(buildRow) 
+                : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
             theme: "grid",
             headStyles: {
                 fillColor: isPF ? [255, 255, 255] : colors.navy,
@@ -251,6 +300,7 @@ export const generateROVCPReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
+                if (!r) return;
                 const linkedAnom = r.insp_anomalies?.[0] ?? null;
                 const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                 const isFinding  = metaStatus === "finding";

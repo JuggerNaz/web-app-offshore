@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -36,7 +37,7 @@ export const generateROVCasnReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     const supabase = createClient();
     console.log("[ROV Caisson Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
@@ -64,6 +65,10 @@ export const generateROVCasnReport = async (
             return typeCode === 'RCASN' || compCode === 'CS';
         });
 
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -77,7 +82,7 @@ export const generateROVCasnReport = async (
         // Fetch all components to build a complete QID map for grouping
         const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
         
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF, caissonQid?: string) => {
             const isPF = config.printFriendly;
@@ -95,14 +100,14 @@ export const generateROVCasnReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
             if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
 
-            d.setFontSize(9);   d.setFont("helvetica", "bold");
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(7);   d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("Caisson Survey Report (ROV)",                                margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(8.5);   d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10.5, { align: "center" });
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
+            d.text("Caisson Survey Report (ROV)",                                margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -221,9 +226,9 @@ export const generateROVCasnReport = async (
             return a.localeCompare(b);
         });
         
-        if (sortedCaissonQids.length === 0 && records.length > 0) {
-            // Fallback for records not explicitly grouped
-            caissonGroups["General"] = records;
+        if (sortedCaissonQids.length === 0) {
+            if (!config?.isBlankReport) return null;
+            caissonGroups["General"] = [];
             sortedCaissonQids.push("General");
         }
 
@@ -256,9 +261,11 @@ export const generateROVCasnReport = async (
             // 1. Description / Findings
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
+            } else if (d.findings && d.findings.trim()) {
+                findingsParts.push(d.findings.trim());
             }
 
-            // 2. Additional CP details
+            // 2. CP Additionals
             additionals.forEach((a: any) => {
                 const val = a.reading ?? a.cp_rdg ?? "";
                 if ((val !== "" && val !== null && val !== undefined) || a.location) {
@@ -268,18 +275,19 @@ export const generateROVCasnReport = async (
                 }
             });
 
-            // 3. Anomaly & Rectified details
+            // 3. Anomaly Reference
             const linkedAnom = r.insp_anomalies?.[0] ?? null;
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
 
+            // 4. Rectification
             const isRectified = linkedAnom?.is_rectified || r.rectified || false;
             if (isRectified) {
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
                 findingsParts.push(`Rectified: ${rectRem}`);
             }
 
-            const row = [
+            return [
                 String(idx + 1),
                 qid,
                 String(elevation),
@@ -289,14 +297,13 @@ export const generateROVCasnReport = async (
                 String(coatCond),
                 findingsParts.length > 0 ? findingsParts.join("\n") : "—",
             ];
-            return row;
         };
 
-        // ── Generate Pages for each Caisson Group ───────────────────────────────
+        // ── Generation ──────────────────────────────────────────────────────────
         sortedCaissonQids.forEach((caissonQid, groupIdx) => {
             if (groupIdx > 0) doc.addPage();
             
-            const groupRecords = caissonGroups[caissonQid].sort((a, b) => {
+            const groupRecords = (caissonGroups[caissonQid] || []).sort((a, b) => {
                 const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
                 const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
                 return elB - elA;
@@ -334,7 +341,9 @@ export const generateROVCasnReport = async (
                     { content: "Coating\nCondition",   styles: { halign: "center", valign: "middle" } },
                     { content: "Findings",        styles: { halign: "center", valign: "middle" } }
                 ]],
-                body: groupRecords.map(buildRow),
+                body: groupRecords.length > 0
+                    ? groupRecords.map(buildRow)
+                    : [["-", "-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
@@ -365,6 +374,7 @@ export const generateROVCasnReport = async (
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
+                    if (!r) return;
                     const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                     const isFinding  = metaStatus === "finding";

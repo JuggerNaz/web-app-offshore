@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -37,7 +38,7 @@ export const generateROVRRISIJTubeDetailReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | null | void> => {
     const supabase = createClient();
     console.log("[ROV J-Tube Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
@@ -65,6 +66,10 @@ export const generateROVRRISIJTubeDetailReport = async (
             return typeCode === 'RRISI' && qid.startsWith('J') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
         });
 
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
         // ── Pre-load logos ──
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -75,37 +80,153 @@ export const generateROVRRISIJTubeDetailReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
+        const effectiveStructureId = config.structureId || 
+            records.find(r => r.structure_id)?.structure_id || 
+            records.find(r => r.structure_components?.structure_id)?.structure_components?.structure_id;
+
+        // Helper to extract identifier key (e.g., '01' from 'JT-01-SUPP')
+        const extractTubeKey = (qid: string) => {
+            if (!qid) return null;
+            const q = qid.toUpperCase().trim();
+            const match = q.match(/^(?:JTUBE|JT|J)[-_ ]*(\d+[A-Z]?)/i);
+            if (match) {
+                const rawNum = match[1].toUpperCase();
+                const normNum = rawNum.replace(/^0+/, '') || '0';
+                return { raw: rawNum, norm: normNum };
+            }
+            return null;
+        };
+
+        // Helper to check if a component is a primary parent J-Tube
+        const isParentJTubeComp = (c: any) => {
+            if (!c) return false;
+            const qid = (c.q_id || '').toUpperCase().trim();
+            const code = (c.code || '').toUpperCase().trim();
+            if (qid.includes('SUPP') || qid.includes('CLAMP') || qid.includes('CLP') || qid.includes('ANODE') || qid.includes('FLANGE') || qid.includes('WELD') || qid.includes('RISG')) {
+                return false;
+            }
+            const meta = c.metadata || {};
+            if (meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_comp_qid || meta.parent_qid) {
+                return false;
+            }
+            return (code === 'JT' || code === 'JTUBE' || qid.startsWith('J'));
+        };
+
         // Fetch all components to build a complete QID map for grouping
-        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const { data: allComps } = effectiveStructureId
+            ? await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', effectiveStructureId)
+            : { data: [] };
+
         const compRegistry = new Map<number, any>();
-        const qidToId = new Map<string, number>();
+        const parentCompsMap = new Map<number, any>();
+        const parentByQid = new Map<string, any>();
+        const parentByKey = new Map<string, any>();
+
+        const registerParent = (c: any) => {
+            if (!c || !c.id) return;
+            parentCompsMap.set(c.id, c);
+            const qid = (c.q_id || '').toUpperCase().trim();
+            if (qid) {
+                parentByQid.set(qid, c);
+                const baseQid = qid.replace(/[-_](SK\d+|WLP|PLAT|TEST|BAY).*/i, '').trim();
+                if (baseQid) parentByQid.set(baseQid, c);
+            }
+            const key = extractTubeKey(qid);
+            if (key) {
+                parentByKey.set(key.raw, c);
+                parentByKey.set(key.norm, c);
+            }
+        };
+
         if (allComps) {
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
-                qidToId.set(c.q_id.toUpperCase(), c.id);
-                const m = c.q_id.match(/(J\d+)/i) || c.q_id.match(/(J-\d+)/i);
-                if (m) qidToId.set(m[1].toUpperCase(), c.id);
+                if (isParentJTubeComp(c)) {
+                    registerParent(c);
+                }
             });
         }
 
-        // Group records by parent J-Tube component (RS)
+        // Also register parent components from incoming inspection records
+        filteredRecords.forEach(r => {
+            const comp = r.structure_components;
+            if (comp) {
+                if (comp.id) compRegistry.set(comp.id, comp);
+                if (isParentJTubeComp(comp)) {
+                    registerParent(comp);
+                }
+            }
+        });
+
+        // Helper to resolve parent component for any component / record
+        const resolveParentComp = (comp: any, r: any) => {
+            if (!comp) return null;
+            if (isParentJTubeComp(comp)) {
+                return comp;
+            }
+            const meta = comp.metadata || r.metadata || {};
+
+            // 1. Direct parent ID reference from metadata
+            const pId = Number(meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id);
+            if (pId && parentCompsMap.has(pId)) {
+                return parentCompsMap.get(pId);
+            }
+            if (pId && compRegistry.has(pId)) {
+                const cand = compRegistry.get(pId);
+                if (isParentJTubeComp(cand)) return cand;
+            }
+
+            // 2. Direct parent QID reference from metadata
+            const pQid = String(meta.associated_comp_qid || meta.parent_qid || meta.parent_q_id || '').toUpperCase().trim();
+            if (pQid && parentByQid.has(pQid)) {
+                return parentByQid.get(pQid);
+            }
+
+            const qid = (comp.q_id || r.q_id || r.component_qid || '').toUpperCase().trim();
+
+            // 3. Exact QID match in parentByQid
+            if (parentByQid.has(qid)) {
+                return parentByQid.get(qid);
+            }
+
+            // 4. Key match (e.g. JT-01-SUPP matches JT-01 via '01'/'1')
+            const key = extractTubeKey(qid);
+            if (key) {
+                if (parentByKey.has(key.norm)) return parentByKey.get(key.norm);
+                if (parentByKey.has(key.raw)) return parentByKey.get(key.raw);
+            }
+
+            // 5. Prefix match against registered parents
+            let longestMatch: any = null;
+            let longestLen = 0;
+            parentByQid.forEach((pComp, pQ) => {
+                if (qid.startsWith(pQ) || qid.startsWith(pQ + '-') || qid.startsWith(pQ + '_')) {
+                    if (pQ.length > longestLen) {
+                        longestLen = pQ.length;
+                        longestMatch = pComp;
+                    }
+                }
+            });
+            if (longestMatch) return longestMatch;
+
+            // 6. If there is only 1 registered parent component, assign subcomponents to it
+            if (parentCompsMap.size === 1) {
+                return Array.from(parentCompsMap.values())[0];
+            }
+
+            return null;
+        };
+
+        // Group records by parent J-Tube component
         const jtubesMap = new Map<number, { jtubeComp: any, records: any[] }>();
         const unassigned: any[] = [];
         filteredRecords.forEach(r => {
             const comp = r.structure_components;
             if (!comp) return;
-            let rid: number | null = null;
-            if (comp.code === 'RS') rid = comp.id;
-            else if (comp.metadata?.associated_comp_id) rid = Number(comp.metadata.associated_comp_id);
-            else {
-                const q = (comp.q_id || '').toUpperCase();
-                const m = q.match(/(J\d+)/i) || q.match(/(J-\d+)/i);
-                if (m && qidToId.has(m[1].toUpperCase())) rid = qidToId.get(m[1].toUpperCase())!;
-                else if (qidToId.has(q)) rid = qidToId.get(q)!;
-            }
-            if (rid) {
-                if (!jtubesMap.has(rid)) jtubesMap.set(rid, { jtubeComp: compRegistry.get(rid) || comp, records: [] });
-                jtubesMap.get(rid)!.records.push(r);
+            const parent = resolveParentComp(comp, r);
+            if (parent && parent.id) {
+                if (!jtubesMap.has(parent.id)) jtubesMap.set(parent.id, { jtubeComp: parent, records: [] });
+                jtubesMap.get(parent.id)!.records.push(r);
             } else unassigned.push(r);
         });
 
@@ -120,7 +241,13 @@ export const generateROVRRISIJTubeDetailReport = async (
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
 
-        const HEADER_H = 24;
+        if (!config.isBlankReport && groups.length === 0) {
+            return null;
+        }
+
+        const renderGroups = groups.length > 0 ? groups : [{ jtubeComp: { q_id: 'GENERAL' }, records: [] }];
+
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
@@ -138,14 +265,14 @@ export const generateROVRRISIJTubeDetailReport = async (
             if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
             if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
 
-            d.setFontSize(9); d.setFont("helvetica", "bold");
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Division", margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13); d.setFont("helvetica", "bold");
-            d.text("J-Tube Inspection Report (ROV)", margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || "Technical Division", margin + contentWidth / 2, margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("J-Tube Inspection Report (ROV)", margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -193,36 +320,35 @@ export const generateROVRRISIJTubeDetailReport = async (
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
-            const footerY = pageHeight - 10;
+            const footerY = pageHeight - 8;
             d.setDrawColor(...colors.border);
-            d.setLineWidth(0.1);
-            d.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+            d.setLineWidth(0.2);
+            d.line(margin, footerY - 3, pageWidth - margin, footerY - 3);
 
             d.setFontSize(7);
-            d.setTextColor(...colors.text);
-            d.setFont("helvetica", "bold");
-            d.text("CONFIDENTIAL", margin, footerY);
-
             d.setFont("helvetica", "normal");
+            d.text(`Report ID: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin, footerY);
+            d.text(`Printed: ${format(new Date(), "dd MMM yyyy HH:mm")}`, margin + contentWidth / 2, footerY, { align: "center" });
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: "right" });
-            d.text(`Structure: ${headerData.platformName || "N/A"}`, margin + 35, footerY);
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + 85, footerY);
         };
 
         // ── Render each J-Tube group ──
-        for (let i = 0; i < groups.length; i++) {
-            const g = groups[i];
+        for (let i = 0; i < renderGroups.length; i++) {
+            const g = renderGroups[i];
             if (i > 0) doc.addPage();
             drawPageHeader(doc);
 
             let currentY = margin + HEADER_H + 4;
             currentY = drawContextRow(doc, currentY, g.records);
 
-            // J-Tube Header info block
-            doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-            doc.setTextColor(...colors.navy);
-            doc.text(`J-Tube Group: ${g.jtubeComp?.q_id || "Miscellaneous"}`, margin, currentY);
-            currentY += 5;
+            // J-Tube Header info block (navy sub-header banner)
+            doc.setFillColor(...colors.navy);
+            doc.rect(margin, currentY, contentWidth, 7, "F");
+            doc.setTextColor(255);
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "bold");
+            doc.text(`J-Tube Component: ${g.jtubeComp?.q_id || "Miscellaneous"}`, margin + 4, currentY + 5);
+            currentY += 10;
 
             // Sort records by elevation Ascending
             const sortedRecords = [...g.records].sort((a, b) => {
@@ -232,7 +358,7 @@ export const generateROVRRISIJTubeDetailReport = async (
             });
 
             // Map records to autoTable RowInput[]
-            const tableRows = sortedRecords.map((r, rIdx) => {
+            const tableRows = sortedRecords.length > 0 ? sortedRecords.map((r, rIdx) => {
                 const comp = r.structure_components || {};
                 const d = r.inspection_data || {};
                 const anoms = r.insp_anomalies || [];
@@ -290,7 +416,15 @@ export const generateROVRRISIJTubeDetailReport = async (
                     { content: cpDisplay, styles: { halign: "center" as const } },
                     { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                 ];
-            });
+            }) : [[
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-" },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "No observations recorded for this scope." }
+            ]];
 
             autoTable(doc, {
                 startY: currentY,

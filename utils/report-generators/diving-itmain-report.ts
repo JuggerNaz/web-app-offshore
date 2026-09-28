@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
     watermarkText?: string;
@@ -35,8 +36,18 @@ export const generateDivingITMAINReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
+        // ── Filter to ITMAIN records ───────────────────────────────────────────
+        const filteredRecords = (records || []).filter(r => {
+            const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+            return code === 'ITMAIN' || code === '';
+        });
+
+        if (!config?.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -53,11 +64,6 @@ export const generateDivingITMAINReport = async (
             finding: [124, 58, 237] as [number, number, number],
         };
 
-        // ── Filter to ITMAIN records ───────────────────────────────────────────
-        const filteredRecords = (records || []).filter(r => {
-            const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
-            return code === 'ITMAIN' || code === '';
-        });
         const targetRecords = filteredRecords.length > 0 ? filteredRecords : (records || []);
 
         // ── Date range calculation ──────────────────────────────────────────────
@@ -76,7 +82,7 @@ export const generateDivingITMAINReport = async (
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
             : "N/A";
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ─────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -101,17 +107,17 @@ export const generateDivingITMAINReport = async (
                 d.setTextColor(255);
             }
 
-            if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
+            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
 
-            d.setFontSize(9); d.setFont("helvetica", "bold");
-            d.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings?.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text("Item Maintenance Inspection Report (Diving)", margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("Item Maintenance Inspection Report (Diving)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
 
         // ── Subheader Context Box ───────────────────────────────────────────────

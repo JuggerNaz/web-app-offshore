@@ -110,23 +110,24 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
     { templateId: "rutwt", label: "UTWT Survey", code: "RUTWT", mode: "ROV" },
   ],
   BL: [
-    { templateId: "bl", label: "ROV Boatlanding Report", code: "BL", mode: "ROV" },
+    { templateId: "bl", label: "Boatlanding Inspection Report (ROV)", code: "BL", mode: "ROV" },
   ],
   RG: [
-    { templateId: "rg", label: "ROV Riser Guard Report", code: "RG", mode: "ROV" },
+    { templateId: "rg", label: "Riser Guard Inspection Report (ROV)", code: "RG", mode: "ROV" },
   ],
   SG: [
-    { templateId: "sg", label: "ROV Caisson Guard Report", code: "SG", mode: "ROV" },
+    { templateId: "sg", label: "Caisson Guard Inspection Report (ROV)", code: "SG", mode: "ROV" },
   ],
   CU: [
-    { templateId: "cu", label: "ROV Conductor Guard Report", code: "CU", mode: "ROV" },
+    { templateId: "cu", label: "Conductor Guard Inspection Report (ROV)", code: "CU", mode: "ROV" },
   ],
   RSANI: [
-    { templateId: "rsani", label: "ROV Selected Anode Report (SANI)", code: "RSANI", mode: "ROV" },
+    { templateId: "rsani", label: "Selected Anode Report (ROV)", code: "RSANI", mode: "ROV" },
   ],
   // Multi-template: ROV Scour
   RSCOR: [
-    { templateId: "rscor", label: "Scour Survey Sketch Report", code: "RSCOR", mode: "ROV" },
+    { templateId: "rscor-survey", label: "Scour Survey Report", code: "RSCOR", mode: "ROV" },
+    { templateId: "rscor", label: "Scour Survey Sketch Report", code: "RSCOR-SKETCH", mode: "ROV" },
     { templateId: "rscor-v2", label: "Scour Survey Sketch v2", code: "RSCOR-V2", mode: "ROV" },
   ],
   // Multi-template: ROV Riser
@@ -615,6 +616,13 @@ async function routeToGenerator(
       if (!recs.length) return;
       const { generateROVAnodeRSANIReport } = await import("@/utils/report-generators/rov-anode-rsani-report");
       return await generateROVAnodeRSANIReport(recs, headerData, companyInfo, opts) as Blob;
+    }
+    case "rscor-survey":
+    case "rov-rscor-survey-report": {
+      const recs = filterByCode(["RSCOR", "SCOUR"]);
+      if (!recs.length) return;
+      const { generateROVRSCORSurveyReport } = await import("@/utils/report-generators/rov-rscor-survey-report");
+      return await generateROVRSCORSurveyReport(recs, headerData, companyInfo, opts) as Blob;
     }
     case "rscor": {
       const recs = filterByCode(["RSCOR", "SCOUR"]);

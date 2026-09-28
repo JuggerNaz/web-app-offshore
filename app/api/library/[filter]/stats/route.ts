@@ -4,34 +4,55 @@ import { createClient } from "@/utils/supabase/server";
 export async function GET(request: Request, { params }: { params: Promise<{ filter: string }> }) {
     const { filter } = await params;
     const supabase = createClient();
+    const { searchParams } = new URL(request.url);
+    const companyId = searchParams.get("company_id") || 
+      request.headers.get("x-company-id") || 
+      (request as any).cookies?.get?.("active_company_id")?.value;
 
     // Get field info
-    const { data: fieldData, error: fieldError } = await supabase
+    let fieldQuery = (supabase as any)
         .from("u_lib_list")
         .select()
         .eq("lib_code", "OILFIELD")
-        .eq("lib_id", filter)
-        .single();
+        .eq("lib_id", filter);
 
-    if (fieldError) {
-        return NextResponse.json({ error: `Failed to fetch field` }, { status: 500 });
+    if (companyId) {
+        fieldQuery = fieldQuery.eq("company_id", companyId);
+    }
+
+    const { data: fieldData, error: fieldError } = (await fieldQuery.maybeSingle()) as any;
+
+    if (fieldError || !fieldData) {
+        return NextResponse.json({ error: `Failed to fetch field` }, { status: 404 });
     }
 
     // Count platforms for this field
-    const { count: platformCount, error: platformError } = await supabase
+    let platQuery = (supabase as any)
         .from("platform")
         .select("*", { count: "exact", head: true })
         .eq("pfield", filter);
+
+    if (companyId) {
+        platQuery = platQuery.eq("company_id", companyId);
+    }
+
+    const { count: platformCount, error: platformError } = (await platQuery) as any;
 
     if (platformError) {
         return NextResponse.json({ error: `Failed to count platforms` }, { status: 500 });
     }
 
     // Count pipelines for this field
-    const { count: pipelineCount, error: pipelineError } = await supabase
+    let pipeQuery = (supabase as any)
         .from("u_pipeline")
         .select("*", { count: "exact", head: true })
         .eq("pfield", filter);
+
+    if (companyId) {
+        pipeQuery = pipeQuery.eq("company_id", companyId);
+    }
+
+    const { count: pipelineCount, error: pipelineError } = await pipeQuery;
 
     if (pipelineError) {
         return NextResponse.json({ error: `Failed to count pipelines` }, { status: 500 });

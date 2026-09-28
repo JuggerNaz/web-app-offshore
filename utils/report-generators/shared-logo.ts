@@ -1,45 +1,70 @@
 import { jsPDF } from "jspdf";
 
-export const loadLogoWithTransparency = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
+export const loadLogoWithTransparency = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
+    if (!url || typeof url !== 'string' || !url.trim()) {
+        return null;
+    }
+
+    // Convert to Data URI via fetch + blob if possible to avoid canvas taint / CORS errors
+    let finalSrc = url;
+    if (!url.startsWith("data:")) {
+        try {
+            const response = await fetch(url);
+            if (response.ok) {
+                const blob = await response.blob();
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                if (dataUrl) finalSrc = dataUrl;
+            }
+        } catch (_) {}
+    }
+
     return new Promise((resolve) => {
-        if (!url || typeof url !== 'string' || !url.trim()) {
-            resolve(null);
-            return;
+        const img = new window.Image();
+        if (!finalSrc.startsWith("data:")) {
+            img.crossOrigin = "Anonymous";
         }
 
-        const img = new window.Image();
-        img.crossOrigin = "Anonymous";
-
         const timeout = setTimeout(() => {
-            console.warn(`Logo loading timed out (3s limit) for URL: ${url}`);
+            console.warn(`Logo loading timed out (4s limit) for URL: ${url}`);
             img.onload = null;
             img.onerror = null;
             resolve(null);
-        }, 3000);
+        }, 4000);
 
         img.onload = () => {
             clearTimeout(timeout);
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
+            const w = img.naturalWidth || img.width || 100;
+            const h = img.naturalHeight || img.height || 100;
+
+            try {
+                const canvas = document.createElement("canvas");
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                    resolve({ data: finalSrc, width: w, height: h });
+                    return;
+                }
+
                 ctx.drawImage(img, 0, 0);
 
                 try {
-                    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    const imageData = ctx.getImageData(0, 0, w, h);
                     const data = imageData.data;
-                    const width = img.width;
-                    const height = img.height;
 
                     const isWhite = (i: number) => data[i] > 230 && data[i + 1] > 230 && data[i + 2] > 230 && data[i + 3] > 0;
 
                     const stack: { x: number, y: number }[] = [];
-                    const visited = new Uint8Array(width * height);
+                    const visited = new Uint8Array(w * h);
 
                     const pushIfWhite = (x: number, y: number) => {
-                        if (x < 0 || x >= width || y < 0 || y >= height) return;
-                        const idx = y * width + x;
+                        if (x < 0 || x >= w || y < 0 || y >= h) return;
+                        const idx = y * w + x;
                         if (!visited[idx]) {
                             const p = idx * 4;
                             if (isWhite(p)) {
@@ -49,14 +74,14 @@ export const loadLogoWithTransparency = (url: string): Promise<{ data: string; w
                         }
                     };
 
-                    for (let x = 0; x < width; x++) { pushIfWhite(x, 0); pushIfWhite(x, height - 1); }
-                    for (let y = 0; y < height; y++) { pushIfWhite(0, y); pushIfWhite(width - 1, y); }
+                    for (let x = 0; x < w; x++) { pushIfWhite(x, 0); pushIfWhite(x, h - 1); }
+                    for (let y = 0; y < h; y++) { pushIfWhite(0, y); pushIfWhite(w - 1, y); }
 
                     while (stack.length > 0) {
                         const pt = stack.pop();
                         if (!pt) continue;
                         const { x, y } = pt;
-                        const p = (y * width + x) * 4;
+                        const p = (y * w + x) * 4;
                         data[p + 3] = 0; // make transparent
 
                         pushIfWhite(x + 1, y);
@@ -66,15 +91,15 @@ export const loadLogoWithTransparency = (url: string): Promise<{ data: string; w
                     }
 
                     // Edge smoothing
-                    for (let y = 1; y < height - 1; y++) {
-                        for (let x = 1; x < width - 1; x++) {
-                            const p = (y * width + x) * 4;
+                    for (let y = 1; y < h - 1; y++) {
+                        for (let x = 1; x < w - 1; x++) {
+                            const p = (y * w + x) * 4;
                             if (data[p + 3] !== 0) {
                                 const hasTransparentNeighbor =
-                                    data[((y) * width + x - 1) * 4 + 3] === 0 ||
-                                    data[((y) * width + x + 1) * 4 + 3] === 0 ||
-                                    data[((y - 1) * width + x) * 4 + 3] === 0 ||
-                                    data[((y + 1) * width + x) * 4 + 3] === 0;
+                                    data[((y) * w + x - 1) * 4 + 3] === 0 ||
+                                    data[((y) * w + x + 1) * 4 + 3] === 0 ||
+                                    data[((y - 1) * w + x) * 4 + 3] === 0 ||
+                                    data[((y + 1) * w + x) * 4 + 3] === 0;
                                 if (hasTransparentNeighbor) {
                                     const avgColor = (data[p] + data[p + 1] + data[p + 2]) / 3;
                                     if (avgColor > 200) {
@@ -85,21 +110,27 @@ export const loadLogoWithTransparency = (url: string): Promise<{ data: string; w
                         }
                     }
                     ctx.putImageData(imageData, 0, 0);
-                } catch (e) { console.error("Canvas transparency error", e); }
-
-                resolve({ data: canvas.toDataURL("image/png"), width: img.width, height: img.height });
-            } else {
-                resolve(null);
+                    resolve({ data: canvas.toDataURL("image/png"), width: w, height: h });
+                } catch {
+                    // If canvas security or getImageData throws, return data URL or original source
+                    try {
+                        resolve({ data: canvas.toDataURL("image/png"), width: w, height: h });
+                    } catch {
+                        resolve({ data: finalSrc, width: w, height: h });
+                    }
+                }
+            } catch {
+                resolve({ data: finalSrc, width: w, height: h });
             }
         };
+
         img.onerror = () => {
             clearTimeout(timeout);
             console.warn(`Logo loading failed for URL: ${url}`);
             resolve(null);
         };
 
-        // Assign src AFTER setting onload and onerror handlers to prevent race conditions
-        img.src = url;
+        img.src = finalSrc;
     });
 };
 

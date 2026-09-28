@@ -99,7 +99,13 @@ export async function getUserMembership(supabase: any, userId: string, companyId
   }
 
   // 2. Resolve memberships (fetched in parallel above)
-  const memberships = membershipsRes.data;
+  // Filter out any memberships that are inactive OR belong to a deactivated organization
+  const allMemberships = membershipsRes.data || [];
+  const memberships = allMemberships.filter((m: any) => {
+    if (!m.is_active) return false;
+    if (m.company && (m.company.is_active === false || m.company.is_active === 0)) return false;
+    return true;
+  });
 
   if (membershipsRes.error || !memberships || memberships.length === 0) {
     return { error: "No active company memberships found", status: 403, profile };
@@ -167,10 +173,21 @@ export function withRole(allowedRoles: UserRole[], handler: AuthenticatedRoleHan
         return apiForbidden(result.error);
       }
 
-      const { profile, membership, company, memberships } = result;
+      const { profile, membership, company, memberships, userRole } = result as any;
 
       // 4. Verify role authorization (hierarchy-aware)
-      const userRoleIndex = ROLE_HIERARCHY.indexOf(membership.role);
+      const isSuperAdmin = 
+        membership?.role === "super_admin" ||
+        (memberships || []).some((m: any) => m.role === "super_admin") ||
+        (userRole?.role && (
+          userRole.role.toLowerCase() === "super admin" || 
+          userRole.role.toLowerCase() === "super_admin" ||
+          userRole.role.toLowerCase() === "superadmin" ||
+          userRole.role.toLowerCase() === "admin"
+        ));
+
+      const effectiveRole: UserRole = isSuperAdmin ? "super_admin" : (membership?.role || "viewer");
+      const userRoleIndex = ROLE_HIERARCHY.indexOf(effectiveRole);
       const minRequiredIndex = Math.min(
         ...allowedRoles.map((r) => ROLE_HIERARCHY.indexOf(r))
       );

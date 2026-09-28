@@ -82,50 +82,10 @@ function getInitialCachedList<T>(sessionKey: string): T[] {
 
 export default function InspectionLanding() {
     const router = useRouter();
-    const supabase = createClient();
-
-    const initialStructure = useMemo(() => getInitialInspectionState("inspection_structure", "structure"), []);
-    const initialJobPack = useMemo(() => getInitialInspectionState("inspection_jobpack", "jobpack"), []);
-    const initialSow = useMemo(() => getInitialInspectionState("inspection_sow"), []);
-    const initialMode = useMemo(() => getInitialInspectionState("inspection_mode", "mode") || "ROV", []);
-
-    const initialRawStructId = initialStructure ? initialStructure.replace(/^(platform|pipeline)-/, "") : "";
-    const initialSowKey = initialJobPack && initialRawStructId ? `${initialJobPack}_${initialRawStructId}` : "";
-
-    const [allStructures, setAllStructures] = useState<Structure[]>(() => {
-        if (memoryAllStructures.length > 0) return memoryAllStructures;
-        return getInitialCachedList<Structure>("cached_all_structures");
-    });
-
-    const [jobPacks, setJobPacks] = useState<JobPack[]>(() => {
-        if (initialRawStructId && memoryJobPacksByStructure.has(initialRawStructId)) {
-            return memoryJobPacksByStructure.get(initialRawStructId) || [];
-        }
-        if (initialRawStructId) {
-            return getInitialCachedList<JobPack>(`cached_jobpacks_${initialRawStructId}`);
-        }
-        return [];
-    });
-
-    const [sowReports, setSOWReports] = useState<SOWReport[]>(() => {
-        if (initialSowKey && memorySowReportsByJobPack.has(initialSowKey)) {
-            return memorySowReportsByJobPack.get(initialSowKey) || [];
-        }
-        if (initialSowKey) {
-            return getInitialCachedList<SOWReport>(`cached_sows_${initialSowKey}`);
-        }
-        return [];
-    });
-
-    const [rawSowItems, setRawSowItems] = useState<any[]>(() => {
-        if (initialSowKey && memoryRawSowItemsByJobPack.has(initialSowKey)) {
-            return memoryRawSowItemsByJobPack.get(initialSowKey) || [];
-        }
-        if (initialSowKey) {
-            return getInitialCachedList<any>(`cached_sow_items_${initialSowKey}`);
-        }
-        return [];
-    });
+    const [allStructures, setAllStructures] = useState<Structure[]>([]);
+    const [jobPacks, setJobPacks] = useState<JobPack[]>([]);
+    const [sowReports, setSOWReports] = useState<SOWReport[]>([]);
+    const [rawSowItems, setRawSowItems] = useState<any[]>([]);
 
     const [sowInspRecords, setSowInspRecords] = useState<any[]>([]);
     const [anomalyCount, setAnomalyCount] = useState<number>(0);
@@ -135,14 +95,15 @@ export default function InspectionLanding() {
     const [sowReportsLoading, setSowReportsLoading] = useState<boolean>(false);
 
     const [mounted, setMounted] = useState(false);
-    const [selectedJobPack, setSelectedJobPack] = useState<string>(initialJobPack);
-    const [selectedStructure, setSelectedStructure] = useState<string>(initialStructure);
-    const [selectedSOW, setSelectedSOW] = useState<string>(initialSow);
-    const [selectedMode, setSelectedMode] = useState<string>(initialMode);
-    const [loading, setLoading] = useState(() => memoryAllStructures.length === 0);
+    const [selectedJobPack, setSelectedJobPack] = useState<string>("");
+    const [selectedStructure, setSelectedStructure] = useState<string>("");
+    const [selectedSOW, setSelectedSOW] = useState<string>("");
+    const [selectedMode, setSelectedMode] = useState<string>("ROV");
+    const [loading, setLoading] = useState<boolean>(true);
+    const supabase = useMemo(() => createClient(), []);
 
-    const prevStructureRef = useRef<string>(initialStructure);
-    const prevJobPackRef = useRef<string>(initialJobPack);
+    const prevStructureRef = useRef<string>("");
+    const prevJobPackRef = useRef<string>("");
     const activeJobPackReqIdRef = useRef<number>(0);
     const activeSowReqIdRef = useRef<number>(0);
 
@@ -260,6 +221,22 @@ export default function InspectionLanding() {
     const hasInitialUrlSyncRef = useRef(false);
     useEffect(() => {
         setMounted(true);
+        const initStruct = getInitialInspectionState("inspection_structure", "structure");
+        const initJobPack = getInitialInspectionState("inspection_jobpack", "jobpack");
+        const initSow = getInitialInspectionState("inspection_sow");
+        const initMode = getInitialInspectionState("inspection_mode", "mode") || "ROV";
+
+        if (initStruct) {
+            setSelectedStructure(initStruct);
+            prevStructureRef.current = initStruct;
+        }
+        if (initJobPack) {
+            setSelectedJobPack(initJobPack);
+            prevJobPackRef.current = initJobPack;
+        }
+        if (initSow) setSelectedSOW(initSow);
+        if (initMode) setSelectedMode(initMode);
+
         loadStructures();
     }, []);
 
@@ -496,6 +473,7 @@ export default function InspectionLanding() {
 
         async function fetchSowInspRecords(structId: string, jpId: string, sowReportNo: string) {
             try {
+                const supabase = createClient();
                 const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
                 const cacheKey = `sow_records_${rawId}_${jpId}_${sowReportNo || 'all'}`;
 
@@ -532,7 +510,7 @@ export default function InspectionLanding() {
                     const offset = i * batchSize;
                     let query = supabase
                         .from("insp_records")
-                        .select("insp_id, fp_kp, status, has_anomaly, elevation, inspection_type_code, inspection_data, dive_job_id, rov_job_id")
+                        .select("insp_id, component_id, component_type, fp_kp, status, has_anomaly, elevation, inspection_type_code, inspection_data, dive_job_id, rov_job_id, sow_report_no, structure_components(id, q_id, code)")
                         .eq("structure_id", parseInt(rawId))
                         .eq("jobpack_id", parseInt(jpId))
                         .range(offset, offset + batchSize - 1);
@@ -562,6 +540,7 @@ export default function InspectionLanding() {
 
         async function fetchAnomalyCount(structId: string, jpId: string, sowReportNo: string) {
             try {
+                const supabase = createClient();
                 // Parse prefix e.g., platform-1 or pipeline-1
                 const rawId = structId.includes("-") ? structId.split("-")[1] : structId;
                 const numRawId = parseInt(rawId);
@@ -654,8 +633,10 @@ export default function InspectionLanding() {
 
         const isPipeline = selectedStructureData?.type === "pipeline";
 
-        const total = currentReportItems.length > 0 ? currentReportItems.length : sowInspRecords.length;
-        if (total === 0 && !isPipeline) return null;
+        const normalizeCode = (c: string) => {
+            if (!c) return "";
+            return c.replace(/^(ROV|DIVE|DIVING)[-_ ]+/i, "").replace(/[-_ ]+(ROV|DIVE|DIVING)$/i, "").trim().toUpperCase();
+        };
 
         const isRovItem = (item: any) => {
             const code = String(item.inspection_code || item.inspection_type_code || "").trim().toUpperCase();
@@ -674,12 +655,72 @@ export default function InspectionLanding() {
             return false;
         };
 
-        const completedItems = currentReportItems.filter((item) => String(item.status || "").toLowerCase() === "completed");
-        const incompleteItems = currentReportItems.filter((item) => ["incomplete", "skipped"].includes(String(item.status || "").toLowerCase()));
-        const pendingItems = currentReportItems.filter(
-            (item) => !item.status || String(item.status || "").toLowerCase() === "pending"
-        );
+        // Cross-reference currentReportItems with sowInspRecords
+        const availableRecords: Array<{
+            compId: string;
+            qid: string;
+            inspCode: string;
+            normCode: string;
+            status: string;
+            hasAnomaly: boolean;
+            isDive: boolean;
+            used: boolean;
+        }> = (sowInspRecords || []).map((r: any) => {
+            const data = r.inspection_data || {};
+            const structComp = r.structure_components || {};
+            const qid = String(structComp.q_id || data.q_id || data.component_qid || "").trim().toUpperCase();
+            const compId = r.component_id ? String(r.component_id) : (structComp.id ? String(structComp.id) : "");
+            const inspCode = String(r.inspection_type_code || data.insp_type || data.INSP_TYPE || "").trim().toUpperCase();
+            const normCode = normalizeCode(inspCode);
+            const status = String(r.status || "").toUpperCase();
+            const hasAnomaly = !!r.has_anomaly;
+            const isDive = !!r.dive_job_id || String(r.inspection_type_code || "").toUpperCase().startsWith("D");
+            return { compId, qid, inspCode, normCode, status, hasAnomaly, isDive, used: false };
+        });
 
+        const resolvedReportItems = currentReportItems.map((item: any) => {
+            const itemQid = String(item.component_qid || item.q_id || "").trim().toUpperCase();
+            const itemCompId = item.component_id ? String(item.component_id) : "";
+            const itemInspCode = String(item.inspection_code || item.inspection_type_code || "").trim().toUpperCase();
+            const itemNormCode = normalizeCode(itemInspCode);
+
+            // Find matching available inspection record
+            const match = availableRecords.find(rec => {
+                if (rec.used) return false;
+                const matchesCode = !itemInspCode || !rec.inspCode || (rec.inspCode === itemInspCode) || (itemNormCode && rec.normCode && itemNormCode === rec.normCode);
+                if (!matchesCode) return false;
+
+                const matchesQid = itemQid && rec.qid && (itemQid === rec.qid);
+                const matchesCompId = itemCompId && rec.compId && (itemCompId === rec.compId && itemCompId !== "0");
+                return matchesQid || matchesCompId;
+            });
+
+            let effectiveStatus = String(item.status || "pending").toLowerCase().trim();
+            if (effectiveStatus === "complete") effectiveStatus = "completed";
+            let effectiveIsDive = isDivingItem(item);
+
+            if (match) {
+                match.used = true;
+                if (match.status === "INCOMPLETE" || match.status === "SKIPPED") {
+                    effectiveStatus = "incomplete";
+                } else {
+                    effectiveStatus = "completed";
+                }
+                if (match.isDive) {
+                    effectiveIsDive = true;
+                }
+            }
+
+            return {
+                ...item,
+                effectiveStatus,
+                effectiveIsDive
+            };
+        });
+
+        let completed = 0;
+        let incomplete = 0;
+        let pending = 0;
         let rovCompleted = 0;
         let diveCompleted = 0;
         let rovIncomplete = 0;
@@ -694,54 +735,55 @@ export default function InspectionLanding() {
         let crossings = 0;
         let cpReadings = 0;
 
-        // Process SOW planned items
-        currentReportItems.forEach((item) => {
-            const code = String(item.inspection_code || "").toUpperCase();
-            const desc = String(item.scope_description || item.notes || "").toUpperCase();
-            const status = String(item.status || "").toLowerCase().trim();
+        if (currentReportItems.length > 0) {
+            resolvedReportItems.forEach((item) => {
+                const code = String(item.inspection_code || item.inspection_type_code || "").toUpperCase();
+                const desc = String(item.scope_description || item.notes || "").toUpperCase();
+                const status = item.effectiveStatus;
+                const isDive = item.effectiveIsDive;
 
-            const isDive = isDivingItem(item);
+                if (status === "completed" || status === "complete" || status === "anomaly") {
+                    completed++;
+                    if (isDive) diveCompleted++;
+                    else rovCompleted++;
+                } else if (status === "incomplete" || status === "skipped") {
+                    incomplete++;
+                    if (isDive) diveIncomplete++;
+                    else rovIncomplete++;
+                } else {
+                    pending++;
+                    if (isDive) divePending++;
+                    else rovPending++;
+                }
 
-            if (status === "completed") {
-                if (isDive) diveCompleted++;
-                else rovCompleted++;
-            } else if (status === "incomplete" || status === "skipped") {
-                if (isDive) diveIncomplete++;
-                else rovIncomplete++;
-            } else {
-                if (isDive) divePending++;
-                else rovPending++;
-            }
-
-            if (code.includes("FJ") || desc.includes("JOINT") || desc.includes("FIELD JOINT")) fieldJoints++;
-            if (code.includes("AN") || desc.includes("ANODE")) anodes++;
-            if (code.includes("SPAN") || desc.includes("FREE SPAN") || desc.includes("SPAN")) spans++;
-            if (code.includes("BUR") || desc.includes("BURIAL") || desc.includes("BURIED")) burials++;
-            if (code.includes("CROSS") || desc.includes("CROSSING")) crossings++;
-            if (code.includes("CP") || desc.includes("CP")) cpReadings++;
-        });
-
-        // Also aggregate live recorded inspection events
-        if (sowInspRecords && sowInspRecords.length > 0) {
+                if (code.includes("FJ") || desc.includes("JOINT") || desc.includes("FIELD JOINT")) fieldJoints++;
+                if (code.includes("AN") || desc.includes("ANODE")) anodes++;
+                if (code.includes("SPAN") || desc.includes("FREE SPAN") || desc.includes("SPAN")) spans++;
+                if (code.includes("BUR") || desc.includes("BURIAL") || desc.includes("BURIED")) burials++;
+                if (code.includes("CROSS") || desc.includes("CROSSING")) crossings++;
+                if (code.includes("CP") || desc.includes("CP")) cpReadings++;
+            });
+        } else if (sowInspRecords && sowInspRecords.length > 0) {
             sowInspRecords.forEach((rec) => {
                 const code = String(rec.inspection_type_code || "").toUpperCase();
                 const data = rec.inspection_data || {};
                 const eventName = String(data.event_name || data.event_type || data.eventName || data.eventType || data.raw_event || data.raw_type || "").toUpperCase();
                 const desc = String(data.event_description || data.findings || data.eventDescription || data.raw_descr || data.raw_comments || "").toUpperCase();
+                const status = String(rec.status || "").toLowerCase().trim();
                 const isDive = !!rec.dive_job_id;
 
-                if (currentReportItems.length === 0) {
-                    const status = String(rec.status || "").toLowerCase().trim();
-                    if (status === "completed" || status === "anomaly") {
-                        if (isDive) diveCompleted++;
-                        else rovCompleted++;
-                    } else if (status === "incomplete" || status === "skipped") {
-                        if (isDive) diveIncomplete++;
-                        else rovIncomplete++;
-                    } else {
-                        if (isDive) divePending++;
-                        else rovPending++;
-                    }
+                if (status === "completed" || status === "anomaly") {
+                    completed++;
+                    if (isDive) diveCompleted++;
+                    else rovCompleted++;
+                } else if (status === "incomplete" || status === "skipped") {
+                    incomplete++;
+                    if (isDive) diveIncomplete++;
+                    else rovIncomplete++;
+                } else {
+                    pending++;
+                    if (isDive) divePending++;
+                    else rovPending++;
                 }
 
                 if (code.includes("FJ") || eventName.includes("FIELD JOINT") || eventName.includes("FJ") || desc.includes("FIELD JOINT") || desc.includes("JOINT")) fieldJoints++;
@@ -752,6 +794,9 @@ export default function InspectionLanding() {
                 if (code.includes("CP") || data.cp_fg_rdg || data.cp_rdg || data.cp_reading_mv || data.cp_fg || (data.cp_reading && data.cp_reading !== "") || (data.cp !== undefined && data.cp !== null && data.cp !== "")) cpReadings++;
             });
         }
+
+        const total = currentReportItems.length > 0 ? currentReportItems.length : (sowInspRecords.length || 0);
+        if (total === 0 && !isPipeline) return null;
 
         // Pipeline length progress calculations (in km)
         let totalPipelineLength = parseFloat(
@@ -769,7 +814,6 @@ export default function InspectionLanding() {
             let minKp = Infinity;
             let maxKp = -Infinity;
 
-            // Check SOW item KPs
             currentReportItems.forEach((item) => {
                 const status = String(item.status || "").toLowerCase();
                 const rawKp = parseFloat(item.metadata?.kp || item.kp || "0");
@@ -784,7 +828,6 @@ export default function InspectionLanding() {
                 }
             });
 
-            // Check insp_records KPs and skipped status
             if (sowInspRecords && sowInspRecords.length > 0) {
                 sowInspRecords.forEach((rec) => {
                     const status = String(rec.status || "").toLowerCase();
@@ -805,9 +848,8 @@ export default function InspectionLanding() {
                 inspectedLength = maxKp - minKp;
             }
             
-            // Fallback estimation if discrete events were captured without continuous start/end KP span
-            if (inspectedLength === 0 && (completedItems.length > 0 || sowInspRecords.length > 0)) {
-                const count = Math.max(completedItems.length, sowInspRecords.length);
+            if (inspectedLength === 0 && (completed > 0 || (sowInspRecords && sowInspRecords.length > 0))) {
+                const count = Math.max(completed, sowInspRecords?.length || 0);
                 inspectedLength = Math.min(totalPipelineLength, count * 0.5);
             }
 
@@ -819,27 +861,27 @@ export default function InspectionLanding() {
 
         const completionPercentage = isPipeline
             ? (totalPipelineLength > 0 ? Math.min(100, Math.max(0, (inspectedLength / totalPipelineLength) * 100)) : 100)
-            : Math.round(((completedItems.length || rovCompleted + diveCompleted) / (total || 1)) * 100);
+            : (total > 0 ? Math.min(100, parseFloat((((completed + incomplete) / total) * 100).toFixed(1))) : 0);
 
         const incompletePercentage = isPipeline
             ? (totalPipelineLength > 0 ? Math.min(100, Math.max(0, (skippedLength / totalPipelineLength) * 100)) : 0)
-            : Math.round(((incompleteItems.length || rovIncomplete + diveIncomplete) / (total || 1)) * 100);
+            : (total > 0 ? parseFloat(((incomplete / total) * 100).toFixed(1)) : 0);
 
         const pendingPercentage = isPipeline
             ? Math.max(0, 100 - completionPercentage - incompletePercentage)
-            : Math.max(0, 100 - completionPercentage - incompletePercentage);
+            : (total > 0 ? parseFloat(((pending / total) * 100).toFixed(1)) : 0);
 
         return {
             total,
-            completed: completedItems.length || rovCompleted + diveCompleted,
+            completed,
             completedRov: rovCompleted,
             completedDive: diveCompleted,
             rovDone: rovCompleted,
             diveDone: diveCompleted,
-            incomplete: incompleteItems.length || rovIncomplete + diveIncomplete,
+            incomplete,
             incompleteRov: rovIncomplete,
             incompleteDive: diveIncomplete,
-            pending: pendingItems.length || rovPending + divePending,
+            pending,
             pendingRov: rovPending,
             pendingDive: divePending,
             fieldJoints,

@@ -32,9 +32,47 @@ export const PATCH = withAuth(
       );
     }
 
+    const updatePayload: any = { ...body };
+
+    // Fetch existing component metadata to synchronize legacy del flags in metadata
+    const { data: currentRec } = await supabase
+      .from("structure_components")
+      .select("metadata, is_deleted")
+      .eq("id", componentId)
+      .maybeSingle();
+
+    if (currentRec) {
+      let md: Record<string, any> = {};
+      if (typeof currentRec.metadata === "string") {
+        try {
+          md = JSON.parse(currentRec.metadata);
+        } catch {
+          md = {};
+        }
+      } else if (currentRec.metadata && typeof currentRec.metadata === "object" && !Array.isArray(currentRec.metadata)) {
+        md = { ...(currentRec.metadata as Record<string, any>) };
+      }
+
+      if (body.is_deleted === false || (body as any).is_deleted === 0 || body.is_deleted === null) {
+        delete md.del;
+        delete md.is_deleted;
+        delete md.deleted;
+        if (md.status === "archived" || md.status === "deleted") {
+          md.status = "active";
+        }
+        updatePayload.metadata = md;
+        updatePayload.is_deleted = false;
+      } else if (body.is_deleted === true || (body as any).is_deleted === 1) {
+        md.del = 1;
+        md.is_deleted = true;
+        updatePayload.metadata = md;
+        updatePayload.is_deleted = true;
+      }
+    }
+
     const { data, error } = await supabase
       .from("structure_components")
-      .update(body)
+      .update(updatePayload)
       .eq("id", componentId)
       .select()
       .single();

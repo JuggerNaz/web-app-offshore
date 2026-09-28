@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, Edit, Settings, ArrowLeft, ArrowRight, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
+import { formatClientTime } from "@/utils/client-date";
 
 interface DiverLogPanelProps {
   inspMethod: "DIVING" | "ROV";
@@ -381,13 +382,13 @@ export function DiverLogPanelPipeline({
               <div className="bg-slate-50 dark:bg-slate-800/40 py-1 px-2 rounded-md border border-slate-100 dark:border-slate-800/60 flex flex-wrap justify-between items-center gap-x-1">
                 <span className="text-[8px] font-bold text-slate-400 uppercase min-w-[40px]">In Water</span>
                 <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 leading-none">
-                  {diveStartTime ? format(new Date(diveStartTime), "HH:mm:ss") : "--:--:--"}
+                  {diveStartTime ? formatClientTime(diveStartTime, { hour12: false, includeSeconds: true }) : "--:--:--"}
                 </span>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/40 py-1 px-2 rounded-md border border-slate-100 dark:border-slate-800/60 flex flex-wrap justify-between items-center gap-x-1">
                 <span className="text-[8px] font-bold text-slate-400 uppercase min-w-[40px]">On Deck</span>
                 <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 leading-none">
-                  {diveEndTime ? format(new Date(diveEndTime), "HH:mm:ss") : "--:--:--"}
+                  {diveEndTime ? formatClientTime(diveEndTime, { hour12: false, includeSeconds: true }) : "--:--:--"}
                 </span>
               </div>
             </>
@@ -396,13 +397,13 @@ export function DiverLogPanelPipeline({
               <div className="bg-slate-50 dark:bg-slate-800/40 py-1 px-2 rounded-md border border-slate-100 dark:border-slate-800/60 flex flex-wrap justify-between items-center gap-x-1">
                 <span className="text-[8px] font-bold text-slate-400 uppercase min-w-[40px]">Launch</span>
                 <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 leading-none">
-                  {diveStartTime ? format(new Date(diveStartTime), "HH:mm:ss") : "--:--:--"}
+                  {diveStartTime ? formatClientTime(diveStartTime, { hour12: false, includeSeconds: true }) : "--:--:--"}
                 </span>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/40 py-1 px-2 rounded-md border border-slate-100 dark:border-slate-800/60 flex flex-wrap justify-between items-center gap-x-1">
                 <span className="text-[8px] font-bold text-slate-400 uppercase min-w-[40px]">Recovery</span>
                 <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 leading-none">
-                  {diveEndTime ? format(new Date(diveEndTime), "HH:mm:ss") : "--:--:--"}
+                  {diveEndTime ? formatClientTime(diveEndTime, { hour12: false, includeSeconds: true }) : "--:--:--"}
                 </span>
               </div>
             </>

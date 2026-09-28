@@ -39,7 +39,7 @@ export const generatePlatformInspectionSummaryReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth(); // 210mm
@@ -58,7 +58,7 @@ export const generatePlatformInspectionSummaryReport = async (
             red:       [220, 38,  38]  as [number, number, number],
         };
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -86,14 +86,14 @@ export const generatePlatformInspectionSummaryReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
             if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
 
-            d.setFontSize(9);   d.setFont("helvetica", "bold");
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
             d.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(7);   d.setFont("helvetica", "normal");
-            d.text(companySettings?.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(12);  d.setFont("helvetica", "bold");
-            d.text("Platform Inspection Summary Report",                             margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.sowReportNo || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings?.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10.5, { align: "center" });
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
+            d.text("Platform Inspection Summary Report", margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.setFontSize(8);   d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.sowReportNo || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         // ── Context Header Grid ───────────────────────────────────────────────────
@@ -114,7 +114,7 @@ export const generatePlatformInspectionSummaryReport = async (
 
             drawBox("Structure Title:", headerData?.platformName || "N/A", margin,        half - 1, y);
             drawBox("Job Pack Ref:",    headerData?.jobpackName  || "N/A", margin + half + 1, half - 1, y);
-            drawBox("SOW Report No:",   headerData?.sowReportNo  || "N/A", margin,        half - 1, y + ROW_H);
+            drawBox("Field / Location:",headerData?.fieldName || headerData?.field || "N/A", margin, half - 1, y + ROW_H);
             drawBox("Vessel / Support:",headerData?.vessel       || "N/A", margin + half + 1, half - 1, y + ROW_H);
         };
 

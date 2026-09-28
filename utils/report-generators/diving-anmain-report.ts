@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -21,6 +21,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -31,7 +32,10 @@ export const generateDivingANMAINReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
+    if (!config.isBlankReport && (!records || records.length === 0)) {
+        return null;
+    }
     try {
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -63,7 +67,7 @@ export const generateDivingANMAINReport = async (
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
             : "N/A";
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -88,17 +92,17 @@ export const generateDivingANMAINReport = async (
                 d.setTextColor(255);
             }
 
-            if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
+            if (companyLogo)    drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left",  "center");
 
-            d.setFontSize(9);   d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(7);   d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(14);  d.setFont("helvetica", "bold");
-            d.text("Anode Maintenance Inspection Report (Diving)",                  margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,     margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6,  { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("Anode Maintenance Inspection Report (Diving)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
 
         // ── Context boxes ───────────────────────────────────────────────────────
@@ -141,7 +145,24 @@ export const generateDivingANMAINReport = async (
                 r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.name ||
                 r.dive_job_id || "—";
 
-            const anodeType = d.anode_type || "—";
+            const candidateType = d.anode_type ?? d.anodeType ?? d.anode_typ ?? d.an_type ?? d["Anode Type"] ?? d["anode type"] ?? d.anode_type_name;
+            let anodeType = "—";
+            if (candidateType !== undefined && candidateType !== null && String(candidateType).trim() !== '') {
+                const str = String(candidateType).trim();
+                if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                    anodeType = str;
+                }
+            }
+            if (anodeType === "—") {
+                const compMeta = r.structure_components?.metadata || r.component?.metadata || {};
+                const metaType = compMeta.anode_type ?? compMeta.anodeType ?? compMeta.thetype ?? compMeta.anode_type_name ?? compMeta.type;
+                if (metaType !== undefined && metaType !== null && String(metaType).trim() !== '') {
+                    const str = String(metaType).trim();
+                    if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                        anodeType = str;
+                    }
+                }
+            }
             
             let instDateStr = "—";
             if (d.installed_date) {
@@ -200,7 +221,7 @@ export const generateDivingANMAINReport = async (
 
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 10, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
                 { content: "Item No.",       styles: { halign: "center" as const, valign: "middle" as const } },
                 { content: "Component QID",  styles: { halign: "center" as const, valign: "middle" as const } },
@@ -284,16 +305,8 @@ export const generateDivingANMAINReport = async (
         });
 
         if (config.showSignatures !== false) {
-            const sigH   = 20;
             const sigW   = contentWidth / 3;
-            let finalY   = (doc as any).lastAutoTable?.finalY ?? (margin + HEADER_H + 20);
-            
-            if (finalY + sigH + 15 > pageHeight) {
-                doc.addPage();
-                drawPageHeader(doc);
-            }
-
-            const sigY = pageHeight - 38; // Fixed position near bottom
+            const sigY   = pageHeight - 34; // Fixed position near bottom
 
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
@@ -321,10 +334,7 @@ export const generateDivingANMAINReport = async (
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);
-
-        applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`Anode_Maintenance_Inspection_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[ANMAIN Report] Error:", err);

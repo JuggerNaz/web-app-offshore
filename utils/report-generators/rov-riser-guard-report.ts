@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -36,7 +37,7 @@ export const generateROVRiserGuardReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -57,6 +58,10 @@ export const generateROVRiserGuardReport = async (
             finding:   [124, 58,  237] as [number, number, number],
         };
 
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -67,7 +72,7 @@ export const generateROVRiserGuardReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
@@ -85,14 +90,14 @@ export const generateROVRiserGuardReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
             if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
 
-            d.setFontSize(9);   d.setFont("helvetica", "bold");
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(7);   d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("Riser Guard Inspection Report (ROV)",                             margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(8.5);   d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10.5, { align: "center" });
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
+            d.text("Riser Guard Inspection Report (ROV)",                             margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -284,14 +289,16 @@ export const generateROVRiserGuardReport = async (
         });
 
         // Filter and Sort by Parent QID
-        const sortedParentKeys = Object.keys(rgGroups).sort((a, b) => {
+        let sortedParentKeys = Object.keys(rgGroups).sort((a, b) => {
             return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
         });
 
         if (sortedParentKeys.length === 0) {
-            // If no RG records found, but we have some records, we might want to show a blank state or throw
-            // But per request, we only filter RG.
+            if (!config?.isBlankReport) return null;
+            sortedParentKeys = ["GENERAL"];
+            rgGroups["GENERAL"] = [];
         }
+
 
         const buildRow = (r: any, idx: number): string[] => {
             const d   = r.inspection_data || {};
@@ -420,7 +427,9 @@ export const generateROVRiserGuardReport = async (
                     { content: "CP (mV)",         styles: { halign: "center" } },
                     { content: "Findings",        styles: { halign: "center" } }
                 ]],
-                body: groupRecords.map(buildRow),
+                body: groupRecords.length > 0
+                    ? groupRecords.map(buildRow)
+                    : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
@@ -448,6 +457,7 @@ export const generateROVRiserGuardReport = async (
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
+                    if (!r) return;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                     const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     

@@ -36,6 +36,10 @@ export const generateDivingMGIReport = async (
     supabase?: any
 ) => {
     try {
+        if ((!records || records.length === 0) && config?.returnBlob && !(config as any)?.isBlankReport) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -65,36 +69,39 @@ export const generateDivingMGIReport = async (
             headerData.contractorLogoUrl ? loadLogoWithTransparency(headerData.contractorLogoUrl) : Promise.resolve(null)
         ]);
 
+        const HEADER_H = 26;
+
         const drawPageHeader = (d: jsPDF) => {
-            const headerH = 22;
             const logoW = 25;
             
             if (isPF) {
                 d.setDrawColor(...colors.navy); d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, headerH, 'S');
+                d.rect(margin, margin, contentWidth, HEADER_H, 'S');
                 d.setTextColor(...colors.navy);
             } else {
-                d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, headerH, 'F');
+                d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, HEADER_H, 'F');
                 d.setTextColor(255, 255, 255);
             }
 
             // Draw Logos
-            if (companyLogo) drawLogo(d, companyLogo, logoW, headerH - 4, pageWidth - margin - logoW - 2, margin + 2, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, logoW, headerH - 4, margin + 2, margin + 2, "left", "center");
+            if (companyLogo) drawLogo(d, companyLogo, logoW, HEADER_H - 4, pageWidth - margin - logoW - 2, margin + 2, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, logoW, HEADER_H - 4, margin + 2, margin + 2, "left", "center");
 
             // Text
             const textCenterX = margin + (contentWidth / 2);
-            d.setFontSize(10); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', textCenterX, margin + 8, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', textCenterX, margin + 6, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', textCenterX, margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(`Marine Growth Inspection Graph Report (Diving)`, textCenterX, margin + 16.5, { align: 'center' });
             d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', textCenterX, margin + 13, { align: 'center' });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`Marine Growth Inspection Graph Report (Diving)`, textCenterX, margin + 20, { align: 'center' });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, textCenterX, margin + 21, { align: 'center' });
         };
 
         const drawContextBox = (d: jsPDF, y: number) => {
             const rowH = 7;
-            const colW = contentWidth / 3;
+            const half = contentWidth / 2;
             
             const drawCell = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1);
@@ -102,16 +109,14 @@ export const generateDivingMGIReport = async (
                 d.rect(x, ty, w, rowH, isPF ? 'S' : 'F');
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
-                d.text(label, x + 2, ty + 4.5); d.setFont("helvetica", "normal");
-                d.text(String(value || "—"), x + 25, ty + 4.5);
+                d.text(label, x + 2, ty + 4.8); d.setFont("helvetica", "normal");
+                d.text(String(value || "—"), x + 36, ty + 4.8);
             };
 
-            drawCell('Structure:', headerData.platformName, margin, colW, y);
-            drawCell('Job Pack:', headerData.jobpackName, margin + colW, colW, y);
-            drawCell('Date:', format(new Date(), 'dd/MM/yyyy'), margin + (colW * 2), colW, y);
-            drawCell('Vessel:', headerData.vessel || 'N/A', margin, colW, y + rowH);
-            drawCell('SOW No:', (config?.reportNoPrefix || headerData?.sowReportNo), margin + colW, colW, y + rowH);
-            drawCell('Page:', `${doc.getNumberOfPages()}`, margin + (colW * 2), colW, y + rowH);
+            drawCell('Structure:', headerData.platformName || "N/A", margin, half, y);
+            drawCell('Vessel:', headerData.vessel || 'N/A', margin + half, half, y);
+            drawCell('Job Pack:', headerData.jobpackName || "N/A", margin, half, y + rowH);
+            drawCell('Date:', format(new Date(), 'dd/MM/yyyy'), margin + half, half, y + rowH);
             
             return y + (rowH * 2) + 5;
         };
@@ -262,11 +267,11 @@ export const generateDivingMGIReport = async (
 
         // ── Draw ──────────────────────────────────────────────────────────────
         drawPageHeader(doc);
-        const startY = drawContextBox(doc, margin + 22 + 2);
+        const startY = drawContextBox(doc, margin + HEADER_H + 2);
 
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 17 + 4 },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 19 },
             rowPageBreak: 'avoid',
             head: [
                 [

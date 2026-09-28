@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
@@ -32,8 +33,12 @@ export const generateDivingMPINSReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
+        if (!config?.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -51,7 +56,7 @@ export const generateDivingMPINSReport = async (
             finding: [124, 58, 237] as [number, number, number],
         };
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // Pre-load logos
         let companyLogo: any = null;
@@ -75,17 +80,17 @@ export const generateDivingMPINSReport = async (
                 d.setTextColor(255);
             }
 
-            if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
+            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
 
-            d.setFontSize(9); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text("Magnetic Particle Inspection Report (Diving)", margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("Magnetic Particle Inspection Report (Diving)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
 
         const drawPageFooter = (d: jsPDF, pageNo: number) => {
@@ -104,7 +109,7 @@ export const generateDivingMPINSReport = async (
 
         // Group records by QID
         const groupedByQid: Record<string, any[]> = {};
-        for (const r of records) {
+        for (const r of (records || [])) {
             const qid = r.structure_components?.q_id || r.component?.q_id || "UNKNOWN";
             if (!groupedByQid[qid]) groupedByQid[qid] = [];
             groupedByQid[qid].push(r);
@@ -113,6 +118,7 @@ export const generateDivingMPINSReport = async (
         const qids = Object.keys(groupedByQid).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
         if (qids.length === 0) {
+            if (config?.returnBlob && !config?.isBlankReport) return null as any;
             // Empty report
             drawPageHeader(doc, 1);
             drawPageFooter(doc, 1);

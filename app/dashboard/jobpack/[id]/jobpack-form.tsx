@@ -147,6 +147,74 @@ const isInspectionInScope = (insp: any, isTopsideActive: boolean, isSubseaActive
   return true;
 };
 
+const isDivingInspection = (insp: any) => {
+  const meta = insp.metadata || {};
+  const code = (insp.code || "").toUpperCase();
+
+  // 1. Explicit metadata checks
+  if (meta.diving === 1 || meta.diving === "1" || meta.diving === true || meta.diving === "true") return true;
+  if (meta.diving === 0 || meta.diving === "0" || meta.diving === false || meta.diving === "false") return false;
+  if (meta.job_type?.toUpperCase().includes("DIVING") || meta.mode?.toUpperCase().includes("DIVING")) return true;
+
+  // 2. Diving specific code prefixes (e.g., DGVI, DCVI, DCP, DMGR, DUTM, DCOND, DCASN)
+  if (code.startsWith("D") && !["DENSO", "DEBRIS", "DAMAGE"].includes(code)) return true;
+
+  // 3. Exclude ROV-specific prefixes
+  if ((code.startsWith("R") && !code.startsWith("RISER") && !code.startsWith("RB")) || code.startsWith("ROV") || code === "NAVIG" || code === "JTISI" || code === "ITISI") {
+    return false;
+  }
+
+  // 4. Default: Standard subsea & topside inspections can be performed via Diving
+  return true;
+};
+
+const isRovInspection = (insp: any) => {
+  const meta = insp.metadata || {};
+  const code = (insp.code || "").toUpperCase();
+
+  // 1. Explicit metadata checks
+  if (meta.rov === 1 || meta.rov === "1" || meta.rov === true || meta.rov === "true") return true;
+  if (meta.rov === 0 || meta.rov === "0" || meta.rov === false || meta.rov === "false") return false;
+  if (meta.job_type?.toUpperCase().includes("ROV") || meta.mode?.toUpperCase().includes("ROV")) return true;
+
+  // 2. ROV specific code prefixes (e.g., ROVCLB, RSEAB, RGVI, RCVI, RCP, RCASN, RRISI, RUTM, RFMD, RANOD, NAVIG, JTISI, ITISI)
+  if ((code.startsWith("R") && !code.startsWith("RISER") && !code.startsWith("RB")) || code.startsWith("ROV") || code === "NAVIG" || code === "JTISI" || code === "ITISI") {
+    return true;
+  }
+
+  // 3. Exclude Diving-specific prefixes & manual diver-only NDT
+  if (code.startsWith("D") && !["DENSO", "DEBRIS", "DAMAGE"].includes(code)) {
+    return false;
+  }
+  if (code === "MPI" || code === "EDDYC" || code === "HSTAT") {
+    return false;
+  }
+
+  // 4. Default: Standard subsea inspection types (GVI, CVI, CP, FMD, UTM, ANODE, MGR, SEABED, SCOUR, DEBRIS, DAMAGE, COATING, LOGS, EXSUM, VIDEO, FLOOD, etc.) can be performed via ROV
+  return true;
+};
+
+const isStructureTypeMatch = (insp: any, activeKey: string | null) => {
+  if (!activeKey) return true;
+  const meta = insp.metadata || {};
+  const code = (insp.code || "").toUpperCase();
+  const name = (insp.name || "").toLowerCase();
+
+  if (activeKey.startsWith("PLATFORM")) {
+    if (meta.platform === 0 || meta.platform === "0" || meta.platform === false || meta.platform === "false") return false;
+    if (code === "PIPEGI" || name.includes("pipeline only")) return false;
+    return true;
+  }
+
+  if (activeKey.startsWith("PIPELINE")) {
+    if (meta.pipeline === 0 || meta.pipeline === "0" || meta.pipeline === false || meta.pipeline === "false") return false;
+    if (code === "PLATGI" || name.includes("platform only")) return false;
+    return true;
+  }
+
+  return true;
+};
+
 export default function JobpackForm({ id: propId }: { id?: string }) {
   const params = useParams();
   const pathname = usePathname();
@@ -1148,9 +1216,9 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                     // since historical jobpack JSONs might not include the full nested metadata object.
                                     const liveInsp = inspectionTypes?.data?.find((t: any) => t.code === insp.code) || insp;
 
-                                    // Determine inspection mode from LIVE metadata
-                                    const isRov = liveInsp.metadata?.rov === 1 || liveInsp.metadata?.rov === "1" || liveInsp.metadata?.rov === true || liveInsp.metadata?.job_type?.includes('ROV');
-                                    const isDiving = liveInsp.metadata?.diving === 1 || liveInsp.metadata?.diving === "1" || liveInsp.metadata?.diving === true || liveInsp.metadata?.job_type?.includes('DIVING');
+                                    // Determine inspection mode from helper logic
+                                    const isRov = isRovInspection(liveInsp);
+                                    const isDiving = isDivingInspection(liveInsp);
 
                                     // Default color (General) - Slate
                                     let badgeColor = "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700";
@@ -1313,8 +1381,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {inspectionTypes?.data?.filter((insp: any) => {
                                     // Diving filter
-                                    const isDiving = insp.metadata?.diving === 1 || insp.metadata?.diving === "1" || insp.metadata?.diving === true;
-                                    if (!isDiving) return false;
+                                    if (!isDivingInspection(insp)) return false;
 
                                     // Project Scope (Topside / Subsea) Filter
                                     const topsideVal = form.watch("topside");
@@ -1334,15 +1401,8 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                       if (!matches) return false;
                                     }
                                     // Structure Type Filter
-                                    if (activeStructKey) {
-                                      if (activeStructKey.startsWith("PLATFORM")) {
-                                        const val = insp.metadata?.platform;
-                                        return val === 1 || val === "1" || val === true;
-                                      }
-                                      if (activeStructKey.startsWith("PIPELINE")) {
-                                        const val = insp.metadata?.pipeline;
-                                        return val === 1 || val === "1" || val === true;
-                                      }
+                                    if (!isStructureTypeMatch(insp, activeStructKey)) {
+                                      return false;
                                     }
                                     return true;
                                   }).map((insp: any) => {
@@ -1399,8 +1459,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {inspectionTypes?.data?.filter((insp: any) => {
                                     // ROV filter
-                                    const isROV = insp.metadata?.rov === 1 || insp.metadata?.rov === "1" || insp.metadata?.rov === true;
-                                    if (!isROV) return false;
+                                    if (!isRovInspection(insp)) return false;
 
                                     // Project Scope (Topside / Subsea) Filter
                                     const topsideVal = form.watch("topside");
@@ -1420,15 +1479,8 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                                       if (!matches) return false;
                                     }
                                     // Structure Type Filter
-                                    if (activeStructKey) {
-                                      if (activeStructKey.startsWith("PLATFORM")) {
-                                        const val = insp.metadata?.platform;
-                                        return val === 1 || val === "1" || val === true;
-                                      }
-                                      if (activeStructKey.startsWith("PIPELINE")) {
-                                        const val = insp.metadata?.pipeline;
-                                        return val === 1 || val === "1" || val === true;
-                                      }
+                                    if (!isStructureTypeMatch(insp, activeStructKey)) {
+                                      return false;
                                     }
                                     return true;
                                   }).map((insp: any) => {

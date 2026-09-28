@@ -1,52 +1,82 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient, createClient } from "@/utils/supabase/server";
 
 export async function GET(request: NextRequest) {
-    const supabase = createClient();
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabase = useAdmin ? createAdminClient() : createClient();
     const { searchParams } = new URL(request.url);
     const path = searchParams.get("path");
-    const bucket = searchParams.get("bucket") || "attachments";
+    let bucket = searchParams.get("bucket") || "attachments";
 
     if (!path) {
         return NextResponse.json({ error: "Path is required" }, { status: 400 });
     }
 
     // Extract relative storage path if 'path' is a full URL
-    let storagePath = path;
-    // Common Supabase URL pattern: .../storage/v1/object/public/{bucket}/{path}
-    // OR .../storage/v1/object/sign/{bucket}/{path}
+    let storagePath = decodeURIComponent(path.trim());
 
-    // Simple heuristic: split by bucket name
-    if (path.includes(bucket + "/")) {
-        const parts = path.split(bucket + "/");
-        // Take the last part as the path (handling potential multiple occurrences of bucket name in URL unlikely but safer to take suffix)
-        // Actually, standard URL .../bucket/folder/file.jpg. 
-        // Split results in [prefix, folder/file.jpg].
-        if (parts.length > 1) {
-            storagePath = parts.slice(1).join(bucket + "/");
+    if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
+        const parts = storagePath.split("/");
+        const bucketIndex = parts.indexOf(bucket);
+        if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
+            storagePath = parts.slice(bucketIndex + 1).join("/");
+        } else {
+            const attIndex = parts.indexOf("attachments");
+            if (attIndex !== -1 && attIndex < parts.length - 1) {
+                storagePath = parts.slice(attIndex + 1).join("/");
+                bucket = "attachments";
+            }
         }
     }
 
-    // Decode URI component just in case
-    storagePath = decodeURIComponent(storagePath);
+    if (storagePath.startsWith(`${bucket}/`)) {
+        storagePath = storagePath.slice(bucket.length + 1);
+    } else if (storagePath.startsWith("attachments/")) {
+        storagePath = storagePath.replace(/^attachments\//, "");
+    }
+    storagePath = storagePath.replace(/^\/+/, "");
 
-    console.log(`[Download] Fetching ${storagePath} from bucket ${bucket}`);
+    let { data, error } = await supabase.storage.from(bucket).download(storagePath);
 
-    const { data, error } = await supabase.storage.from(bucket).download(storagePath);
+    // If download fails, try alternative bucket or path variations
+    if (error || !data) {
+        const altBuckets = ["attachments", "inspection-media", "company-assets", "public"].filter(b => b !== bucket);
+        for (const altBucket of altBuckets) {
+            const { data: altData, error: altErr } = await supabase.storage.from(altBucket).download(storagePath);
+            if (!altErr && altData) {
+                data = altData;
+                error = null;
+                break;
+            }
+        }
+    }
 
-    if (error) {
-        console.error(`[Download] Error fetching ${storagePath}:`, error);
-        return NextResponse.json({ error: error.message }, { status: 404 });
+    if (error || !data) {
+        console.error(`[Download] Error fetching ${storagePath} from bucket ${bucket}:`, error);
+        return NextResponse.json({ error: error?.message || "Attachment not found" }, { status: 404 });
     }
 
     const buffer = await data.arrayBuffer();
 
     return new NextResponse(buffer, {
         headers: {
-            "Content-Type": data.type,
+            "Content-Type": data.type || "image/jpeg",
             "Content-Length": data.size.toString(),
-            // Optional: Content-Disposition for download filename
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        },
+    });
+}
+
+export async function OPTIONS() {
+    return new NextResponse(null, {
+        status: 204,
+        headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },
     });
 }

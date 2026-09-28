@@ -21,6 +21,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showSignatures?: boolean;
     showPageNumbers?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -31,8 +32,12 @@ export const generateROVSZCIReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     try {
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -74,8 +79,9 @@ export const generateROVSZCIReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -92,12 +98,12 @@ export const generateROVSZCIReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
             if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 4, 'left',  'center');
 
-            d.setFontSize(10); d.setFont("helvetica", "bold");
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            d.setFontSize(14); d.setFont("helvetica", "bold");
-            d.text(`Splash Zone Inspection Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(`Splash Zone Inspection Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
             
             d.setFontSize(8); d.setFont("helvetica", "normal");
             d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
@@ -129,7 +135,7 @@ export const generateROVSZCIReport = async (
         };
 
         drawHeader(doc);
-        const currentY = drawContext(doc, margin + 22 + 2);
+        const currentY = drawContext(doc, margin + headerH + 2);
 
         const isPF = config.printFriendly;
 
@@ -142,7 +148,7 @@ export const generateROVSZCIReport = async (
 
         autoTable(doc, {
             startY: currentY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6 },
             head: [
                 [
                     { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
@@ -160,7 +166,7 @@ export const generateROVSZCIReport = async (
                     { content: '9 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
                 ]
             ],
-            body: sortedRecords.map((r, idx) => {
+            body: sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
                 const qid = r.structure_components?.q_id || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
@@ -225,7 +231,9 @@ export const generateROVSZCIReport = async (
                     diveNo,
                     findings
                 ];
-            }),
+            }) : [
+                ["-", "-", "-", "-", "-", "-", "-", "-", "-", "No splash zone observations recorded for this scope."]
+            ],
             theme: 'grid',
             headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },

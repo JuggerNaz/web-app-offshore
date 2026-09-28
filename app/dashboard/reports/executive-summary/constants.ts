@@ -13,7 +13,7 @@ export const EXECUTIVE_SUMMARY_TOC = [
     { id: "conductor_top", title: "Conductors Inspection Topside" },
     { id: "conductor_sub", title: "Conductors Inspection Subsea" },
     { id: "riser", title: "Riser Inspection" },
-    { id: "splashzone", title: "Splashzone Coating Inspection" },
+    { id: "splashzone", title: "Splash Zone Coating Inspection" },
     { id: "anode_gen", title: "General Anode Inspection" },
     { id: "anode_sel", title: "Selected Anode Inspection" },
     { id: "mgi", title: "Marine Growth Inspection" },

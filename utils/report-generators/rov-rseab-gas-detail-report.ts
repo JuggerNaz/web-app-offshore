@@ -20,6 +20,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
@@ -33,18 +34,21 @@ interface ReportConfig {
 export const generateROVRSEABGasDetailReport = async (
     records: any[],
     headerData: any,
-    companySettings: CompanySettings,
-    config: ReportConfig
-): Promise<Blob | void> => {
+    companySettingsOrConfig: any = {},
+    maybeConfig?: ReportConfig
+): Promise<Blob | void | null> => {
+    let companySettings: CompanySettings = {};
+    let config: ReportConfig = {};
+    if (maybeConfig !== undefined) {
+        companySettings = companySettingsOrConfig || {};
+        config = maybeConfig || {};
+    } else {
+        config = companySettingsOrConfig || {};
+        companySettings = (config as any).companySettings || {};
+    }
     const supabase = createClient();
     console.log("[ROV Seabed Gas Seepage Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
-        const doc = new jsPDF({ orientation: "portrait" });
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
-        const contentWidth = pageWidth - margin * 2;
-
         const colors = {
             navy: [31, 55, 93] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
@@ -57,24 +61,55 @@ export const generateROVRSEABGasDetailReport = async (
 
         // ── Filter Records (Strict Seabed Filter: RSEAB + Gas Seepage category only) ──
         const filteredRecords = records.filter(r => {
-            const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-            if (typeCode !== 'RSEAB') return false;
+            const typeCode = (
+                r.inspection_type?.code ||
+                r.inspection_type_code ||
+                r.structure_components?.component_types?.code ||
+                r.structure_components?.component_type ||
+                r.component_type ||
+                ''
+            ).toUpperCase();
+            if (typeCode && typeCode !== 'RSEAB' && typeCode !== 'SEABED') return false;
             const cat = (r.inspection_data?.category || r.inspection_data?.type || '').toLowerCase();
             const desc = (r.description || '').toLowerCase();
-            return cat === 'gas seepage' || desc.startsWith('gas seepage');
+            return cat === 'gas seepage' || cat === 'gas' || desc.startsWith('gas seepage') || desc.startsWith('gas');
         });
+
+        if (!config.isBlankReport && (!filteredRecords || filteredRecords.length === 0)) {
+            return null;
+        }
+
+        const doc = new jsPDF({ orientation: "portrait" });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 12;
+        const contentWidth = pageWidth - margin * 2;
 
         // ── Pre-load logos ──
         let companyLogo: any = null;
         let contractorLogo: any = null;
-        if (companySettings.logo_url) {
+        if (companySettings?.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        if (headerData.contractorLogoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        const contrLogoUrl = headerData?.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        if (contrLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+        }
+        if (!contractorLogo && (headerData?.jobpackId || config?.jobPackId || filteredRecords?.[0]?.jobpack_id)) {
+            try {
+                const jId = headerData?.jobpackId || config?.jobPackId || filteredRecords?.[0]?.jobpack_id;
+                const supabase = (await import("@/utils/supabase/client")).createClient();
+                const { data: jp } = await supabase.from('jobpack').select('metadata').eq('id', Number(jId)).maybeSingle();
+                if (jp?.metadata?.contrac) {
+                    const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jp.metadata.contrac).maybeSingle();
+                    if (contrData?.logo_url) {
+                        contractorLogo = await loadLogoWithTransparency(contrData.logo_url);
+                    }
+                }
+            } catch (_) {}
         }
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
@@ -89,17 +124,17 @@ export const generateROVRSEABGasDetailReport = async (
                 d.setTextColor(255);
             }
 
-            if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
+            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
 
-            d.setFontSize(9); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Division", margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13); d.setFont("helvetica", "bold");
-            d.text("Seabed Survey Gas Seepage Inspection Report (ROV)", margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("Seabed Survey Gas Seepage Inspection Report (ROV)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -234,7 +269,13 @@ export const generateROVRSEABGasDetailReport = async (
                     { content: "Findings" }
                 ]
             ],
-            body: tableRows,
+            body: tableRows.length > 0 ? tableRows : [[
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-" },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "No seabed gas seepage observations recorded for this scope." }
+            ]],
             theme: "grid",
             headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
             styles: { fontSize: 7.5, cellPadding: 2.5 },

@@ -114,39 +114,93 @@ const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y:
     doc.addImage(logo.data, 'PNG', dx, dy, w, h);
 };
 
-const loadImage = (url: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    if (!url || typeof url !== 'string' || !url.trim()) {
-      reject(new Error("Empty or invalid image URL"));
-      return;
+const getPublicStorageUrl = (pathOrUrl: string): string => {
+  if (!pathOrUrl || typeof pathOrUrl !== 'string') return '';
+  let str = pathOrUrl.trim().replace(/\\/g, '/');
+  if (str.startsWith("http://") || str.startsWith("https://") || str.startsWith("data:") || str.startsWith("/")) {
+    return str;
+  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const cleanPath = str.replace(/^\/?(attachments\/)?/, "").replace(/^\//, "");
+  return supabaseUrl ? `${supabaseUrl}/storage/v1/object/public/attachments/${cleanPath}` : str;
+};
+
+const loadImage = async (url: string, id?: number | string): Promise<string> => {
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    if (id) {
+      url = `/api/attachment/url?id=${id}`;
+    } else {
+      throw new Error("Empty or invalid image URL");
     }
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    const timeout = setTimeout(() => {
-      console.warn(`Image loading timed out (5s limit) in pdf-generator for URL: ${url}`);
-      img.onload = null;
-      img.onerror = null;
-      reject(new Error("Image loading timed out"));
-    }, 5000);
-    img.onload = () => {
-      clearTimeout(timeout);
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/jpeg"));
-      } else {
-        reject(new Error("Canvas context is null"));
-      }
-    };
-    img.onerror = (e) => {
-      clearTimeout(timeout);
-      reject(e);
-    };
-    img.src = url;
-  });
+  }
+
+  const cleanUrl = url.trim();
+  if (cleanUrl.startsWith("data:image/")) {
+    return cleanUrl;
+  }
+
+  // Helper: convert a Blob to a base64 data URL string
+  const blobToDataUrl = (blob: Blob): Promise<string | null> => {
+    return new Promise((resolve) => {
+      if (!blob || blob.size === 0) { resolve(null); return; }
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // Helper: fetch a URL and return data URL, or null
+  const fetchAsDataUrl = async (fetchUrl: string): Promise<string | null> => {
+    try {
+      const resp = await fetch(fetchUrl);
+      if (!resp.ok) return null;
+      const blob = await resp.blob();
+      return await blobToDataUrl(blob);
+    } catch {
+      return null;
+    }
+  };
+
+  // ── Strategy 1: /api/attachment/url proxy (server-side download, NO CORS) ──
+  // This is the most reliable method. The server downloads from Supabase storage
+  // using the service role key and streams the binary back as a same-origin response.
+  if (id) {
+    const proxyUrl = `/api/attachment/url?id=${id}`;
+    const result = await fetchAsDataUrl(proxyUrl);
+    if (result) return result;
+  }
+
+  // If the url is already an /api/ proxy path, try it directly
+  if (cleanUrl.startsWith("/api/")) {
+    const result = await fetchAsDataUrl(cleanUrl);
+    if (result) return result;
+  }
+
+  // ── Strategy 2: Direct fetch (works for same-origin or CORS-enabled URLs) ──
+  const fullUrl = getPublicStorageUrl(cleanUrl);
+  {
+    const result = await fetchAsDataUrl(fullUrl);
+    if (result) return result;
+  }
+
+  // ── Strategy 3: Next.js image proxy ──
+  if (fullUrl.startsWith("http://") || fullUrl.startsWith("https://")) {
+    const nextProxyUrl = `/_next/image?url=${encodeURIComponent(fullUrl)}&w=1200&q=85`;
+    const result = await fetchAsDataUrl(nextProxyUrl);
+    if (result) return result;
+  }
+
+  // ── Strategy 4: /api/attachment/url?path= proxy ──
+  if (fullUrl.includes("structure-images") || fullUrl.includes("attachments")) {
+    const p = fullUrl.replace(/^https?:\/\/[^/]+\/storage\/v1\/object\/public\/attachments\//, "").replace(/^\/?attachments\//, "");
+    if (p) {
+      const result = await fetchAsDataUrl(`/api/attachment/url?path=${encodeURIComponent(p)}`);
+      if (result) return result;
+    }
+  }
+
+  throw new Error(`Failed to load image from URL: ${url}`);
 };
 
 interface StructureData {
@@ -194,6 +248,8 @@ interface StructureData {
   faces?: any[];
   discussions?: any[];
   visuals?: any[];
+  images?: any[];
+  attachments?: any[];
   comments?: string;
   components?: any[];
 }
@@ -289,33 +345,29 @@ const generatePipelineReport = async (
     }
   }
 
-  // Company Name
+  // Company Name - SAME size as Report Title (centered)
   doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, 10, 9);
-
-  // Department Name
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Technical Inspection Division", 10, 14);
-
-  // Report Title
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("PIPELINE SPECIFICATIONS REPORT", 10, 20);
+  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
+  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
 
-  // Subtitle and Report No
-  doc.setFontSize(7);
+  // Department Name (Sub-header) - Slightly increased font size (centered)
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text("", 10, 24);
+  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
 
-  if (config) {
-    const reportNo = `${config.reportNoPrefix}-${config.reportYear}`;
-    doc.text(`Report: ${reportNo}`, pageWidth - 10, 24, { align: "right" });
-  } else if (companySettings?.serial_no) {
-    doc.text(`Report: ${companySettings.serial_no}`, pageWidth - 10, 24, { align: "right" });
+  // Report Title - SAME size as Company Title (centered)
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("Pipeline Specifications Report", pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No - Centered below Report Title
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
+  if (reportNoStr) {
+    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
   }
 
   let yPos = 32;
@@ -648,33 +700,29 @@ const generatePlatformReport = async (
     }
   }
 
-  // Company Name - LARGEST (left side)
+  // Company Name - SAME size as Report Title (centered)
   doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, 10, 9);
-
-  // Department Name - Under Company Name
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Technical Inspection Division", 10, 14);
-
-  // Report Title - SMALLER
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("PLATFORM SPECIFICATIONS REPORT", 10, 20);
+  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
+  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
 
-  // Subtitle and Report No on same line
-  doc.setFontSize(7);
+  // Department Name (Sub-header) - Slightly increased font size (centered)
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text("", 10, 24);
+  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
 
-  if (config) {
-    const reportNo = `${config.reportNoPrefix}-${config.reportYear}`;
-    doc.text(`Report: ${reportNo}`, pageWidth - 10, 24, { align: "right" });
-  } else if (companySettings?.serial_no) {
-    doc.text(`Report: ${companySettings.serial_no}`, pageWidth - 10, 24, { align: "right" });
+  // Report Title - SAME size as Company Title (centered)
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("Platform Specifications Report", pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No - Centered below Report Title
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
+  if (reportNoStr) {
+    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
   }
 
   let yPos = 32;
@@ -773,32 +821,145 @@ const generatePlatformReport = async (
   yPos = Math.max(col1Y, col2Y, col3Y) + 5;
 
   // ===== STRUCTURE VISUALS =====
-  const photos: string[] = [];
-  if (structure.photo_url) photos.push(structure.photo_url);
-  if (structure.photos) photos.push(...structure.photos.map(p => p.url));
-  if (structure.visuals) photos.push(...structure.visuals.map((v: any) => v.url || v.file_url || v.meta?.file_url || v)); // Handle visuals if string or object
+  interface VisualItem {
+    id?: number | string;
+    url: string;
+    title: string;
+    path?: string;
+  }
 
-  // Filter unique valid URLs
-  const uniquePhotos = Array.from(new Set(photos.filter(url => typeof url === 'string' && url.length > 0))).slice(0, 3);
+  const formatCleanTitle = (raw: string): string => {
+    if (!raw) return "Structure Visual";
+    let str = String(raw).trim();
+    const isFileOrUrl = str.includes("/") || str.includes("\\") || /\.(png|jpe?g|webp|gif|bmp|tiff|svg)$/i.test(str);
+    if (str.includes("/") || str.includes("\\")) {
+      str = str.split(/[/\\]/).pop() || str;
+    }
+    try {
+      str = decodeURIComponent(str);
+    } catch {}
+    // Strip file extensions (.png, .jpg, etc.)
+    str = str.replace(/\.(png|jpe?g|webp|gif|bmp|tiff|svg)$/i, "");
+    // Strip UUID or timestamp prefixes
+    str = str.replace(/^[0-9a-fA-F-]{32,36}_?/, "");
+    str = str.replace(/^\d{10,14}_?/, "");
+    
+    // If it was a filename, clean underscores and hyphens between words
+    if (isFileOrUrl) {
+      str = str.replace(/[_]/g, " ");
+      if (/^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)+$/.test(str)) {
+        str = str.replace(/-/g, " ");
+      }
+    }
+    return str.trim() || "Structure Visual";
+  };
+
+  // Helper: check if an attachment looks like an image file
+  const isImageAttachment = (item: any): boolean => {
+    if (!item || typeof item !== 'object') return false;
+    const meta = typeof item.meta === 'string' ? (() => { try { return JSON.parse(item.meta); } catch { return {}; } })() : (item.meta || {});
+    const fileType = String(meta?.file_type || item.file_type || "").toLowerCase();
+    if (fileType.startsWith("image/")) return true;
+    const filePath = String(meta?.file_path || meta?.file_url || item.path || item.file_url || item.name || "").toLowerCase();
+    return /\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i.test(filePath);
+  };
+
+  // Collect visuals — structure.visuals and structure.photos are the SAME array from the API,
+  // so only iterate structure.visuals to avoid duplicates.
+  const rawVisuals: VisualItem[] = [];
+  const seenIds = new Set<string>();
+
+  const addVisualItem = (item: any) => {
+    if (!item || typeof item !== 'object') return;
+    // Skip non-image attachments
+    if (!isImageAttachment(item)) return;
+    // Deduplicate by attachment id
+    const itemId = String(item.id || "");
+    if (itemId && seenIds.has(itemId)) return;
+    if (itemId) seenIds.add(itemId);
+
+    let metaObj = item.meta;
+    if (typeof metaObj === 'string') {
+      try { metaObj = JSON.parse(metaObj); } catch {}
+    }
+
+    // Build the URL — PRIORITIZE proxy_url (server-side, no CORS) over direct Supabase URL
+    let url = "";
+    if (item.id) {
+      url = `/api/attachment/url?id=${item.id}`;
+    } else if (item.proxy_url) {
+      url = item.proxy_url;
+    } else {
+      const directUrl = metaObj?.file_url || item.file_url || item.url || item.path || "";
+      url = directUrl;
+    }
+    if (!url || typeof url !== 'string' || !url.trim()) return;
+
+    // Resolve title
+    const explicitTitle = metaObj?.title || item.title;
+    let title = "";
+    if (explicitTitle && String(explicitTitle).trim().length > 0) {
+      title = String(explicitTitle).trim();
+    } else {
+      const rawTitle = item.name || metaObj?.name || item.description || metaObj?.description || metaObj?.original_file_name || item.file_name || metaObj?.file_name || "Structure Visual";
+      title = formatCleanTitle(rawTitle);
+    }
+
+    rawVisuals.push({ id: item.id, url: url.trim(), title, path: item.path || metaObj?.file_path });
+  };
+
+  // Only iterate structure.visuals (structure.photos is the same array from the API — don't double-count)
+  if (Array.isArray(structure.visuals)) {
+    structure.visuals.forEach((v: any) => addVisualItem(v));
+  }
+  // Fallback: if visuals was empty, try photos/images/attachments
+  if (rawVisuals.length === 0 && Array.isArray(structure.photos)) {
+    structure.photos.forEach((p: any) => addVisualItem(p));
+  }
+  if (rawVisuals.length === 0 && Array.isArray(structure.images)) {
+    structure.images.forEach((i: any) => addVisualItem(i));
+  }
+  if (rawVisuals.length === 0 && Array.isArray((structure as any).attachments)) {
+    (structure as any).attachments.forEach((a: any) => addVisualItem(a));
+  }
+  // photo_url string fallback
+  if (rawVisuals.length === 0 && structure.photo_url && typeof structure.photo_url === 'string') {
+    const url = getPublicStorageUrl(structure.photo_url);
+    if (url) rawVisuals.push({ url, title: structure.title || structure.str_name || "Platform Overview" });
+  }
+
+  const uniquePhotos = rawVisuals;
 
   if (uniquePhotos.length > 0) {
+    const page1Photos = uniquePhotos.slice(0, 4);
+    const count = page1Photos.length;
     drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUALS (${uniquePhotos.length})`, 12, yPos + 3.5);
     yPos += 5;
 
-    const gap = 5;
+    const gap = count === 4 ? 3.5 : 5;
     const totalWidth = pageWidth - 20;
-    const imgWidth = (totalWidth - (gap * (uniquePhotos.length - 1))) / uniquePhotos.length;
-    const imgHeight = 60;
+    const imgWidth = (totalWidth - (gap * (count - 1))) / count;
+    const imgHeight = count === 4 ? 50 : (count === 3 ? 54 : 58);
 
     let currentX = 10;
     const padding = 1; // Inner padding for border
 
-    // Load all images
-    const imagePromises = uniquePhotos.map(url => loadImage(url).catch(e => null));
-    try {
-      const loadedImages = await Promise.all(imagePromises);
+    // Load images SEQUENTIALLY through the /api/attachment/url proxy to avoid CORS and rate-limiting
+    const loadedImages: (string | null)[] = [];
+    for (const p of page1Photos) {
+      try {
+        const imgData = await loadImage(p.url, p.id);
+        loadedImages.push(imgData);
+      } catch (e) {
+        console.error(`[StructureReport] Failed to load image id=${p.id} url=${p.url}`, e);
+        loadedImages.push(null);
+      }
+    }
 
-      loadedImages.forEach((imgData) => {
+    try {
+      loadedImages.forEach((imgData, idx) => {
+        const photoItem = page1Photos[idx];
+
         // Draw border container
         doc.setDrawColor(200, 200, 200);
         doc.rect(currentX, yPos, imgWidth, imgHeight);
@@ -820,6 +981,42 @@ const generatePlatformReport = async (
           doc.setTextColor(150, 150, 150);
           doc.text("No Img", currentX + 5, yPos + 10);
         }
+
+        // Semi-transparent Title Overlay over the photo (bottom bar)
+        if (photoItem && photoItem.title) {
+          const bannerH = count === 4 ? 5.5 : 6;
+          const bannerY = yPos + imgHeight - bannerH - padding;
+          const bannerX = currentX + padding;
+          const bannerW = imgWidth - (padding * 2);
+
+          doc.saveGraphicsState();
+          try {
+            if ((doc as any).GState) {
+              doc.setGState(new (doc as any).GState({ opacity: 0.65 }));
+            }
+            doc.setFillColor(15, 23, 42); // slate-900 semi-transparent dark
+            doc.rect(bannerX, bannerY, bannerW, bannerH, 'F');
+          } finally {
+            doc.restoreGraphicsState();
+          }
+
+          // Overlay Title Text
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(count === 4 ? 5.5 : 6.5);
+          doc.setTextColor(255, 255, 255);
+
+          const maxTextW = bannerW - 3;
+          let displayTitle = photoItem.title;
+          if (doc.getTextWidth(displayTitle) > maxTextW) {
+            while (displayTitle.length > 3 && doc.getTextWidth(displayTitle + "...") > maxTextW) {
+              displayTitle = displayTitle.slice(0, -1);
+            }
+            displayTitle += "...";
+          }
+
+          doc.text(displayTitle, bannerX + bannerW / 2, bannerY + (count === 4 ? 3.8 : 4.2), { align: "center" });
+        }
+
         currentX += imgWidth + gap;
       });
 
@@ -1072,12 +1269,62 @@ const generatePlatformReport = async (
     const textLines = doc.splitTextToSize(commentText, pageWidth - 26);
     const boxHeight = Math.min(15, textLines.length * 3 + 4);
 
-    doc.setDrawColor(200, 200, 200);
-    doc.rect(10, yPos, pageWidth - 20, boxHeight);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(6);
-    doc.text(textLines.slice(0, 4), 12, yPos + 3);
+    yPos += boxHeight + 4;
+  }
+
+  // ===== ADDITIONAL STRUCTURE VISUAL DOCUMENTATION (for remaining photos > 4) =====
+  if (uniquePhotos.length > 4) {
+    const remainingPhotos = uniquePhotos.slice(4);
+    const photosPerPage = 4; // 2x2 grid per page
+
+    for (let pageIdx = 0; pageIdx < Math.ceil(remainingPhotos.length / photosPerPage); pageIdx++) {
+      doc.addPage();
+      yPos = 15;
+
+      // Header bar for additional visuals page
+      drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUAL DOCUMENTATION (Page ${pageIdx + 2})`, 12, yPos + 3.5);
+      yPos += 8;
+
+      const currentBatch = remainingPhotos.slice(pageIdx * photosPerPage, (pageIdx + 1) * photosPerPage);
+      const gridCols = 2;
+      const gridGap = 6;
+      const cellWidth = (pageWidth - 20 - gridGap) / 2;
+      const cellHeight = 90;
+
+      // Load batch images
+      const batchPromises = currentBatch.map(p => loadImage(p.url, p.id).catch(e => null));
+      const loadedBatch = await Promise.all(batchPromises);
+
+      loadedBatch.forEach((imgData, idx) => {
+        const photoItem = currentBatch[idx];
+        const row = Math.floor(idx / gridCols);
+        const col = idx % gridCols;
+        const x = 10 + (col * (cellWidth + gridGap));
+        const y = yPos + (row * (cellHeight + gridGap));
+
+        // Draw border container
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(x, y, cellWidth, cellHeight);
+
+        if (imgData) {
+          try {
+            doc.addImage(imgData, 'JPEG', x + 1, y + 1, cellWidth - 2, cellHeight - 8);
+          } catch (e) {
+            console.error("Error adding PDF gallery image", e);
+          }
+        }
+
+        // Title banner
+        if (photoItem && photoItem.title) {
+          doc.setFillColor(15, 23, 42);
+          doc.rect(x + 1, y + cellHeight - 7, cellWidth - 2, 6, 'F');
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(6.5);
+          doc.setTextColor(255, 255, 255);
+          doc.text(photoItem.title, x + cellWidth / 2, y + cellHeight - 3, { align: "center" });
+        }
+      });
+    }
   }
 
   // ===== FOOTER =====
@@ -1180,14 +1427,19 @@ const generatePipelineHTML = (
     }
         </div>
         
-        <div style="padding-right: 100px;">
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; opacity: 0.95;">PIPELINE SPECIFICATIONS REPORT</h2>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;"></p>
-            <p style="margin: 0; font-size: 9px; opacity: 0.8;">Report: ${companySettings?.serial_no || "N/A"}</p>
-          </div>
+        <!-- Centered title and company info -->
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <!-- Company Name - SAME size as Report Title -->
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
+          
+          <!-- Department Name (Sub-header) - Slightly increased font size -->
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          
+          <!-- Report Title - SAME size as Company Title -->
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Pipeline Specifications Report</h2>
+          
+          <!-- Report No - Centered below Report Title -->
+          <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
       </div>
 
@@ -1367,50 +1619,90 @@ const generatePlatformHTML = (
     }
         </div>
         
-        <!-- Title and company info with more space -->
-        <div style="padding-right: 100px;">
-          <!-- Company Name - LARGEST -->
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
+        <!-- Centered title and company info -->
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <!-- Company Name - SAME size as Report Title -->
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
           
-          <!-- Department Name - Under Company Name -->
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <!-- Department Name (Sub-header) - Slightly increased font size -->
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
           
-          <!-- Report Title - SMALLER -->
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; opacity: 0.95;">PLATFORM SPECIFICATIONS REPORT</h2>
+          <!-- Report Title - SAME size as Company Title -->
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Specifications Report</h2>
           
-          <!-- Subtitle and Report No on same line -->
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;"></p>
-            <p style="margin: 0; font-size: 9px; opacity: 0.8;">Report: ${companySettings?.serial_no || "N/A"}</p>
-          </div>
+          <!-- Report No - Centered below Report Title -->
+          <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
       </div>
 
       <div style="padding: 20px;">
         
         <!-- Platform Picture (Dynamic: 1, 2, or 3+ photos) -->
-        ${((structure.photos && structure.photos.length > 0) || (structure.photo_url && typeof structure.photo_url === 'string' && structure.photo_url.trim().length > 0)) ? `
-          <div style="margin-bottom: 20px;">
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-              Structure Visual${structure.photos && structure.photos.length > 1 ? `s (${structure.photos.length})` : ''}
-            </div>
-            <div style="border: 1px solid #cbd5e0; border-top: none; padding: 15px; background: #f8fafc; text-align: center;">
-              <div style="display: flex; justify-content: center; align-items: center; gap: 15px; flex-wrap: wrap;">
-                ${structure.photos && structure.photos.length > 0
-        ? structure.photos.map((photo: any) => {
-          const photoCount = structure.photos?.length || 0;
-          let width = '100%';
-          if (photoCount === 2) width = '48%';
-          else if (photoCount === 3) width = '30%';
-          else if (photoCount >= 4) width = '23%';
-          return `<img src="${photo.url}" alt="${photo.name || 'Platform Visual'}" style="max-width: ${width}; max-height: 300px; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 4px;" />`;
-        }).join('')
-        : `<img src="${structure.photo_url}" style="max-width: 100%; max-height: 300px; object-fit: contain;" />`
-      }
+        ${(() => {
+          // Only use structure.visuals (structure.photos is the same array from the API)
+          const sourceVisuals: any[] = Array.isArray(structure.visuals) ? structure.visuals : [];
+
+          const seenIds = new Set<string>();
+          const uniqueItems: any[] = [];
+          
+          const isImage = (item: any): boolean => {
+            if (!item || typeof item !== 'object') return false;
+            const meta = typeof item.meta === 'string' ? (() => { try { return JSON.parse(item.meta); } catch { return {}; } })() : (item.meta || {});
+            const ft = String(meta?.file_type || item.file_type || "").toLowerCase();
+            if (ft.startsWith("image/")) return true;
+            const fp = String(meta?.file_path || meta?.file_url || item.path || item.file_url || item.name || "").toLowerCase();
+            return /\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i.test(fp);
+          };
+
+          for (const v of sourceVisuals) {
+            if (!v || typeof v !== 'object') continue;
+            if (!isImage(v)) continue;
+            const vid = String(v.id || "");
+            if (vid && seenIds.has(vid)) continue;
+            if (vid) seenIds.add(vid);
+
+            const meta = typeof v.meta === 'string' ? (() => { try { return JSON.parse(v.meta); } catch { return {}; } })() : (v.meta || {});
+            
+            // Use proxy URL for reliable loading (no CORS)
+            let imgUrl = v.id ? `/api/attachment/url?id=${v.id}` : (meta?.file_url || v.file_url || v.url || '');
+            if (!imgUrl) continue;
+
+            let rawTitle = meta?.title || v.title || v.name || meta?.original_file_name || 'Platform Visual';
+            uniqueItems.push({ url: imgUrl, title: rawTitle });
+          }
+
+          // Fallback to photo_url if no visuals found
+          if (uniqueItems.length === 0 && structure.photo_url) {
+            uniqueItems.push({ url: structure.photo_url, title: structure.title || structure.str_name || 'Platform Overview' });
+          }
+
+          if (uniqueItems.length === 0) return '';
+
+          return `
+            <div style="margin-bottom: 20px;">
+              <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+                Structure Visuals (${uniqueItems.length})
+              </div>
+              <div style="border: 1px solid #cbd5e0; border-top: none; padding: 15px; background: #f8fafc; text-align: center;">
+                <div style="display: flex; justify-content: center; align-items: stretch; gap: 12px; flex-wrap: wrap;">
+                  ${uniqueItems.slice(0, 4).map((photo: any) => {
+                    const count = Math.min(uniqueItems.length, 4);
+                    let width = '100%';
+                    if (count === 2) width = '48%';
+                    else if (count === 3) width = '31%';
+                    else if (count >= 4) width = '23%';
+                    return `
+                      <div style="flex: 0 0 ${width}; max-width: ${width}; display: flex; flex-direction: column; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <img src="${photo.url}" alt="${photo.title}" style="max-width: 100%; max-height: 220px; object-fit: contain; border-radius: 4px;" />
+                        <div style="font-size: 10px; font-weight: 600; color: #334155; margin-top: 6px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">${photo.title}</div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
               </div>
             </div>
-          </div>
-        ` : ''}
+          `;
+        })()}
         
         <!-- Three Column Layout -->
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
@@ -1725,22 +2017,32 @@ export const generateComponentSummaryReport = async (
     } catch (e) { /* ignore */ }
   }
 
-  // Company Headings
+  // Company Headings - SAME size as Report Title (centered)
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", 10, 10);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 16);
+  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
 
-  // Report Title
-  doc.setFontSize(14);
+  // Department (Sub-header) - Slightly increased font size (centered)
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "normal");
+  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
+
+  // Report Title - SAME size as Company Title (centered)
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("COMPONENT SUMMARY REPORT", 10, 24);
+  doc.text("Component Summary Report", pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No / Subtitle
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const reportNoSummary = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
+  if (reportNoSummary) {
+    doc.text(reportNoSummary, pageWidth / 2, 22.5, { align: "center" });
+  }
 
   // Subtitle
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
   doc.text(`Structure: ${structure.str_name} (${structure.str_type})`, 10, 35);
 
@@ -2185,14 +2487,11 @@ export const generateComponentSummaryHTML = (
     }
         </div>
         
-        <div style="padding-right: 100px;">
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; opacity: 0.95;">COMPONENT SUMMARY REPORT</h2>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 300;">Structure: ${structure.str_name} (${structure.str_type})</p>
-            <p style="margin: 0; font-size: 9px; opacity: 0.8;">Report: ${companySettings?.serial_no || "N/A"}</p>
-          </div>
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Component Summary Report</h2>
+          <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} (${structure.str_type}) | Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
       </div>
 
@@ -2317,22 +2616,30 @@ export const generateComponentSpecReport = async (
   }
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", 10, 10);
-  doc.setFontSize(10);
+  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 16);
+  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
 
-  doc.setFontSize(14);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("COMPONENT DATA SHEET", 10, 24);
+  doc.text("Component Data Sheet", pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No / Context
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const compReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
+  if (compReportNo) {
+    doc.text(compReportNo, pageWidth / 2, 22.5, { align: "center" });
+  }
 
   // Subheader: Structure Context
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
   doc.text(`Structure: ${structure.str_name} (${structure.str_type})`, 10, 35);
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(100, 100, 100);
   doc.text(`Component Type: ${resolveTypeName(component.type || component.code, typeMap)}`, 10, 40);
 
@@ -2493,10 +2800,10 @@ export const generateComponentSpecHTML = (
       : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
     }
         </div>
-        <div style="padding-right: 100px;">
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700;">${companySettings?.company_name || "Company Name"}</h1>
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">COMPONENT DATA SHEET</h2>
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">COMPONENT DATA SHEET</h2>
           <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} | Type: ${resolveTypeName(component.type || component.code, typeMap)}</p>
         </div>
       </div>
@@ -2596,18 +2903,26 @@ export const generateTechnicalSpecsReport = async (
   }
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", 10, 10);
-  doc.setFontSize(10);
+  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", 10, 16);
+  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
 
-  doc.setFontSize(14);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("TECHNICAL SPECIFICATIONS", 10, 24);
+  doc.text("Technical Specifications Report", pageWidth / 2, 17.5, { align: "center" });
 
-  doc.setFontSize(10);
+  // Report No / Subtitle
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const techReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
+  if (techReportNo) {
+    doc.text(techReportNo, pageWidth / 2, 22.5, { align: "center" });
+  }
+
+  doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
   doc.text(`Structure: ${structure.str_name} (${structure.str_type})`, 10, 35);
   doc.setFontSize(8);
@@ -2785,10 +3100,10 @@ export const generateTechnicalSpecsHTML = (
       : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
     }
         </div>
-        <div style="padding-right: 100px;">
-          <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700;">${companySettings?.company_name || "Company Name"}</h1>
-          <p style="margin: 0 0 12px 0; font-size: 11px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
-          <h2 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">TECHNICAL SPECIFICATIONS</h2>
+        <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">Technical Specifications Report</h2>
           <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} (${structure.str_type})</p>
         </div>
       </div>

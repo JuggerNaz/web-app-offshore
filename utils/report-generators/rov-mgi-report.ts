@@ -20,6 +20,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showSignatures?: boolean;
 }
 
@@ -32,8 +33,22 @@ export const generateROVMGIGraphReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     try {
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
+        const recordsByQid: Record<string, any[]> = {};
+        (records || []).forEach(r => {
+            const qid = r.structure_components?.q_id || r.component?.q_id || "Unassigned";
+            if (!recordsByQid[qid]) recordsByQid[qid] = [];
+            recordsByQid[qid].push(r);
+        });
+
+        const sortedQids = Object.keys(recordsByQid).sort();
+        const renderQids = sortedQids.length > 0 ? sortedQids : ["Overall Elevation Profile"];
+
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -52,14 +67,6 @@ export const generateROVMGIGraphReport = async (
             return -val; // Force negative as requested
         };
 
-        const recordsByQid: Record<string, any[]> = {};
-        records.forEach(r => {
-            const qid = r.structure_components?.q_id || r.component?.q_id || "Unassigned";
-            if (!recordsByQid[qid]) recordsByQid[qid] = [];
-            recordsByQid[qid].push(r);
-        });
-
-        const sortedQids = Object.keys(recordsByQid).sort();
         const thresholdList = mgiProfile?.thresholds || [];
 
         const colors = {
@@ -85,43 +92,46 @@ export const generateROVMGIGraphReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
+        const HEADER_H = 26;
+
         const drawPremiumHeader = (d: jsPDF, qid: string) => {
-            const headerH = 22;
             const isPF = config.printFriendly;
             
             if (isPF) {
                 d.setDrawColor(...colors.navy);
                 d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, headerH, 'S');
+                d.rect(margin, margin, contentWidth, HEADER_H, 'S');
                 d.setTextColor(...colors.navy);
             } else {
                 d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, headerH, 'F');
+                d.rect(margin, margin, contentWidth, HEADER_H, 'F');
                 d.setTextColor(255);
             }
 
             // 1. Company Logo (Right)
             if (companyLogo) {
-                drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
+                drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
             }
 
             // 2. Contractor Logo (Left)
             if (contractorLogo) {
-                drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
+                drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 4, 'left', 'center');
             }
 
-            d.setFontSize(8); d.setFont("helvetica", "bold");
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(`Marine Growth Graph Report (ROV)`, margin + (contentWidth/2), margin + 18, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(`Marine Growth Graph Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
         };
 
         const drawPremiumContext = (d: jsPDF, y: number, qid: string) => {
-            const rowH = 6;
+            const rowH = 7;
             const tableY = y;
-            const colW = contentWidth / 3;
+            const half = contentWidth / 2;
             const isPF = config.printFriendly;
 
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
@@ -130,18 +140,16 @@ export const generateROVMGIGraphReport = async (
                 d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 
-                d.setTextColor(...colors.text); d.setFontSize(7); d.setFont("helvetica", "bold");
-                d.text(label, x + 2, ty + 4); d.setFont("helvetica", "normal");
-                d.text(String(value), x + 25, ty + 4);
+                d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
+                d.text(label, x + 2, ty + 4.8); d.setFont("helvetica", "normal");
+                d.text(String(value || 'N/A'), x + 36, ty + 4.8);
             };
-            drawBox('Project:', headerData.jobpackName, margin, colW, tableY);
-            drawBox('SOW Report:', (config?.reportNoPrefix || headerData?.sowReportNo), margin + colW, colW, tableY);
-            drawBox('Date:', format(new Date(), 'dd/MM/yyyy'), margin + (colW * 2), colW, tableY);
-            drawBox('Structure:', headerData.platformName, margin, colW, tableY + rowH);
-            drawBox('Component:', qid, margin + colW, colW, tableY + rowH);
-            drawBox('Vessel:', headerData.vessel || 'N/A', margin + (colW * 2), colW, tableY + rowH);
+            drawBox('Structure:', headerData.platformName || 'N/A', margin, half, tableY);
+            drawBox('Vessel:', headerData.vessel || 'N/A', margin + half, half, tableY);
+            drawBox('Job Pack:', headerData.jobpackName || 'N/A', margin, half, tableY + rowH);
+            drawBox('Component:', qid || 'N/A', margin + half, half, tableY + rowH);
             return tableY + (rowH * 2) + 5;
-        }
+        };
 
         const parseMG = (mg: string) => {
             if (!mg || typeof mg !== 'string') return { h: '0', s: '0' };
@@ -174,13 +182,13 @@ export const generateROVMGIGraphReport = async (
             return { h: '0', s: '0' };
         };
 
-        for (let i = 0; i < sortedQids.length; i++) {
-            const qid = sortedQids[i];
+        for (let i = 0; i < renderQids.length; i++) {
+            const qid = renderQids[i];
             if (i > 0) doc.addPage();
             drawPremiumHeader(doc, qid);
-            const tableY = drawPremiumContext(doc, margin + 22 + 2, qid);
+            const tableY = drawPremiumContext(doc, margin + HEADER_H + 2, qid);
 
-            const qidRecords = recordsByQid[qid].sort((a,b) => resolveDepth(b.elevation) - resolveDepth(a.elevation));
+            const qidRecords = (recordsByQid[qid] || []).sort((a,b) => resolveDepth(b.elevation) - resolveDepth(a.elevation));
             const plotPoints: { page: number; x: number; y: number; h: number; limitX: number; actualX: number }[] = [];
             const pagesRulerDrawn = new Set<number>();
 
@@ -239,7 +247,7 @@ export const generateROVMGIGraphReport = async (
 
             autoTable(doc, {
                 startY: tableY,
-                margin: { left: margin, right: margin, top: margin + 22 + 17 + 4 },
+                margin: { left: margin, right: margin, top: margin + HEADER_H + 19 },
                 rowPageBreak: 'avoid',
                 head: [
                     [
@@ -265,7 +273,7 @@ export const generateROVMGIGraphReport = async (
                         { content: '9S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } }
                     ]
                 ],
-                body: tableData.map(row => {
+                body: tableData.length > 0 ? tableData.map(row => {
                     const formatReading = (v: any) => String(v ?? '-');
                     return [
                         `${row.depth.toFixed(1)}m`,
@@ -276,7 +284,9 @@ export const generateROVMGIGraphReport = async (
                         `${row.limit}mm`,
                         row.findings
                     ];
-                }),
+                }) : [
+                    ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No marine growth profile observations recorded."]
+                ],
                 theme: 'grid',
                 styles: { fontSize: 6.5, cellPadding: 1.5, textColor: [0, 0, 0], lineColor: colors.border },
                 headStyles: { fillColor: isPF ? [255,255,255] : colors.teal, textColor: isPF ? colors.navy : 255, fontStyle: 'bold', halign: 'center', valign: 'middle' },
@@ -390,7 +400,7 @@ export const generateROVMGIGraphReport = async (
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) {
                         drawPremiumHeader(doc, qid);
-                        drawPremiumContext(doc, margin + 22 + 2, qid);
+                        drawPremiumContext(doc, margin + HEADER_H + 2, qid);
                     }
                     const pagePoints = plotPoints.filter(p => p.page === data.pageNumber);
                     if (pagePoints.length > 0) {
@@ -424,7 +434,7 @@ export const generateROVMGIGraphReport = async (
 
         }
 
-        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + HEADER_H + 20);
         if (config.showSignatures !== false) {
             let sigY = pageHeight - 32;
             if (finalY > sigY - 10) {

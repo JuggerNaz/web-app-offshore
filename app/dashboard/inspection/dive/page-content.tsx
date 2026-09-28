@@ -38,6 +38,7 @@ import {
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
+import { formatClientTime } from "@/utils/client-date";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -1010,11 +1011,7 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
 
   function formatTime(timestamp: string): string {
     if (!timestamp) return "-";
-    return new Date(timestamp).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    return formatClientTime(timestamp);
   }
 
   const getNextAction = (currentAction: string) => {

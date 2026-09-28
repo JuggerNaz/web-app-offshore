@@ -138,15 +138,17 @@ export const TapeManagementCard: React.FC<TapeManagementCardProps> = ({
                         }}>
                             <SelectTrigger className="h-9 text-[11px] font-bold bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 focus:ring-blue-500/20 w-full min-w-0 dark:text-slate-200">
                                 <SelectValue placeholder={tapeNo ? `${tapeNo} (Ch: ${activeChapter || 1})` : "Select Tape"}>
-                                    {jobTapes.find(t => String(t.tape_id) === String(tapeId)) ? `${jobTapes.find(t => String(t.tape_id) === String(tapeId))?.tape_no} (Ch: ${activeChapter || 1})` : (tapeNo ? `${tapeNo} (Ch: ${activeChapter || 1})` : "Select Tape")}
+                                    {tapeNo ? `${tapeNo} (Ch: ${activeChapter || 1})` : "Select Tape"}
                                 </SelectValue>
                             </SelectTrigger>
-                            <SelectContent className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 shadow-xl">
+                            <SelectContent className="bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 shadow-xl max-h-64">
                                 {jobTapes.map((t: any) => (
                                     <SelectItem key={t.tape_id} value={String(t.tape_id)} className="text-[12px] font-medium py-2 focus:bg-blue-100 dark:focus:bg-blue-900/30 focus:text-blue-700 dark:focus:text-blue-400 dark:text-slate-200">
-                                        <div className="flex flex-col">
-                                            <span className="font-bold">{t.tape_no}</span>
-                                            <span className="text-[10px] text-slate-400 dark:text-slate-500">Chapters: {t.chapter_no || 1} • Status: {t.status}</span>
+                                        <div className="flex items-center justify-between gap-3 w-full">
+                                            <span className="font-bold text-slate-800 dark:text-slate-100">{t.tape_no}</span>
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shrink-0 font-mono">
+                                                Chapter {t.chapter_no || 1}
+                                            </span>
                                         </div>
                                     </SelectItem>
                                 ))}

@@ -21,6 +21,7 @@ interface ReportConfig {
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -55,6 +56,10 @@ export const generateROVCondSketchReport = async (
         const supabase = createClient();
 
         // 1. Context & Fetching
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
@@ -167,15 +172,18 @@ export const generateROVCondSketchReport = async (
         if (companySettings.logo_url) { try { coLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {} }
         if (headerData.contractorLogoUrl) { try { ctLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {} }
 
+        const hH = 26;
         const drawHeader = (d: jsPDF) => {
-            const hH = 22; const isPF = config.printFriendly;
+             const isPF = config.printFriendly;
             if (isPF) { d.setDrawColor(...colors.navy); d.setLineWidth(0.5); d.rect(margin, margin, contentWidth, hH, 'S'); d.setTextColor(...colors.navy); }
             else { d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, hH, 'F'); d.setTextColor(255, 255, 255); }
             if (coLogo) drawLogo(d, coLogo, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
             if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
-            d.setFontSize(9); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
-            d.setFontSize(7); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10, { align: 'center' });
-            d.setFontSize(13); d.setFont("helvetica", "bold"); d.text("Conductor Survey (Sketch) Report (ROV)", margin + contentWidth/2, margin + 17, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold"); d.text("Conductor Survey (Sketch) Report (ROV)", margin + contentWidth/2, margin + 16.5, { align: 'center' });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + contentWidth/2, margin + 21, { align: 'center' });
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
@@ -205,17 +213,27 @@ export const generateROVCondSketchReport = async (
             drawBox('Vessel:', headerData.vessel || 'N/A', margin + half, half, y);
             drawBox('Job Pack:', headerData.jobpackName || 'N/A', margin, half, y + rH);
             drawBox('Insp. Date Range:', dr, margin + half, half, y + rH);
-            drawBox('Report No:', (config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A', margin, contentWidth, y + (rH * 2));
-            return y + (rH * 3) + 4;
+            return y + (rH * 2) + 4;
         };
 
-        for (let i = 0; i < groups.length; i++) {
-            const group = groups[i];
+        if (!config.isBlankReport && groups.length === 0) {
+            return null;
+        }
+
+        const renderGroups = groups.length > 0 ? groups : [{
+            parentId: "GENERAL",
+            parentComp: { q_id: "GENERAL", name: "Conductor" },
+            records: []
+        }];
+
+        for (let i = 0; i < renderGroups.length; i++) {
+            const group = renderGroups[i];
             const parent = group.parentComp;
             const recordsInGroup = group.records;
+
             if (i > 0) doc.addPage();
             drawHeader(doc);
-            let currentY = drawContext(doc, margin + 22 + 2, recordsInGroup);
+            let currentY = drawContext(doc, margin + hH + 2, recordsInGroup);
 
             // Sub-header
             doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 7, 'F');
@@ -225,8 +243,8 @@ export const generateROVCondSketchReport = async (
             doc.text(`CONDUCTOR QID: ${displayQid}`, margin + 5, currentY + 5);
             currentY += 10;
 
-            const gW = contentWidth * 0.40; const dW = contentWidth * 0.60;
-            const gX = margin; const dX = margin + gW;
+            const gW = contentWidth * 0.38; const dW = contentWidth * 0.60;
+            const gX = margin; const dX = margin + gW + 4;
 
             // --- Elev Processing ---
             const pMeta = parent?.metadata || {};
@@ -242,8 +260,19 @@ export const generateROVCondSketchReport = async (
             );
             
             const rWidth = 14; // Slightly wider for conductor
+            const sketchH = 155;
+            const isPF = config?.printFriendly;
+
+            // Sketch Card Panel (Border box matching Riser sketch)
+            doc.setDrawColor(...colors.border); doc.setLineWidth(0.3);
+            doc.setFillColor(isPF ? 255 : 252, isPF ? 255 : 253, isPF ? 255 : 254);
+            doc.rect(gX, currentY, gW, sketchH, 'FD');
+
+            doc.setFontSize(7.5); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.navy);
+            doc.text(`CONDUCTOR SKETCH (${displayQid})`, gX + (gW / 2), currentY + 5, { align: 'center' });
+
             const gTopY = currentY + 15;
-            const gBottomY = gTopY + 140;
+            const gBottomY = gTopY + 130;
 
             const sMax = Math.ceil((designStart + 5) / 5) * 5;
             const sMin = Math.floor((designEnd - 5) / 5) * 5;
@@ -253,6 +282,15 @@ export const generateROVCondSketchReport = async (
             const cX = gX + (gW / 2);
             const pipeStartY = eToY(designStart);
             const pipeEndY = eToY(designEnd);
+
+            // 1. Sea Level Line (0m)
+            if (sMax >= 0 && sMin <= 0) {
+                const seaY = eToY(0);
+                doc.setDrawColor(59, 130, 246); doc.setLineWidth(0.4);
+                doc.line(gX + 2, seaY, gX + gW - 2, seaY);
+                doc.setFontSize(5); doc.setTextColor(59, 130, 246); doc.setFont("helvetica", "bold");
+                doc.text("SEA LEVEL (0.00m)", gX + 2.5, seaY - 1.2);
+            }
 
             // --- Graphics Area ---
             // 1. Draw Conductor Pipe
@@ -264,13 +302,13 @@ export const generateROVCondSketchReport = async (
             drawP(cX, pipeStartY, pipeEndY);
 
 
-            // Scale
+            // Scale on Far Left
             doc.setLineWidth(0.1); doc.setDrawColor(200, 200, 200);
             for (let e = sMax; e >= sMin; e -= 5) {
                 const ey = eToY(e);
                 if (ey <= gBottomY + 15) {
-                    doc.line(cX - 15, ey, cX - 10, ey);
-                    doc.setFontSize(6); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, cX - 22, ey + 1);
+                    doc.line(gX + 7, ey, gX + 10, ey);
+                    doc.setFontSize(5); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, gX + 2, ey + 1);
                 }
             }
 
@@ -293,12 +331,27 @@ export const generateROVCondSketchReport = async (
                     doc.setFillColor(255, 255, 255); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'F');
                     doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
                     doc.rect(cX - cw/2 - 2, py - 1, 2, 2, 'S'); doc.rect(cX + cw/2, py - 1, 2, 2, 'S');
-                    doc.setLineWidth(0.2); 
-                    const lineEnd = cX + cw/2 + 2 + 10;
-                    doc.line(cX + cw/2 + 2, py, lineEnd, py);
-                    doc.setFontSize(6); doc.setTextColor(...colors.navy); 
-                    doc.text(`${el}m`, lineEnd + 1, py + 1);
-                    doc.text(c.q_id || 'Clamp', lineEnd + 1, py + 3);
+                    
+                    // Left Side: Elevation Value
+                    doc.setLineWidth(0.2); doc.setDrawColor(...colors.navy);
+                    const leftLineEnd = cX - cw/2 - 2 - 5;
+                    doc.line(cX - cw/2 - 2, py, leftLineEnd, py);
+                    doc.setFontSize(5.5); doc.setTextColor(...colors.navy); 
+                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+
+                    // Right Side: Object Name / QID
+                    const rightLineEnd = Math.min(cX + cw/2 + 2 + 5, gX + gW - 20);
+                    doc.line(cX + cw/2 + 2, py, rightLineEnd, py);
+                    doc.setFontSize(5.5); doc.setTextColor(...colors.navy);
+                    let qidText = c.q_id || 'Clamp';
+                    const maxQidW = (gX + gW - 2) - (rightLineEnd + 1);
+                    if (doc.getTextWidth(qidText) > maxQidW) {
+                        while (qidText.length > 3 && doc.getTextWidth(qidText + "...") > maxQidW) {
+                            qidText = qidText.slice(0, -1);
+                        }
+                        qidText += "...";
+                    }
+                    doc.text(qidText, rightLineEnd + 1, py + 1);
                 } else if (isGuide) {
                     const gw = rWidth + 16; const gh = 6;
                     doc.setFillColor(230, 235, 245); doc.rect(cX - gw/2, py - gh/2, gw, gh, 'F');
@@ -306,19 +359,36 @@ export const generateROVCondSketchReport = async (
                     doc.setLineWidth(0.3);
                     doc.line(cX - gw/2, py - gh/2, cX + gw/2, py + gh/2);
                     doc.line(cX - gw/2, py + gh/2, cX + gw/2, py - gh/2);
-                    doc.setLineWidth(0.2); 
-                    const lineEnd = cX + gw/2 + 10;
-                    doc.line(cX + gw/2, py, lineEnd, py);
-                    doc.setFontSize(6); doc.setTextColor(...colors.navy); 
-                    doc.text(`${el}m`, lineEnd + 1, py + 1);
-                    doc.text(c.q_id || 'Guide Frame', lineEnd + 1, py + 3);
+                    
+                    // Left Side: Elevation Value
+                    doc.setLineWidth(0.2); doc.setDrawColor(...colors.navy);
+                    const leftLineEnd = cX - gw/2 - 5;
+                    doc.line(cX - gw/2, py, leftLineEnd, py);
+                    doc.setFontSize(5.5); doc.setTextColor(...colors.navy); 
+                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+
+                    // Right Side: Object Name / QID
+                    const rightLineEnd = Math.min(cX + gw/2 + 5, gX + gW - 20);
+                    doc.line(cX + gw/2, py, rightLineEnd, py);
+                    doc.setFontSize(5.5); doc.setTextColor(...colors.navy);
+                    let qidText = c.q_id || 'Guide Frame';
+                    const maxQidW = (gX + gW - 2) - (rightLineEnd + 1);
+                    if (doc.getTextWidth(qidText) > maxQidW) {
+                        while (qidText.length > 3 && doc.getTextWidth(qidText + "...") > maxQidW) {
+                            qidText = qidText.slice(0, -1);
+                        }
+                        qidText += "...";
+                    }
+                    doc.text(qidText, rightLineEnd + 1, py + 1);
                 } else {
                     doc.setFillColor(...col); doc.circle(cX, py, 2, 'F');
                     doc.setDrawColor(...col); doc.setLineWidth(0.1); 
-                    const lineEnd = cX + 3 + 10;
-                    doc.line(cX + 3, py, lineEnd, py);
-                    doc.setFontSize(6); doc.setTextColor(...col);
-                    doc.text(`${el}m`, lineEnd + 1, py + 1);
+
+                    // Left Side: Elevation Value
+                    const leftLineEnd = cX - 3 - 5;
+                    doc.line(cX - 3, py, leftLineEnd, py);
+                    doc.setFontSize(5.5); doc.setTextColor(...col);
+                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
                 }
             });
 
@@ -326,14 +396,17 @@ export const generateROVCondSketchReport = async (
             const sortedR = [...recordsInGroup].sort((a, b) => (parseFloat(b.elevation) || 0) - (parseFloat(a.elevation) || 0));
             autoTable(doc, {
                 startY: currentY,
-                margin: { left: dX, right: margin, top: margin + 22 + 6 },
+                margin: { left: dX, right: margin, top: margin + hH + 6 },
                 tableWidth: dW,
-                head: [['Elev (m)', 'CP (mV)', 'Findings / Anomalies']],
-                body: sortedR.map(r => {
+                head: [['Item No.', 'Elev (m)', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
+                body: sortedR.length > 0 ? sortedR.map((r, idx) => {
+                    const itemNo = idx + 1;
                     const rd = r.inspection_data || {};
                     const anoms = r.insp_anomalies || [];
                     const isAnom = r.has_anomaly || anoms.length > 0;
                     const c = r.structure_components || r.component || {};
+
+                    const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || r.inspection_data?.dive_no || 'N/A';
 
                     const primaryCP = rd.cp_rdg ?? rd.cp_reading_mv ?? rd.cp ?? "";
                     const additionals: any[] = Array.isArray(rd.cp_rdg_additional) ? rd.cp_rdg_additional : (Array.isArray(rd.cp_readings) ? rd.cp_readings : []);
@@ -366,31 +439,38 @@ export const generateROVCondSketchReport = async (
                         });
                     }
 
-                    if (r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name) findingsParts.push(`[Dive: ${r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name}]`);
-
                     const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
 
                     return [
-                        { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold' } },
+                        { content: String(itemNo), styles: { halign: 'center' } },
+                        { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold', halign: 'center' } },
+                        { content: String(diveNo), styles: { halign: 'center' } },
                         { content: cpDisplay, styles: { halign: 'center' } },
                         { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                     ];
-                }),
+                }) : [[
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "-", styles: { halign: 'center' } },
+                    { content: "No observations recorded for this scope.", styles: { textColor: colors.text } }
+                ]],
                 theme: 'grid',
                 headStyles: { 
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy, 
                     textColor: config.printFriendly ? colors.navy : [255, 255, 255], 
-                    fontSize: 8 
+                    fontSize: 8,
+                    halign: 'center'
                 },
                 styles: { fontSize: 7, cellPadding: 2 },
-                columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto' } },
+                columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 16 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 }, 4: { cellWidth: 'auto' } },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);
                 }
             });
         }
 
-        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + 22 + 20);
+        const finalY = (doc as any).lastAutoTable?.finalY ?? (margin + hH + 20);
         if (config.showSignatures !== false) {
             let sigY = pageHeight - 38;
             if (finalY > sigY - 10) {

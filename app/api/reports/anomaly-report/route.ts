@@ -75,7 +75,26 @@ export async function GET(request: NextRequest) {
             seenKeys.add(key);
             uniqueAnomalies.push(item);
         }
-        anomalies = uniqueAnomalies;
+        // Filter out completely empty ghost records without ID, reference or observations
+        const validAnomalies = uniqueAnomalies.filter(item => {
+            const hasId = Boolean(item.anomaly_id || item.id || item.insp_id);
+            const hasRef = Boolean((item.display_ref_no || item.anomaly_ref_no || item.ref_no || "").toString().trim());
+            const hasDesc = Boolean((item.description || item.observations || item.findings || item.defect_type || "").toString().trim());
+            return hasId && (hasRef || hasDesc);
+        });
+
+        // Sort anomalies naturally by defect reference number
+        const getRef = (item: any) => (item.display_ref_no || item.anomaly_ref_no || item.ref_no || "").toString().trim();
+        validAnomalies.sort((a, b) => {
+            const refA = getRef(a);
+            const refB = getRef(b);
+            if (refA && refB) {
+                return refA.localeCompare(refB, undefined, { numeric: true, sensitivity: "base" });
+            }
+            return refA ? -1 : (refB ? 1 : 0);
+        });
+
+        anomalies = validAnomalies;
 
         if (!anomalies || anomalies.length === 0) {
             return NextResponse.json({
@@ -91,25 +110,64 @@ export async function GET(request: NextRequest) {
         console.log(`[AnomalyReport] Found ${anomalies.length} anomalies via View.`);
 
         // 2. Fetch Attachments (Both Inspection and Anomaly level)
-        const inspIds = anomalies.map((a: any) => a.id).filter(Boolean);
-        const anomalyIds = anomalies.map((a: any) => a.anomaly_id).filter(Boolean);
+        const inspIds = Array.from(new Set(anomalies.map((a: any) => a.id ?? a.insp_id).filter(Boolean)));
+        const anomalyIds = Array.from(new Set(anomalies.map((a: any) => a.anomaly_id).filter(Boolean)));
 
         let attachments: any[] = [];
+        const allSourceIds = Array.from(new Set([...inspIds, ...anomalyIds].map(String)));
 
-        if (inspIds.length > 0 || anomalyIds.length > 0) {
-            const { data: attData } = await (supabase as any)
+        if (allSourceIds.length > 0) {
+            const { data: attData, error: attErr } = await (supabase as any)
                 .from("attachment")
                 .select("*")
-                .or(`and(source_type.eq.INSPECTION,source_id.in.(${inspIds.join(',')})),and(source_type.eq.ANOMALY,source_id.in.(${anomalyIds.join(',')}))`);
+                .in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "insp_record", "INSP_RECORD", "defect", "DEFECT"])
+                .in("source_id", allSourceIds);
 
-            if (attData) attachments.push(...attData);
+            if (attErr) {
+                console.error("[AnomalyReport] Error querying attachments:", attErr);
+            } else if (attData) {
+                attachments.push(...attData);
+            }
+
+            // Also check insp_media for direct photo captures
+            if (inspIds.length > 0) {
+                const { data: mediaData } = await (supabase as any)
+                    .from("insp_media")
+                    .select("*")
+                    .in("inspection_id", inspIds);
+
+                if (mediaData && mediaData.length > 0) {
+                    for (const m of mediaData) {
+                        if (!attachments.some((a: any) => a.path === m.file_path || String(a.id) === `media-${m.media_id}`)) {
+                            attachments.push({
+                                id: `media-${m.media_id}`,
+                                name: m.name || `Photo ${m.media_id}`,
+                                path: m.file_path,
+                                source_type: "INSPECTION",
+                                source_id: m.inspection_id,
+                                meta: {
+                                    ...m.meta,
+                                    bucket: "inspection-media",
+                                    is_insp_media: true,
+                                },
+                                created_at: m.captured_at,
+                            });
+                        }
+                    }
+                }
+            }
         }
 
         // 3. Merge Attachments
         const result = anomalies.map((a: any) => {
+            const currentInspId = String(a.id ?? a.insp_id ?? "");
+            const currentAnomId = String(a.anomaly_id ?? "");
+
             const relAttachments = attachments.filter((att: any) => {
-                const isInsp = att.source_type?.toUpperCase() === 'INSPECTION' && String(att.source_id) === String(a.id);
-                const isAnom = att.source_type?.toUpperCase() === 'ANOMALY' && String(att.source_id) === String(a.anomaly_id);
+                const sType = (att.source_type || "").toUpperCase();
+                const sId = String(att.source_id);
+                const isInsp = (sType === 'INSPECTION' || sType === 'INSP_RECORD') && currentInspId && (sId === currentInspId);
+                const isAnom = (sType === 'ANOMALY' || sType === 'DEFECT') && currentAnomId && (sId === currentAnomId);
                 return isInsp || isAnom;
             });
 
@@ -118,7 +176,7 @@ export async function GET(request: NextRequest) {
                 const orderA = ra.meta?.sort_order ?? 999999;
                 const orderB = rb.meta?.sort_order ?? 999999;
                 if (orderA !== orderB) return orderA - orderB;
-                return new Date(ra.created_at).getTime() - new Date(rb.created_at).getTime();
+                return new Date(ra.created_at || 0).getTime() - new Date(rb.created_at || 0).getTime();
             });
 
             return {

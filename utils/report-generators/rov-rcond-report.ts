@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -36,7 +37,7 @@ export const generateROVCondReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -57,6 +58,10 @@ export const generateROVCondReport = async (
             finding:   [124, 58,  237] as [number, number, number],
         };
 
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -67,7 +72,7 @@ export const generateROVCondReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
@@ -85,14 +90,14 @@ export const generateROVCondReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
             if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
 
-            d.setFontSize(9);   d.setFont("helvetica", "bold");
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(7);   d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("Conductor Survey Report (ROV)",                                margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(8.5);   d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10.5, { align: "center" });
+            d.setFontSize(11);  d.setFont("helvetica", "bold");
+            d.text("Conductor Survey Report (ROV)",                                margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,   margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -207,11 +212,17 @@ export const generateROVCondReport = async (
         });
 
         // Filter and Sort by Parent QID for logical order
-        const sortedParentIds = Object.keys(condGroups).map(Number).sort((a, b) => {
+        let sortedParentIds = Object.keys(condGroups).map(Number).sort((a, b) => {
             const qidA = idToComp[a]?.q_id || "";
             const qidB = idToComp[b]?.q_id || "";
             return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: 'base' });
         });
+
+        if (sortedParentIds.length === 0) {
+            if (!config?.isBlankReport) return null;
+            sortedParentIds = [0];
+            condGroups[0] = [];
+        }
 
         const buildRow = (r: any, idx: number): string[] => {
             const d   = r.inspection_data || {};
@@ -234,19 +245,19 @@ export const generateROVCondReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            const compCond = d.component_condition || r.component_condition || "—";
-            const coatCond = d.coating_condition || r.coating_condition || "—";
+            const compCond = d.comp_cond || d.component_condition || "—";
+            const coatCond = d.coat_cond || d.coating_condition || "—";
 
             const findingsParts: string[] = [];
 
-            // 1. Findings / Description
+            // 1. Description / Findings
             if (r.description && r.description.trim()) {
                 findingsParts.push(r.description.trim());
             } else if (d.findings && d.findings.trim()) {
                 findingsParts.push(d.findings.trim());
             }
 
-            // 2. CP Additional
+            // 2. CP Additionals
             additionals.forEach((a: any) => {
                 const val = a.reading ?? a.cp_rdg ?? "";
                 if ((val !== "" && val !== null && val !== undefined) || a.location) {
@@ -261,7 +272,7 @@ export const generateROVCondReport = async (
             const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
             if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
 
-            // 4. Rectification
+            // Rectification
             const isRectified = linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED';
             if (isRectified) {
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
@@ -284,7 +295,7 @@ export const generateROVCondReport = async (
         sortedParentIds.forEach((parentId, groupIdx) => {
             if (groupIdx > 0) doc.addPage();
             
-            const groupRecords = condGroups[parentId].sort((a, b) => {
+            const groupRecords = (condGroups[parentId] || []).sort((a, b) => {
                 const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
                 const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
                 return elB - elA;
@@ -323,7 +334,9 @@ export const generateROVCondReport = async (
                     { content: "Coating\nCondition",   styles: { halign: "center" } },
                     { content: "Findings",        styles: { halign: "center" } }
                 ]],
-                body: groupRecords.map(buildRow),
+                body: groupRecords.length > 0
+                    ? groupRecords.map(buildRow)
+                    : [["-", "-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {
                     fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
@@ -352,6 +365,7 @@ export const generateROVCondReport = async (
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
+                    if (!r) return;
                     const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
                     const linkedAnom = r.insp_anomalies?.[0] ?? null;
                     
@@ -427,4 +441,3 @@ export const generateROVCondReport = async (
         throw err;
     }
 };
-

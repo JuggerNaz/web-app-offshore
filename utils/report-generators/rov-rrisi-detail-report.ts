@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -37,7 +38,7 @@ export const generateROVRRISIDetailReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | null | void> => {
     const supabase = createClient();
     console.log("[ROV Riser Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
@@ -65,6 +66,10 @@ export const generateROVRRISIDetailReport = async (
             return typeCode === 'RRISI' && qid.startsWith('R') && !qid.startsWith('RISG') && (compCode === 'RS' || compCode === 'CL' || compCode === 'WELD');
         });
 
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
         // ── Pre-load logos ──
         let companyLogo: any = null;
         let contractorLogo: any = null;
@@ -75,37 +80,153 @@ export const generateROVRRISIDetailReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
+        const effectiveStructureId = config.structureId || 
+            records.find(r => r.structure_id)?.structure_id || 
+            records.find(r => r.structure_components?.structure_id)?.structure_components?.structure_id;
+
+        // Helper to extract identifier key (e.g., '11' from 'R11-SK358-WLP-A' or 'RIS-11-SUPP 1M')
+        const extractTubeKey = (qid: string) => {
+            if (!qid) return null;
+            const q = qid.toUpperCase().trim();
+            const match = q.match(/^(?:RISER|RIS|RS|R)[-_ ]*(\d+[A-Z]?)/i);
+            if (match) {
+                const rawNum = match[1].toUpperCase();
+                const normNum = rawNum.replace(/^0+/, '') || '0';
+                return { raw: rawNum, norm: normNum };
+            }
+            return null;
+        };
+
+        // Helper to check if a component is a primary parent Riser
+        const isParentRiserComp = (c: any) => {
+            if (!c) return false;
+            const qid = (c.q_id || '').toUpperCase().trim();
+            const code = (c.code || '').toUpperCase().trim();
+            if (qid.includes('SUPP') || qid.includes('CLAMP') || qid.includes('CLP') || qid.includes('ANODE') || qid.includes('FLANGE') || qid.includes('WELD') || qid.includes('RISG')) {
+                return false;
+            }
+            const meta = c.metadata || {};
+            if (meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_comp_qid || meta.parent_qid) {
+                return false;
+            }
+            return (code === 'RS' || code === 'RISER' || qid.startsWith('R') || qid.startsWith('RIS')) && !qid.startsWith('RISG');
+        };
+
         // Fetch all components to build a complete QID map for grouping
-        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const { data: allComps } = effectiveStructureId
+            ? await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', effectiveStructureId)
+            : { data: [] };
+
         const compRegistry = new Map<number, any>();
-        const qidToId = new Map<string, number>();
+        const parentCompsMap = new Map<number, any>();
+        const parentByQid = new Map<string, any>();
+        const parentByKey = new Map<string, any>();
+
+        const registerParent = (c: any) => {
+            if (!c || !c.id) return;
+            parentCompsMap.set(c.id, c);
+            const qid = (c.q_id || '').toUpperCase().trim();
+            if (qid) {
+                parentByQid.set(qid, c);
+                const baseQid = qid.replace(/[-_](SK\d+|WLP|PLAT|TEST|BAY).*/i, '').trim();
+                if (baseQid) parentByQid.set(baseQid, c);
+            }
+            const key = extractTubeKey(qid);
+            if (key) {
+                parentByKey.set(key.raw, c);
+                parentByKey.set(key.norm, c);
+            }
+        };
+
         if (allComps) {
             allComps.forEach(c => {
                 compRegistry.set(c.id, c);
-                qidToId.set(c.q_id.toUpperCase(), c.id);
-                const m = c.q_id.match(/R[IS-]*(\d+)/i);
-                if (m) qidToId.set(m[1], c.id);
+                if (isParentRiserComp(c)) {
+                    registerParent(c);
+                }
             });
         }
 
-        // Group records by parent Riser component (RS)
+        // Also register parent components from incoming inspection records
+        filteredRecords.forEach(r => {
+            const comp = r.structure_components;
+            if (comp) {
+                if (comp.id) compRegistry.set(comp.id, comp);
+                if (isParentRiserComp(comp)) {
+                    registerParent(comp);
+                }
+            }
+        });
+
+        // Helper to resolve parent component for any component / record
+        const resolveParentComp = (comp: any, r: any) => {
+            if (!comp) return null;
+            if (isParentRiserComp(comp)) {
+                return comp;
+            }
+            const meta = comp.metadata || r.metadata || {};
+
+            // 1. Direct parent ID reference from metadata
+            const pId = Number(meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id);
+            if (pId && parentCompsMap.has(pId)) {
+                return parentCompsMap.get(pId);
+            }
+            if (pId && compRegistry.has(pId)) {
+                const cand = compRegistry.get(pId);
+                if (isParentRiserComp(cand)) return cand;
+            }
+
+            // 2. Direct parent QID reference from metadata
+            const pQid = String(meta.associated_comp_qid || meta.parent_qid || meta.parent_q_id || '').toUpperCase().trim();
+            if (pQid && parentByQid.has(pQid)) {
+                return parentByQid.get(pQid);
+            }
+
+            const qid = (comp.q_id || r.q_id || r.component_qid || '').toUpperCase().trim();
+
+            // 3. Exact QID match in parentByQid
+            if (parentByQid.has(qid)) {
+                return parentByQid.get(qid);
+            }
+
+            // 4. Key match (e.g. RIS-11-SUPP matches R11 via '11')
+            const key = extractTubeKey(qid);
+            if (key) {
+                if (parentByKey.has(key.norm)) return parentByKey.get(key.norm);
+                if (parentByKey.has(key.raw)) return parentByKey.get(key.raw);
+            }
+
+            // 5. Prefix match against registered parents
+            let longestMatch: any = null;
+            let longestLen = 0;
+            parentByQid.forEach((pComp, pQ) => {
+                if (qid.startsWith(pQ) || qid.startsWith(pQ + '-') || qid.startsWith(pQ + '_')) {
+                    if (pQ.length > longestLen) {
+                        longestLen = pQ.length;
+                        longestMatch = pComp;
+                    }
+                }
+            });
+            if (longestMatch) return longestMatch;
+
+            // 6. If there is only 1 registered parent component, assign subcomponents to it
+            if (parentCompsMap.size === 1) {
+                return Array.from(parentCompsMap.values())[0];
+            }
+
+            return null;
+        };
+
+        // Group records by parent Riser component
         const risersMap = new Map<number, { riserComp: any, records: any[] }>();
         const unassigned: any[] = [];
         filteredRecords.forEach(r => {
             const comp = r.structure_components;
             if (!comp) return;
-            let rid: number | null = null;
-            if (comp.code === 'RS') rid = comp.id;
-            else if (comp.metadata?.associated_comp_id) rid = Number(comp.metadata.associated_comp_id);
-            else {
-                const q = (comp.q_id || '').toUpperCase();
-                const m = q.match(/R[IS-]*(\d+)/i);
-                if (m && qidToId.has(m[1])) rid = qidToId.get(m[1])!;
-                else if (qidToId.has(q)) rid = qidToId.get(q)!;
-            }
-            if (rid) {
-                if (!risersMap.has(rid)) risersMap.set(rid, { riserComp: compRegistry.get(rid) || comp, records: [] });
-                risersMap.get(rid)!.records.push(r);
+            const parent = resolveParentComp(comp, r);
+            if (parent && parent.id) {
+                if (!risersMap.has(parent.id)) risersMap.set(parent.id, { riserComp: parent, records: [] });
+                risersMap.get(parent.id)!.records.push(r);
             } else unassigned.push(r);
         });
 
@@ -120,7 +241,17 @@ export const generateROVRRISIDetailReport = async (
             return qA.localeCompare(qB, undefined, { numeric: true, sensitivity: 'base' });
         });
 
-        const HEADER_H = 24;
+        if (!config.isBlankReport && groups.length === 0) {
+            return null;
+        }
+
+        const renderGroups = groups.length > 0 ? groups : [{
+            riserComp: { q_id: 'Riser General', name: 'Riser' },
+            records: []
+        }];
+
+        const HEADER_H = 26;
+
 
         const drawPageHeader = (d: jsPDF) => {
             const isPF = config.printFriendly;
@@ -138,14 +269,14 @@ export const generateROVRRISIDetailReport = async (
             if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
             if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
 
-            d.setFontSize(9); d.setFont("helvetica", "bold");
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Division", margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13); d.setFont("helvetica", "bold");
-            d.text("Riser Inspection Report (ROV)", margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || "Technical Division", margin + contentWidth / 2, margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("Riser Inspection Report (ROV)", margin + contentWidth / 2, margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
         };
 
         const ROW_H = 7;
@@ -206,8 +337,8 @@ export const generateROVRRISIDetailReport = async (
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: "right" });
         };
 
-        for (let gIdx = 0; gIdx < groups.length; gIdx++) {
-            const group = groups[gIdx];
+        for (let gIdx = 0; gIdx < renderGroups.length; gIdx++) {
+            const group = renderGroups[gIdx];
             const riser = group.riserComp;
             const groupRecs = group.records;
 
@@ -233,7 +364,7 @@ export const generateROVRRISIDetailReport = async (
             });
 
             // Map rows for autoTable
-            const tableRows = sortedRecords.map((r, rIdx) => {
+            const tableRows = sortedRecords.length > 0 ? sortedRecords.map((r, rIdx) => {
                 const comp = r.structure_components || {};
                 const d = r.inspection_data || {};
                 const anoms = r.insp_anomalies || [];
@@ -292,7 +423,15 @@ export const generateROVRRISIDetailReport = async (
                     { content: cpDisplay, styles: { halign: "center" as const } },
                     { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
                 ];
-            });
+            }) : [[
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-" },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: { halign: "center" as const } },
+                { content: "No observations recorded for this scope." }
+            ]];
 
             autoTable(doc, {
                 startY: currentY,

@@ -53,7 +53,15 @@ export function InspectionAnalyticsDialog({
         return (
             <Dialog open={open} onOpenChange={onOpenChange}>
                 <DialogContent className="max-w-md bg-white dark:bg-slate-950 text-center p-8">
-                    <p className="text-slate-500 text-sm">No live inspection data loaded yet.</p>
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-bold">Live Inspection Analytics</DialogTitle>
+                        <DialogDescription className="text-slate-500 text-sm">
+                            No live inspection data loaded yet.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <p className="text-slate-500 text-xs mt-2">
+                        Please select a job pack, structure, and SOW report number to view live inspection analytics.
+                    </p>
                 </DialogContent>
             </Dialog>
         );
