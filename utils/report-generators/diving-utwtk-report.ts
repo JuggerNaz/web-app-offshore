@@ -19,6 +19,7 @@ interface ReportConfig {
     reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
     returnBlob?: boolean;
+    isBlankReport?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
@@ -31,8 +32,12 @@ export const generateDivingUTWTKReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
     try {
+        if (!config?.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -50,7 +55,7 @@ export const generateDivingUTWTKReport = async (
             finding: [124, 58, 237] as [number, number, number],
         };
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // Pre-load logos
         let companyLogo: any = null;
@@ -74,17 +79,17 @@ export const generateDivingUTWTKReport = async (
                 d.setTextColor(255);
             }
 
-            if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
+            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
 
-            d.setFontSize(9); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text("UT Wall Thickness Inspection Report (Diving)", margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("UT Wall Thickness Inspection Report (Diving)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
 
         const drawPageFooter = (d: jsPDF, pageNo: number) => {
@@ -129,216 +134,215 @@ export const generateDivingUTWTKReport = async (
                 doc.save(`${config.reportNoPrefix}_UTWTK.pdf`);
                 return;
             }
-        } else {
-            let pageNum = 1;
-            drawPageHeader(doc, pageNum);
+        }
+
+        let pageNum = 1;
+        drawPageHeader(doc, pageNum);
+        
+        let currentY = margin + HEADER_H + 5;
+        const isPF = config.printFriendly;
+
+        // Context Box (Structure, Vessel, Job Pack)
+        doc.setDrawColor(...colors.border); doc.setLineWidth(0.1);
+        if (!isPF) { doc.setFillColor(...colors.lightGray); doc.rect(margin, currentY, contentWidth, 14, "F"); }
+        doc.rect(margin, currentY, contentWidth, 14, "S");
+        doc.line(margin + contentWidth / 2, currentY, margin + contentWidth / 2, currentY + 14);
+        doc.line(margin, currentY + 7, margin + contentWidth, currentY + 7);
+        
+        doc.setTextColor(...colors.text);
+        doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
+        
+        doc.text("Structure:", margin + 2, currentY + 5);
+        doc.setFont("helvetica", "normal");
+        doc.text(headerData.platformName || "N/A", margin + 25, currentY + 5);
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Vessel:", margin + contentWidth / 2 + 2, currentY + 5);
+        doc.setFont("helvetica", "normal");
+        doc.text(headerData.vessel || "N/A", margin + contentWidth / 2 + 25, currentY + 5);
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Job Pack:", margin + 2, currentY + 12);
+        doc.setFont("helvetica", "normal");
+        doc.text(headerData.jobpackName || "N/A", margin + 25, currentY + 12);
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Date:", margin + contentWidth / 2 + 2, currentY + 12);
+        doc.setFont("helvetica", "normal");
+        doc.text(format(new Date(), 'dd MMM yyyy'), margin + contentWidth / 2 + 25, currentY + 12);
+
+        currentY += 18;
+
+        // Table Data
+        // Details as follows, Item No. , QID, Elevation, Dive No., clock position (group all the clock pos thickness value 12,3,6,9) , Nominal Thickness , Findings.
+        const tableBody = records.map((r, index) => {
+            let d = r.inspection_data || {};
+            if (Array.isArray(d)) {
+                d = d.find((item: any) => item.inspno || item.ut_3_o_clock !== undefined || item._meta_status !== undefined) || d[d.length - 1] || {};
+            }
+            const qid = r.structure_components?.q_id || r.component?.q_id || "—";
+            const elevation = r.elevation ?? d.elevation ?? "—";
+            const diveNo = r.insp_dive_jobs?.job_no || "—";
             
-            let currentY = margin + HEADER_H + 5;
-            const isPF = config.printFriendly;
-
-            // Context Box (Structure, Vessel, Job Pack)
-            doc.setDrawColor(...colors.border); doc.setLineWidth(0.1);
-            if (!isPF) { doc.setFillColor(...colors.lightGray); doc.rect(margin, currentY, contentWidth, 14, "F"); }
-            doc.rect(margin, currentY, contentWidth, 14, "S");
-            doc.line(margin + contentWidth / 2, currentY, margin + contentWidth / 2, currentY + 14);
-            doc.line(margin, currentY + 7, margin + contentWidth, currentY + 7);
+            // Clock Position Formatting
+            const getRd = (val: any, unit: any) => (val !== undefined && val !== null && val !== "") ? `${val} ${unit || 'mm'}` : "-";
             
-            doc.setTextColor(...colors.text);
-            doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
-            
-            doc.text("Structure:", margin + 2, currentY + 5);
-            doc.setFont("helvetica", "normal");
-            doc.text(headerData.platformName || "N/A", margin + 25, currentY + 5);
+            const rd12 = getRd(d.ut_12_o_clock, d.ut_12_o_clock_unit);
+            const rd3 = getRd(d.ut_3_o_clock, d.ut_3_o_clock_unit);
+            const rd6 = getRd(d.ut_6_o_clock, d.ut_6_o_clock_unit);
+            const rd9 = getRd(d.ut_9_o_clock, d.ut_9_o_clock_unit);
 
-            doc.setFont("helvetica", "bold");
-            doc.text("Vessel:", margin + contentWidth / 2 + 2, currentY + 5);
-            doc.setFont("helvetica", "normal");
-            doc.text(headerData.vessel || "N/A", margin + contentWidth / 2 + 25, currentY + 5);
+            const nominalThk = d.nominal_thickness !== undefined && d.nominal_thickness !== null && d.nominal_thickness !== "" 
+                ? `${d.nominal_thickness} ${d.nominal_thickness_unit || 'mm'}` 
+                : "—";
 
-            doc.setFont("helvetica", "bold");
-            doc.text("Job Pack:", margin + 2, currentY + 12);
-            doc.setFont("helvetica", "normal");
-            doc.text(headerData.jobpackName || "N/A", margin + 25, currentY + 12);
+            // Findings
+            const parts: string[] = [];
+            if (r.description?.trim()) parts.push(r.description.trim());
 
-            doc.setFont("helvetica", "bold");
-            doc.text("Date:", margin + contentWidth / 2 + 2, currentY + 12);
-            doc.setFont("helvetica", "normal");
-            doc.text(format(new Date(), 'dd MMM yyyy'), margin + contentWidth / 2 + 25, currentY + 12);
+            const linkedAnom = r.insp_anomalies?.[0] ?? null;
+            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
+            if (anomRef) parts.push(`Ref: ${anomRef}`);
 
-            currentY += 18;
+            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
+            if (isRectified) {
+                const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
+                parts.push(`Rectified: ${rectComments}`);
+            }
 
-            // Table Data
-            // Details as follows, Item No. , QID, Elevation, Dive No., clock position (group all the clock pos thickness value 12,3,6,9) , Nominal Thickness , Findings.
-            const tableBody = records.map((r, index) => {
-                let d = r.inspection_data || {};
-                if (Array.isArray(d)) {
-                    d = d.find((item: any) => item.inspno || item.ut_3_o_clock !== undefined || item._meta_status !== undefined) || d[d.length - 1] || {};
-                }
-                const qid = r.structure_components?.q_id || r.component?.q_id || "—";
-                const elevation = r.elevation ?? d.elevation ?? "—";
-                const diveNo = r.insp_dive_jobs?.job_no || "—";
-                
-                // Clock Position Formatting
-                const getRd = (val: any, unit: any) => (val !== undefined && val !== null && val !== "") ? `${val} ${unit || 'mm'}` : "-";
-                
-                const rd12 = getRd(d.ut_12_o_clock, d.ut_12_o_clock_unit);
-                const rd3 = getRd(d.ut_3_o_clock, d.ut_3_o_clock_unit);
-                const rd6 = getRd(d.ut_6_o_clock, d.ut_6_o_clock_unit);
-                const rd9 = getRd(d.ut_9_o_clock, d.ut_9_o_clock_unit);
+            const findingsText = parts.length > 0 ? parts.join("\n") : "—";
 
-                const nominalThk = d.nominal_thickness !== undefined && d.nominal_thickness !== null && d.nominal_thickness !== "" 
-                    ? `${d.nominal_thickness} ${d.nominal_thickness_unit || 'mm'}` 
-                    : "—";
+            return [
+                index + 1,
+                qid,
+                elevation !== "—" ? `${elevation} m` : "—",
+                diveNo,
+                rd12,
+                rd3,
+                rd6,
+                rd9,
+                nominalThk,
+                findingsText
+            ];
+        });
 
-                // Findings
-                const parts: string[] = [];
-                if (r.description?.trim()) parts.push(r.description.trim());
-
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-                if (anomRef) parts.push(`Ref: ${anomRef}`);
-
-                const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-                if (isRectified) {
-                    const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                    parts.push(`Rectified: ${rectComments}`);
-                }
-
-                const findingsText = parts.length > 0 ? parts.join("\n") : "—";
-
-                return [
-                    index + 1,
-                    qid,
-                    elevation !== "—" ? `${elevation} m` : "—",
-                    diveNo,
-                    rd12,
-                    rd3,
-                    rd6,
-                    rd9,
-                    nominalThk,
-                    findingsText
-                ];
-            });
-
-            autoTable(doc, {
-                startY: currentY,
-                margin: { left: margin, right: margin, bottom: margin + 25 },
-                head: [
-                    [
-                        { content: "Item No.", rowSpan: 2, styles: { cellWidth: 12 } },
-                        { content: "QID", rowSpan: 2, styles: { cellWidth: 25 } },
-                        { content: "Elevation", rowSpan: 2, styles: { cellWidth: 16 } },
-                        { content: "Dive No.", rowSpan: 2, styles: { cellWidth: 16 } },
-                        { content: "Thickness Readings (o'clock)", colSpan: 4, styles: { halign: 'center' } },
-                        { content: "Nominal\nThickness", rowSpan: 2, styles: { cellWidth: 16 } },
-                        { content: "Findings", rowSpan: 2, styles: { cellWidth: 'auto' } }
-                    ],
-                    [
-                        { content: "12", styles: { cellWidth: 14 } },
-                        { content: "3", styles: { cellWidth: 14 } },
-                        { content: "6", styles: { cellWidth: 14 } },
-                        { content: "9", styles: { cellWidth: 14 } }
-                    ]
+        autoTable(doc, {
+            startY: currentY,
+            margin: { left: margin, right: margin, bottom: margin + 25 },
+            head: [
+                [
+                    { content: "Item No.", rowSpan: 2, styles: { cellWidth: 12 } },
+                    { content: "QID", rowSpan: 2, styles: { cellWidth: 25 } },
+                    { content: "Elevation", rowSpan: 2, styles: { cellWidth: 16 } },
+                    { content: "Dive No.", rowSpan: 2, styles: { cellWidth: 16 } },
+                    { content: "Thickness Readings (o'clock)", colSpan: 4, styles: { halign: 'center' } },
+                    { content: "Nominal\nThickness", rowSpan: 2, styles: { cellWidth: 16 } },
+                    { content: "Findings", rowSpan: 2, styles: { cellWidth: 'auto' } }
                 ],
-                body: tableBody,
-                theme: "grid",
-                headStyles: {
-                    fillColor: isPF ? [255, 255, 255] : colors.navy,
-                    textColor: isPF ? colors.navy : [255, 255, 255],
-                    lineColor: isPF ? colors.border : [255, 255, 255],
-                    lineWidth: 0.1,
-                    fontSize: 6.5,
-                    fontStyle: "bold",
-                    halign: "center",
-                    valign: "middle"
-                },
-                styles: {
-                    fontSize: 6.5,
-                    cellPadding: 2,
-                    textColor: colors.text,
-                    lineColor: colors.border,
-                    valign: "middle",
-                    halign: "center"
-                },
-                columnStyles: {
-                    9: { halign: "left" }
-                },
-                didParseCell: (data) => {
-                    if (data.section === "body" && data.column.index === 9) {
-                        const rowIndex = data.row.index;
-                        const r = records[rowIndex];
-                        const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                        const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-                        let metaData = r.inspection_data || {};
-                        if (Array.isArray(metaData)) {
-                            metaData = metaData.find((item: any) => item.inspno || item._meta_status !== undefined) || metaData[metaData.length - 1] || {};
-                        }
-                        const metaStatus = (metaData._meta_status || "").toLowerCase();
-                        
-                        if (metaStatus === "finding") data.cell.styles.textColor = colors.finding;
-                        else if (r.has_anomaly) data.cell.styles.textColor = colors.anomaly;
-                        else if (isRectified) data.cell.styles.textColor = colors.rectified;
+                [
+                    { content: "12", styles: { cellWidth: 14 } },
+                    { content: "3", styles: { cellWidth: 14 } },
+                    { content: "6", styles: { cellWidth: 14 } },
+                    { content: "9", styles: { cellWidth: 14 } }
+                ]
+            ],
+            body: tableBody,
+            theme: "grid",
+            headStyles: {
+                fillColor: isPF ? [255, 255, 255] : colors.navy,
+                textColor: isPF ? colors.navy : [255, 255, 255],
+                lineColor: isPF ? colors.border : [255, 255, 255],
+                lineWidth: 0.1,
+                fontSize: 6.5,
+                fontStyle: "bold",
+                halign: "center",
+                valign: "middle"
+            },
+            styles: {
+                fontSize: 6.5,
+                cellPadding: 2,
+                textColor: colors.text,
+                lineColor: colors.border,
+                valign: "middle",
+                halign: "center"
+            },
+            columnStyles: {
+                9: { halign: "left" }
+            },
+            didParseCell: (data) => {
+                if (data.section === "body" && data.column.index === 9) {
+                    const rowIndex = data.row.index;
+                    const r = records[rowIndex];
+                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
+                    const isRectified = linkedAnom?.is_rectified || r.rectified || false;
+                    let metaData = r.inspection_data || {};
+                    if (Array.isArray(metaData)) {
+                        metaData = metaData.find((item: any) => item.inspno || item._meta_status !== undefined) || metaData[metaData.length - 1] || {};
                     }
-                },
-                didDrawPage: (data) => {
-                    if (data.pageNumber > 1) {
-                        pageNum = data.pageNumber;
-                        drawPageHeader(doc, pageNum);
-                    }
+                    const metaStatus = (metaData._meta_status || "").toLowerCase();
+                    
+                    if (metaStatus === "finding") data.cell.styles.textColor = colors.finding;
+                    else if (r.has_anomaly) data.cell.styles.textColor = colors.anomaly;
+                    else if (isRectified) data.cell.styles.textColor = colors.rectified;
                 }
-            });
-
-            currentY = (doc as any).lastAutoTable.finalY + 10;
-
-            // Add Signatures
-            if (config.showSignatures !== false) {
-                const sigH = 20;
-                const sigW = contentWidth / 3;
-                
-                if ((doc as any).lastAutoTable.finalY > pageHeight - margin - 25 - sigH) {
-                    doc.addPage();
-                    pageNum++;
+            },
+            didDrawPage: (data) => {
+                if (data.pageNumber > 1) {
+                    pageNum = data.pageNumber;
                     drawPageHeader(doc, pageNum);
                 }
+            }
+        });
 
-                const sigY = pageHeight - margin - 24; 
+        currentY = (doc as any).lastAutoTable.finalY + 10;
 
-                const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
-                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
-                    doc.rect(lx, sigY, sigW - 4, 18);
-                    if (!isPF) {
-                        doc.setFillColor(...colors.navy);
-                        doc.rect(lx, sigY, sigW - 4, 4.5, "F");
-                        doc.setTextColor(255);
-                    } else {
-                        doc.setTextColor(...colors.navy);
-                    }
-                    doc.setFontSize(7); doc.setFont("helvetica", "bold");
-                    doc.text(label, lx + 2, sigY + 3.5);
-                    doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
-                    doc.text("Name:", lx + 2, sigY + 10);
+        // Add Signatures
+        if (config.showSignatures !== false) {
+            const sigH = 20;
+            const sigW = contentWidth / 3;
+            
+            if ((doc as any).lastAutoTable.finalY > pageHeight - margin - 25 - sigH) {
+                doc.addPage();
+                pageNum++;
+                drawPageHeader(doc, pageNum);
+            }
+
+            const sigY = pageHeight - margin - 24; 
+
+            const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
+                doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
+                doc.rect(lx, sigY, sigW - 4, 18);
+                if (!isPF) {
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(lx, sigY, sigW - 4, 4.5, "F");
+                    doc.setTextColor(255);
+                } else {
+                    doc.setTextColor(...colors.navy);
+                }
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.text(label, lx + 2, sigY + 3.5);
+                doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+                doc.text("Name:", lx + 2, sigY + 10);
                 if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
-                    doc.text("Date:", lx + 2, sigY + 13.5);
+                doc.text("Date:", lx + 2, sigY + 13.5);
                 if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
-                    doc.text("Signature:", lx + 2, sigY + 17);
-                };
+                doc.text("Signature:", lx + 2, sigY + 17);
+            };
 
-                drawSig("PREPARED BY", margin, config?.preparedBy);
-                drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
-                drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
-            }
+            drawSig("PREPARED BY", margin, config?.preparedBy);
+            drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy);
+            drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
+        }
 
-            // Draw footers on all pages
-            const pageCount = (doc as any).internal.getNumberOfPages();
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                drawPageFooter(doc, i);
-            }
+        // Draw footers on all pages
+        const pageCount = (doc as any).internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            drawPageFooter(doc, i);
         }
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`Diving_UTWTK_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving UTWTK Report] Error:", err);

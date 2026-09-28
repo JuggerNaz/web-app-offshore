@@ -20,10 +20,12 @@ import {
     LayoutGrid,
     List,
     Boxes,
+    Loader2,
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
-    Eye
+    Eye,
+    ClipboardCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,9 +58,11 @@ import { WincairsFallbackDialog } from "@/components/dialogs/wincairs-fallback-d
 import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
 import { PlatformSpecsDialog } from "@/components/dialogs/platform-specs-dialog";
 import { InspectionStatusDialog } from "@/components/dialogs/inspection-status-dialog";
+import { InspectionTaskDialog } from "@/components/dialogs/inspection-task-dialog";
 import { ExternalLink } from "lucide-react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
+import { createClient } from "@/utils/supabase/client";
 import {
     getActivePlatformId,
     setActivePlatformId,
@@ -158,7 +162,36 @@ export default function Platform3DPage() {
     // Inspection Status state
     const [isInspectionDialogOpen, setIsInspectionDialogOpen] = useState(false);
     const [inspectionJobpackId, setInspectionJobpackId] = useState<number | null>(null);
+    const [inspectionSowReportNo, setInspectionSowReportNo] = useState<string | null>(null);
     const [inspectionFilters, setInspectionFilters] = useState<string[]>(["Completed", "Incomplete", "Pending"]);
+
+    // Fetch SOW items for active inspection Jobpack to synchronize 3D component status colors
+    const { data: inspectionSowResponse } = useSWR(
+        selectedPlatform && inspectionJobpackId ? `/api/sow?jobpack_id=${inspectionJobpackId}&structure_id=${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const inspectionSowItems = useMemo(() => {
+        if (!inspectionSowResponse?.data) return [];
+        const s = Array.isArray(inspectionSowResponse.data) ? inspectionSowResponse.data[0] : inspectionSowResponse.data;
+        return s?.items || [];
+    }, [inspectionSowResponse]);
+
+    // Inspection Task state
+    const [isInspectionTaskDialogOpen, setIsInspectionTaskDialogOpen] = useState(false);
+    const [inspectionTaskJobpackId, setInspectionTaskJobpackId] = useState<number | null>(null);
+    const [inspectionTaskSowReportNo, setInspectionTaskSowReportNo] = useState<string | null>(null);
+    const [selectedInspectionTaskCode, setSelectedInspectionTaskCode] = useState<string | null>("ALL");
+
+    // Fetch SOW items for active inspection Task Jobpack
+    const { data: inspectionTaskSowResponse } = useSWR(
+        selectedPlatform && inspectionTaskJobpackId ? `/api/sow?jobpack_id=${inspectionTaskJobpackId}&structure_id=${selectedPlatform.plat_id}` : null,
+        fetcher
+    );
+    const inspectionTaskSowItems = useMemo(() => {
+        if (!inspectionTaskSowResponse?.data) return [];
+        const s = Array.isArray(inspectionTaskSowResponse.data) ? inspectionTaskSowResponse.data[0] : inspectionTaskSowResponse.data;
+        return s?.items || [];
+    }, [inspectionTaskSowResponse]);
 
     // WINCAIRS Mode state & Fallback Dialog state
     const [useWincairsMode, setUseWincairsMode] = useState(false);
@@ -193,25 +226,30 @@ export default function Platform3DPage() {
         }
     }, [selectedPlatform, setGlobalUrlId, setGlobalUrlType]);
 
+    const [targetPlatformId, setTargetPlatformId] = useState<number | null>(null);
     const initialPlatformIdRef = useRef<number | null>(null);
+    const [isMounted, setIsMounted] = useState(false);
     const [initialCheckDone, setInitialCheckDone] = useState(false);
 
     // 1. Fetch Platforms
     const { data: platformsData, isLoading: isPlatformsLoading } = useSWR("/api/platform", fetcher);
     const platforms: Platform[] = useMemo(() => platformsData?.data || [], [platformsData]);
 
-    // Read initial target platform from URL or localStorage ONCE on mount
+    // Read initial target platform from URL or localStorage ONCE on client mount
     useEffect(() => {
+        setIsMounted(true);
         if (typeof window !== "undefined") {
             const params = new URLSearchParams(window.location.search);
             const rawParam = params.get("platformId") || params.get("plat_id") || params.get("id");
+            let targetId: number | null = null;
             if (rawParam && !isNaN(Number(rawParam))) {
-                initialPlatformIdRef.current = Number(rawParam);
+                targetId = Number(rawParam);
             } else {
-                const storedId = getActivePlatformId();
-                if (storedId) {
-                    initialPlatformIdRef.current = storedId;
-                }
+                targetId = getActivePlatformId();
+            }
+            if (targetId) {
+                setTargetPlatformId(targetId);
+                initialPlatformIdRef.current = targetId;
             }
         }
         setInitialCheckDone(true);
@@ -221,14 +259,14 @@ export default function Platform3DPage() {
     useEffect(() => {
         if (selectedPlatform || platforms.length === 0) return;
 
-        const targetId = initialPlatformIdRef.current;
+        const targetId = targetPlatformId || initialPlatformIdRef.current;
         if (targetId) {
-            const matched = platforms.find((p) => p.plat_id === targetId);
+            const matched = platforms.find((p) => p.plat_id === targetId || String(p.plat_id) === String(targetId));
             if (matched) {
                 setSelectedPlatform(matched);
             }
         }
-    }, [platforms, selectedPlatform]);
+    }, [platforms, selectedPlatform, targetPlatformId]);
 
     // 2. Fetch Components for Selected Platform
     const { 
@@ -238,7 +276,14 @@ export default function Platform3DPage() {
         mutate: mutateComponents 
     } = useSWR(
         selectedPlatform ? `/api/structure-components/${selectedPlatform.plat_id}` : null,
-        fetcher
+        fetcher,
+        {
+            revalidateOnFocus: true,
+            revalidateOnReconnect: true,
+            revalidateIfStale: true,
+            refreshInterval: 12000,
+            dedupingInterval: 1000,
+        }
     );
 
     const handleResync3DCache = async () => {
@@ -329,19 +374,24 @@ export default function Platform3DPage() {
     // 3. Fetch Platform Details
     const { data: platformDetailData, isLoading: isPlatformDetailLoading } = useSWR(
         selectedPlatform ? `/api/platform/${selectedPlatform.plat_id}` : null,
-        fetcher
+        fetcher,
+        {
+            revalidateOnFocus: true,
+            refreshInterval: 30000,
+        }
     );
     const platformDetails = platformDetailData?.data;
 
-    // Fetch WebApp 3D Coordinates (Only revalidate when user explicitly clicks Re-sync 3D Cache)
+    // Fetch WebApp 3D Coordinates (Automatically revalidates on focus, live poll and database updates)
     const { data: webapp3dResponse, isLoading: isWebapp3dLoading, mutate: mutateWebapp3d } = useSWR(
         selectedPlatform ? `/api/platform/webapp-3d/${selectedPlatform.plat_id}` : null,
         fetcher,
         {
-            revalidateOnFocus: false,
-            revalidateOnReconnect: false,
+            revalidateOnFocus: true,
+            revalidateOnReconnect: true,
             revalidateIfStale: true,
-            refreshInterval: 0,
+            refreshInterval: 12000,
+            dedupingInterval: 1000,
         }
     );
     const webapp3dData = webapp3dResponse?.data;
@@ -349,23 +399,95 @@ export default function Platform3DPage() {
     // 4. Fetch Elevations
     const { data: elevationsData, isLoading: isElevationsLoading } = useSWR(
         selectedPlatform ? `/api/platform/elevation/${selectedPlatform.plat_id}` : null,
-        fetcher
+        fetcher,
+        {
+            revalidateOnFocus: true,
+            refreshInterval: 30000,
+        }
     );
     const elevations = elevationsData?.data || [];
 
     // 5. Fetch Structural Faces
     const { data: facesData, isLoading: isFacesLoading } = useSWR(
         selectedPlatform ? `/api/platform/faces/${selectedPlatform.plat_id}` : null,
-        fetcher
+        fetcher,
+        {
+            revalidateOnFocus: true,
+            refreshInterval: 30000,
+        }
     );
     const faces = facesData?.data || [];
 
     // 6. Fetch WINCAIRS 3D Parameters (u_obj3d_param)
     const { data: wincairsData, isLoading: isWincairsLoading } = useSWR(
         selectedPlatform ? `/api/platform/obj3d-param/${selectedPlatform.plat_id}` : null,
-        fetcher
+        fetcher,
+        {
+            revalidateOnFocus: true,
+            refreshInterval: 30000,
+        }
     );
     const wincairsParams = useMemo(() => wincairsData?.data || [], [wincairsData]);
+
+    // Live Supabase PostgreSQL CDC real-time synchronization
+    useEffect(() => {
+        if (!selectedPlatform?.plat_id) return;
+        const supabase = createClient();
+        const channelName = `realtime_plat_${selectedPlatform.plat_id}_${Date.now()}`;
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "structure_components",
+                    filter: `structure_id=eq.${selectedPlatform.plat_id}`,
+                },
+                () => {
+                    mutateComponents();
+                    if (mutateWebapp3d) mutateWebapp3d();
+                }
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "webapp_3d",
+                    filter: `structure_id=eq.${selectedPlatform.plat_id}`,
+                },
+                () => {
+                    if (mutateWebapp3d) mutateWebapp3d();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [selectedPlatform?.plat_id, mutateComponents, mutateWebapp3d]);
+
+    // Background session activity synchronization
+    useEffect(() => {
+        if (!selectedPlatform?.plat_id) return;
+        const syncSessionActivity = async () => {
+            try {
+                await fetch("/api/platform/telemetry", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        platform_id: selectedPlatform.plat_id,
+                        action: "VIEWER_SESSION_INIT",
+                        session_id: `plat_3d_${selectedPlatform.plat_id}`,
+                    }),
+                });
+            } catch (e) {
+                // non-blocking
+            }
+        };
+        syncSessionActivity();
+    }, [selectedPlatform?.plat_id]);
 
     const isPlatformDataLoading = Boolean(
         isComponentsLoading ||
@@ -518,6 +640,7 @@ export default function Platform3DPage() {
 
     const handleSelectPlatform = (p: Platform) => {
         setSelectedPlatform(p);
+        setTargetPlatformId(p.plat_id);
         setActivePlatformId(p.plat_id);
         initialPlatformIdRef.current = p.plat_id;
         if (typeof window !== "undefined") {
@@ -531,15 +654,31 @@ export default function Platform3DPage() {
         setSelectedPlatform(null);
         setSelectedComponent(null);
         setIsSpecOpen(false);
+        setTargetPlatformId(null);
         setActivePlatformId(null);
         initialPlatformIdRef.current = null;
         if (typeof window !== "undefined") {
             const url = new URL(window.location.href);
             url.searchParams.delete("platformId");
             url.searchParams.delete("comp");
+            url.searchParams.delete("componentId");
             window.history.replaceState({}, "", url.toString());
         }
     };
+
+    if (isMounted && targetPlatformId && !selectedPlatform && isPlatformsLoading) {
+        return (
+            <div className="flex-1 w-full h-[calc(100vh-64px)] flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950">
+                <div className="flex flex-col items-center gap-4 p-8 rounded-3xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-2xl backdrop-blur-xl">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                    <div className="text-center">
+                        <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">Restoring Platform 3D Explorer...</h3>
+                        <p className="text-xs text-slate-400 mt-1">Loading platform data and camera position</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (selectedPlatform) {
         return (
@@ -704,17 +843,47 @@ export default function Platform3DPage() {
                             className={cn(
                                 "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all relative overflow-hidden",
                                 inspectionJobpackId
-                                    ? "bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:border-purple-800/50 dark:text-purple-300"
-                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300"
+                                    ? "bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:border-purple-800/50 dark:text-purple-300 shadow-xs"
+                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300 shadow-xs"
                             )}
-                            title="View and filter platform structural anomalies by Inspection Jobpack"
+                            title="View and filter platform structural anomalies & SOW component status by Inspection Jobpack"
                         >
                             <Activity className={cn("h-3.5 w-3.5", inspectionJobpackId ? "text-purple-500" : "")} />
-                            <span>Inspection Status</span>
+                            <span>
+                                {inspectionJobpackId 
+                                    ? `Jobpack #${inspectionJobpackId}${inspectionSowReportNo ? ` • ${inspectionSowReportNo}` : ""}` 
+                                    : "Inspection Status"}
+                            </span>
                             
                             {/* Active Filter Badge */}
                             {inspectionJobpackId !== null && (
                                 <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-purple-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
+                            )}
+                        </Button>
+
+                        {/* 5. Inspection Task Button */}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsInspectionTaskDialogOpen(true)}
+                            className={cn(
+                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all relative overflow-hidden",
+                                inspectionTaskJobpackId
+                                    ? "bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:hover:bg-teal-900/50 dark:border-teal-800/50 dark:text-teal-300 shadow-xs"
+                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300 shadow-xs"
+                            )}
+                            title="View, filter and highlight 3D platform components by specific Inspection Tasks (GVI, Conductor Inspection, UT, MPI, etc.)"
+                        >
+                            <ClipboardCheck className={cn("h-3.5 w-3.5", inspectionTaskJobpackId ? "text-teal-500" : "")} />
+                            <span>
+                                {inspectionTaskJobpackId 
+                                    ? `Jobpack #${inspectionTaskJobpackId}${inspectionTaskSowReportNo ? ` • ${inspectionTaskSowReportNo}` : ""}${selectedInspectionTaskCode && selectedInspectionTaskCode !== "ALL" ? ` • ${selectedInspectionTaskCode}` : ""}` 
+                                    : "Inspection Task"}
+                            </span>
+                            
+                            {/* Active Filter Badge */}
+                            {inspectionTaskJobpackId !== null && (
+                                <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-teal-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
                             )}
                         </Button>
                     </div>
@@ -738,6 +907,12 @@ export default function Platform3DPage() {
                             webapp3dData={useWebapp3dConnection ? webapp3dData : null}
                             isInspectionMode={inspectionJobpackId !== null && inspectionFilters.length > 0}
                             selectedInspectionFilters={inspectionFilters}
+                            inspectionSowItems={inspectionSowItems}
+                            selectedSowReportNo={inspectionSowReportNo}
+                            isInspectionTaskMode={inspectionTaskJobpackId !== null}
+                            selectedInspectionTaskCode={selectedInspectionTaskCode}
+                            inspectionTaskSowItems={inspectionTaskSowItems}
+                            selectedTaskSowReportNo={inspectionTaskSowReportNo}
                             isLoading={isPlatformDataLoading}
                         />
                     </div>
@@ -801,14 +976,44 @@ export default function Platform3DPage() {
                     onFiltersChange={setInspectionFilters}
                     selectedJobpackId={inspectionJobpackId}
                     onJobpackChange={setInspectionJobpackId}
+                    selectedSowReportNo={inspectionSowReportNo}
+                    onSowReportChange={setInspectionSowReportNo}
+                    onSelectComponent={handleSelectComponent}
                 />
 
-                {/* Platform Specifications View-Only Popup Modal */}
+                {/* Inspection Task Dialog */}
+                <InspectionTaskDialog
+                    isOpen={isInspectionTaskDialogOpen}
+                    onClose={() => setIsInspectionTaskDialogOpen(false)}
+                    platformId={selectedPlatform.plat_id}
+                    platformTitle={selectedPlatform.title}
+                    selectedJobpackId={inspectionTaskJobpackId}
+                    onJobpackChange={setInspectionTaskJobpackId}
+                    selectedSowReportNo={inspectionTaskSowReportNo}
+                    onSowReportChange={setInspectionTaskSowReportNo}
+                    selectedTaskCode={selectedInspectionTaskCode}
+                    onTaskCodeChange={setSelectedInspectionTaskCode}
+                    onSelectComponent={handleSelectComponent}
+                    onResetColors={() => {
+                        setInspectionTaskJobpackId(null);
+                        setInspectionTaskSowReportNo(null);
+                        setSelectedInspectionTaskCode("ALL");
+                    }}
+                />
+
+                {/* Platform Specifications & Extended Data Modal */}
                 <PlatformSpecsDialog
                     open={isPlatformSpecsOpen}
                     onOpenChange={setIsPlatformSpecsOpen}
                     platformDetails={platformDetails}
                     isLoading={isPlatformDetailLoading}
+                    onSuccess={(updatedPlatform) => {
+                        if (updatedPlatform) {
+                            setSelectedPlatform((prev) => prev ? { ...prev, ...updatedPlatform } : updatedPlatform);
+                        }
+                        mutateComponents();
+                        if (mutateWebapp3d) mutateWebapp3d();
+                    }}
                 />
             </div>
         );

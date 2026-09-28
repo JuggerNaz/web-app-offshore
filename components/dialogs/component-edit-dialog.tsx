@@ -578,7 +578,13 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
-        kp: component.metadata?.kp ?? (component.metadata?.end_kp !== undefined ? `${component.metadata?.start_kp ?? 0} - ${component.metadata?.end_kp}` : (component.metadata?.kp_end !== undefined ? `${component.metadata?.kp_start ?? 0} - ${component.metadata?.kp_end}` : "")) ?? "",
+        kp:
+          component.metadata?.kp ??
+          (component.metadata?.end_kp !== undefined
+            ? `${component.metadata?.start_kp ?? 0} - ${component.metadata?.end_kp}`
+            : component.metadata?.kp_end !== undefined
+            ? `${component.metadata?.kp_start ?? 0} - ${component.metadata?.kp_end}`
+            : ""),
         kp_unit: component.metadata?.kp_unit ?? component.metadata?.kp_u ?? "km",
         start_kp: component.metadata?.start_kp ?? component.metadata?.kp_start ?? "0",
         start_kp_unit: component.metadata?.start_kp_unit ?? component.metadata?.kp_u ?? "km",
@@ -929,6 +935,18 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         mutate(listKey);
       } else if (structureId) {
         mutate(`/api/structure-components/${structureId}`);
+      }
+
+      const targetStructureId = component?.structure_id || structureId;
+      const targetPageType = pageType || (component?.code?.toLowerCase() === "pp" ? "pipeline" : "platform");
+
+      if (targetStructureId && targetPageType === "platform") {
+        try {
+          await fetch(`/api/platform/webapp-3d/${targetStructureId}?resync=true`, { method: "POST" });
+          mutate(`/api/platform/webapp-3d/${targetStructureId}`);
+        } catch (err) {
+          console.error("Failed to resync 3D cache:", err);
+        }
       }
 
       toast("Component updated successfully", { position: "bottom-right" });
@@ -2812,7 +2830,17 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
             <TabsContent value="specifications2" className="mt-0 outline-none">
               {(() => {
                 const currentAssocId = formData.associated_comp_id;
-                const associatedComp = allComponents?.data?.find((c: any) => c.id === currentAssocId);
+                const numAssoc = Number(currentAssocId);
+                const strAssoc = String(currentAssocId);
+                const associatedComp = allComponents?.data?.find(
+                  (c: any) =>
+                    Boolean(currentAssocId) && (
+                      (!isNaN(numAssoc) && c.id === numAssoc) ||
+                      (!isNaN(numAssoc) && c.comp_id === numAssoc) ||
+                      String(c.id) === strAssoc ||
+                      c.q_id === strAssoc
+                    )
+                );
                 const candidates: any[] = (allComponents?.data || []).filter((c: any) => c.id !== component?.id);
                 const trimmed = assocSearch.trim().toLowerCase();
                 const filtered = trimmed
@@ -2881,6 +2909,27 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                             title="Clear association"
                           >
                             <Unlink className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : currentAssocId ? (
+                        <div className="flex items-center justify-between gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4">
+                          <div className="flex items-center gap-3">
+                            <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
+                            <div>
+                              <p className="text-xs font-bold text-amber-800 dark:text-amber-200">
+                                Target Component Not Found (#{currentAssocId})
+                              </p>
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                                The referenced parent component ID does not exist on this platform. Please search and select a parent below.
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleChange("associated_comp_id", null)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shrink-0 transition-colors"
+                          >
+                            Clear Link
                           </button>
                         </div>
                       ) : (

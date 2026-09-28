@@ -72,6 +72,40 @@ function getTemplateTableSpec(templateId: string): {
                 }
             };
 
+        case "diving-cpsurv-report":
+        case "cpsurv-diving-report":
+            return {
+                orientation: "landscape",
+                sampleRowCount: 10,
+                head: [
+                    [
+                        { content: "Item\nNo.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Component\nQID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Elevation\n(m)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Dive No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Equipment /\nSerial No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Cathodic Potential (mV)", colSpan: 3, styles: { halign: "center", valign: "middle" } },
+                        { content: "Findings", rowSpan: 2, styles: { halign: "center", valign: "middle" } }
+                    ],
+                    [
+                        { content: "Pre Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Post Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
+                        { content: "CP Value\n(mV)", styles: { halign: "center", valign: "middle" } }
+                    ]
+                ],
+                columnStyles: {
+                    0: { cellWidth: 12, halign: "center" },
+                    1: { cellWidth: 28 },
+                    2: { cellWidth: 20, halign: "center" },
+                    3: { cellWidth: 20, halign: "center" },
+                    4: { cellWidth: 34, halign: "center" },
+                    5: { cellWidth: 22, halign: "center" },
+                    6: { cellWidth: 22, halign: "center" },
+                    7: { cellWidth: 24, halign: "center" },
+                    8: { cellWidth: "auto" },
+                }
+            };
+
         case "rov-cp-report":
         case "diving-cpclb-report":
             return {
@@ -317,6 +351,33 @@ function getTemplateTableSpec(templateId: string): {
                 }
             };
 
+        case "rov-rscor-survey-report":
+        case "rscor-survey":
+        case "rscor_survey_rov":
+        case "RSCOUR":
+            return {
+                orientation: "portrait",
+                sampleRowCount: 14,
+                head: [
+                    [
+                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
+                        { content: "Component QID", styles: { halign: "center", valign: "middle" } },
+                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
+                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
+                        { content: "Tape No.", styles: { halign: "center", valign: "middle" } },
+                        { content: "Findings", styles: { halign: "center", valign: "middle" } },
+                    ]
+                ],
+                columnStyles: {
+                    0: { cellWidth: 15, halign: "center" },
+                    1: { cellWidth: 32 },
+                    2: { cellWidth: 22, halign: "center" },
+                    3: { cellWidth: 22, halign: "center" },
+                    4: { cellWidth: 22, halign: "center" },
+                    5: { cellWidth: "auto" },
+                }
+            };
+
         // Standard Default Inspection Table layout
         default:
             return {
@@ -354,7 +415,7 @@ export const generateBlankInspectionReport = async (
     templateTitle: string,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | null | void> => {
     try {
         const headerData = {
             jobpackName: ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
@@ -421,6 +482,10 @@ export const generateBlankInspectionReport = async (
             case "rov-cp-report": {
                 const { generateROVCPReport } = await import("./rov-cp-report");
                 return await generateROVCPReport(blankRecords, headerData, companySettings, generatorConfig as any);
+            }
+            case "diving-cpsurv-report": {
+                const { generateDivingCPSURVReport } = await import("./diving-cpsurv-report");
+                return await generateDivingCPSURVReport(blankRecords, headerData, companySettings, generatorConfig as any);
             }
             case "diving-cpclb-report": {
                 const { generateDivingCPCLBReport } = await import("./diving-cpclb-report");
@@ -603,6 +668,12 @@ export const generateBlankInspectionReport = async (
                 const { generateROVRRISIITubeDetailReport } = await import("./rov-itisi-detail-report");
                 return await generateROVRRISIITubeDetailReport(blankRecords, headerData, companySettings, generatorConfig as any);
             }
+            case "rov-rscor-survey-report":
+            case "rscor-survey":
+            case "rscor_survey_rov": {
+                const { generateROVRSCORSurveyReport } = await import("./rov-rscor-survey-report");
+                return await generateROVRSCORSurveyReport(blankRecords, headerData, companySettings, generatorConfig as any);
+            }
             case "rov-scour-report": {
                 const { generateROVRSCORReport } = await import("./rov-rscor-report");
                 return await generateROVRSCORReport(blankRecords, headerData, companySettings, generatorConfig as any);
@@ -708,7 +779,7 @@ async function generateCustomFallbackBlank(
     companySettings: CompanySettings,
     config: ReportConfig,
     headerData: any
-): Promise<Blob | void> {
+): Promise<Blob | void | null> {
     const spec = getTemplateTableSpec(templateId);
     const doc = new jsPDF({ orientation: spec.orientation, unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -723,7 +794,7 @@ async function generateCustomFallbackBlank(
         text: [30, 41, 59] as [number, number, number],
     };
 
-    const HEADER_H = 24;
+    const HEADER_H = 26;
 
     let companyLogo: any = null;
     if (companySettings.logo_url) {
@@ -741,16 +812,16 @@ async function generateCustomFallbackBlank(
         doc.setTextColor(255);
     }
 
-    if (companyLogo) drawLogo(doc, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
+    if (companyLogo) drawLogo(doc, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
 
-    doc.setFontSize(9); doc.setFont("helvetica", "bold");
-    doc.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-    doc.setFontSize(7); doc.setFont("helvetica", "normal");
-    doc.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10, { align: "center" });
     doc.setFontSize(11); doc.setFont("helvetica", "bold");
-    doc.text(`${templateTitle}`, margin + contentWidth / 2, margin + 17, { align: "center" });
-    doc.setFontSize(7.5); doc.setFont("helvetica", "normal");
-    doc.text(`Report No: ${config?.reportNoPrefix || "____________________"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            doc.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
+    doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
+            doc.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+    doc.setFontSize(11); doc.setFont("helvetica", "bold");
+    doc.text(`${templateTitle}`, margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+    doc.setFontSize(8); doc.setFont("helvetica", "normal");
+    doc.text(`Report No: ${config?.reportNoPrefix || "____________________"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
 
     const ROW_H = 7;
     const startY = margin + HEADER_H + 4;

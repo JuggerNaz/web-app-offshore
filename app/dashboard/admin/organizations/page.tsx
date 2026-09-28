@@ -297,14 +297,20 @@ export default function OrganizationsPage() {
     setSubmitting(true);
     try {
       const res = await fetch(`/api/admin/organizations/${selectedOrg.id}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
       if (res.ok) {
-        toast.success("Organization deactivated.");
+        toast.success(`Organization "${selectedOrg.name}" deactivated.`);
         setShowDeleteDialog(false);
         setSelectedOrg(null);
         fetchOrganizations();
+      } else {
+        toast.error(json.error || "Failed to deactivate organization");
+        alert(json.error || "Failed to deactivate organization");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Delete error:", err);
+      toast.error(err.message || "Failed to deactivate organization");
+      alert(err.message || "Failed to deactivate organization");
     } finally {
       setSubmitting(false);
     }
@@ -312,17 +318,25 @@ export default function OrganizationsPage() {
 
   const handleToggleActive = async (org: Organization) => {
     try {
+      const newStatus = !org.is_active;
       const res = await fetch(`/api/admin/organizations/${org.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: !org.is_active }),
+        body: JSON.stringify({ is_active: newStatus }),
       });
-      if (res.ok) {
-        toast.success(`Organization status updated`);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && (json.success !== false)) {
+        toast.success(`Organization "${org.name}" is now ${newStatus ? "Active" : "Inactive"}`);
         fetchOrganizations();
+        if (selectedOrg?.id === org.id) {
+          setSelectedOrg({ ...selectedOrg, is_active: newStatus });
+        }
+      } else {
+        toast.error(json.error || "Failed to update organization status");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Toggle error:", err);
+      toast.error(err.message || "Failed to update organization status");
     }
   };
 

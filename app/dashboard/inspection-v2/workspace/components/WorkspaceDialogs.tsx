@@ -3,6 +3,7 @@
 import React from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { parseClientDate, toDatetimeLocalString, toUtcIsoTimestamp } from "@/utils/client-date";
 import { 
     Clock, 
     Activity, 
@@ -20,7 +21,9 @@ import {
     Paperclip, 
     FileText, 
     Video,
-    History
+    History,
+    ArrowRightLeft,
+    Film
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -91,6 +94,7 @@ interface WorkspaceDialogsProps {
         lastStartEventForEdit: any;
         isMovementLogOpen: boolean;
         isEditTapeOpen: boolean;
+        jobTapes?: any[];
         editTapeNo: string;
         editTapeChapter: string;
         editTapeStatus: string;
@@ -127,6 +131,7 @@ interface WorkspaceDialogsProps {
         pendingRule: any;
         rscorPreviewOpen: boolean;
         rscorV2PreviewOpen: boolean;
+        rscorSurveyPreviewOpen?: boolean;
         anodePreviewOpen: boolean;
         anodeRsaniPreviewOpen: boolean;
         cpPreviewOpen: boolean;
@@ -183,6 +188,7 @@ interface WorkspaceDialogsProps {
         mpinsPreviewOpen: boolean;
         utwtkPreviewOpen: boolean;
         szonePreviewOpen: boolean;
+        cpsurvDivingPreviewOpen: boolean;
         cpclbPreviewOpen: boolean;
         utclbPreviewOpen: boolean;
         divingAnodePreviewOpen: boolean;
@@ -245,6 +251,7 @@ interface WorkspaceDialogsProps {
         setShowCriteriaConfirm: (open: boolean) => void;
         setRscorPreviewOpen: (open: boolean) => void;
         setRscorV2PreviewOpen: (open: boolean) => void;
+        setRscorSurveyPreviewOpen?: (open: boolean) => void;
         setAnodePreviewOpen: (open: boolean) => void;
         setAnodeRsaniPreviewOpen: (open: boolean) => void;
         setCpPreviewOpen: (open: boolean) => void;
@@ -289,6 +296,7 @@ interface WorkspaceDialogsProps {
         setMpinsPreviewOpen: (open: boolean) => void;
         setUtwtkPreviewOpen: (open: boolean) => void;
         setSzonePreviewOpen: (open: boolean) => void;
+        setCpsurvDivingPreviewOpen: (open: boolean) => void;
         setCpclbPreviewOpen: (open: boolean) => void;
         setUtclbPreviewOpen: (open: boolean) => void;
         setDivingAnodePreviewOpen: (open: boolean) => void;
@@ -326,6 +334,7 @@ interface WorkspaceDialogsProps {
         syncDeploymentState: () => void;
         fetchDeployments?: () => void;
         queryClient: any;
+        generateAnomalyReport?: () => void;
         generateAnomalyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRMGIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -346,6 +355,7 @@ interface WorkspaceDialogsProps {
         generateBLReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRSCORV2ReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateRSCORSurveyReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateRRISIDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJTISIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -392,6 +402,8 @@ interface WorkspaceDialogsProps {
         generateUTWTKReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJobPackSummaryReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateDivingCPSURVReport?: () => void;
+        generateDivingCPSURVReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateCPCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateUTCLBReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingAnodeReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -492,6 +504,7 @@ export function WorkspaceDialogs({
         pendingRule,
         rscorPreviewOpen,
         rscorV2PreviewOpen,
+        rscorSurveyPreviewOpen,
         anodePreviewOpen,
         anodeRsaniPreviewOpen,
         cpPreviewOpen,
@@ -519,6 +532,7 @@ export function WorkspaceDialogs({
         isPipelineMapOpen,
         inspectionDirection,
         tapeId,
+        jobTapes = [],
         vidTimer,
         dataAcqFields,
         manualOverride,
@@ -549,6 +563,7 @@ export function WorkspaceDialogs({
         mpinsPreviewOpen,
         utwtkPreviewOpen,
         szonePreviewOpen,
+        cpsurvDivingPreviewOpen,
         cpclbPreviewOpen,
         utclbPreviewOpen,
         divingAnodePreviewOpen,
@@ -600,6 +615,7 @@ export function WorkspaceDialogs({
         setShowCriteriaConfirm,
         setRscorPreviewOpen,
         setRscorV2PreviewOpen,
+        setRscorSurveyPreviewOpen,
         setAnodePreviewOpen,
         setAnodeRsaniPreviewOpen,
         setCpPreviewOpen,
@@ -644,6 +660,7 @@ export function WorkspaceDialogs({
         setMpinsPreviewOpen,
         setUtwtkPreviewOpen,
         setSzonePreviewOpen,
+        setCpsurvDivingPreviewOpen,
         setCpclbPreviewOpen,
         setUtclbPreviewOpen,
         setDivingAnodePreviewOpen,
@@ -675,6 +692,7 @@ export function WorkspaceDialogs({
         syncDeploymentState,
         fetchDeployments,
         queryClient,
+        generateAnomalyReport,
         generateAnomalyReportBlob,
         generateMGIReportBlob,
         generateRMGIReportBlob,
@@ -687,6 +705,7 @@ export function WorkspaceDialogs({
         generateBLReportBlob,
         generateRSCORReportBlob,
         generateRSCORV2ReportBlob,
+        generateRSCORSurveyReportBlob,
         generateRRISIReportBlob,
         generateRRISIDetailReportBlob,
         generateJTISIReportBlob,
@@ -725,6 +744,8 @@ export function WorkspaceDialogs({
         generateUTWTKReportBlob,
         generateJobPackSummaryReportBlob,
         generateSZONEReportBlob,
+        generateDivingCPSURVReport,
+        generateDivingCPSURVReportBlob,
         generateCPCLBReportBlob,
         generateUTCLBReportBlob,
         generateDivingAnodeReportBlob,
@@ -750,14 +771,7 @@ export function WorkspaceDialogs({
     const { fileInputRef } = refs;
 
     const parseDbDate = (dateString?: string | null): Date => {
-        if (!dateString) return new Date();
-        try {
-            const t = dateString.replace(' ', 'T');
-            const d = new Date(t);
-            return isNaN(d.getTime()) ? new Date() : d;
-        } catch (e) {
-            return new Date();
-        }
+        return parseClientDate(dateString);
     };
 
     const formatTime = (secs: number) => {
@@ -771,6 +785,121 @@ export function WorkspaceDialogs({
     // every ReportPreviewDialog opens with the settings the user chose in the wizard.
     const wizardShowSignatures: boolean = reportConfig?.showSignatures !== false;
     const wizardPrintFriendly: boolean = reportConfig?.printFriendly === true;
+
+    const [bulkTargetTapeId, setBulkTargetTapeId] = React.useState<string>("");
+    const [isBulkTransferring, setIsBulkTransferring] = React.useState<boolean>(false);
+
+    const handleTransferAllEventsFromTape = async () => {
+        if (!tapeId || !bulkTargetTapeId) {
+            toast.error("Please select a target tape to transfer events into.");
+            return;
+        }
+        setIsBulkTransferring(true);
+        try {
+            const targetTape = (jobTapes || []).find((t: any) => String(t.tape_id) === String(bulkTargetTapeId));
+            const targetTapeNo = targetTape?.tape_no || `Tape #${bulkTargetTapeId}`;
+
+            // Fetch target tape boundaries from insp_video_logs
+            const { data: logs } = await supabase
+                .from("insp_video_logs")
+                .select("event_type, event_time, tape_counter_start, timecode_start")
+                .eq("tape_id", Number(bulkTargetTapeId))
+                .order("event_time", { ascending: true });
+
+            let tapeDate: string | null = null;
+            let tapeStartTime: string | null = null;
+            let tapeEndTime: string | null = null;
+            let maxCounter = 7200;
+
+            if (logs && logs.length > 0) {
+                const startLog = logs.find((l: any) => l.event_type === "NEW_LOG_START" || l.event_type === "RESUME") || logs[0];
+                const endLog = logs[logs.length - 1];
+                if (startLog?.event_time) {
+                    const [d, t] = String(startLog.event_time).split("T");
+                    tapeDate = d;
+                    tapeStartTime = t ? t.slice(0, 8) : null;
+                }
+                if (endLog?.event_time) {
+                    const [, t] = String(endLog.event_time).split("T");
+                    tapeEndTime = t ? t.slice(0, 8) : null;
+                }
+                logs.forEach((l: any) => {
+                    const c = Number(l.tape_counter_start || 0);
+                    if (c > maxCounter) maxCounter = c;
+                });
+            } else if (targetTape?.cr_date) {
+                tapeDate = String(targetTape.cr_date).split("T")[0];
+            }
+
+            // Fetch all insp_records on this tape
+            const { data: sourceRecords, error: fetchErr } = await supabase
+                .from("insp_records")
+                .select("insp_id, inspection_date, inspection_time, tape_count_no, inspection_data")
+                .eq("tape_id", tapeId);
+
+            if (fetchErr) throw fetchErr;
+
+            if (!sourceRecords || sourceRecords.length === 0) {
+                toast.info("No inspection events found on this tape to transfer.");
+                setIsBulkTransferring(false);
+                return;
+            }
+
+            const nowIso = new Date().toISOString();
+            const updates = sourceRecords.map(async (r: any) => {
+                const originalCounterSec = Number(r.tape_count_no || 0);
+                const clampedCounterSec = Math.max(0, Math.min(maxCounter, originalCounterSec));
+                const newDate = tapeDate || r.inspection_date || format(new Date(), "yyyy-MM-dd");
+                let newTime = r.inspection_time || "10:00:00";
+                if (tapeStartTime) {
+                    const parts = tapeStartTime.split(":").map((p: any) => parseInt(p, 10) || 0);
+                    const totalSec = (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0) + clampedCounterSec;
+                    const h = Math.floor((totalSec / 3600) % 24);
+                    const m = Math.floor((totalSec % 3600) / 60);
+                    const s = Math.floor(totalSec % 60);
+                    newTime = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+                    if (tapeEndTime && newTime > tapeEndTime) newTime = tapeEndTime;
+                }
+
+                const hC = Math.floor(clampedCounterSec / 3600);
+                const mC = Math.floor((clampedCounterSec % 3600) / 60);
+                const sC = Math.floor(clampedCounterSec % 60);
+                const newTc = `${hC.toString().padStart(2, "0")}:${mC.toString().padStart(2, "0")}:${sC.toString().padStart(2, "0")}`;
+
+                return supabase
+                    .from("insp_records")
+                    .update({
+                        tape_id: Number(bulkTargetTapeId),
+                        inspection_date: newDate,
+                        inspection_time: newTime,
+                        tape_count_no: clampedCounterSec,
+                        inspection_data: {
+                            ...(r.inspection_data || {}),
+                            _meta_timecode: newTc,
+                            tape_count_no: newTc,
+                            counter: newTc,
+                            inspection_date: newDate,
+                            inspection_time: newTime,
+                        },
+                        md_date: nowIso,
+                    })
+                    .eq("insp_id", r.insp_id);
+            });
+
+            await Promise.all(updates);
+
+            toast.success(`Successfully transferred all ${sourceRecords.length} event(s) to ${targetTapeNo}`);
+            if (syncDeploymentState) {
+                await syncDeploymentState();
+            }
+            setIsEditTapeOpen(false);
+        } catch (e: any) {
+            console.error("Bulk transfer error:", e);
+            toast.error(`Transfer failed: ${e.message || "Unknown error"}`);
+        } finally {
+            setIsBulkTransferring(false);
+        }
+    };
 
     // Wizard step and template state lifted up to control back-routing from preview dialogs
     const [wizardStep, setWizardStep] = React.useState(1);
@@ -867,13 +996,13 @@ export function WorkspaceDialogs({
                                 <span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase font-black mb-1.5 tracking-widest">1. Wall Clock (Local Date & Time)</span>
                                 <Input
                                     type="datetime-local"
-                                    value={editingEvent.eventTime ? new Date(new Date(editingEvent.eventTime).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ""}
+                                    value={editingEvent.eventTime ? toDatetimeLocalString(editingEvent.eventTime) : ""}
                                     onChange={e => {
                                         const localVal = e.target.value;
                                         if (!localVal) return;
  
-                                        const d = new Date(localVal);
-                                        const newIso = d.toISOString();
+                                        const d = parseClientDate(localVal);
+                                        const newTime = toUtcIsoTimestamp(localVal);
  
                                         let updatedTime = editingEvent.time;
  
@@ -884,7 +1013,7 @@ export function WorkspaceDialogs({
                                             updatedTime = formatTime((lastStartEventForEdit.tape_counter_start || 0) + diffSecs);
                                         }
  
-                                        setEditingEvent({ ...editingEvent, eventTime: newIso, time: updatedTime, referenceNo: '' });
+                                        setEditingEvent({ ...editingEvent, eventTime: newTime, time: updatedTime, referenceNo: '' });
                                     }}
                                     className="font-mono font-bold bg-blue-50/30 dark:bg-blue-900/10 border-blue-100 dark:border-blue-900/30 focus:ring-blue-500 dark:text-slate-200"
                                 />
@@ -1000,6 +1129,44 @@ export function WorkspaceDialogs({
                                     className="h-11 text-sm font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-blue-500/5 transition-all"
                                 />
                             </div>
+
+                            {/* Bulk Move Events To Another Tape */}
+                            <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider flex items-center gap-1.5">
+                                        <ArrowRightLeft className="w-3.5 h-3.5 text-blue-500" />
+                                        Transfer All Events To Another Tape
+                                    </Label>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Select value={bulkTargetTapeId} onValueChange={setBulkTargetTapeId}>
+                                        <SelectTrigger className="h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200 flex-1">
+                                            <SelectValue placeholder="Select target destination tape..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="dark:bg-slate-950 dark:border-slate-800">
+                                            {(jobTapes || [])
+                                                .filter((t: any) => String(t.tape_id) !== String(tapeId))
+                                                .map((t: any) => (
+                                                    <SelectItem key={t.tape_id} value={String(t.tape_id)} className="text-xs font-bold py-1.5">
+                                                        {t.tape_no} (Ch: {t.chapter_no || 1})
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        disabled={!bulkTargetTapeId || isBulkTransferring}
+                                        onClick={handleTransferAllEventsFromTape}
+                                        className="h-10 px-3 text-[10px] font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                                    >
+                                        {isBulkTransferring ? <X className="w-3.5 h-3.5 animate-spin" /> : "Move All"}
+                                    </Button>
+                                </div>
+                                <p className="text-[9px] text-slate-400 leading-tight">
+                                    Moves all recorded events on this tape into the selected target tape, aligning date/time to the target tape logs.
+                                </p>
+                            </div>
                         </div>
 
                         <div className="flex gap-3 pt-2">
@@ -1038,7 +1205,7 @@ export function WorkspaceDialogs({
                                 value={newTapeNo}
                                 onChange={(e) => setNewTapeNo(e.target.value)}
                                 className="col-span-3 font-mono bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200"
-                                placeholder="e.g. RPT-001 / PLAT-C / V001D"
+                                placeholder="e.g. RPT-001/PLAT-C/V001D"
                             />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
@@ -1450,583 +1617,7 @@ export function WorkspaceDialogs({
                     </div>
                 </DialogContent>
             </Dialog>
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={rscorPreviewOpen} 
-                onOpenChange={setRscorPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.logo_url || '';
-                    }
-
-                    const generatedConfig = {
-                        jobPackId: Number(jobPackId),
-                        structureId: Number(structureId),
-                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
-                        reviewedBy: reportConfig.reviewedBy,
-                        approvedBy: reportConfig.approvedBy,
-                        watermark: reportConfig.watermark,
-                        returnBlob: true,
-                        printFriendly: isPrintFriendly,
-                        showSignatures
-                    };
-                    if (typeof window !== 'undefined') {
-                        (window as any).__reportConfig = generatedConfig;
-                    }
-                    return await generateROVRSCORReport(
-                        scourRecords,
-                        { 
-                             ...headerData, 
-                             contractorLogoUrl,
-                             vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        generatedConfig
-                    );
-                }}
-                title="ROV Scour Survey Report (RSCOR)"
-                fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={rscorV2PreviewOpen} 
-                onOpenChange={setRscorV2PreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const scourRecords = currentRecords.filter(r => r.inspection_type_code === 'RSCOR' || r.inspection_type?.code === 'RSCOR');
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
-                        contractorLogoUrl = contrData?.logo_url || '';
-                    }
-
-                    const generatedConfig = {
-                        jobPackId: Number(jobPackId),
-                        structureId: Number(structureId),
-                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
-                        reviewedBy: reportConfig.reviewedBy,
-                        approvedBy: reportConfig.approvedBy,
-                        watermark: reportConfig.watermark,
-                        returnBlob: true,
-                        printFriendly: isPrintFriendly,
-                        showSignatures
-                    };
-                    if (typeof window !== 'undefined') {
-                        (window as any).__reportConfig = generatedConfig;
-                    }
-                    return await generateROVRSCORV2Report(
-                        scourRecords,
-                        { 
-                             ...headerData, 
-                             contractorLogoUrl,
-                             vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        generatedConfig
-                    );
-                }}
-                title="ROV Scour Survey Sketch v2 Report Preview"
-                fileName={`ROV_Scour_Survey_Sketch_v2_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={states.rmgiPreviewOpen} 
-                onOpenChange={setters.setRmgiPreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const generatedConfig = {
-                        jobPackId: Number(jobPackId),
-                        structureId: Number(structureId),
-                        sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                        preparedBy: reportConfig.preparedBy || { name: "Inspector", date: new Date().toLocaleDateString() },
-                        reviewedBy: reportConfig.reviewedBy,
-                        approvedBy: reportConfig.approvedBy,
-                        watermark: reportConfig.watermark,
-                        returnBlob: true,
-                        printFriendly: isPrintFriendly,
-                        showSignatures
-                    };
-                    if (typeof window !== 'undefined') {
-                        (window as any).__reportConfig = generatedConfig;
-                    }
-
-                    return await generateROVRMGIReport(
-                        currentRecords.filter(r => (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase() === 'RMGI'),
-                        { 
-                             ...headerData, 
-                             contractorLogoUrl,
-                             vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        generatedConfig
-                    );
-                }}
-                title="Marine Growth Inspection Report (ROV) Preview"
-                fileName={`ROV_RMGI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={anodePreviewOpen} 
-                onOpenChange={setAnodePreviewOpen} 
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const anodeRecords = (allRecords || []).filter((r: any) => {
-                        const isRGVI = (r.inspection_type?.code || '').toUpperCase() === 'RGVI';
-                        const isAN = (r.structure_components?.code || '').toUpperCase() === 'AN' || 
-                                     (r.structure_components?.metadata?.type || '').toUpperCase() === 'ANODE';
-                        return isRGVI && isAN;
-                    });
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: headerData.vessel,
-                        contractorLogoUrl
-                    };
-
-                    return await generateROVAnodeReport(
-                        anodeRecords,
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        { printFriendly: isPrintFriendly, returnBlob: true, showSignatures }
-                    );
-                }}
-                title="ROV Anode Inspection Report"
-                fileName={`ROV_Anode_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={cpPreviewOpen}
-                onOpenChange={setCpPreviewOpen}
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const cpRecords = (allRecords || []).filter((r: any) => {
-                        const d = r.inspection_data || {};
-                        return d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
-                    });
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    return await generateROVCPReport(
-                        cpRecords,
-                        {
-                            ...headerData,
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showPageNumbers: true,
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV CP Survey Report"
-                fileName={`ROV_CP_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={rswniPreviewOpen}
-                onOpenChange={setRswniPreviewOpen}
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const swniRecords = (allRecords || []).filter((r: any) => {
-                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-                        return typeCode === 'RSWNI' || typeCode === 'SWNI';
-                    });
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    return await generateROVSelectedNodeReport(
-                        swniRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        {
-                            ...headerData,
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showPageNumbers: true,
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV Selected Node Report"
-                fileName={`ROV_Selected_Node_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={rovRicmiPreviewOpen}
-                onOpenChange={setRovRicmiPreviewOpen}
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const ricmiRecords = (allRecords || []).filter((r: any) => {
-                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-                        return typeCode === 'RICMI';
-                    });
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    return await generateROVRICMIReport(
-                        ricmiRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        {
-                            ...headerData,
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showPageNumbers: true,
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV Inclinometer Reading Report"
-                fileName={`ROV_Inclinometer_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={divingAnmainPreviewOpen}
-                onOpenChange={setDivingAnmainPreviewOpen}
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const anmainRecords = (allRecords || []).filter((r: any) => {
-                        const typeCode = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-                        return typeCode === 'ANMAIN';
-                    });
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    return await generateDivingANMAINReport(
-                        anmainRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        {
-                            ...headerData,
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showPageNumbers: true,
-                            showSignatures
-                        }
-                    );
-                }}
-                title="Diving Anode Maintenance Report"
-                fileName={`Diving_Anode_Maintenance_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={rgviPreviewOpen}
-                onOpenChange={setRgviPreviewOpen}
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id!left(id, code, name),
-                            structure_components:component_id!left(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const rgviRecords = (allRecords || []).filter((r: any) =>
-                        (r.inspection_type?.code || '').toUpperCase() === 'RGVI'
-                    );
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    return await generateROVRGVIReport(
-                        rgviRecords,
-                        {
-                            ...headerData,
-                            contractorLogoUrl,
-                            vessel: headerData.vessel
-                        },
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: format(new Date(), 'dd MMM yyyy') },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showPageNumbers: true,
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV GVI Report (RGVI)"
-                fileName={`ROV_GVI_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />
-
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={rcondSketchPreviewOpen}
-                onOpenChange={setRcondSketchPreviewOpen}
-                generateReport={async (isPrintFriendly, showSignatures) => {
-                    const settings = await getReportHeaderData();
-                    const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).single();
-                    
-                    const { data: allRecords } = await supabase
-                        .from('insp_records')
-                        .select(`
-                            *,
-                            inspection_type:inspection_type_id(id, code, name),
-                            structure_components:component_id(id, q_id, code, metadata),
-                            insp_rov_jobs:rov_job_id(job_no:deployment_no),
-                            insp_anomalies(*)
-                        `)
-                        .eq('structure_id', Number(structureId))
-                        .eq('sow_report_no', headerData.sowReportNo);
-
-                    const condRecords = (allRecords || []); 
-
-                    let contractorLogoUrl = '';
-                    if (jobPack?.metadata?.contrac) {
-                        try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
-                            const cJson = await cRes.json();
-                            const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack?.metadata?.contrac));
-                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                        } catch (e) { console.error("Logo fetch error", e); }
-                    }
-
-                    const headerDataObj = {
-                        ...headerData,
-                        vessel: headerData.vessel,
-                        contractorLogoUrl
-                    };
-
-                    return await generateROVCondSketchReport(
-                        condRecords.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                        headerDataObj,
-                        { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                        {
-                            jobPackId: Number(jobPackId),
-                            structureId: Number(structureId),
-                            sowReportNo: reportConfig?.reportNoPrefix || headerData.sowReportNo,
-                            preparedBy: { name: 'Inspector', date: new Date().toLocaleDateString() },
-                            returnBlob: true,
-                            printFriendly: isPrintFriendly,
-                            showSignatures
-                        }
-                    );
-                }}
-                title="ROV Conductor Survey (Sketch) Report"
-                fileName={`ROV_Conductor_Sketch_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`}
-            />            <Dialog open={showRemovalConfirm} onOpenChange={setShowRemovalConfirm}>
+            <Dialog open={showRemovalConfirm} onOpenChange={setShowRemovalConfirm}>
                 <DialogContent className="sm:max-w-[440px] p-0 overflow-hidden border-none shadow-2xl dark:bg-slate-950">
                     <DialogHeader className="bg-amber-500 p-4 flex-row items-center gap-3 space-y-0">
                         <div className="bg-white/20 p-2 rounded-lg shrink-0">
@@ -2605,9 +2196,20 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={rscorPreviewOpen} 
                 onOpenChange={setRscorPreviewOpen} 
-                title="ROV Scour Survey Report Preview" 
-                fileName={`ROV_Scour_Report_${headerData.sowReportNo}`} 
+                title="ROV Scour Survey Sketch Report Preview" 
+                fileName={`ROV_Scour_Sketch_Report_${headerData.sowReportNo}`} 
                 generateReport={generateRSCORReportBlob} 
+            />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={rscorSurveyPreviewOpen || false} 
+                onOpenChange={setRscorSurveyPreviewOpen || (() => {})} 
+                title="ROV Scour Survey Report Preview" 
+                fileName={`ROV_Scour_Survey_Report_${headerData.sowReportNo}`} 
+                generateReport={generateRSCORSurveyReportBlob || generateRSCORReportBlob} 
             />
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2973,6 +2575,18 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={cpsurvDivingPreviewOpen} 
+                onOpenChange={setCpsurvDivingPreviewOpen} 
+                title="Diving CP Survey Report Preview" 
+                fileName={`Diving_CP_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateDivingCPSURVReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={cpclbPreviewOpen} 
                 onOpenChange={setCpclbPreviewOpen} 
                 title="Diving CP Calibration Report Preview" 
@@ -3261,6 +2875,7 @@ export function WorkspaceDialogs({
                     generateUTWTKReport: () => setUtwtkPreviewOpen(true),
                     generateSZONEReport: () => setSzonePreviewOpen(true),
                     generateCPReport: () => setters.setCpPreviewOpen(true),
+                    generateDivingCPSURVReport: () => setters.setCpsurvDivingPreviewOpen ? setters.setCpsurvDivingPreviewOpen(true) : handlers.generateDivingCPSURVReport?.(),
                     generateRSWNIReport: () => setters.setRswniPreviewOpen(true),
                     generateROVRICMIReport: () => setters.setRovRicmiPreviewOpen(true),
                     generateDivingANMAINReport: () => setters.setDivingAnmainPreviewOpen(true),
@@ -3292,6 +2907,7 @@ export function WorkspaceDialogs({
                     generateSZCIReport: () => setters.setSzciPreviewOpen(true),
                     generateRSCORReport: () => setters.setRscorPreviewOpen(true),
                     generateRSCORV2Report: () => setters.setRscorV2PreviewOpen(true),
+                    generateRSCORSurveyReport: () => setters.setRscorSurveyPreviewOpen ? setters.setRscorSurveyPreviewOpen(true) : handlers.generateRSCORSurveyReportBlob?.(),
                     generateRRISIReport: () => setters.setRrisiPreviewOpen(true),
                     generateRRISIDetailReport: () => setRrisiDetailPreviewOpen(true),
                     generateJTISIReport: () => setters.setJtisiPreviewOpen(true),
@@ -3319,6 +2935,7 @@ export function WorkspaceDialogs({
                     generateSeabedDetailReport: () => setters.setSeabedDetailPreviewOpen(true),
                     generateSeabedGasDetailReport: () => setters.setSeabedGasDetailPreviewOpen(true),
                     generateSeabedCraterDetailReport: () => setters.setSeabedCraterDetailPreviewOpen(true),
+                    generateAnomalyReport: () => setters.setPreviewOpen(true),
                     generateFullInspectionReport: () => toast.info("Generating full inspection report..."),
                     generateInspectionReportByType: (id: any) => {
                         const type = states.allInspectionTypes.find(t => t.id === id);
@@ -3375,7 +2992,23 @@ export function WorkspaceDialogs({
                             case 'MGI': setters.setMPreviewOpen(true); break;
                             case 'RMGI': setters.setRmgiPreviewOpen(true); break;
                             case 'SZCI': setters.setSzciPreviewOpen(true); break;
-                            case 'RSCOR': setters.setRscorPreviewOpen(true); break;
+                            case 'RSCOR':
+                            case 'RSCOUR':
+                            case 'SCOUR':
+                                if (setters.setRscorSurveyPreviewOpen) {
+                                    setters.setRscorSurveyPreviewOpen(true);
+                                } else {
+                                    setters.setRscorPreviewOpen(true);
+                                }
+                                break;
+                            case 'RSCOR-SKETCH':
+                            case 'RSCOR_SKETCH':
+                                setters.setRscorPreviewOpen(true);
+                                break;
+                            case 'RSCOR-V2':
+                            case 'RSCOR_V2':
+                                setters.setRscorV2PreviewOpen(true);
+                                break;
                             case 'RRISI': setters.setRrisiPreviewOpen(true); break;
                             case 'JTISI': setters.setJtisiPreviewOpen(true); break;
                             case 'ITISI': setters.setItisiPreviewOpen(true); break;

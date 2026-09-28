@@ -138,7 +138,7 @@ export default async function UserPage() {
                   CHOOSE YOUR VISUAL COLOR SCHEME
                 </p>
               </div>
-              <ThemeSwitcher />
+              <ThemeSwitcher variant="segmented" />
             </div>
 
             <Separator className="opacity-40" />

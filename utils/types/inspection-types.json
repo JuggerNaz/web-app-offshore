@@ -2570,6 +2570,13 @@
                     "type": "number",
                     "unitCategory": "PERCENTAGE",
                     "required": false
+                },
+                {
+                    "name": "platform_face",
+                    "label": "Platform Face",
+                    "type": "combo",
+                    "optionsSource": "platform_faces",
+                    "required": false
                 }
             ]
         },

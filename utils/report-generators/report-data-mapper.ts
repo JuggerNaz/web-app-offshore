@@ -171,6 +171,7 @@ export const mapInspectionDataForDocx = async (
         'rov-rseab-gas-detail-report': ['RSEAB'],
         'rov-rseab-crater-detail-report': ['RSEAB'],
         'rov-cp-report': ['CP', 'RSANI'],
+        'diving-cpsurv-report': ['CPSURV', 'DCPSURV', 'CPINS', 'PIPECP', 'CP'],
         'rov-fmd-report': ['RFMD'],
         'diving-fmd-report': ['FLOOD', 'FMD', 'DFMD'],
         'diving-measu-report': ['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS'],
@@ -185,7 +186,9 @@ export const mapInspectionDataForDocx = async (
         'diving-itisi-detail-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'ITISI'],
         'rov-jtisi-detail-report': ['RRISI'],
         'rov-itisi-detail-report': ['RRISI'],
-        'rov-scour-report': ['RSCOR'],
+        'rov-scour-report': ['RSCOR', 'SCOUR'],
+        'rov-rscor-survey-report': ['RSCOR', 'SCOUR'],
+        'rscor-survey': ['RSCOR', 'SCOUR'],
         'rov-caisson-report': ['RCASN'],
         'rov-conductor-report': ['RCOND'],
         'rov-splash-zone-report': ['RSZCI'],
@@ -349,8 +352,8 @@ export const mapInspectionDataForDocx = async (
                 const { generateROVRICMIReport } = await import("./rov-ricmi-report");
                 pdfBlob = await generateROVRICMIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RICMI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-cp-report') {
-                const { generateROVCPReport } = await import("./rov-cp-report");
-                pdfBlob = await generateROVCPReport(records.filter(r => ["CP", "RSANI"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                const { generateROVCPReport, isROVRecord } = await import("./rov-cp-report");
+                pdfBlob = await generateROVCPReport(records.filter(r => isROVRecord(r) && (["CP", "RSANI"].includes((r.inspection_type?.code || "").toUpperCase()) || r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined)), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-fmd-report' || templateId === 'fmd-report') {
                 const { generateROVFMDReport } = await import("./rov-fmd-report");
                 pdfBlob = await generateROVFMDReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RFMD" || (r.inspection_type?.code || "").toUpperCase() === "FMD"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
@@ -416,7 +419,11 @@ export const mapInspectionDataForDocx = async (
                 pdfBlob = await generateROVSZCIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSZCI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-anode-report') {
                 const { generateROVAnodeReport } = await import("./rov-anode-report");
-                pdfBlob = await generateROVAnodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                pdfBlob = await generateROVAnodeReport(records.filter(r => {
+                    const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                    const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    return t === "RAN" || (['RGVI', 'ANODE', 'ANOD'].includes(t) && c === 'AN' && t !== 'RSANI');
+                }), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-anode-rsani-report') {
                 const { generateROVAnodeRSANIReport } = await import("./rov-anode-rsani-report");
                 pdfBlob = await generateROVAnodeRSANIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSANI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
@@ -428,7 +435,10 @@ export const mapInspectionDataForDocx = async (
                 pdfBlob = await generateROVRMGIReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-scour-report') {
                 const { generateROVRSCORReport } = await import("./rov-rscor-report");
-                pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (templateId === 'rov-rscor-survey-report' || templateId === 'rscor-survey') {
+                const { generateROVRSCORSurveyReport } = await import("./rov-rscor-survey-report");
+                pdfBlob = await generateROVRSCORSurveyReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-selected-node-report') {
                 const { generateROVSelectedNodeReport } = await import("./rov-selected-node-report");
                 pdfBlob = await generateROVSelectedNodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSWNI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
@@ -447,13 +457,13 @@ export const mapInspectionDataForDocx = async (
                 pdfBlob = await generateSeabedSurveyReport(jobPack, structure, sowReportNo || "", companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any, filterMap[templateId]);
             } else if (templateId === 'rov-rseab-detail-report') {
                 const { generateROVRSEABDetailReport } = await import("./rov-rseab-detail-report");
-                pdfBlob = await generateROVRSEABDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                pdfBlob = await generateROVRSEABDetailReport(records.filter(r => { const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase(); return c === "RSEAB" || c === "SEABED"; }), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rseab-gas-detail-report') {
                 const { generateROVRSEABGasDetailReport } = await import("./rov-rseab-gas-detail-report");
-                pdfBlob = await generateROVRSEABGasDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                pdfBlob = await generateROVRSEABGasDetailReport(records.filter(r => { const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase(); return c === "RSEAB" || c === "SEABED"; }), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-rseab-crater-detail-report') {
                 const { generateROVRSEABCraterDetailReport } = await import("./rov-rseab-crater-detail-report");
-                pdfBlob = await generateROVRSEABCraterDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSEAB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                pdfBlob = await generateROVRSEABCraterDetailReport(records.filter(r => { const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase(); return c === "RSEAB" || c === "SEABED"; }), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-gvins-report') {
                 const { generateDivingGVINSReport } = await import("./diving-gvins-report");
                 pdfBlob = await generateDivingGVINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "GVINS"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
@@ -481,6 +491,9 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'diving-anmain-report') {
                 const { generateDivingANMAINReport } = await import("./diving-anmain-report");
                 pdfBlob = await generateDivingANMAINReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "ANMAIN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+            } else if (templateId === 'diving-cpsurv-report' || templateId === 'cpsurv-diving-report') {
+                const { generateDivingCPSURVReport, isDivingCPSURVRecord } = await import("./diving-cpsurv-report");
+                pdfBlob = await generateDivingCPSURVReport(records.filter(isDivingCPSURVRecord), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel, structureId: structure?.id, jobPackId: jobPack?.id }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'diving-cpclb-report') {
                 const { generateDivingCPCLBReport } = await import("./diving-cpclb-report");
                 pdfBlob = await generateDivingCPCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CPCLB"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
@@ -501,7 +514,11 @@ export const mapInspectionDataForDocx = async (
                 pdfBlob = (await generateDivingSZONEReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DSZCI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any, null)) || null;
             } else if (templateId === 'diving-anode-report') {
                 const { generateDivingAnodeReport } = await import("./diving-anode-report");
-                pdfBlob = (await generateDivingAnodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DAN"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;
+                pdfBlob = (await generateDivingAnodeReport(records.filter(r => {
+                    const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                    const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    return t === "DAN" || (['DGVI', 'ANODE', 'ANOD', 'PL_AN'].includes(t) && c === 'AN');
+                }), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any)) || null;
             } else if (templateId === 'diving-mgi-report') {
                 const { generateDivingMGIReport } = await import("./diving-mgi-report");
                 const { createClient } = await import("@/utils/supabase/client");

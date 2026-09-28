@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -33,7 +34,10 @@ export const generateDivingAnodeReport = async (
     companySettings: CompanySettings,
     config: ReportConfig,
     supabase?: any
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
+    if (!config.isBlankReport && (!records || records.length === 0)) {
+        return null;
+    }
     try {
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth  = doc.internal.pageSize.getWidth();
@@ -68,7 +72,7 @@ export const generateDivingAnodeReport = async (
             ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
             : "N/A";
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -94,17 +98,17 @@ export const generateDivingAnodeReport = async (
                 d.setTextColor(255);
             }
 
-            if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
+            if (companyLogo)    drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left",  "center");
 
-            d.setFontSize(9);   d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(7);   d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(13);  d.setFont("helvetica", "bold");
-            d.text("Selected Anode Inspection Report (Diving)",               margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,     margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6,  { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("Selected Anode Inspection Report (Diving)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
 
         // ── Context boxes ───────────────────────────────────────────────────────
@@ -148,13 +152,31 @@ export const generateDivingAnodeReport = async (
 
             const isSecured = d.anode_secured_to_structure ?? d.anode_secured ?? d.secured;
             const secured = (isSecured === true || isSecured === "Yes") ? "Yes" : "No";
-            const anodeType = d.anode_type || "—";
+            const candidateType = d.anode_type ?? d.anodeType ?? d.anode_typ ?? d.an_type ?? d["Anode Type"] ?? d["anode type"] ?? d.anode_type_name;
+            let anodeType = "—";
+            if (candidateType !== undefined && candidateType !== null && String(candidateType).trim() !== '') {
+                const str = String(candidateType).trim();
+                if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                    anodeType = str;
+                }
+            }
+            if (anodeType === "—") {
+                const compMeta = r.structure_components?.metadata || r.component?.metadata || {};
+                const metaType = compMeta.anode_type ?? compMeta.anodeType ?? compMeta.thetype ?? compMeta.anode_type_name ?? compMeta.type;
+                if (metaType !== undefined && metaType !== null && String(metaType).trim() !== '') {
+                    const str = String(metaType).trim();
+                    if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                        anodeType = str;
+                    }
+                }
+            }
 
             const wLen = d.anode_length ?? d.wastage_length ?? "—";
             const wC1 = d.circumference_c1 ?? d.wastage_c1 ?? "—";
             const wC2 = d.circumference_c2 ?? d.wastage_c2 ?? "—";
             const wC3 = d.circumference_c3 ?? d.wastage_c3 ?? "—";
-            const depletion = d.anode_depletion_percent !== undefined ? `${d.anode_depletion_percent}%` : (d.anode_depletion ?? "—");
+            const depl = d.anode_depletion_percent ?? d.anode_depletion ?? d.depletion;
+            const depletion = depl !== undefined && depl !== null && depl !== "" ? (String(depl).includes("%") ? String(depl) : `${depl}%`) : "—";
 
             const pitDepthAvg = d.avg_pitting_depth ?? d.pitting_depth_avg ?? "—";
             const pitDepthMax = d.max_pitting_depth ?? d.pitting_depth_max ?? "—";
@@ -335,14 +357,8 @@ export const generateDivingAnodeReport = async (
             },
         });
 
-        const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
-            let sigY = pageHeight - 38;
-            if (finalY > sigY - 10) {
-                doc.addPage();
-                drawPageHeader(doc);
-                sigY = pageHeight - 38;
-            }
+            const sigY = pageHeight - 34;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
@@ -371,7 +387,6 @@ export const generateDivingAnodeReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`Diving_Anode_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving Anode Report] Error:", err);

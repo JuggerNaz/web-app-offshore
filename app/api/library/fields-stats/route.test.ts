@@ -60,7 +60,7 @@ describe("GET /api/library/fields-stats", () => {
       u_pipeline: [{ data: [{ pfield: 2 }], error: null }],
     });
 
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/library/fields-stats"));
     const json = await response.json();
 
     expect(json.data).toEqual([
@@ -88,7 +88,7 @@ describe("GET /api/library/fields-stats", () => {
       u_lib_list: [{ data: null, error: { message: "db down" } }],
     });
 
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/library/fields-stats"));
     const json = await response.json();
 
     expect(response.status).toBe(500);
@@ -103,7 +103,7 @@ describe("GET /api/library/fields-stats", () => {
       u_pipeline: [{ data: null, error: null }],
     });
 
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/library/fields-stats"));
     const json = await response.json();
 
     expect(json.data).toEqual([

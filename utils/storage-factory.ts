@@ -22,12 +22,13 @@ export interface StorageHandler {
  */
 class SupabaseStorageHandler implements StorageHandler {
   async upload(file: Buffer | File, fileName: string, contentType: string) {
-    const supabase = createClient();
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabase = useAdmin ? createAdminClient() : createClient();
     const filePath = `uploads/${fileName}`;
 
     const { error: uploadError } = await supabase.storage.from("attachments").upload(filePath, file, {
       cacheControl: "3600",
-      upsert: false,
+      upsert: true,
       contentType: contentType,
     });
 
@@ -41,25 +42,51 @@ class SupabaseStorageHandler implements StorageHandler {
     const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabase = useAdmin ? createAdminClient() : createClient();
     
-    let relativePath = filePath;
-    if (filePath.startsWith("http")) {
-      const parts = filePath.split("/");
+    let relativePath = (filePath || "").trim();
+    if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
+      const parts = relativePath.split("/");
       const bucketIndex = parts.indexOf("attachments");
       if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
         relativePath = parts.slice(bucketIndex + 1).join("/");
       }
+    } else if (relativePath.startsWith("attachments/")) {
+      relativePath = relativePath.replace(/^attachments\//, "");
     }
+    relativePath = relativePath.replace(/^\/+/, "");
 
     await supabase.storage.from("attachments").remove([relativePath]);
   }
 
   async getSignedUrl(filePath: string, expiresIn: number = 3600) {
-    const supabase = createClient();
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabase = useAdmin ? createAdminClient() : createClient();
+    
+    let relativePath = (filePath || "").trim();
+    if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
+      const parts = relativePath.split("/");
+      const bucketIndex = parts.indexOf("attachments");
+      if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
+        relativePath = parts.slice(bucketIndex + 1).join("/");
+      } else {
+        // If it's already a full external URL, return as is
+        return relativePath;
+      }
+    } else if (relativePath.startsWith("attachments/")) {
+      relativePath = relativePath.replace(/^attachments\//, "");
+    }
+    relativePath = relativePath.replace(/^\/+/, "");
+
     const { data, error } = await supabase.storage
       .from("attachments")
-      .createSignedUrl(filePath, expiresIn);
+      .createSignedUrl(relativePath, expiresIn);
     
-    if (error) throw error;
+    if (error || !data?.signedUrl) {
+      const { data: pubData } = supabase.storage
+        .from("attachments")
+        .getPublicUrl(relativePath);
+      if (pubData?.publicUrl) return pubData.publicUrl;
+      if (error) throw error;
+    }
     return data.signedUrl;
   }
 }

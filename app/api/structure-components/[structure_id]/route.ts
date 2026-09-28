@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
@@ -83,14 +83,16 @@ export const GET = withAuth(
     }
 
     // --- Attachment Enrichment ---
-    const componentIds = data.map((c: any) => c.id);
+    const componentIds = Array.from(
+      new Set(data.flatMap((c: any) => [c.id, c.comp_id]).filter(Boolean))
+    );
 
     // Fetch direct component attachments
     const { data: directAtts } = await supabase
       .from("attachment")
       .select("source_id")
       .in("source_id", componentIds)
-      .in("source_type", ["component", "COMPONENT", "structure_component"]);
+      .in("source_type", ["component", "COMPONENT", "structure_component", "STRUCTURE_COMPONENT", "structure_components"]);
 
     // Fetch ALL inspection records for this structure (paginated loop to guarantee >1000 records are fetched)
     let inspRecords: any[] = [];
@@ -152,17 +154,28 @@ export const GET = withAuth(
 
     let inspAtts: any[] = [];
     if (inspRecords && inspRecords.length > 0) {
-      const inspIds = inspRecords.map((r: any) => r.insp_id);
-      const { data: iAtts } = await supabase
-        .from("attachment")
-        .select("source_id")
-        .in("source_id", inspIds)
-        .in("source_type", ["inspection", "INSPECTION"]);
-      inspAtts = iAtts || [];
+      const inspIds = Array.from(new Set(inspRecords.map((r: any) => r.insp_id).filter(Boolean)));
+      if (inspIds.length > 0) {
+        const { data: iAtts } = await supabase
+          .from("attachment")
+          .select("source_id")
+          .in("source_id", inspIds)
+          .in("source_type", ["inspection", "INSPECTION", "insp_record", "INSP_RECORD"]);
+
+        const { data: iMedia } = await (supabase as any)
+          .from("insp_media")
+          .select("inspection_id")
+          .in("inspection_id", inspIds);
+
+        inspAtts = [
+          ...(iAtts || []),
+          ...((iMedia || []) as any[]).map((m: any) => ({ source_id: m.inspection_id })),
+        ];
+      }
     }
 
     // Query direct anomaly attachments
-    const anomIds = (componentAnomalies || []).map((a: any) => a.anomaly_id).filter(Boolean);
+    const anomIds = Array.from(new Set((componentAnomalies || []).map((a: any) => a.anomaly_id).filter(Boolean)));
     let anomAtts: any[] = [];
     if (anomIds.length > 0) {
       const { data: aAtts } = await supabase
@@ -170,21 +183,24 @@ export const GET = withAuth(
         .select("source_id")
         .in("source_id", anomIds)
         .in("source_type", ["anomaly", "ANOMALY", "defect", "DEFECT"]);
-      anomAtts = aAtts || [];
+
+      const { data: aMedia } = await (supabase as any)
+        .from("insp_media")
+        .select("anomaly_id")
+        .in("anomaly_id", anomIds);
+
+      anomAtts = [
+        ...(aAtts || []),
+        ...((aMedia || []) as any[]).map((m: any) => ({ source_id: m.anomaly_id })),
+      ];
     }
 
-    // Query structure-level anomaly attachments
+    // Query structure-level attachments to match specific anomaly refs or component QIDs
     const { data: strAtts } = await supabase
       .from("attachment")
       .select("id, name, meta")
       .in("source_type", ["structure", "STRUCTURE", "pipeline", "PIPELINE", "platform", "PLATFORM"])
       .eq("source_id", structureIdNumber);
-
-    const hasStrAnomalyFiles = (strAtts || []).some((att: any) => {
-      const n = String(att.name || "").toUpperCase();
-      const t = String(att.meta?.title || "").toUpperCase();
-      return n.startsWith("ANOMALY ") || t.startsWith("ANOMALY ") || n.includes("ANOMALY") || n.includes("A-");
-    });
 
     const directAttsSet = new Set((directAtts || []).map((a: any) => a.source_id));
     const inspAttsSet = new Set((inspAtts || []).map((a: any) => a.source_id));
@@ -193,7 +209,7 @@ export const GET = withAuth(
     // Apply has_attachment flag and enrich with inspections/anomalies
     // (matching by component_id OR component QID so legacy records link correctly)
     data.forEach((item: any) => {
-      const qidUpper = item.q_id ? item.q_id.toUpperCase() : "";
+      const qidUpper = item.q_id ? String(item.q_id).toUpperCase().trim() : "";
 
       item.inspections = (inspRecords || []).filter((r: any) => {
         if (r.component_id && (r.component_id === item.id || (item.comp_id && r.component_id === item.comp_id))) return true;
@@ -209,7 +225,7 @@ export const GET = withAuth(
       const seenAnomKeys = new Set<string>();
       item.anomalies = (componentAnomalies || []).filter((a: any) => {
         let isMatch = false;
-        if (a.component_id && a.component_id === item.id) isMatch = true;
+        if (a.component_id && (a.component_id === item.id || (item.comp_id && a.component_id === item.comp_id))) isMatch = true;
         else if (qidUpper) {
           if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) return true;
           if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) return true;
@@ -224,10 +240,43 @@ export const GET = withAuth(
         return false;
       }) || [];
 
+      // Check structure-level attachments matching this component's anomaly display_ref_no or component QID
+      const displayRefNos = item.anomalies
+        .map((a: any) => String(a.display_ref_no || a.anomaly_ref_no || "").trim())
+        .filter(Boolean);
+
+      const hasMatchingStrAtt = (strAtts || []).some((att: any) => {
+        const attName = String(att.name || "").toUpperCase();
+        const attTitle = String(att.meta?.title || "").toUpperCase();
+        const attDesc = String(att.meta?.description || "").toUpperCase();
+        const attFile = String(att.meta?.original_file_name || "").toUpperCase();
+
+        const matchesRef = displayRefNos.some((ref: string) => {
+          const rUpper = ref.toUpperCase();
+          const suffix = rUpper.split("/").pop() || "";
+          return (
+            attName.includes(rUpper) ||
+            attTitle.includes(rUpper) ||
+            attDesc.includes(rUpper) ||
+            attFile.includes(rUpper) ||
+            (suffix && (attName.includes(suffix) || attTitle.includes(suffix) || attFile.includes(suffix)))
+          );
+        });
+
+        const matchesQid = qidUpper && (
+          attName.includes(qidUpper) ||
+          attTitle.includes(qidUpper) ||
+          attDesc.includes(qidUpper) ||
+          attFile.includes(qidUpper)
+        );
+
+        return matchesRef || matchesQid;
+      });
+
       // Component has attachment if it has direct attachment, inspection attachment, or anomaly attachment
       const hasDirect = directAttsSet.has(item.id) || (item.comp_id && directAttsSet.has(item.comp_id));
       const hasInspAtt = item.inspections.some((r: any) => inspAttsSet.has(r.insp_id));
-      const hasAnomAtt = item.anomalies.some((a: any) => anomAttsSet.has(a.anomaly_id)) || (item.anomalies.length > 0 && hasStrAnomalyFiles);
+      const hasAnomAtt = item.anomalies.some((a: any) => anomAttsSet.has(a.anomaly_id)) || hasMatchingStrAtt;
       item.has_attachment = Boolean(hasDirect || hasInspAtt || hasAnomAtt);
 
       const hasAnom =
@@ -303,6 +352,8 @@ export const POST = withAuth(
     { params, user }: { params: Promise<{ structure_id: string }>; user: any }
   ) => {
     const supabase = createClient();
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const adminSupabase = useAdmin ? createAdminClient() : supabase;
     const { structure_id } = await params;
     const body = await request.json();
 
@@ -324,8 +375,8 @@ export const POST = withAuth(
       return handleSupabaseError(error, "Failed to create structure component");
     }
 
-    // Trigger asynchronous 3D coordinates recalculation for this structure
-    syncWebapp3D(supabase, structureIdNumber).catch((err) => {
+    // Trigger synchronous 3D coordinates recalculation for this structure
+    await syncWebapp3D(adminSupabase, structureIdNumber).catch((err) => {
       console.error("[3D Sync Error]", err);
     });
 

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -21,6 +21,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -31,7 +32,10 @@ export const generateDivingCVINSReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-): Promise<Blob | void> => {
+): Promise<Blob | void | null> => {
+    if (!config.isBlankReport && (!records || records.length === 0)) {
+        return null;
+    }
     try {
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -50,7 +54,7 @@ export const generateDivingCVINSReport = async (
             finding: [124, 58, 237] as [number, number, number],
         };
 
-        const HEADER_H = 24;
+        const HEADER_H = 26;
 
         // Pre-load logos
         let companyLogo: any = null;
@@ -74,21 +78,21 @@ export const generateDivingCVINSReport = async (
                 d.setTextColor(255);
             }
 
-            if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
+            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
 
-            d.setFontSize(9); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10, { align: "center" });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text("Close Visual Inspection Report (Diving)", margin + contentWidth / 2, margin + 17, { align: "center" });
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 22, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text("Close Visual Inspection Report (Diving)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
+            d.setFontSize(8); d.setFont("helvetica", "normal");
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
         };
 
         const drawPageFooter = (d: jsPDF, pageNo: number) => {
-            d.setFontSize(6.5); d.setFont("helvetica", "normal");
+            d.setFontSize(6.5); doc.setFont("helvetica", "normal");
             d.setTextColor(...colors.text);
             d.setDrawColor(...colors.border); d.setLineWidth(0.2);
             d.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
@@ -267,9 +271,9 @@ export const generateDivingCVINSReport = async (
                     doc.text(label, lx + 2, sigY + 3.5);
                     doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                     doc.text("Name:", lx + 2, sigY + 10);
-                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
+                    if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                     doc.text("Date:", lx + 2, sigY + 13.5);
-                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
+                    if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                     doc.text("Signature:", lx + 2, sigY + 17);
                 };
 
@@ -288,7 +292,6 @@ export const generateDivingCVINSReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`Diving_CVINS_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving CVINS Report] Error:", err);

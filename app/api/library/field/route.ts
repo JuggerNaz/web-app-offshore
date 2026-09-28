@@ -17,6 +17,9 @@ export async function POST(request: NextRequest) {
         const supabase = createClient();
         const body = await request.json();
         const { fieldId, fieldDesc, confirmEnable } = body;
+        const companyId = request.headers.get("x-company-id") || 
+          request.cookies.get("active_company_id")?.value || 
+          body.company_id;
 
         if (!fieldId || typeof fieldId !== "string" || !fieldId.trim()) {
             return NextResponse.json({ error: "Field ID / Code is required." }, { status: 400 });
@@ -27,11 +30,17 @@ export async function POST(request: NextRequest) {
             ? fieldDesc.trim()
             : normalizedId;
 
-        // Fetch all oil field records from u_lib_list (including active and deleted ones)
-        const { data: allFields, error: fetchError } = await supabase
+        // Fetch all oil field records from u_lib_list (including active and deleted ones) for this tenant
+        let fetchQuery = (supabase as any)
             .from("u_lib_list")
             .select("*")
             .eq("lib_code", "OILFIELD");
+
+        if (companyId) {
+            fetchQuery = fetchQuery.eq("company_id", companyId);
+        }
+
+        const { data: allFields, error: fetchError } = (await fetchQuery) as any;
 
         if (fetchError) {
             return NextResponse.json({ error: `Failed to query library: ${fetchError.message}` }, { status: 500 });
@@ -57,16 +66,23 @@ export async function POST(request: NextRequest) {
                     }, { status: 200 });
                 } else {
                     // User confirmed re-enabling! Set lib_delete = 0
-                    const { data: updated, error: updateError } = await supabase
+                    let reenableQuery = (supabase as any)
                         .from("u_lib_list")
                         .update({
                             lib_delete: 0,
-                            lib_desc: normalizedDesc
+                            lib_desc: normalizedDesc,
+                            ...(companyId ? { company_id: companyId } : {})
                         })
                         .eq("lib_code", "OILFIELD")
-                        .eq("lib_id", existingItem.lib_id)
+                        .eq("lib_id", existingItem.lib_id);
+
+                    if (companyId) {
+                        reenableQuery = reenableQuery.eq("company_id", companyId);
+                    }
+
+                    const { data: updated, error: updateError } = (await reenableQuery
                         .select()
-                        .single();
+                        .single()) as any;
 
                     if (updateError) {
                         return NextResponse.json({ error: `Failed to re-enable field: ${updateError.message}` }, { status: 500 });
@@ -88,18 +104,24 @@ export async function POST(request: NextRequest) {
         }
 
         // No duplicate found -> Create new oil field record
-        const { data: created, error: insertError } = await supabase
+        const insertPayload: any = {
+            lib_code: "OILFIELD",
+            lib_id: normalizedId,
+            lib_desc: normalizedDesc,
+            lib_delete: 0,
+            workunit: "000",
+            cr_date: new Date().toISOString()
+        };
+
+        if (companyId) {
+            insertPayload.company_id = companyId;
+        }
+
+        const { data: created, error: insertError } = (await (supabase as any)
             .from("u_lib_list")
-            .insert({
-                lib_code: "OILFIELD",
-                lib_id: normalizedId,
-                lib_desc: normalizedDesc,
-                lib_delete: 0,
-                workunit: "000",
-                cr_date: new Date().toISOString()
-            })
+            .insert(insertPayload)
             .select()
-            .single();
+            .single()) as any;
 
         if (insertError) {
             return NextResponse.json({ error: `Failed to create oil field: ${insertError.message}` }, { status: 500 });

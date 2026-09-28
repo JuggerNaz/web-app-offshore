@@ -26,9 +26,10 @@ import { useEffect, useState } from "react";
 
 type Props = {
   data?: any; //TODO: use real type rather than any
+  onSaved?: (updatedPlatform: any) => void;
 };
 
-export default function Spec1({ data }: Props) {
+export default function Spec1({ data, onSaved }: Props) {
   const router = useRouter();
 
   const normalizeDate = (value: string | null | undefined) => {
@@ -58,6 +59,16 @@ export default function Spec1({ data }: Props) {
     resolver: zodResolver(PlatformSchema),
     defaultValues: initialData,
   });
+
+  // Re-sync form state when data prop loads or changes
+  useEffect(() => {
+    if (data) {
+      form.reset({
+        ...data,
+        inst_date: normalizeDate((data as any).inst_date)
+      });
+    }
+  }, [data, form]);
 
   const legsCountRaw = form.watch("plegs");
   const legsCount = Number(legsCountRaw) || 0;
@@ -199,8 +210,10 @@ export default function Spec1({ data }: Props) {
         },
       });
       if (res.ok) {
+        const responseData = await res.json().catch(() => null);
         toast.success("Platform updated");
         mutate(`/api/platform/${values.plat_id}`);
+        onSaved?.(responseData?.data || values);
       } else {
         const errData = await res.json().catch(() => null);
         const errMsg = errData?.error ? `: ${errData.error}` : "";

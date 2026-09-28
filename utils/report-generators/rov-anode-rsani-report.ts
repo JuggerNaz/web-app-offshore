@@ -22,6 +22,7 @@ interface ReportConfig {
     returnBlob?: boolean;
     showPageNumbers?: boolean;
     showSignatures?: boolean;
+    isBlankReport?: boolean;
 }
 
 /**
@@ -32,8 +33,12 @@ export const generateROVAnodeRSANIReport = async (
     headerData: any,
     companySettings: CompanySettings,
     config: ReportConfig
-) => {
+): Promise<Blob | void | null> => {
     try {
+        if (!config.isBlankReport && (!records || records.length === 0)) {
+            return null;
+        }
+
         const isPF = config.printFriendly;
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -75,9 +80,10 @@ export const generateROVAnodeRSANIReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
             const da = d as any;
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -94,12 +100,12 @@ export const generateROVAnodeRSANIReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
             if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 4, 'left',  'center');
 
-            da.setFontSize(10); da.setFont("helvetica", "bold");
+            da.setFontSize(11); da.setFont("helvetica", "bold");
             da.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            da.setFontSize(7); da.setFont("helvetica", "normal");
-            da.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            da.setFontSize(14); da.setFont("helvetica", "bold");
-            da.text(`Selected Anode Report (ROV)`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            da.setFontSize(8.5); da.setFont("helvetica", "normal");
+            da.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
+            da.setFontSize(11); da.setFont("helvetica", "bold");
+            da.text(`Selected Anode Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
 
             da.setFontSize(8); da.setFont("helvetica", "normal");
             da.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
@@ -132,7 +138,7 @@ export const generateROVAnodeRSANIReport = async (
         };
 
         drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const startY = drawContext(doc, margin + headerH + 2);
 
         // --- 2. Data Sorting & Mapping ---
         const sortedRecords = [...records].sort((a, b) => {
@@ -143,36 +149,53 @@ export const generateROVAnodeRSANIReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
                 'Item No.', 'QID', 'Elevation (m)', 'Depletion (%)', 
                 'Anode CP (mV)', 'Anode Type', 'Anomaly', 'Dive No.', 'Findings'
             ]],
-            body: sortedRecords.map((r, idx) => {
+            body: sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
-                const qid = r.structure_components?.q_id || 'N/A';
-                const elev = r.elevation || '-';
-                const depletion = d.anode_depletion_percent !== undefined ? `${d.anode_depletion_percent}%` : (d.anode_depletion || '-');
+                const qid = r.structure_components?.q_id || r.component?.q_id || 'N/A';
+                const elev = r.elevation ?? d.elevation ?? '-';
                 
-                // Format Primary + Additional CP readings in the CP column
-                const primaryCP = d.cp_reading_mv || d.cp_rdg || '';
-                const rawAddCPs = d.cp_rdg_additional || d.cp_readings || [];
-                const additionalCPs = Array.isArray(rawAddCPs) 
-                    ? rawAddCPs.map((cr: any) => cr.reading).filter((v: any) => v !== undefined && v !== null && v !== '') 
-                    : [];
-                const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
-                const cp = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+                // Formulate Depletion
+                const depl = d.depletion_percent ?? d.anode_depletion ?? d.depletion;
+                const depletion = depl !== undefined && depl !== null && depl !== '' ? (String(depl).includes('%') ? String(depl) : `${depl}%`) : '-';
+
+                // Formulate CP
+                const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? '';
+                const rawAddCPs = d.cp_rdg_additional || d.cp_additional || d.cp_readings || [];
+                const addCPs = Array.isArray(rawAddCPs) ? rawAddCPs.map((cr: any) => cr.reading ?? cr.cp_rdg ?? '').filter((v: any) => v !== undefined && v !== null && v !== '') : [];
+                const cpList = [cpVal, ...addCPs].filter(Boolean);
+                const cp = cpList.length > 0 ? cpList.map(v => String(v).toLowerCase().includes('mv') ? String(v) : `${v} mV`).join('\n') : '-';
+
+                // Formulate Anode Type from inspection form fields (anode_type / anodeType / etc.)
+                const candidateType = d.anode_type ?? d.anodeType ?? d.anode_typ ?? d.an_type ?? d["Anode Type"] ?? d["anode type"] ?? d.anode_type_name;
+                let anodeType = '-';
+                if (candidateType !== undefined && candidateType !== null && String(candidateType).trim() !== '') {
+                    const str = String(candidateType).trim();
+                    if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                        anodeType = str;
+                    }
+                }
+                if (anodeType === '-') {
+                    const compMeta = r.structure_components?.metadata || r.component?.metadata || {};
+                    const metaType = compMeta.anode_type ?? compMeta.anodeType ?? compMeta.thetype ?? compMeta.anode_type_name ?? compMeta.type;
+                    if (metaType !== undefined && metaType !== null && String(metaType).trim() !== '') {
+                        const str = String(metaType).trim();
+                        if (str.toUpperCase() !== 'AN' && str.toUpperCase() !== 'ANODE') {
+                            anodeType = str;
+                        }
+                    }
+                }
                 
-                const anodeType = d.anode_type || '-';
-                
-                const isAnomaly = r.has_anomaly === true || r.is_anomaly === true || r.component_condition === 'Anomalous' || (r.description && r.description.toLowerCase().includes('anomaly')) || (r.insp_anomalies && r.insp_anomalies.length > 0);
-                const isDefect = r.has_defect === true || r.is_defect === true || (r.description && r.description.toLowerCase().includes('defect'));
-                
-                // Get linked anomaly data if exists
-                const linkedAnomaly = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                const isRectified = linkedAnomaly ? linkedAnomaly.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-                
-                const anomalyRef = linkedAnomaly?.anomaly_ref_no || linkedAnomaly?.anomaly_ref_n || r.anomaly_ref_no || r.ref_no || r.anomaly_no || (d._meta_ref_no) || '';
+                // Linked anomaly
+                const linkedAnomaly = (r.insp_anomalies && r.insp_anomalies.length > 0) ? r.insp_anomalies[0] : null;
+                const isAnomaly = r.has_anomaly || !!linkedAnomaly;
+                const isDefect = d.is_defect || r.is_defect;
+                const isRectified = linkedAnomaly ? linkedAnomaly.is_rectified : (r.rectified || false);
+                const anomalyRef = linkedAnomaly?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectifiedComments = linkedAnomaly?.rectified_remarks || linkedAnomaly?.rectified_remar || r.rectified_comments || '';
 
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
@@ -180,19 +203,22 @@ export const generateROVAnodeRSANIReport = async (
                                r.rov_job_id || r.dive_job_id || 'N/A';
 
                 const findingsLines: string[] = [];
-                if (r.description) findingsLines.push(r.description);
 
-                // Add location and CP values to Findings column before anomaly reference details
+                // 1. Description / Findings
+                if (r.description && r.description.trim()) findingsLines.push(r.description.trim());
+                
+                // 2. Additional CP details BEFORE Anomaly details
                 if (Array.isArray(rawAddCPs) && rawAddCPs.length > 0) {
                     rawAddCPs.forEach((cr: any) => {
-                        if (cr.reading !== undefined && cr.reading !== null && cr.reading !== '' || cr.location) {
-                            const unit = cr.reading_unit || 'mV';
-                            const formattedUnit = String(cr.reading).toLowerCase().includes('mv') ? '' : ` ${unit}`;
-                            findingsLines.push(`${cr.location || 'Unknown'}: ${cr.reading ?? '-'}${formattedUnit}`);
+                        const val = cr.reading ?? cr.cp_rdg ?? '';
+                        if ((val !== '' && val !== null && val !== undefined) || cr.location) {
+                            const unit = String(val).toLowerCase().includes('mv') || !val ? '' : ' mV';
+                            findingsLines.push(`Add. CP${cr.location ? ` @ ${cr.location}` : ''}: ${val}${unit}`);
                         }
                     });
                 }
 
+                // 3. Anomaly Reference & Rectified comments
                 if ((isAnomaly || isDefect) && anomalyRef) {
                     findingsLines.push(`[Reference: ${anomalyRef}]`);
                 }
@@ -213,7 +239,9 @@ export const generateROVAnodeRSANIReport = async (
                     diveNo,
                     findings
                 ];
-            }),
+            }) : [
+                ["-", "-", "-", "-", "-", "-", "-", "-", "No selected anode (RSANI) observations recorded for this scope."]
+            ],
             theme: 'grid',
             headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
@@ -246,14 +274,8 @@ export const generateROVAnodeRSANIReport = async (
             }
             });
 
-        const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
-            let sigY = pageHeight - 38;
-            if (finalY > sigY - 10) {
-                doc.addPage();
-                drawHeader(doc);
-                sigY = pageHeight - 38;
-            }
+            const sigY = pageHeight - 34;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
@@ -282,7 +304,6 @@ export const generateROVAnodeRSANIReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`ROV_Anode_RSANI_Report_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
 

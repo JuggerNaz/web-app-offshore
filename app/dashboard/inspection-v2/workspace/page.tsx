@@ -5,6 +5,8 @@ import { useState, useEffect, Suspense, useCallback, useRef, useMemo } from "rea
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import useSWR from "swr";
+import { fetcher } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/client";
 
 import {
@@ -105,6 +107,7 @@ function formatCounter(seconds: number | string): string {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { parseClientDate, toUtcIsoTimestamp, toDatetimeLocalString, formatClientTime } from "@/utils/client-date";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
@@ -248,7 +251,7 @@ function V10PreviewLayout() {
   
   const isPipeline = pathname?.includes("/pipeline-workspace") || false;
 
-  const { activeCompanyId } = useUserProfile();
+  const { profile, activeCompanyId } = useUserProfile();
   const jobPackId = searchParams.get("jobpack");
   const structureId = searchParams.get("structure");
   const sowIdFull = searchParams.get("sow");
@@ -353,6 +356,67 @@ function V10PreviewLayout() {
   } | null>(null);
   const [isReadyForComps, setIsReadyForComps] = useState(false);
 
+  // User-scoped Workspace Session State Memory
+  const getWorkspaceSessionKey = useCallback(() => {
+    const uId = profile?.id || "default_user";
+    const jp = jobPackId || "0";
+    const st = structureId || "0";
+    const sow = headerData?.sowReportNo || targetReportNumber || "ALL";
+    const mode = inspMethod || "DIVING";
+    return `workspace_user_session_${uId}_${jp}_${st}_${sow}_${mode}`;
+  }, [profile?.id, jobPackId, structureId, headerData?.sowReportNo, targetReportNumber, inspMethod]);
+
+  const loadUserSession = useCallback((): {
+    lastActiveDepId?: string | number | null;
+    lastActiveTapeId?: number | null;
+    lastActiveTapeNo?: string | null;
+    lastActiveChapter?: number | null;
+    vidState?: "IDLE" | "RECORDING" | "PAUSED";
+    vidTimer?: number;
+  } | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(getWorkspaceSessionKey());
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      console.warn("Failed to load user session", e);
+      return null;
+    }
+  }, [getWorkspaceSessionKey]);
+
+  const saveUserSession = useCallback(
+    (partial: {
+      lastActiveDepId?: string | number | null;
+      lastActiveTapeId?: number | null;
+      lastActiveTapeNo?: string | null;
+      lastActiveChapter?: number | null;
+      vidState?: "IDLE" | "RECORDING" | "PAUSED";
+      vidTimer?: number;
+    }) => {
+      if (typeof window === "undefined") return;
+      try {
+        const key = getWorkspaceSessionKey();
+        const current = localStorage.getItem(key);
+        const parsed = current ? JSON.parse(current) : {};
+        const updated = { ...parsed, ...partial, lastUpdated: Date.now() };
+        localStorage.setItem(key, JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Failed to save user session", e);
+      }
+    },
+    [getWorkspaceSessionKey]
+  );
+
+  // Persist user active deployment to session
+  useEffect(() => {
+    if (activeDep?.id) {
+      saveUserSession({
+        lastActiveDepId: activeDep.id,
+      });
+    }
+  }, [activeDep?.id, saveUserSession]);
+
+
   // Live session records
   const [currentRecords, setCurrentRecords] = useState<any[]>([]);
   const [allWorkspaceRecords, setAllWorkspaceRecords] = useState<any[]>([]);
@@ -452,6 +516,22 @@ function V10PreviewLayout() {
   const [layoutModel, setLayoutModel] = useState<Model | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [videoLogExpanded, setVideoLogExpanded] = useState(false);
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("insp_header_collapsed") === "true";
+    }
+    return false;
+  });
+
+  const handleToggleHeaderCollapse = () => {
+    setIsHeaderCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("insp_header_collapsed", String(next));
+      }
+      return next;
+    });
+  };
 
   const isPipe = Boolean(
     isPipeline ||
@@ -920,210 +1000,273 @@ function V10PreviewLayout() {
       return !excludedCodes.includes(code);
     });
 
-    // Helper to extract all searchable data from a record across every table column
-    const getSearchableText = (r: any) => {
-      const texts: string[] = [];
-      const d = r.inspection_data || {};
+    // 1. Helper to extract structured component metadata safely
+    const extractCompMetadata = (comp: any) => {
+      if (!comp) return {};
+      let md = comp.metadata;
+      if (typeof md === "string") {
+        try {
+          md = JSON.parse(md);
+        } catch (e) {
+          md = {};
+        }
+      }
+      return md || {};
+    };
+
+    // 2. Comprehensive search text and field extractor
+    const getSearchableFields = (r: any) => {
+      const comp = r.structure_components || r.component || {};
+      const cMeta = extractCompMetadata(comp);
+      const d = r.inspection_data || r.inspection_dat || {};
       
-      // 1. Column: Status & Anomalies
-      texts.push(r.status || "");
-      const isAnom = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toLowerCase().includes("anom") || String(r.status || "").toLowerCase().includes("defect");
-      if (isAnom) {
-        texts.push("anomaly defect anom");
-      } else if (r.status === "COMPLETED") {
-        texts.push("complete completed");
-      } else {
-        texts.push("incomplete draft pending");
-      }
+      const qid = String(comp.q_id || comp.id_no || comp.name || r.qid || "").trim();
+      const compCode = String(comp.code || comp.component_type || "").trim();
+      const compName = String(comp.name || r.component_name || "").trim();
+      
+      // Structural hierarchy & framing members
+      const sLeg = String(cMeta.start_leg || cMeta.s_leg || cMeta.leg_1 || cMeta.StartLeg || comp.start_leg || "").trim();
+      const fLeg = String(cMeta.end_leg || cMeta.f_leg || cMeta.leg_2 || cMeta.EndLeg || comp.end_leg || "").trim();
+      const legNo = String(cMeta.leg_no || cMeta.leg || cMeta.leg_name || comp.leg_no || comp.leg || "").trim();
+      const sNode = String(cMeta.start_node || cMeta.s_node || cMeta.node_1 || comp.start_node || "").trim();
+      const fNode = String(cMeta.end_node || cMeta.f_node || cMeta.node_2 || comp.end_node || "").trim();
+      const face = String(comp.face || cMeta.face || cMeta.face_name || cMeta.face_code || d.platform_face || "").trim();
+      const level = String(cMeta.level || cMeta.level_name || "").trim();
 
-      // Anomaly details (Ref, Defect Code, Category, Priority, Description)
-      if (r.insp_anomalies && r.insp_anomalies.length > 0) {
-        texts.push("anomaly defect anom");
-        r.insp_anomalies.forEach((anom: any) => {
-          texts.push(anom.anomaly_ref_no || "");
-          texts.push(anom.defect_description || "");
-          texts.push(anom.defect_type_code || anom.defect_code || "");
-          texts.push(anom.defect_category_code || "");
-          texts.push(anom.record_category || "");
-          texts.push(anom.priority || "");
-          texts.push(anom.priority_code || "");
-          texts.push(anom.priority_name || "");
-          if (anom.priority_code) {
-            texts.push(`priority ${anom.priority_code}`);
-            texts.push(`p${anom.priority_code}`);
+      // Scour & inspection specifics
+      const scourLoc = String(d.scour_location || "").trim();
+      const scourDepth = d.scour_depth !== undefined && d.scour_depth !== null ? String(d.scour_depth).trim() : "";
+      const exposedPile = String(d.Exposed_pile || d.exposed_pile || "").trim();
+      const burial = d.Burial_percent !== undefined && d.Burial_percent !== null ? String(d.Burial_percent).trim() : "";
+      
+      // Observations, findings and descriptions
+      const eventDesc = String(d.event_description || r.description || d.findings || r.observation || d.comments || d.remarks || d.raw_descr || "").trim();
+      const eventName = String(d.event_name || d.actionName || d.event || d.name || "").trim();
+      const eventType = String(d.event_type || d.raw_type || d.type || "").trim();
+      const eventPos = String(d.event_position || d.position || d.clock_position || d.side || "").trim();
+      
+      // Inspection Type
+      const typeName = String(r.inspection_type?.name || "").trim();
+      const typeCode = String(r.inspection_type_code || r.inspection_type?.code || "").trim();
+      
+      // Status & Anomalies
+      const status = String(r.status || "").trim();
+      const anoms = r.insp_anomalies || [];
+      const anomRefs = anoms.map((a: any) => a.anomaly_ref_no).filter(Boolean);
+      const anomDescs = anoms.map((a: any) => a.defect_description).filter(Boolean);
+      const anomPriorities = anoms.map((a: any) => a.priority_code ? `P${a.priority_code} Priority ${a.priority_code}` : "").filter(Boolean);
+      
+      // Depth / Elevation / CP / Job / Tape
+      const waterDepth = String(d.water_depth || d.measured_depth || d.corrected_depth || r.elevation || "").trim();
+      const cpVal = String(d.cp_rdg ?? d.cp_reading_mv ?? d.cp_reading ?? d.cp ?? "").trim();
+      const jobNo = String(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "").trim();
+      const operator = String(r.insp_dive_jobs?.diver_name || r.insp_rov_jobs?.rov_operator || "").trim();
+      const tapeNo = String(r.insp_video_tapes?.tape_no || "").trim();
+      const sowReportNo = String(r.sow_report_no || "").trim();
+
+      // Date / Time
+      const dateStr = r.inspection_date ? String(r.inspection_date).trim() : "";
+      const timeStr = r.inspection_time ? String(r.inspection_time).trim() : "";
+
+      return {
+        qid,
+        compCode,
+        compName,
+        sLeg,
+        fLeg,
+        legNo,
+        sNode,
+        fNode,
+        face,
+        level,
+        scourLoc,
+        scourDepth,
+        exposedPile,
+        burial,
+        eventDesc,
+        eventName,
+        eventType,
+        eventPos,
+        typeName,
+        typeCode,
+        status,
+        anomRefs,
+        anomDescs,
+        anomPriorities,
+        waterDepth,
+        cpVal,
+        jobNo,
+        operator,
+        tapeNo,
+        sowReportNo,
+        dateStr,
+        timeStr,
+        rawInspectionData: d,
+      };
+    };
+
+    // 3. Smart Evaluator
+    const evaluateRecord = (r: any, qStr: string, mode: "ANY" | "ALL" | "EXACT") => {
+      const f = getSearchableFields(r);
+      const qLower = qStr.toLowerCase().trim();
+      
+      // Build searchable tokens
+      const tokens: string[] = [];
+      const add = (...items: any[]) => {
+        items.forEach(item => {
+          if (!item) return;
+          if (Array.isArray(item)) item.forEach(sub => add(sub));
+          else if (typeof item === "object") Object.values(item).forEach(v => add(v));
+          else {
+            const s = String(item).toLowerCase().trim();
+            if (s) tokens.push(s);
           }
-          if (anom.follow_up_notes) texts.push(anom.follow_up_notes);
         });
-      }
+      };
 
-      // 2. Column: Date & Time (in multiple formats: DD MMM YYYY, YYYY-MM-DD, month names, times)
-      if (r.inspection_date) {
-        texts.push(r.inspection_date);
-        const dStr = String(r.inspection_date).trim().split('T')[0];
-        const match = dStr.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-        if (match) {
-          const year = match[1];
-          const monthIdx = parseInt(match[2], 10) - 1;
-          const day = match[3].padStart(2, '0');
-          const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-          const shortMonthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-          const fullMonth = monthNames[monthIdx] || "";
-          const shortMonth = shortMonthNames[monthIdx] || "";
-          texts.push(`${day} ${shortMonth} ${year}`);
-          texts.push(`${day} ${fullMonth} ${year}`);
-          texts.push(`${shortMonth} ${year}`);
-          texts.push(`${fullMonth} ${year}`);
-          texts.push(year);
-        }
-        const dateObj = new Date(r.inspection_date);
-        if (!isNaN(dateObj.getTime())) {
-          texts.push(dateObj.toLocaleDateString());
-        }
-      }
-      if (r.inspection_time) {
-        texts.push(r.inspection_time);
-        texts.push(r.inspection_time.slice(0, 5));
-      }
+      add(
+        f.qid, f.compCode, f.compName,
+        f.sLeg && `leg ${f.sLeg}`, f.sLeg && `leg: ${f.sLeg}`, f.sLeg,
+        f.fLeg && `leg ${f.fLeg}`, f.fLeg && `leg: ${f.fLeg}`, f.fLeg,
+        f.legNo && `leg ${f.legNo}`, f.legNo && `leg: ${f.legNo}`, f.legNo,
+        f.sNode && `node ${f.sNode}`, f.sNode,
+        f.fNode && `node ${f.fNode}`, f.fNode,
+        f.face && `face ${f.face}`, f.face,
+        f.level && `level ${f.level}`, f.level,
+        f.scourLoc,
+        f.scourDepth && `${f.scourDepth} mm`, f.scourDepth && `${f.scourDepth}mm`, f.scourDepth,
+        f.exposedPile,
+        f.exposedPile.toLowerCase().includes("no") && "no exposed pile observed",
+        f.exposedPile.toLowerCase().includes("no") && "not exposed",
+        f.burial && `${f.burial}%`, f.burial,
+        f.eventDesc,
+        f.eventName,
+        f.eventType,
+        f.eventPos,
+        f.typeName,
+        f.typeCode,
+        f.status,
+        f.status === "COMPLETED" && "complete completed",
+        (r.has_anomaly || f.anomRefs.length > 0) && "anomaly defect anom",
+        f.anomRefs,
+        f.anomDescs,
+        f.anomPriorities,
+        f.waterDepth && `${f.waterDepth}m`, f.waterDepth && `${f.waterDepth} m`, f.waterDepth,
+        f.cpVal && `${f.cpVal}mv`, f.cpVal && `${f.cpVal} mv`, f.cpVal,
+        f.jobNo && `job ${f.jobNo}`, f.jobNo && `dive ${f.jobNo}`, f.jobNo,
+        f.operator,
+        f.tapeNo && `tape ${f.tapeNo}`, f.tapeNo,
+        f.sowReportNo,
+        f.dateStr,
+        f.timeStr
+      );
 
-      // 3. Column: Event Name (Pipeline & General)
-      const eventName = d.event_name || d.actionName || d.event || d.name || d.raw_event || "";
-      if (eventName) texts.push(eventName);
-
-      // 4. Column: Event Type
-      const eventType = d.event_type || d.raw_type || d.type || "";
-      if (eventType) texts.push(eventType);
-
-      // 5. Column: Event Position
-      const eventPos = d.event_position || d.eventCategory || d.position || d.clock_position || d.side || d.raw_pos || "";
-      if (eventPos) texts.push(eventPos);
-
-      // 6. Column: Event Description / Findings / Comments / Description
-      const eventDesc = d.event_description || r.description || d.findings || r.observation || d.comments || d.raw_descr || "";
-      if (eventDesc) texts.push(eventDesc);
-      if (r.description) texts.push(r.description);
-      if (r.observation) texts.push(r.observation);
-
-      // 7. Column: Type (Inspection Type Name & Code)
-      texts.push(r.inspection_type?.name || "");
-      texts.push(r.inspection_type_code || r.inspection_type?.code || "");
-
-      // 8. Column: Component (QID, Code, Name, Type, Leg, Face, Level, Drawing No)
-      texts.push(r.structure_components?.q_id || "");
-      texts.push(r.structure_components?.code || "");
-      texts.push(r.structure_components?.name || "");
-      texts.push(r.component_name || "");
-      texts.push(r.component_type || r.structure_components?.type || "");
-
-      // Component metadata (e.g. Leg, Face, Level, Drawing, Notes)
-      const cMeta = r.structure_components?.metadata || {};
-      if (typeof cMeta === 'object') {
-        if (cMeta.face) texts.push(`face ${cMeta.face} ${cMeta.face}`);
-        if (cMeta.level || cMeta.level_name) texts.push(`level ${cMeta.level || cMeta.level_name}`);
-        if (cMeta.leg || cMeta.leg_name) texts.push(`leg ${cMeta.leg || cMeta.leg_name}`);
-        if (cMeta.elv_1) texts.push(cMeta.elv_1.toString(), `${cMeta.elv_1}m`);
-        if (cMeta.elv_2) texts.push(cMeta.elv_2.toString(), `${cMeta.elv_2}m`);
-        if (cMeta.drawing_no) texts.push(cMeta.drawing_no);
-        if (cMeta.group || cMeta.comp_group) texts.push(cMeta.group || cMeta.comp_group);
-      }
-
-      // 9. Column: Elevation & KP (Platform elevations e.g. (+)15m, (-)30m, EL 12.5)
-      if (r.elevation !== undefined && r.elevation !== null && r.elevation !== "") {
-        const elvStr = r.elevation.toString();
-        texts.push(elvStr);
-        texts.push(`${elvStr}m`);
-        texts.push(`el ${elvStr}`);
-        texts.push(`elv ${elvStr}`);
-        const numElv = parseFloat(elvStr);
-        if (!isNaN(numElv)) {
-          if (numElv < 0) texts.push(`(-) ${Math.abs(numElv)}m`, `(-)${Math.abs(numElv)}`);
-          else texts.push(`(+) ${numElv}m`, `(+)${numElv}`);
+      // Date variants
+      if (f.dateStr) {
+        const dMatch = f.dateStr.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        if (dMatch) {
+          const y = dMatch[1];
+          const mIdx = parseInt(dMatch[2], 10) - 1;
+          const d = dMatch[3].padStart(2, "0");
+          const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const fullMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+          const mShort = months[mIdx] || "";
+          const mFull = fullMonths[mIdx] || "";
+          add(`${d} ${mShort} ${y}`, `${d} ${mFull} ${y}`, `${mShort} ${y}`, `${mFull} ${y}`, y);
         }
       }
-      if (r.kp !== undefined && r.kp !== null && r.kp !== "") {
-        texts.push(r.kp.toString());
-        texts.push(`${r.kp}km`);
-      }
-      if (r.fp_kp !== undefined && r.fp_kp !== null && r.fp_kp !== "") {
-        texts.push(r.fp_kp.toString());
-      }
-      if (d.kp) texts.push(d.kp.toString());
-      if (d.fp_kp) texts.push(d.fp_kp.toString());
-      if (d.elevation) texts.push(d.elevation.toString());
 
-      // 10. Column: CP Reading
-      const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp_reading ?? d.cp ?? d.cp_fg_rdg;
-      if (cpVal !== undefined && cpVal !== null && cpVal !== "") {
-        texts.push(cpVal.toString());
-        texts.push(`${cpVal}mv`);
+      add(f.rawInspectionData);
+      const allText = tokens.join(" ");
+
+      // EXACT MATCH MODE
+      if (mode === "EXACT") {
+        if (allText.includes(qLower)) return 100;
+        return 0;
       }
 
-      // 11. Column: Dive / ROV Job No & Operator
-      texts.push(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "");
-      texts.push(r.insp_dive_jobs?.name || r.insp_rov_jobs?.name || "");
-      texts.push(r.insp_dive_jobs?.diver_name || r.insp_rov_jobs?.rov_operator || "");
+      // Parse quoted phrases
+      const phraseRegex = /"([^"]+)"|'([^']+)'/g;
+      const phrases: string[] = [];
+      let pMatch;
+      while ((pMatch = phraseRegex.exec(qLower)) !== null) {
+        phrases.push((pMatch[1] || pMatch[2]).trim());
+      }
+      const unquoted = qLower.replace(phraseRegex, " ").trim();
+      const terms = unquoted.split(/\s+/).filter(Boolean);
 
-      // 12. Column: Tape No & Counter / Timecode
-      texts.push(r.insp_video_tapes?.tape_no || "");
-      if (r.tape_count_no) texts.push(r.tape_count_no.toString());
-      const timecode = d._meta_timecode || d.counter_no || d.counter || d.timecode;
-      if (timecode) texts.push(timecode.toString());
-
-      // 13. SOW Report Number
-      if (r.sow_report_no) texts.push(r.sow_report_no);
-
-      // 14. Deep scan all remaining nested values in inspection_data (MGI, UTWT, RFMD, CP, MPI, ACFMC, etc.)
-      if (d && typeof d === 'object') {
-        const extractValues = (obj: any) => {
-          Object.values(obj).forEach(val => {
-            if (val === null || val === undefined) return;
-            if (typeof val === 'object') extractValues(val);
-            else texts.push(val.toString());
-          });
-        };
-        extractValues(d);
+      let score = 0;
+      if (allText.includes(qLower)) {
+        score += 80;
+        if (f.qid.toLowerCase().includes(qLower)) score += 100;
+        if (f.scourLoc.toLowerCase().includes(qLower)) score += 60;
+        if (f.eventDesc.toLowerCase().includes(qLower)) score += 40;
+        if (f.typeName.toLowerCase().includes(qLower)) score += 40;
       }
 
-      return texts.map(t => String(t).toLowerCase()).join(" ");
+      // Structural leg targeting logic (e.g. "leg a1", "leg: a1", "leg-a1")
+      const legMatch = qLower.match(/\bleg\s*[:\- ]*\s*([a-z0-9]+)\b/i);
+      if (legMatch && legMatch[1]) {
+        const targetLeg = legMatch[1].toLowerCase();
+        const matchesLeg = 
+          f.qid.toLowerCase().includes(`leg ${targetLeg}`) ||
+          f.qid.toLowerCase().includes(`leg:${targetLeg}`) ||
+          f.qid.toLowerCase().includes(`-${targetLeg}`) ||
+          f.qid.toLowerCase().endsWith(targetLeg) ||
+          f.sLeg.toLowerCase() === targetLeg ||
+          f.fLeg.toLowerCase() === targetLeg ||
+          f.legNo.toLowerCase() === targetLeg ||
+          f.scourLoc.toLowerCase().includes(targetLeg) ||
+          f.eventDesc.toLowerCase().includes(`leg ${targetLeg}`) ||
+          f.eventDesc.toLowerCase().includes(`leg: ${targetLeg}`);
+
+        if (matchesLeg) {
+          score += 150;
+        } else if (mode === "ALL" && phrases.length === 0 && terms.length <= 2) {
+          // If query was strictly "Leg A1" and this record does not belong to Leg A1, exclude
+          return 0;
+        }
+      }
+
+      // ANY MATCH MODE
+      if (mode === "ANY") {
+        let anyMatched = false;
+        phrases.forEach(p => {
+          if (allText.includes(p)) { anyMatched = true; score += 50; }
+        });
+        terms.forEach(t => {
+          if (allText.includes(t)) { anyMatched = true; score += 20; }
+        });
+        return anyMatched ? Math.max(score, 10) : 0;
+      }
+
+      // ALL MATCH MODE (Default)
+      for (const p of phrases) {
+        if (!allText.includes(p)) return 0;
+        score += 50;
+      }
+
+      for (const t of terms) {
+        if (!allText.includes(t)) return 0;
+        score += 20;
+      }
+
+      return Math.max(score, 10);
     };
 
-    // Helper for boundary-aware or substring matching
-    const matchesTerm = (text: string, term: string) => {
-      const lowerTerm = term.toLowerCase();
-      if (!lowerTerm) return true;
-      try {
-        const escaped = lowerTerm.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(escaped, 'i').test(text);
-      } catch (e) {
-        return text.includes(lowerTerm);
+    // Filter and score records
+    const scoredRecords: { record: any; score: number }[] = [];
+    sourceRecords.forEach((r: any) => {
+      const score = evaluateRecord(r, rawQuery, searchMode);
+      if (score > 0) {
+        scoredRecords.push({ record: r, score });
       }
-    };
+    });
 
-    // Support comma-separated conditions or space-separated terms
-    const conditions = rawQuery.includes(",")
-      ? rawQuery.split(",").map((s) => s.trim()).filter(Boolean)
-      : rawQuery.split(/\s+/).map((s) => s.trim()).filter(Boolean);
-
-    let filtered: any[] = [];
-    if (conditions.length === 0) {
-      filtered = sourceRecords;
-    } else if (searchMode === "EXACT") {
-      filtered = sourceRecords.filter((r) => matchesTerm(getSearchableText(r), rawQuery));
-    } else if (searchMode === "ANY") {
-      filtered = sourceRecords.filter((r) => {
-        const fullText = getSearchableText(r);
-        return conditions.some((cond) => matchesTerm(fullText, cond));
-      });
-    } else {
-      // Default "ALL" - Multi-condition AND search
-      filtered = sourceRecords.filter((r) => {
-        const fullText = getSearchableText(r);
-        return conditions.every((cond) => matchesTerm(fullText, cond));
-      });
-    }
-
-    // Sort matching records according to active sortConfig
-    const sortableRecords = [...filtered];
-    sortableRecords.sort((a, b) => {
+    // Sort matching records according to active sortConfig with relevance score secondary
+    scoredRecords.sort((itemA, itemB) => {
+      const a = itemA.record;
+      const b = itemB.record;
       let aVal: any;
       let bVal: any;
 
@@ -1150,10 +1293,10 @@ function V10PreviewLayout() {
           bVal = isNaN(bE) ? b.fp_kp || "" : bE;
           break;
         case "status": {
-          const getStatusWeight = (r: any) => {
-            if (r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0)) return 3;
-            if (r.status === "INCOMPLETE") return 2;
-            if (r.status === "COMPLETED") return 1;
+          const getStatusWeight = (rec: any) => {
+            if (rec.has_anomaly || (rec.insp_anomalies && rec.insp_anomalies.length > 0)) return 3;
+            if (rec.status === "INCOMPLETE") return 2;
+            if (rec.status === "COMPLETED") return 1;
             return 0;
           };
           aVal = getStatusWeight(a);
@@ -1196,10 +1339,10 @@ function V10PreviewLayout() {
 
       if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
       if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
-      return 0;
+      return itemB.score - itemA.score; // Rank by relevance when sort values tie
     });
 
-    return sortableRecords;
+    return scoredRecords.map((item) => item.record);
   }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig]);
 
   const [isSearchingWorkspace, setIsSearchingWorkspace] = useState(false);
@@ -1272,7 +1415,10 @@ function V10PreviewLayout() {
         }
       }
 
-      if (allData.length === 0) return;
+      if (allData.length === 0) {
+        setAllWorkspaceRecords([]);
+        return;
+      }
 
       // 3. Fetch anomalies for all retrieved records
       const allInspIds = allData.map((r: any) => r.insp_id).filter(Boolean);
@@ -1321,14 +1467,14 @@ function V10PreviewLayout() {
     } finally {
       setIsSearchingWorkspace(false);
     }
-  }, [jobPackId, structureId, supabase]);
+  }, [jobPackId, structureId, headerData.sowReportNo, targetReportNumber, sowParam, supabase]);
 
   // Pre-load all workspace records in the background so search is instant & complete
   useEffect(() => {
     if (jobPackId && structureId) {
       fetchFullWorkspaceRecords();
     }
-  }, [jobPackId, structureId, fetchFullWorkspaceRecords]);
+  }, [jobPackId, structureId, headerData.sowReportNo, fetchFullWorkspaceRecords]);
 
   // If user searches while not yet loaded, trigger fetch
   useEffect(() => {
@@ -1381,6 +1527,19 @@ function V10PreviewLayout() {
   const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false);
   const [rovCalibrationDialogOpen, setRovCalibrationDialogOpen] = useState(false);
 
+  // Persist user active tape & state to session
+  useEffect(() => {
+    if (tapeId) {
+      saveUserSession({
+        lastActiveTapeId: tapeId,
+        lastActiveTapeNo: tapeNo,
+        lastActiveChapter: activeChapter,
+        vidState,
+        vidTimer,
+      });
+    }
+  }, [tapeId, tapeNo, activeChapter, vidState, vidTimer, saveUserSession]);
+
   // Synchronize recording duration and vidState upon changing active tape
   useEffect(() => {
     if (!tapeId) {
@@ -1414,16 +1573,22 @@ function V10PreviewLayout() {
       }
       setVidTimer(currentCounter);
     } else {
-      setVidTimer(0);
-      setVidState("IDLE");
+      const session = loadUserSession();
+      if (session?.lastActiveTapeId === tapeId && session?.vidState) {
+        setVidState(session.vidState);
+        setVidTimer(session.vidTimer || 0);
+      } else {
+        setVidTimer(0);
+        setVidState("IDLE");
+      }
     }
-  }, [tapeId, videoEvents]);
+  }, [tapeId, videoEvents, loadUserSession]);
 
   // Auto-populate tape number when opening the new tape dialog
   useEffect(() => {
     if (isNewTapeOpen) {
-      const base = headerData.sowReportNo || "SOW_REPORT";
-      const platform = headerData.platformName || "STRUCTURE";
+      const base = String(headerData.sowReportNo || "SOW_REPORT").replace(/\s+/g, "");
+      const platform = String(headerData.platformName || "STRUCTURE").replace(/\s+/g, "");
       const postfix = inspMethod === "DIVING" ? "D" : "R";
       let maxSeq = 0;
       jobTapes.forEach((t) => {
@@ -1434,7 +1599,7 @@ function V10PreviewLayout() {
         }
       });
       const nextSeq = String(maxSeq + 1).padStart(3, "0");
-      setNewTapeNo(`${base} / ${platform} / V${nextSeq}${postfix}`);
+      setNewTapeNo(`${base}/${platform}/V${nextSeq}${postfix}`);
       setNewTapeChapter("1");
       setNewTapeRemarks("");
     }
@@ -1803,6 +1968,30 @@ function V10PreviewLayout() {
     }
   }, [allComps, selectedComp, activeSpec]);
 
+  // Fetch Platform Structural Faces from the extended platform specs
+  const { data: platformFacesData } = useSWR(
+    structureId ? `/api/platform/faces/${structureId}` : null,
+    fetcher
+  );
+
+  useEffect(() => {
+    if (platformFacesData?.data && Array.isArray(platformFacesData.data)) {
+      const facesList = platformFacesData.data.map((f: any) => ({
+        name: f.face,
+        label: f.face,
+        face: f.face,
+        face_desc: f.face_desc,
+        face_from: f.face_from,
+        face_to: f.face_to,
+      }));
+      setLibOptionsMap((prev) => ({
+        ...prev,
+        platform_faces: facesList,
+        faces: facesList,
+      }));
+    }
+  }, [platformFacesData]);
+
   // Helper to handle prop changes and track user interaction
   const handleDynamicPropChange = (name: string, value: any) => {
     setIsFormModified(true);
@@ -2053,6 +2242,57 @@ function V10PreviewLayout() {
 
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
 
+  // Auto-assign component face details when selected component changes for a new record
+  useEffect(() => {
+    if (!selectedComp || editingRecordId) return;
+
+    const md =
+      (typeof selectedComp.raw?.metadata === "string"
+        ? JSON.parse(selectedComp.raw.metadata)
+        : selectedComp.raw?.metadata) || {};
+    let compFace =
+      selectedComp.face ||
+      md.face ||
+      md.face_name ||
+      md.face_code ||
+      md.Face ||
+      md.additionalInfo?.face ||
+      md.additionalInfo?.face_pos ||
+      selectedComp.raw?.face ||
+      "";
+
+    if (!compFace || compFace === "-" || compFace === "N/A") {
+      const sLeg = md.start_leg || md.s_leg || md.leg_1 || md.StartLeg || md.Leg_1 || selectedComp.start_leg || selectedComp.startLeg || selectedComp.s_leg || "";
+      const fLeg = md.end_leg || md.f_leg || md.leg_2 || md.EndLeg || md.Leg_2 || selectedComp.end_leg || selectedComp.endLeg || selectedComp.f_leg || "";
+      const legNo = md.leg_no || md.leg || md.leg_name || selectedComp.leg_no || selectedComp.leg || "";
+
+      const cleanLeg = (l: string) => String(l).trim().replace(/^leg\s*/i, "").toUpperCase();
+      const sLegClean = sLeg ? cleanLeg(sLeg) : "";
+      const fLegClean = fLeg ? cleanLeg(fLeg) : "";
+
+      if (sLegClean && fLegClean && sLegClean !== fLegClean) {
+        compFace = `Face ${sLegClean}-${fLegClean}`;
+      } else if (sLegClean) {
+        compFace = `Face Leg ${sLegClean}`;
+      } else if (fLegClean) {
+        compFace = `Face Leg ${fLegClean}`;
+      } else if (legNo && String(legNo).trim()) {
+        compFace = `Face Leg ${cleanLeg(legNo)}`;
+      }
+    }
+
+    if (compFace && compFace !== "-" && compFace !== "N/A") {
+      setDynamicProps((prev: any) => {
+        if (prev.platform_face === compFace) return prev;
+        return { ...prev, platform_face: compFace };
+      });
+      setDebouncedProps((prev: any) => {
+        if (prev.platform_face === compFace) return prev;
+        return { ...prev, platform_face: compFace };
+      });
+    }
+  }, [selectedComp, editingRecordId]);
+
   // Resolve or Auto-Create Pipeline Component based on KP / FP location
   const resolvePipelineComponent = useCallback(
     async (targetKp?: number | string | null) => {
@@ -2269,6 +2509,8 @@ function V10PreviewLayout() {
     setRscorPreviewOpen,
     rscorV2PreviewOpen,
     setRscorV2PreviewOpen,
+    rscorSurveyPreviewOpen,
+    setRscorSurveyPreviewOpen,
     rrisiPreviewOpen,
     setRrisiPreviewOpen,
     rrisiDetailPreviewOpen,
@@ -2344,6 +2586,7 @@ function V10PreviewLayout() {
     setSeabedTemplateType,
     previewRecord,
     setPreviewRecord,
+    generateAnomalyReport,
     generateAnomalyReportBlob,
     generateMGIReport,
     generateMGIReportBlob,
@@ -2409,6 +2652,8 @@ function V10PreviewLayout() {
     generateRSCORReportBlob,
     generateRSCORV2Report,
     generateRSCORV2ReportBlob,
+    generateRSCORSurveyReport,
+    generateRSCORSurveyReportBlob,
     generateRRISIReport,
     generateRRISIReportBlob,
     generateRRISIDetailReport,
@@ -2486,6 +2731,10 @@ function V10PreviewLayout() {
     generateJobPackSummaryReportBlob,
     generateSZONEReport,
     generateSZONEReportBlob,
+    cpsurvDivingPreviewOpen,
+    setCpsurvDivingPreviewOpen,
+    generateDivingCPSURVReport,
+    generateDivingCPSURVReportBlob,
     generateCPCLBReport,
     generateCPCLBReportBlob,
     generateUTCLBReport,
@@ -2535,7 +2784,7 @@ function V10PreviewLayout() {
     jobPackId,
     structureId,
     headerData,
-    allWorkspaceRecords,
+    allWorkspaceRecords && allWorkspaceRecords.length > 0 ? allWorkspaceRecords : currentRecords,
     pendingAttachments,
     allInspectionTypes
   );
@@ -3146,16 +3395,7 @@ function V10PreviewLayout() {
   }, [jobPackId, structureId, sowId, sowIdFull, supabase, jpParam, strParam, sowParam, jtParam, router]);
 
   const parseDbDate = useCallback((dateString?: string | null): Date => {
-    if (!dateString) return new Date();
-    try {
-      const t = dateString.replace(" ", "T");
-      // Stop artificially converting raw timestamps dynamically to UTC with `Z` suffix.
-      // When postgres stores 'timestamp without tz', treating it implicitly as local is correct.
-      const d = new Date(t);
-      return isNaN(d.getTime()) ? new Date() : d;
-    } catch (e) {
-      return new Date();
-    }
+    return parseClientDate(dateString);
   }, []);
 
   const openFloatingWindow = async (title: string, defaultWidth = 1000, defaultHeight = 600) => {
@@ -3607,6 +3847,30 @@ function V10PreviewLayout() {
     // 4. Reset current form & switch to the newly selected component
     resetForm();
     setSelectedComp(c);
+
+    const compMd =
+      (typeof c.raw?.metadata === "string" ? JSON.parse(c.raw.metadata) : c.raw?.metadata) || {};
+    const compFace =
+      c.face ||
+      compMd.face ||
+      compMd.face_name ||
+      compMd.face_code ||
+      compMd.Face ||
+      compMd.additionalInfo?.face ||
+      compMd.additionalInfo?.face_pos ||
+      c.raw?.face ||
+      "";
+
+    if (compFace && compFace !== "-" && compFace !== "N/A") {
+      setDynamicProps((prev: any) => ({
+        ...prev,
+        platform_face: compFace,
+      }));
+      setDebouncedProps((prev: any) => ({
+        ...prev,
+        platform_face: compFace,
+      }));
+    }
 
     if (c.taskStatuses && c.taskStatuses.length > 0) {
       const validTasks = c.taskStatuses.filter((ts: any) => {
@@ -4325,14 +4589,33 @@ function V10PreviewLayout() {
       const movs = movsRes.data;
       let rawTapes = tapesRes.data || [];
 
-      // Sort tapes so that tapes matching current deployment come first, followed by other tapes in natural numerical order
-      let tapes = [...rawTapes].sort((a, b) => {
+      // Deduplicate tapes having identical (tape_no, chapter_no)
+      const uniqueTapeMap = new Map<string, any>();
+      (rawTapes as any[]).forEach((t: any) => {
+        const key = `${(t.tape_no || "").trim().toUpperCase()}__${t.chapter_no || 1}`;
+        if (!uniqueTapeMap.has(key)) {
+          uniqueTapeMap.set(key, t);
+        } else {
+          const existing = uniqueTapeMap.get(key);
+          if (t.status === "ACTIVE" && existing.status !== "ACTIVE") {
+            uniqueTapeMap.set(key, t);
+          } else if (Number(t.tape_id) > Number(existing.tape_id)) {
+            uniqueTapeMap.set(key, t);
+          }
+        }
+      });
+      const deduplicatedTapes = Array.from(uniqueTapeMap.values());
+
+      // Sort tapes so that tapes matching current deployment come first, followed by natural tape_no and chapter_no order
+      let tapes = [...deduplicatedTapes].sort((a, b) => {
         const aMatches = (inspMethod === "DIVING" ? a.dive_job_id === depId : a.rov_job_id === depId) ? 1 : 0;
         const bMatches = (inspMethod === "DIVING" ? b.dive_job_id === depId : b.rov_job_id === depId) ? 1 : 0;
         if (aMatches !== bMatches) return bMatches - aMatches;
         const nameA = a.tape_no || "";
         const nameB = b.tape_no || "";
-        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        const cmp = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+        return (Number(a.chapter_no) || 1) - (Number(b.chapter_no) || 1);
       });
 
       if (movsRes.error) {
@@ -4433,24 +4716,32 @@ function V10PreviewLayout() {
       setJobTapes(tapes || []);
 
       if (tapes && tapes.length > 0) {
-        const latestTape = tapes[0];
-        setTapeNo(latestTape.tape_no);
-        setTapeId(latestTape.tape_id);
-        setActiveChapter(latestTape.chapter_no || 1);
+        const session = loadUserSession();
+        // Priority for active tape:
+        // 1. Current tapeId if it exists in the fetched list
+        // 2. Saved tapeId from user session if it exists in the fetched list
+        // 3. First tape in the list (fallback)
+        const currentSelectedTape = tapeId ? tapes.find((t: any) => String(t.tape_id) === String(tapeId)) : null;
+        const savedTape = session?.lastActiveTapeId ? tapes.find((t: any) => String(t.tape_id) === String(session.lastActiveTapeId)) : null;
+        const activeTape = currentSelectedTape || savedTape || tapes[0];
 
-        // Fetch logs for latest tape in parallel
+        setTapeNo(activeTape.tape_no);
+        setTapeId(activeTape.tape_id);
+        setActiveChapter(activeTape.chapter_no || 1);
+
+        // Fetch logs for active tape in parallel
         const [lastLogRes, stateLogRes] = await Promise.all([
           supabase
             .from("insp_video_logs")
             .select("*")
-            .eq("tape_id", latestTape.tape_id)
+            .eq("tape_id", activeTape.tape_id)
             .order("event_time", { ascending: false })
             .limit(1)
             .maybeSingle(),
           supabase
             .from("insp_video_logs")
             .select("event_type")
-            .eq("tape_id", latestTape.tape_id)
+            .eq("tape_id", activeTape.tape_id)
             .in("event_type", ["NEW_LOG_START", "RESUME", "PAUSE", "END"])
             .order("event_time", { ascending: false })
             .limit(1)
@@ -4475,8 +4766,13 @@ function V10PreviewLayout() {
           }
           setVidTimer(currentCounter);
         } else {
-          setVidState("IDLE");
-          setVidTimer(0);
+          if (session?.lastActiveTapeId === activeTape.tape_id && session?.vidState) {
+            setVidState(session.vidState);
+            setVidTimer(session.vidTimer || 0);
+          } else {
+            setVidState("IDLE");
+            setVidTimer(0);
+          }
         }
       } else {
         setTapeId(null);
@@ -4553,7 +4849,7 @@ function V10PreviewLayout() {
                         ? "Resume"
                         : l.event_type,
               logType: "video_log",
-              eventTime: parseDbDate(l.event_time).toISOString(),
+              eventTime: l.event_time ? l.event_time : new Date().toISOString(),
               inspectionId: l.inspection_id,
               tape_id: l.tape_id,
               tape_counter_start: l.tape_counter_start || 0,
@@ -4601,14 +4897,14 @@ function V10PreviewLayout() {
       if (finalInsps) {
         const pageInspIds = finalInsps.map((r: any) => r.insp_id).filter(Boolean);
 
-        // Fetch attachment counts and anomalies in parallel strictly scoped to current page inspection IDs
-        const [attsRes, anomsRes] = await Promise.all([
+        // Fetch attachment counts, anomalies, and media in parallel strictly scoped to current page inspection IDs
+        const [attsRes, anomsRes, mediaRes] = await Promise.all([
           pageInspIds.length > 0
             ? supabase
                 .from("attachment")
-                .select("source_id")
-                .in("source_type", ["inspection", "INSPECTION"])
+                .select("source_id, source_type")
                 .in("source_id", pageInspIds)
+                .in("source_type", ["inspection", "INSPECTION", "insp_record", "INSP_RECORD", "defect", "DEFECT", "anomaly", "ANOMALY"])
             : Promise.resolve({ data: [] }),
           pageInspIds.length > 0
             ? supabase
@@ -4616,18 +4912,58 @@ function V10PreviewLayout() {
                 .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id")
                 .in("inspection_id", pageInspIds)
             : Promise.resolve({ data: [] }),
+          pageInspIds.length > 0
+            ? (supabase as any)
+                .from("insp_media")
+                .select("inspection_id, media_id")
+                .in("inspection_id", pageInspIds)
+            : Promise.resolve({ data: [] }),
         ]);
 
-        const countMap = (attsRes.data || []).reduce((acc: Record<number, number>, curr: any) => {
-          acc[curr.source_id] = (acc[curr.source_id] || 0) + 1;
-          return acc;
-        }, {});
-
         const anomMap = new Map<number, any[]>();
+        const anomToInspMap = new Map<number, number>();
+        const anomalyIds: number[] = [];
+
         (anomsRes.data || []).forEach((a: any) => {
           if (a.inspection_id) {
             if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
             anomMap.get(a.inspection_id)!.push(a);
+            if (a.anomaly_id) {
+              anomToInspMap.set(Number(a.anomaly_id), Number(a.inspection_id));
+              anomalyIds.push(Number(a.anomaly_id));
+            }
+          }
+        });
+
+        // Also fetch any attachments attached directly to anomaly IDs
+        let anomAtts: any[] = [];
+        if (anomalyIds.length > 0) {
+          const { data: anomAttsData } = await supabase
+            .from("attachment")
+            .select("source_id, source_type")
+            .in("source_id", anomalyIds);
+          anomAtts = anomAttsData || [];
+        }
+
+        const countMap: Record<number, number> = {};
+
+        // Direct inspection attachments
+        (attsRes.data || []).forEach((curr: any) => {
+          const sid = Number(curr.source_id);
+          if (sid) countMap[sid] = (countMap[sid] || 0) + 1;
+        });
+
+        // Media captures
+        (mediaRes.data || []).forEach((curr: any) => {
+          const sid = Number(curr.inspection_id);
+          if (sid) countMap[sid] = (countMap[sid] || 0) + 1;
+        });
+
+        // Anomaly attachments mapped to parent inspection
+        anomAtts.forEach((curr: any) => {
+          const parentInspId = anomToInspMap.get(Number(curr.source_id));
+          if (parentInspId) {
+            countMap[parentInspId] = (countMap[parentInspId] || 0) + 1;
           }
         });
 
@@ -4670,13 +5006,12 @@ function V10PreviewLayout() {
               time: r.inspection_data?._meta_timecode ? r.inspection_data._meta_timecode : (r.tape_count_no ? formatCounter(r.tape_count_no) : "00:00:00"),
               action: status,
               logType: "insp",
-              eventTime:
-                r.inspection_date && r.inspection_time
-                  ? format(
-                      parseDbDate(`${r.inspection_date} ${r.inspection_time}`),
-                      "yyyy-MM-dd'T'HH:mm:ss"
-                    )
-                  : format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"),
+              eventTime: (() => {
+                if (r.inspection_date && r.inspection_time) {
+                  return `${r.inspection_date}T${r.inspection_time}`;
+                }
+                return r.cr_date || new Date().toISOString();
+              })(),
               tape_id: r.tape_id,
               tapeNo,
               chapterNo,
@@ -5025,44 +5360,17 @@ function V10PreviewLayout() {
         }
       }
 
-      // AUTO INCREMENT CHAPTER LOGIC HERE (Before inserting the new log)
-      if (action === "Start Tape" && activeDep?.id && tId) {
-        const { data: lastLog } = await supabase
-          .from("insp_video_logs")
-          .select("event_type")
-          .eq("tape_id", tId)
-          .order("event_time", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (lastLog && lastLog.event_type === "END") {
-          const currentTape = jobTapes.find((t) => t.tape_id === tId);
-          const nextChapter = (Number(currentTape?.chapter_no) || 1) + 1;
-          const user = (await supabase.auth.getUser()).data.user;
-
-          const { data: newTape, error: insertErr } = await supabase
-            .from("insp_video_tapes")
-            .insert({
-              tape_no: currentTape?.tape_no || tapeNo || "TAPE",
-              chapter_no: nextChapter,
-              tape_type: currentTape?.tape_type || "DIGITAL - PRIMARY",
-              status: "ACTIVE",
-              [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: Number(activeDep.id),
-              cr_user: user?.id || "system",
-            })
-            .select()
-            .single();
-
-          if (insertErr) {
-            toast.error(`Auto-Chapter Error: ${insertErr.message}`);
-            console.error("[Chapter Increment]", insertErr);
-          } else if (newTape) {
-            setJobTapes((prev) => [newTape, ...prev]);
-            setTapeId(newTape.tape_id);
-            setActiveChapter(nextChapter);
-            tId = newTape.tape_id; // critical! we need the NEW log to be attached to this new tapeId
-          }
-        }
+      if (action === "Stop Tape") {
+        // Auto-increment to next chapter by default for the next recording session
+        const currentTapeNo = tapeNo;
+        const matchingTapes = jobTapes.filter((t) => (t.tape_no || "").trim().toUpperCase() === (currentTapeNo || "").trim().toUpperCase());
+        let maxCh = 0;
+        matchingTapes.forEach((t) => {
+          const ch = Number(t.chapter_no) || 1;
+          if (ch > maxCh) maxCh = ch;
+        });
+        const nextCh = Math.max(Number(activeChapter) || 1, maxCh) + 1;
+        setActiveChapter(nextCh);
       }
 
       setVideoEvents((prev) => [
@@ -5085,7 +5393,7 @@ function V10PreviewLayout() {
           .insert({
             tape_id: tId,
             event_type: dbAction,
-            event_time: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"), // Store EXACT region local time safely
+            event_time: new Date().toISOString(),
             timecode_start: tcode,
             tape_counter_start: currentTimer,
             remarks: "",
@@ -5471,10 +5779,20 @@ function V10PreviewLayout() {
         });
         setDeployments(mapped);
 
-        // Set the newly created or latest deployment as active smoothly
-        setActiveDep(mapped[0]);
+        // Restore user's active deployment or fallback to the latest
+        const session = loadUserSession();
+        const savedDepId = session?.lastActiveDepId;
+        let targetDep = mapped[0];
+
+        if (savedDepId) {
+          const matched = mapped.find((d) => String(d.id) === String(savedDepId));
+          if (matched) {
+            targetDep = matched;
+          }
+        }
+        setActiveDep(targetDep);
         console.log(
-          `[fetchDeps] Set active deployment to: ${mapped[0].jobNo} (ID: ${mapped[0].id})`
+          `[fetchDeps] Set active deployment to: ${targetDep.jobNo} (ID: ${targetDep.id})`
         );
       } else {
         console.warn("[fetchDeps] No deployment records found.");
@@ -5487,7 +5805,7 @@ function V10PreviewLayout() {
       setIsFetchingDeps(false);
       setIsReadyForComps(true);
     }
-  }, [inspMethod, jobPackId, structureId, supabase]);
+  }, [inspMethod, jobPackId, structureId, supabase, loadUserSession]);
 
   // Handle method switch overriding deps
   useEffect(() => {
@@ -5566,14 +5884,37 @@ function V10PreviewLayout() {
 
       if (!allCompsDataRaw || allCompsDataRaw.length === 0) return { assigned: [], unassigned: [], all: [] };
 
-      // Further filter legacy 'del' flag from metadata
+      // Filter out deleted/archived components
       const allCompsData = allCompsDataRaw.filter((c: any) => {
+        // 1. If is_deleted boolean column is explicitly set, it is the primary source of truth
         if (c.is_deleted === true || c.is_deleted === 1) return false;
+        if (c.is_deleted === false || c.is_deleted === 0) return true;
+
+        // 2. Legacy fallback only if is_deleted is null / undefined
+        const md =
+          typeof c.metadata === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(c.metadata);
+                } catch {
+                  return {};
+                }
+              })()
+            : c.metadata;
+
         if (
-          c.metadata &&
-          (c.metadata.del === 1 || c.metadata.del === "1" || c.metadata.del === true)
-        )
+          md &&
+          (md.del === 1 ||
+            md.del === "1" ||
+            md.del === true ||
+            md.is_deleted === true ||
+            md.is_deleted === "1" ||
+            md.status === "archived" ||
+            md.status === "deleted")
+        ) {
           return false;
+        }
+
         return true;
       });
 
@@ -5754,6 +6095,16 @@ function V10PreviewLayout() {
           displayDepth = `${elv2Num}m`;
         }
 
+        const face =
+          md.face ||
+          md.face_name ||
+          md.face_code ||
+          md.Face ||
+          md.additionalInfo?.face ||
+          md.additionalInfo?.face_pos ||
+          comp.face ||
+          "";
+
         const compQId = comp.q_id || comp.name || `Node ${comp.id}`;
         const obj = {
           id: comp.id,
@@ -5761,6 +6112,7 @@ function V10PreviewLayout() {
           q_id: compQId,
           code: comp.code || comp.type || "-",
           type: comp.type || comp.code || "-",
+          face: face && face !== "-" && face !== "N/A" ? face : "",
           depth: displayDepth,
           lowestElev,
           startNode,
@@ -5783,9 +6135,34 @@ function V10PreviewLayout() {
       const combined = [...assigned, ...unassigned];
       return { assigned, unassigned, all: combined };
     },
-    staleTime: 60000, // 1 minute cache
-    refetchOnWindowFocus: false,
+    staleTime: 5000, // 5 seconds cache to keep data fresh
+    refetchOnWindowFocus: true, // Automatically refetch when returning to the tab / window
   });
+
+  // Realtime subscription for structure_components to reflect unarchive / modifications immediately
+  useEffect(() => {
+    if (!structureId) return;
+
+    const channel = supabase
+      .channel(`realtime-components-${structureId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "structure_components",
+          filter: `structure_id=eq.${structureId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [structureId, queryClient, supabase]);
 
   // Populate local states whenever query data resolves
   useEffect(() => {
@@ -6098,16 +6475,17 @@ function V10PreviewLayout() {
     const mvtCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
     const jobTable = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
 
+    const nowIso = new Date().toISOString();
     const payload: any = {};
     if (inspMethod === "DIVING") {
       const mappedAction = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.label === dbValue);
       payload.dive_job_id = activeDep.id;
-      payload.movement_time = new Date().toISOString();
+      payload.movement_time = nowIso;
       payload.movement_type = dbValue;
       payload.remarks = mappedAction?.location ? `Location: ${mappedAction.location}` : "";
     } else {
       payload.rov_job_id = activeDep.id;
-      payload.movement_time = new Date().toISOString();
+      payload.movement_time = nowIso;
       payload.movement_type = dbValue;
       payload.remarks = "";
     }
@@ -7479,15 +7857,58 @@ function V10PreviewLayout() {
     setShowCriteriaConfirm(false);
     setShowRemovalConfirm(false);
 
-    // Fetch existing attachments
-    const { data: atts } = await supabase
-        .from("attachment")
-        .select("*")
-        .eq("source_id", recordId)
-        .in("source_type", ["inspection", "INSPECTION"]);
+    // Fetch existing attachments (Both inspection-level and anomaly-level attachments & media)
+    let combinedList: any[] = [];
+    try {
+      const res = await fetch(`/api/attachment/inspection/${recordId}`);
+      if (res.ok) {
+        const jsonAtts = await res.json();
+        if (Array.isArray(jsonAtts) && jsonAtts.length > 0) {
+          combinedList = jsonAtts;
+        }
+      }
+    } catch {}
 
-    if (atts && atts.length > 0) {
-      const mapped = (atts as any[]).map((a: any) => {
+    if (combinedList.length === 0) {
+      const sourceIds = [recordId];
+      const anomId = fullRecord.insp_anomalies?.[0]?.anomaly_id || fullRecord.anomaly_details?.anomaly_id || fullRecord.anomaly_id;
+      if (anomId && !sourceIds.includes(anomId)) sourceIds.push(anomId);
+
+      const { data: atts } = await supabase
+          .from("attachment")
+          .select("*")
+          .in("source_id", sourceIds)
+          .in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "defect", "DEFECT", "insp_record", "INSP_RECORD"]);
+
+      const { data: media } = await supabase
+          .from("insp_media" as any)
+          .select("*")
+          .in("inspection_id", [recordId]);
+
+      combinedList = [...(atts || [])];
+      if (media && media.length > 0) {
+        for (const m of media) {
+          if (!combinedList.some(a => a.path === m.file_path || String(a.id) === `media-${m.media_id}`)) {
+            combinedList.push({
+              id: `media-${m.media_id}`,
+              name: m.name || `Photo ${m.media_id}`,
+              path: m.file_path,
+              source_type: "INSPECTION",
+              source_id: m.inspection_id,
+              meta: {
+                ...m.meta,
+                bucket: "inspection-media",
+                is_insp_media: true,
+              },
+              created_at: m.captured_at,
+            });
+          }
+        }
+      }
+    }
+
+    if (combinedList.length > 0) {
+      const mapped = combinedList.map((a: any) => {
         const publicUrl = getAttachmentUrl(a, supabase);
         return {
           id: a.id,
@@ -8207,13 +8628,13 @@ function V10PreviewLayout() {
               />
             )}
             <Dialog open={videoLogExpanded} onOpenChange={setVideoLogExpanded}>
-              <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800">
+              <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 shadow-2xl">
                 <DialogHeader className="p-4 border-b border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shrink-0">
                   <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">
                     <History className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Video Log Event History
                   </DialogTitle>
                 </DialogHeader>
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50 dark:bg-slate-900/50 p-3">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50 dark:bg-slate-900/50 p-4">
                    <TapeLogEvents
                     videoEvents={videoEvents}
                     handleDeleteEvent={handleDeleteEvent}
@@ -8221,6 +8642,7 @@ function V10PreviewLayout() {
                     expanded={videoLogExpanded}
                     setExpanded={setVideoLogExpanded}
                     inline={true}
+                    onRefresh={syncDeploymentState}
                   />
                 </div>
               </DialogContent>
@@ -8397,6 +8819,7 @@ function V10PreviewLayout() {
             handlePopoutCapturedEvents={handlePopoutCapturedEvents}
             activeTableColumns={activeTableColumns}
             columnSettings={columnSettings}
+            setColumnSettings={setColumnSettings}
             handleMoveColumn={handleMoveColumn}
             toggleColumnVisibility={toggleColumnVisibility}
             handleSort={handleSort}
@@ -8414,6 +8837,11 @@ function V10PreviewLayout() {
             editingRecordId={editingRecordId}
             isPipe={isPipe}
             allComps={[...(componentsSow || []), ...(componentsNonSow || [])]}
+            jobTapes={jobTapes}
+            deployments={deployments}
+            activeDep={activeDep}
+            inspMethod={inspMethod}
+            onTransferComplete={syncDeploymentState}
           />
         );
         break;
@@ -8616,6 +9044,7 @@ function V10PreviewLayout() {
         generateSZCIReport={generateSZCIReport}
         generateUTWTReport={generateUTWTReport}
         generateRSCORReport={() => setRscorPreviewOpen(true)}
+        generateRSCORSurveyReport={() => setRscorSurveyPreviewOpen(true)}
         generateRRISIReport={() => setRrisiPreviewOpen(true)}
         generateJTISIReport={() => setJtisiPreviewOpen(true)}
         generateITISIReport={() => setItisiPreviewOpen(true)}
@@ -8652,6 +9081,9 @@ function V10PreviewLayout() {
         closedPanels={closedPanels}
         onRestorePanel={handleRestorePanel}
         onRestoreAllPanels={handleRestoreAllPanels}
+        isCollapsed={isHeaderCollapsed}
+        onToggleCollapse={handleToggleHeaderCollapse}
+        activeDep={activeDep}
         onGlobalVoiceCommand={(parsed: any) => {
           if (!parsed) return;
           const actionIntent = parsed.action_intent || {};
@@ -8776,7 +9208,8 @@ function V10PreviewLayout() {
       />
 
       {/* DEPLOYMENTS SUB-HEADER */}
-      <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0">
+      {!isHeaderCollapsed && (
+        <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex items-center gap-3 shrink-0 transition-all duration-300">
         {deployments.length === 0 && !activeDep && isFetchingDeps && (
           <div className="flex items-center gap-2 text-slate-400 px-2 py-1">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -9067,7 +9500,20 @@ function V10PreviewLayout() {
             <MapPin className="w-3.5 h-3.5 mr-1.5" /> {isPipeline || headerData?.structureType === "pipeline" ? "Pipeline Seabed Map" : "Seabed Map"}
           </Button>
         )}
+
+        {/* Quick Collapse Header Button on sub-bar */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleToggleHeaderCollapse}
+          className="text-slate-400 hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 h-7 px-2 text-[10px] font-bold rounded flex items-center gap-1 shrink-0 ml-1"
+          title="Collapse Header & Sub-bar (Maximize Workspace Screen Space)"
+        >
+          <ChevronUp className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="hidden sm:inline">Compact</span>
+        </Button>
       </div>
+      )}
 
       {/* ROV Data String Bar (Dynamic based on Data Acquisition settings) */}
       {inspMethod === "ROV" && (
@@ -9234,7 +9680,7 @@ function V10PreviewLayout() {
         sowIdFull={sowIdFull}
         headerData={headerData}
         inspMethod={inspMethod}
-        currentRecords={allWorkspaceRecords}
+        currentRecords={allWorkspaceRecords && allWorkspaceRecords.length > 0 ? allWorkspaceRecords : currentRecords}
         recordedFiles={recordedFiles}
         pendingAttachments={pendingAttachments}
         setPendingAttachments={setPendingAttachments}
@@ -9248,6 +9694,7 @@ function V10PreviewLayout() {
           lastStartEventForEdit,
           isMovementLogOpen,
           isEditTapeOpen,
+          jobTapes,
           editTapeNo,
           editTapeChapter,
           editTapeStatus,
@@ -9282,6 +9729,7 @@ function V10PreviewLayout() {
           pendingRule,
           rscorPreviewOpen,
           rscorV2PreviewOpen,
+          rscorSurveyPreviewOpen,
           anodePreviewOpen,
           anodeRsaniPreviewOpen,
           cpPreviewOpen,
@@ -9339,6 +9787,7 @@ function V10PreviewLayout() {
           mpinsPreviewOpen,
           utwtkPreviewOpen,
           szonePreviewOpen,
+          cpsurvDivingPreviewOpen,
           cpclbPreviewOpen,
           utclbPreviewOpen,
           divingAnodePreviewOpen,
@@ -9401,6 +9850,7 @@ function V10PreviewLayout() {
           setShowCriteriaConfirm,
           setRscorPreviewOpen,
           setRscorV2PreviewOpen,
+          setRscorSurveyPreviewOpen,
           setAnodePreviewOpen,
           setAnodeRsaniPreviewOpen,
           setCpPreviewOpen,
@@ -9446,6 +9896,7 @@ function V10PreviewLayout() {
           setMpinsPreviewOpen,
           setUtwtkPreviewOpen,
           setSzonePreviewOpen,
+          setCpsurvDivingPreviewOpen,
           setCpclbPreviewOpen,
           setUtclbPreviewOpen,
           setDivingAnodePreviewOpen,
@@ -9473,6 +9924,7 @@ function V10PreviewLayout() {
           syncDeploymentState,
           fetchDeployments,
           queryClient,
+          generateAnomalyReport,
           generateAnomalyReportBlob,
           generateMGIReportBlob,
           generateRMGIReportBlob,
@@ -9501,6 +9953,7 @@ function V10PreviewLayout() {
           generateBLReportBlob,
           generateRSCORReportBlob,
           generateRSCORV2ReportBlob,
+          generateRSCORSurveyReportBlob,
           generateRRISIReportBlob,
           generateRRISIDetailReportBlob,
           generateJTISIReportBlob,
@@ -9551,6 +10004,8 @@ function V10PreviewLayout() {
           generateUTWTKReportBlob,
           generateJobPackSummaryReportBlob,
           generateSZONEReportBlob,
+          generateDivingCPSURVReport,
+          generateDivingCPSURVReportBlob,
           generateCPCLBReportBlob,
           generateUTCLBReportBlob,
           generateDivingAnodeReportBlob,

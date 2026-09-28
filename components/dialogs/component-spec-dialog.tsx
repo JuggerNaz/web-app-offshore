@@ -111,8 +111,10 @@ export function ComponentSpecDialog({
   const isCreateMode = mode === "create";
   const [isEditing, setIsEditing] = useState(false);
   const isEditMode = isEditing;
-  const [structureId] = useAtom(urlId);
-  const [pageType] = useAtom(urlType);
+  const [atomStructureId] = useAtom(urlId);
+  const [atomPageType] = useAtom(urlType);
+  const structureId = component?.structure_id || atomStructureId;
+  const pageType = atomPageType || (component?.code?.toLowerCase() === 'pp' ? 'pipeline' : 'platform');
   const [isSaving, setIsSaving] = useState(false);
 
   const effectiveCode =
@@ -1233,6 +1235,15 @@ export function ComponentSpecDialog({
         mutate(`/api/structure-components/${structureId}`);
       }
 
+      if (structureId && pageType === "platform") {
+        try {
+          await fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" });
+          mutate(`/api/platform/webapp-3d/${structureId}`);
+        } catch (err) {
+          console.error("Failed to resync 3D cache:", err);
+        }
+      }
+
       toast("Component created successfully");
       onOpenChange(false);
 
@@ -1369,6 +1380,15 @@ export function ComponentSpecDialog({
         mutate(listKey);
       } else {
         mutate(`/api/structure-components/${structureId}`);
+      }
+
+      if (structureId && pageType === "platform") {
+        try {
+          await fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" });
+          mutate(`/api/platform/webapp-3d/${structureId}`);
+        } catch (err) {
+          console.error("Failed to resync 3D cache:", err);
+        }
       }
 
       toast("Component updated successfully", { position: "bottom-right" });
@@ -3714,7 +3734,17 @@ export function ComponentSpecDialog({
               {(() => {
                 // Determine which assoc id to show: view mode uses viewAssocId (local state)
                 const currentAssocId = isCreateMode ? formData.associated_comp_id : viewAssocId;
-                const associatedComp = allComponents?.data?.find((c: any) => c.id === currentAssocId);
+                const numAssoc = Number(currentAssocId);
+                const strAssoc = String(currentAssocId);
+                const associatedComp = allComponents?.data?.find(
+                  (c: any) =>
+                    Boolean(currentAssocId) && (
+                      (!isNaN(numAssoc) && c.id === numAssoc) ||
+                      (!isNaN(numAssoc) && c.comp_id === numAssoc) ||
+                      String(c.id) === strAssoc ||
+                      c.q_id === strAssoc
+                    )
+                );
 
                 // Filter candidates: exclude current component
                 const candidates: any[] = (allComponents?.data || []).filter(
@@ -3760,6 +3790,15 @@ export function ComponentSpecDialog({
                     });
                     setViewAssocId(newId);
                     if (listKey) mutate(listKey);
+                    if (structureId && pageType === "platform") {
+                      fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" })
+                        .then(() => {
+                          mutate(`/api/platform/webapp-3d/${structureId}`);
+                        })
+                        .catch((err) => {
+                          console.error("Failed to resync 3D cache:", err);
+                        });
+                    }
                     toast.success(newId ? "Association saved successfully" : "Association cleared");
                   } catch (err) {
                     console.error("Failed to save association:", err);
@@ -3832,6 +3871,34 @@ export function ComponentSpecDialog({
                             ) : (
                               <Unlink className="h-4 w-4" />
                             )}
+                          </button>
+                        </div>
+                      ) : currentAssocId ? (
+                        <div className="flex items-center justify-between gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4">
+                          <div className="flex items-center gap-3">
+                            <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
+                            <div>
+                              <p className="text-xs font-bold text-amber-800 dark:text-amber-200">
+                                Target Component Not Found (#{currentAssocId})
+                              </p>
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                                The referenced parent component ID does not exist on this platform. Please search and select a parent below.
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isSavingAssoc}
+                            onClick={() => {
+                              if (isCreateMode) {
+                                handleInputChange("associated_comp_id", null);
+                              } else {
+                                handleSaveAssociation(null);
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shrink-0 transition-colors"
+                          >
+                            Clear Link
                           </button>
                         </div>
                       ) : (
@@ -4031,29 +4098,19 @@ export function ComponentSpecDialog({
                 {isSaving ? "Saving..." : "Create Component"}
               </Button>
             ) : isEditMode ? (
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsEditing(false)}
-                  className={cn("rounded-xl font-bold px-6 h-11", inline && "h-10 px-5 text-xs")}
-                >
-                  Cancel Edit
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleUpdate}
-                  disabled={isSaving}
-                  className={cn("rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]", inline && "h-10 px-6 text-xs")}
-                >
-                  {isSaving ? (
-                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  {isSaving ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
+              <Button
+                type="button"
+                onClick={handleUpdate}
+                disabled={isSaving}
+                className={cn("rounded-xl font-black px-10 h-11 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2 uppercase tracking-widest text-[10px]", inline && "h-10 px-6 text-xs")}
+              >
+                {isSaving ? (
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
             ) : (
               <Button
                 type="button"

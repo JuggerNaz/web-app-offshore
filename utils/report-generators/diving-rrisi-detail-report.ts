@@ -24,6 +24,7 @@ interface ReportConfig {
     showPageNumbers?: boolean;
     watermarkText?: string;
     reportType?: 'R' | 'J' | 'I';
+    isBlankReport?: boolean;
 }
 
 /**
@@ -72,6 +73,41 @@ export const generateDivingRRISIDetailReport = async (
         const compRegistry = new Map<number, any>();
         const parentCompsMap = new Map<number, any>();
         const parentQidMap = new Map<string, string>(); // uppercase parent QID -> Full Parent QID string
+        const parentKeyMap = new Map<string, string>(); // identifier key (e.g. '11') -> Full Parent QID string
+
+        const extractTubeKey = (qid: string, prefix: 'R' | 'J' | 'I') => {
+            if (!qid) return null;
+            const q = qid.toUpperCase().trim();
+            let pattern: RegExp;
+            if (prefix === 'R') {
+                pattern = /^(?:RISER|RIS|RS|R)[-_ ]*(\d+[A-Z]?)/i;
+            } else if (prefix === 'J') {
+                pattern = /^(?:JTUBE|JT|J)[-_ ]*(\d+[A-Z]?)/i;
+            } else {
+                pattern = /^(?:ITUBE|IT|I)[-_ ]*(\d+[A-Z]?)/i;
+            }
+            const match = q.match(pattern);
+            if (match) {
+                const rawNum = match[1].toUpperCase();
+                const normNum = rawNum.replace(/^0+/, '') || '0';
+                return { raw: rawNum, norm: normNum };
+            }
+            return null;
+        };
+
+        const registerDivingParent = (cId: number, qid: string, compObj: any) => {
+            if (!qid) return;
+            const qidUpper = qid.toUpperCase().trim();
+            if (cId) parentCompsMap.set(cId, compObj);
+            parentQidMap.set(qidUpper, qid);
+            const baseQid = qid.replace(/[-_](SK\d+|WLP|PLAT|TEST|BAY).*/i, '').trim();
+            if (baseQid) parentQidMap.set(baseQid.toUpperCase(), qid);
+            const key = extractTubeKey(qid, targetPrefix as 'R' | 'J' | 'I');
+            if (key) {
+                parentKeyMap.set(key.raw, qid);
+                parentKeyMap.set(key.norm, qid);
+            }
+        };
 
         // 1) Populate parentCompsMap from allComps
         if (allComps) {
@@ -82,12 +118,11 @@ export const generateDivingRRISIDetailReport = async (
                 const qidUpper = qid.toUpperCase();
 
                 const isRsCode = code === 'RS' || code === 'RISER' || code === 'JT' || code === 'IT' || code === 'I-TUBE' || code === 'J-TUBE';
-                const isParentCandidate = isRsCode && qidUpper.startsWith(targetPrefix) && 
-                    (targetPrefix !== 'R' || !qidUpper.startsWith('RISG'));
+                const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('CLP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(c.metadata?.associated_comp_id || c.metadata?.parent_id);
+                const isParentCandidate = (isRsCode || qidUpper.startsWith(targetPrefix)) && !isSubComp;
 
                 if (isParentCandidate && qid) {
-                    parentCompsMap.set(c.id, c);
-                    parentQidMap.set(qidUpper, qid);
+                    registerDivingParent(c.id, qid, c);
                 }
             });
         }
@@ -101,16 +136,11 @@ export const generateDivingRRISIDetailReport = async (
             const qidUpper = qid.toUpperCase();
 
             const isRsCode = cCode === 'RS' || cCode === 'RISER' || cCode === 'JT' || cCode === 'IT' || cCode === 'I-TUBE' || cCode === 'J-TUBE';
-            const isParentCandidate = isRsCode && qidUpper.startsWith(targetPrefix) && 
-                (targetPrefix !== 'R' || !qidUpper.startsWith('RISG'));
+            const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('CLP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(comp.metadata?.associated_comp_id || r.metadata?.associated_comp_id || comp.metadata?.parent_id);
+            const isParentCandidate = (isRsCode || qidUpper.startsWith(targetPrefix)) && !isSubComp;
 
             if (isParentCandidate && qid) {
-                if (cId && !parentCompsMap.has(cId)) {
-                    parentCompsMap.set(cId, comp.q_id ? comp : { id: cId, q_id: qid, code: cCode || 'RS' });
-                }
-                if (!parentQidMap.has(qidUpper)) {
-                    parentQidMap.set(qidUpper, qid);
-                }
+                registerDivingParent(cId, qid, comp.q_id ? comp : { id: cId, q_id: qid, code: cCode || 'RS' });
                 if (cId) compRegistry.set(cId, comp);
             }
         });
@@ -127,7 +157,7 @@ export const generateDivingRRISIDetailReport = async (
             if (targetPrefix === 'R' && qidUpper.startsWith('RISG')) return null;
 
             // A) Check metadata associated parent ID
-            const pId = Number(metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id);
+            const pId = Number(metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id);
             if (pId && compRegistry.has(pId)) {
                 const pComp = compRegistry.get(pId);
                 const pQ = (pComp.q_id || '').trim();
@@ -149,7 +179,14 @@ export const generateDivingRRISIDetailReport = async (
                 return parentQidMap.get(qidUpper)!;
             }
 
-            // D) Prefix matching against known parent QIDs (longest matching parent QID)
+            // D) Key match (e.g. RIS-11-SUPP matches R11 via key '11')
+            const key = extractTubeKey(qid, targetPrefix as 'R' | 'J' | 'I');
+            if (key) {
+                if (parentKeyMap.has(key.norm)) return parentKeyMap.get(key.norm)!;
+                if (parentKeyMap.has(key.raw)) return parentKeyMap.get(key.raw)!;
+            }
+
+            // E) Prefix matching against known parent QIDs (longest matching parent QID)
             let bestMatchUpper = '';
             let bestMatchOriginal = '';
             parentQidMap.forEach((origQid, pQUpper) => {
@@ -162,7 +199,7 @@ export const generateDivingRRISIDetailReport = async (
             });
             if (bestMatchOriginal) return bestMatchOriginal;
 
-            // E) Fallback prefix check & regex pattern matching (only when no registered parent QID matched)
+            // F) Fallback prefix check & regex pattern matching (only when no registered parent QID matched)
             const isMatchPrefix = qidUpper.startsWith(targetPrefix) || 
                 (targetPrefix === 'R' && qidUpper.startsWith('RIS')) ||
                 (targetPrefix === 'J' && qidUpper.startsWith('JT')) ||
@@ -202,8 +239,12 @@ export const generateDivingRRISIDetailReport = async (
             }
         });
 
-        // Seed from allComps if risersMap is empty
-        if (risersMap.size === 0 && allComps && allComps.length > 0) {
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
+        // Seed from allComps if risersMap is empty (only for blank report)
+        if (config.isBlankReport && risersMap.size === 0 && allComps && allComps.length > 0) {
             allComps.forEach((c: any) => {
                 const q = (c.q_id || '').trim();
                 const qUpper = q.toUpperCase();
@@ -220,6 +261,7 @@ export const generateDivingRRISIDetailReport = async (
 
         // Fallback default group if still empty
         if (risersMap.size === 0) {
+            if (!config.isBlankReport) return null;
             const fallbackQid = `${typeConfig.label}-1`;
             risersMap.set(fallbackQid, { parentQid: fallbackQid, records: [] });
         }
@@ -230,6 +272,10 @@ export const generateDivingRRISIDetailReport = async (
         }
         const sortedGroups: RiserGroup[] = Array.from(risersMap.values())
             .sort((a, b) => a.parentQid.localeCompare(b.parentQid, undefined, { numeric: true, sensitivity: 'base' }));
+
+        if (filteredRecords.length === 0 && !config.isBlankReport) {
+            return null;
+        }
 
         // Pre-load Logos
         let companyLogo: any = null;
@@ -254,8 +300,9 @@ export const generateDivingRRISIDetailReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -272,15 +319,15 @@ export const generateDivingRRISIDetailReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
             if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
 
-            d.setFontSize(8); d.setFont("helvetica", "bold");
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(typeConfig.title, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(typeConfig.title, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
 
             d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth / 2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -389,7 +436,7 @@ export const generateDivingRRISIDetailReport = async (
         };
 
         drawHeader(doc);
-        const startY = drawContext(doc, margin + 22 + 2);
+        const startY = drawContext(doc, margin + headerH + 2);
         const isPF = config.printFriendly;
 
         // Build continuous table rows with Group Section Header banners for each parent Riser QID
@@ -480,7 +527,7 @@ export const generateDivingRRISIDetailReport = async (
 
         autoTable(doc, {
             startY: startY,
-            margin: { left: margin, right: margin, top: margin + 22 + 6, bottom: 20 },
+            margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: 20 },
             head: [
                 ['Item No.', 'QID', 'Elevation (m)', 'Dive No.', 'CP', 'UT', 'Findings']
             ],

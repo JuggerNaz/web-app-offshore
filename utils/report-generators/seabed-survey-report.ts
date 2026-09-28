@@ -5,11 +5,13 @@ import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
 
 export interface SeabedSurveyReportOptions extends Partial<ReportConfig> {
+    contractorLogoUrl?: string;
     comparisonKey?: string;
     comparisonName?: string;
     comparisonRecords?: any[];
     currentPage?: number;
     headerData?: any;
+    isBlankReport?: boolean;
 }
 
 export const generateSeabedSurveyReport = async (
@@ -19,7 +21,7 @@ export const generateSeabedSurveyReport = async (
     companySettings: CompanySettings,
     config: SeabedSurveyReportOptions = {},
     itemTypeFilter: string = ""
-) => {
+): Promise<Blob | void | null> => {
     const supabase = createClient();
     const doc = new jsPDF("l", "mm", "a4");
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -136,6 +138,10 @@ export const generateSeabedSurveyReport = async (
         );
     }
 
+    if (!config.isBlankReport && (!records || records.length === 0) && (!compRecords || compRecords.length === 0)) {
+        return null;
+    }
+
     // ── Logos ────────────────────────────────────────────────────────────────
     let clientLogo: any = null;
     if (companySettings?.logo_url) {
@@ -144,16 +150,28 @@ export const generateSeabedSurveyReport = async (
 
     let contractorLogo: any = null;
     let contractorName = "";
-    if (config.showContractorLogo || config.headerData?.contractorLogoUrl) {
-        const logoUrl = config.headerData?.contractorLogoUrl;
-        if (logoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(logoUrl); } catch (_) {}
-        }
+    const contrLogoUrl = config.headerData?.contractorLogoUrl || (config as any).contractorLogoUrl || (config as any).contrLogoUrl;
+    if (contrLogoUrl) {
+        try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+    }
+    if (!contractorLogo && (config.showContractorLogo !== false) && jobPack?.metadata?.contrac) {
+        try {
+            const supabase = (await import("@/utils/supabase/client")).createClient();
+            const { data: contrData } = await supabase
+                .from('u_lib_list')
+                .select('logo_url')
+                .eq('lib_code', 'CONTR_NAM')
+                .eq('lib_id', jobPack.metadata.contrac)
+                .maybeSingle();
+            if (contrData?.logo_url) {
+                contractorLogo = await loadLogoWithTransparency(contrData.logo_url);
+            }
+        } catch (_) {}
     }
 
     // ── Header & Subheader Drawers ───────────────────────────────────────────
     const isPrintFriendly = config.printFriendly === true;
-    const headerH = 22;
+    const headerH = 26;
 
     const drawHeader = (d: jsPDF) => {
         if (isPrintFriendly) {
@@ -167,14 +185,17 @@ export const generateSeabedSurveyReport = async (
         if (clientLogo)     drawLogo(d, clientLogo,     16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
         if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
 
-        d.setFontSize(10); d.setFont("helvetica", "bold");
+        d.setFontSize(11); d.setFont("helvetica", "bold");
         d.text((companySettings.company_name || 'OFFSHORE INSPECTION DIVISION').toUpperCase(), margin + (contentWidth/2), margin + 6, { align: 'center' });
-        d.setFontSize(8); d.setFont("helvetica", "normal");
-        d.text(companySettings.department_name || companySettings.departmentName || 'Engineering & Technical Division', margin + (contentWidth/2), margin + 11, { align: 'center' });
+        d.setFontSize(8.5); d.setFont("helvetica", "normal");
+        d.text(companySettings.department_name || companySettings.departmentName || 'Engineering & Technical Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
         
-        d.setFontSize(13); d.setFont("helvetica", "bold");
+        d.setFontSize(11); d.setFont("helvetica", "bold");
         const titleType = itemTypeFilter && itemTypeFilter.toLowerCase() !== 'all' ? itemTypeFilter.toUpperCase() : "GENERAL";
-        d.text(`SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`, margin + (contentWidth/2), margin + 17, { align: 'center' });
+        d.text(`SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
+        d.setFontSize(8); d.setFont("helvetica", "normal");
+        const reportNo = sowReportNo || config.headerData?.sowReportNo || (config as any)?.reportNoPrefix || "N/A";
+        d.text(`Report No: ${reportNo}`, margin + (contentWidth / 2), margin + 21, { align: 'center' });
     };
 
     const drawSubHeader = (d: jsPDF, y: number) => {
@@ -185,7 +206,6 @@ export const generateSeabedSurveyReport = async (
         const structName = structure?.str_name || structure?.name || hData.platformName || "N/A";
         const jobPackName = jobPack?.name || hData.jobpackName || "N/A";
         const vessel = hData.vessel || "N/A";
-        const reportNo = sowReportNo || hData.sowReportNo || "N/A";
         const inspDate = hData.date || new Date().toLocaleDateString("en-GB");
 
         const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
@@ -201,16 +221,14 @@ export const generateSeabedSurveyReport = async (
         drawBox('Structure:', structName, margin, colW, y);
         drawBox('Vessel:', vessel, margin + colW, colW, y);
         drawBox('Job Pack:', jobPackName, margin, colW, y + rowH);
-        drawBox('Report No:', reportNo, margin + colW, colW, y + rowH);
+        drawBox('Inspection Date:', inspDate, margin + colW, colW, y + rowH);
         
         if (config.comparisonName) {
             drawBox('Filter Type:', itemTypeFilter || 'ALL', margin, colW, y + (rowH * 2));
             drawBox('Compared With:', config.comparisonName, margin + colW, colW, y + (rowH * 2));
             return y + (rowH * 3) + 4;
         } else {
-            drawBox('Filter Type:', itemTypeFilter || 'ALL', margin, colW, y + (rowH * 2));
-            drawBox('Inspection Date:', inspDate, margin + colW, colW, y + (rowH * 2));
-            return y + (rowH * 3) + 4;
+            return y + (rowH * 2) + 4;
         }
     };
 
@@ -243,9 +261,11 @@ export const generateSeabedSurveyReport = async (
 
             applyWatermarkAndSignaturesGlobal(doc, config);
             if (config.returnBlob) return doc.output("blob");
+            applyWatermarkAndSignaturesGlobal(doc, config);
             doc.save(`${sowReportNo || 'Report'}_Seabed_Survey.pdf`);
             return;
         }
+
     }
 
     // ── Range Pagination (21m chunks) ────────────────────────────────────────

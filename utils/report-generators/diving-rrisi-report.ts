@@ -24,6 +24,7 @@ interface ReportConfig {
     showPageNumbers?: boolean;
     watermarkText?: string;
     reportType?: 'R' | 'J' | 'I';
+    isBlankReport?: boolean;
 }
 
 /**
@@ -79,6 +80,41 @@ export const generateDivingRRISIReport = async (
         const compRegistry = new Map<number, any>();
         const parentCompsMap = new Map<number, any>();
         const parentQidMap = new Map<string, string>(); // uppercase parent QID -> Full Parent QID string
+        const parentKeyMap = new Map<string, string>(); // identifier key (e.g. '11') -> Full Parent QID string
+
+        const extractTubeKey = (qid: string, prefix: 'R' | 'J' | 'I') => {
+            if (!qid) return null;
+            const q = qid.toUpperCase().trim();
+            let pattern: RegExp;
+            if (prefix === 'R') {
+                pattern = /^(?:RISER|RIS|RS|R)[-_ ]*(\d+[A-Z]?)/i;
+            } else if (prefix === 'J') {
+                pattern = /^(?:JTUBE|JT|J)[-_ ]*(\d+[A-Z]?)/i;
+            } else {
+                pattern = /^(?:ITUBE|IT|I)[-_ ]*(\d+[A-Z]?)/i;
+            }
+            const match = q.match(pattern);
+            if (match) {
+                const rawNum = match[1].toUpperCase();
+                const normNum = rawNum.replace(/^0+/, '') || '0';
+                return { raw: rawNum, norm: normNum };
+            }
+            return null;
+        };
+
+        const registerDivingParent = (cId: number, qid: string, compObj: any) => {
+            if (!qid) return;
+            const qidUpper = qid.toUpperCase().trim();
+            if (cId) parentCompsMap.set(cId, compObj);
+            parentQidMap.set(qidUpper, qid);
+            const baseQid = qid.replace(/[-_](SK\d+|WLP|PLAT|TEST|BAY).*/i, '').trim();
+            if (baseQid) parentQidMap.set(baseQid.toUpperCase(), qid);
+            const key = extractTubeKey(qid, targetPrefix as 'R' | 'J' | 'I');
+            if (key) {
+                parentKeyMap.set(key.raw, qid);
+                parentKeyMap.set(key.norm, qid);
+            }
+        };
 
         // 1) Populate parentCompsMap from allComps
         if (allComps) {
@@ -89,12 +125,11 @@ export const generateDivingRRISIReport = async (
                 const qidUpper = qid.toUpperCase();
 
                 const isRsCode = code === 'RS' || code === 'RISER' || code === 'JT' || code === 'IT' || code === 'I-TUBE' || code === 'J-TUBE';
-                const isParentCandidate = isRsCode && qidUpper.startsWith(targetPrefix) && 
-                    (targetPrefix !== 'R' || !qidUpper.startsWith('RISG'));
+                const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('CLP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(c.metadata?.associated_comp_id || c.metadata?.parent_id);
+                const isParentCandidate = (isRsCode || qidUpper.startsWith(targetPrefix)) && !isSubComp;
 
                 if (isParentCandidate && qid) {
-                    parentCompsMap.set(c.id, c);
-                    parentQidMap.set(qidUpper, qid);
+                    registerDivingParent(c.id, qid, c);
                 }
             });
         }
@@ -108,16 +143,11 @@ export const generateDivingRRISIReport = async (
             const qidUpper = qid.toUpperCase();
 
             const isRsCode = cCode === 'RS' || cCode === 'RISER' || cCode === 'JT' || cCode === 'IT' || cCode === 'I-TUBE' || cCode === 'J-TUBE';
-            const isParentCandidate = isRsCode && qidUpper.startsWith(targetPrefix) && 
-                (targetPrefix !== 'R' || !qidUpper.startsWith('RISG'));
+            const isSubComp = qidUpper.includes('SUPP') || qidUpper.includes('CLAMP') || qidUpper.includes('CLP') || qidUpper.includes('ANODE') || qidUpper.includes('FLANGE') || qidUpper.includes('WELD') || qidUpper.includes('RISG') || Boolean(comp.metadata?.associated_comp_id || r.metadata?.associated_comp_id || comp.metadata?.parent_id);
+            const isParentCandidate = (isRsCode || qidUpper.startsWith(targetPrefix)) && !isSubComp;
 
             if (isParentCandidate && qid) {
-                if (cId && !parentCompsMap.has(cId)) {
-                    parentCompsMap.set(cId, comp.q_id ? comp : { id: cId, q_id: qid, code: cCode || 'RS' });
-                }
-                if (!parentQidMap.has(qidUpper)) {
-                    parentQidMap.set(qidUpper, qid);
-                }
+                registerDivingParent(cId, qid, comp.q_id ? comp : { id: cId, q_id: qid, code: cCode || 'RS' });
                 if (cId) compRegistry.set(cId, comp);
             }
         });
@@ -134,7 +164,7 @@ export const generateDivingRRISIReport = async (
             if (targetPrefix === 'R' && qidUpper.startsWith('RISG')) return null;
 
             // A) Check metadata associated parent ID
-            const pId = Number(metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id);
+            const pId = Number(metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id);
             if (pId && compRegistry.has(pId)) {
                 const pComp = compRegistry.get(pId);
                 const pQ = (pComp.q_id || '').trim();
@@ -156,7 +186,14 @@ export const generateDivingRRISIReport = async (
                 return parentQidMap.get(qidUpper)!;
             }
 
-            // D) Prefix matching against known parent QIDs (longest matching parent QID)
+            // D) Key match (e.g. RIS-11-SUPP matches R11 via key '11')
+            const key = extractTubeKey(qid, targetPrefix as 'R' | 'J' | 'I');
+            if (key) {
+                if (parentKeyMap.has(key.norm)) return parentKeyMap.get(key.norm)!;
+                if (parentKeyMap.has(key.raw)) return parentKeyMap.get(key.raw)!;
+            }
+
+            // E) Prefix matching against known parent QIDs (longest matching parent QID)
             let bestMatchUpper = '';
             let bestMatchOriginal = '';
             parentQidMap.forEach((origQid, pQUpper) => {
@@ -169,7 +206,7 @@ export const generateDivingRRISIReport = async (
             });
             if (bestMatchOriginal) return bestMatchOriginal;
 
-            // E) Fallback prefix check & regex pattern matching (only when no registered parent QID matched)
+            // F) Fallback prefix check & regex pattern matching (only when no registered parent QID matched)
             const isMatchPrefix = qidUpper.startsWith(targetPrefix) || 
                 (targetPrefix === 'R' && qidUpper.startsWith('RIS')) ||
                 (targetPrefix === 'J' && qidUpper.startsWith('JT')) ||
@@ -209,8 +246,12 @@ export const generateDivingRRISIReport = async (
             }
         });
 
-        // Seed from allComps if risersMap is empty
-        if (risersMap.size === 0 && allComps && allComps.length > 0) {
+        if (!config.isBlankReport && filteredRecords.length === 0) {
+            return null;
+        }
+
+        // Seed from allComps if risersMap is empty (only for blank report)
+        if (config.isBlankReport && risersMap.size === 0 && allComps && allComps.length > 0) {
             allComps.forEach((c: any) => {
                 const q = (c.q_id || '').trim();
                 const qUpper = q.toUpperCase();
@@ -227,6 +268,7 @@ export const generateDivingRRISIReport = async (
 
         // Fallback default group if still empty
         if (risersMap.size === 0) {
+            if (!config.isBlankReport) return null;
             const fallbackQid = `${typeConfig.label}-1`;
             risersMap.set(fallbackQid, { parentQid: fallbackQid, records: [] });
         }
@@ -237,6 +279,10 @@ export const generateDivingRRISIReport = async (
         }
         const sortedGroups: RiserGroup[] = Array.from(risersMap.values())
             .sort((a, b) => a.parentQid.localeCompare(b.parentQid, undefined, { numeric: true, sensitivity: 'base' }));
+
+        if (filteredRecords.length === 0 && !config.isBlankReport) {
+            return null;
+        }
 
         // --- Pre-load Logos ---
         let companyLogo: any = null;
@@ -261,8 +307,9 @@ export const generateDivingRRISIReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
+        const headerH = 26;
         const drawHeader = (d: jsPDF) => {
-            const headerH = 22;
+            
             const isPF = config.printFriendly;
             
             if (isPF) {
@@ -279,15 +326,15 @@ export const generateDivingRRISIReport = async (
             if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
             if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
 
-            d.setFontSize(8); d.setFont("helvetica", "bold");
+            d.setFontSize(11); d.setFont("helvetica", "bold");
             d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(7); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10, { align: 'center' });
-            d.setFontSize(12); d.setFont("helvetica", "bold");
-            d.text(typeConfig.title, margin + (contentWidth/2), margin + 17, { align: 'center' });
+            d.setFontSize(8.5); d.setFont("helvetica", "normal");
+            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: 'center' });
+            d.setFontSize(11); d.setFont("helvetica", "bold");
+            d.text(typeConfig.title, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
 
             d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth / 2), margin + 21, { align: 'center' });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -406,7 +453,7 @@ export const generateDivingRRISIReport = async (
             const gRecords = group.records || [];
 
             drawHeader(doc);
-            const startY = drawContext(doc, margin + 22 + 2);
+            const startY = drawContext(doc, margin + headerH + 2);
             const isPF = config.printFriendly;
 
             // Section Banner Header
@@ -445,40 +492,68 @@ export const generateDivingRRISIReport = async (
                 d.setFontSize(7.5); d.setFont("helvetica", "bold"); d.setTextColor(...colors.navy);
                 d.text(`${typeConfig.sketchTitle} (${parentQid})`, sx + (sw / 2), sy + 5, { align: 'center' });
 
-                // Scale bounds
+                // Scale bounds & Elevation processing
                 const elevs = recordsInGroup.map(r => parseFloat(r.elevation ?? r.verification_depth ?? r.inspection_data?.verification_depth ?? r.inspection_data?.elevation ?? 0)).filter(e => !isNaN(e));
                 const maxElev = elevs.length > 0 ? Math.max(...elevs, 5) : 5;
                 const minElev = elevs.length > 0 ? Math.min(...elevs, platformDepth - 5) : platformDepth;
 
-                const topY = sy + 15;
-                const mudlineY = sy + 125;
-                const bottomY = sy + 138;
-                const drawH = mudlineY - topY;
+                const suspRec = recordsInGroup.find(r => r.inspection_data?.suspension_gap || r.description?.toLowerCase().includes('suspension'));
+                const suspGap = suspRec ? parseFloat(suspRec.inspection_data?.suspension_gap || 0) : 0;
+                const mudTouchDist = suspRec ? parseFloat(suspRec.inspection_data?.mud_touch_distance || 15) : 0;
 
-                const elevToY = (elev: number) => {
-                    const ratio = (maxElev - elev) / (maxElev - platformDepth || 1);
-                    return topY + (ratio * drawH);
-                };
-
-                const pipeCenterX = sx + (sw * 0.35);
                 const rWidth = 8;
                 const bRadius = 10;
+                const bottomElev = platformDepth;
+                const mudlineElev = platformDepth - suspGap;
+
+                const sMax = Math.max(maxElev + 2, 5);
+                const sMin = Math.min(mudlineElev - 10, -40);
+                const eRange = sMax - sMin;
+
+                const gTopY = sy + 15;
+                const gMudlineY = gTopY + 115;
+                const elevToY = (elev: number) => gTopY + ((sMax - elev) / eRange) * (gMudlineY - gTopY);
+
+                const pipeCenterX = sx + (sw * 0.38);
+                const pipeY = elevToY(bottomElev);
+                const mudY = elevToY(mudlineElev) + (rWidth / 2);
+                const isITube = targetPrefix === 'I';
+                const bY = isITube ? pipeY : elevToY(bottomElev + bRadius);
 
                 // 1. Sea Level Line (0m)
-                if (maxElev >= 0 && minElev <= 0) {
+                if (sMax >= 0 && sMin <= 0) {
                     const seaY = elevToY(0);
                     d.setDrawColor(...colors.seaLevel); d.setLineWidth(0.4);
-                    d.line(sx + 4, seaY, sx + sw - 4, seaY);
-                    d.setFontSize(6); d.setTextColor(...colors.seaLevel); d.setFont("helvetica", "bold");
-                    d.text("SEA LEVEL (0.00m)", sx + 5, seaY - 1.5);
+                    d.line(sx + 2, seaY, sx + sw - 2, seaY);
+                    d.setFontSize(5); d.setTextColor(...colors.seaLevel); d.setFont("helvetica", "bold");
+                    d.text("SEA LEVEL (0.00m)", sx + 2.5, seaY - 1.2);
                 }
 
                 // 2. Seabed Mudline Line
-                const seabedY = elevToY(platformDepth);
-                d.setDrawColor(...colors.mudline); d.setLineWidth(0.8);
-                d.line(sx + 4, seabedY, sx + sw - 4, seabedY);
-                d.setFontSize(6); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
-                d.text(`SEABED MUDLINE (${platformDepth.toFixed(1)}m)`, sx + 5, seabedY - 1.5);
+                d.setDrawColor(...colors.mudline); d.setLineWidth(1.2);
+                if (suspGap === 0) {
+                    d.line(sx + 2, mudY, sx + sw - 2, mudY);
+                    d.setFontSize(5); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
+                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 2.5, mudY - 1.5);
+                } else {
+                    const startMudY = mudY;
+                    const endMudY = pipeY + (rWidth / 2);
+                    const touchMudX = Math.min(pipeCenterX + bRadius + (mudTouchDist * (sw / 60)), sx + sw - 4);
+                    d.line(sx + 2, startMudY, pipeCenterX - 10, startMudY);
+                    let lx = pipeCenterX - 10; let ly = startMudY;
+                    const segs = 20;
+                    for (let j = 1; j <= segs; j++) {
+                        const t = j / segs;
+                        const tx = Math.pow(1 - t, 2) * (pipeCenterX - 10) + 2 * (1 - t) * t * pipeCenterX + Math.pow(t, 2) * touchMudX;
+                        const ty = Math.pow(1 - t, 2) * startMudY + 2 * (1 - t) * t * endMudY + Math.pow(t, 2) * endMudY;
+                        d.line(lx, ly, tx, ty);
+                        lx = tx; ly = ty;
+                    }
+                    d.line(lx, ly, sx + sw - 2, ly);
+                    d.setFontSize(5); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
+                    d.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 4, { align: 'center' });
+                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 2.5, startMudY - 1.5);
+                }
 
                 // Helper pipe cylinder renderer
                 const drawPipeSegment = (x1: number, y1: number, x2: number, y2: number) => {
@@ -488,8 +563,6 @@ export const generateDivingRRISIReport = async (
                 };
 
                 // 3. Pipe Geometry (Straight Pipe for I-Tube based on ELV_2; Curved bend for Riser & J-Tube)
-                const isITube = targetPrefix === 'I';
-
                 if (isITube) {
                     // Find I-Tube Terminator / End Elevation (elv_2 / ELV_2)
                     let itubeEndElev = platformDepth;
@@ -510,15 +583,15 @@ export const generateDivingRRISIReport = async (
                         itubeEndElev = Math.min(...elevs);
                     }
 
-                    const pipeTopY = elevToY(maxElev);
+                    const pipeTopY = elevToY(sMax);
                     const pipeBottomY = elevToY(itubeEndElev);
                     
                     // Draw vertical straight pipe
                     drawPipeSegment(pipeCenterX, pipeTopY, pipeCenterX, pipeBottomY);
 
                     // ── Draw Oval Grill Terminal at Pipe End ──
-                    const rx = rWidth / 2; // 4mm radius matches exact pipe width
-                    const ry = 2.5;        // 2.5mm vertical radius for 3D oval perspective
+                    const rx = rWidth / 2;
+                    const ry = 2.5;
 
                     // 1. Oval Base Fill
                     d.setFillColor(180, 195, 210);
@@ -527,11 +600,9 @@ export const generateDivingRRISIReport = async (
                     // 2. Grill Mesh Bars (Vertical & Horizontal Grid)
                     d.setDrawColor(...colors.navy);
                     d.setLineWidth(0.35);
-                    // Vertical grill bars
                     d.line(pipeCenterX - 2, pipeBottomY - 1.8, pipeCenterX - 2, pipeBottomY + 1.8);
                     d.line(pipeCenterX, pipeBottomY - 2.5, pipeCenterX, pipeBottomY + 2.5);
                     d.line(pipeCenterX + 2, pipeBottomY - 1.8, pipeCenterX + 2, pipeBottomY + 1.8);
-                    // Horizontal grill bar
                     d.line(pipeCenterX - 3.8, pipeBottomY, pipeCenterX + 3.8, pipeBottomY);
 
                     // 3. Oval Outer Rim Border
@@ -540,29 +611,33 @@ export const generateDivingRRISIReport = async (
                     d.ellipse(pipeCenterX, pipeBottomY, rx, ry, 'S');
 
                     // 4. Leader Line & Callout Label
+                    // Left Side: Elevation
+                    const leftTermLineEnd = pipeCenterX - rx - 5;
                     d.setDrawColor(...colors.navy);
                     d.setLineWidth(0.3);
-                    d.line(pipeCenterX + rx + 1, pipeBottomY, pipeCenterX + rx + 6, pipeBottomY);
+                    d.line(pipeCenterX - rx, pipeBottomY, leftTermLineEnd, pipeBottomY);
+                    d.setFontSize(5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
+                    d.text(`${itubeEndElev.toFixed(1)}m`, leftTermLineEnd - 1, pipeBottomY + 1.2, { align: "right" });
 
-                    d.setFontSize(5.5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
-                    d.text(`TERMINATOR GRILL (${itubeEndElev.toFixed(1)}m)`, pipeCenterX + rx + 7, pipeBottomY + 1.5);
+                    // Right Side: Terminator Label
+                    const rightTermLineEnd = Math.min(pipeCenterX + rx + 5, sx + sw - 22);
+                    d.line(pipeCenterX + rx, pipeBottomY, rightTermLineEnd, pipeBottomY);
+                    d.text("TERMINATOR GRILL", rightTermLineEnd + 1, pipeBottomY + 1.2);
                 } else {
-                    // Riser & J-Tube Column + 90-degree curved bottom bend & horizontal pipeline
-                    const bendStartY = seabedY;
-                    const pipeTopY = elevToY(maxElev);
-                    drawPipeSegment(pipeCenterX, pipeTopY, pipeCenterX, bendStartY);
+                    // Vertical Riser down to bY (which is bRadius meters above bottomElev)
+                    const pipeTopY = elevToY(sMax);
+                    drawPipeSegment(pipeCenterX, pipeTopY, pipeCenterX, bY);
 
                     const bendEndX = pipeCenterX + bRadius;
-                    const bendEndY = bendStartY + bRadius;
 
                     const drawCurveSegment = (color: [number, number, number], width: number, offset: number) => {
-                        const segs = 15;
+                        const segs = 20;
                         let lx = pipeCenterX + offset;
-                        let ly = bendStartY;
+                        let ly = bY;
                         const cx = pipeCenterX + offset;
-                        const cy = bendStartY;
+                        const cy = bY;
                         const ex = bendEndX;
-                        const ey = bendEndY + offset;
+                        const ey = pipeY + offset;
                         d.setDrawColor(...color); d.setLineWidth(width);
                         for (let j = 1; j <= segs; j++) {
                             const t = j / segs;
@@ -575,26 +650,26 @@ export const generateDivingRRISIReport = async (
 
                     drawCurveSegment([120, 130, 150], rWidth, 0);
                     drawCurveSegment([160, 175, 195], rWidth * 0.7, 0);
-                    drawCurveSegment([220, 230, 240], rWidth * 0.25, -1);
+                    drawCurveSegment([220, 230, 240], rWidth * 0.25, -rWidth * 0.15);
 
-                    // Horizontal Pipeline extending right
-                    const pipeRightX = sx + sw - 6;
-                    d.setLineWidth(rWidth); d.setDrawColor(120, 130, 150); d.line(bendEndX, bendEndY, pipeRightX, bendEndY);
-                    d.setLineWidth(rWidth * 0.7); d.setDrawColor(160, 175, 195); d.line(bendEndX, bendEndY, pipeRightX, bendEndY);
-                    d.setLineWidth(rWidth * 0.25); d.setDrawColor(220, 230, 240); d.line(bendEndX, bendEndY - 1, pipeRightX, bendEndY - 1);
+                    // Horizontal Pipeline extending right sitting on the seabed
+                    const pipeRightX = Math.min(sx + sw - 4, bendEndX + 25);
+                    d.setLineWidth(rWidth); d.setDrawColor(120, 130, 150); d.line(bendEndX, pipeY, pipeRightX, pipeY);
+                    d.setLineWidth(rWidth * 0.7); d.setDrawColor(160, 175, 195); d.line(bendEndX, pipeY, pipeRightX, pipeY);
+                    d.setLineWidth(rWidth * 0.25); d.setDrawColor(220, 230, 240); d.line(bendEndX, pipeY - rWidth * 0.15, pipeRightX, pipeY - rWidth * 0.15);
 
-                    d.setFontSize(5.5); d.setTextColor(100, 115, 130); d.setFont("helvetica", "bold");
-                    d.text("PIPELINE BEND", bendEndX + 2, bendEndY + 6);
+                    d.setFontSize(5); d.setTextColor(100, 115, 130); d.setFont("helvetica", "bold");
+                    d.text("PIPELINE", Math.min(bendEndX + 6, sx + sw - 14), pipeY + 6);
                 }
 
-                // 5. Elevation Scale Ticks
+                // 5. Elevation Scale Ticks on Far Left
                 d.setDrawColor(180, 190, 205); d.setLineWidth(0.2);
-                for (let e = Math.floor(maxElev); e >= Math.ceil(platformDepth); e -= 5) {
+                for (let e = Math.floor(sMax); e >= sMin; e -= 5) {
                     const ty = elevToY(e);
-                    if (ty >= topY && ty <= bottomY) {
-                        d.line(pipeCenterX - 10, ty, pipeCenterX - 5, ty);
-                        d.setFontSize(5.5); d.setFont("helvetica", "normal"); d.setTextColor(100, 115, 130);
-                        d.text(`${e}m`, pipeCenterX - 11, ty + 1.5, { align: 'right' });
+                    if (ty >= gTopY && ty <= gMudlineY + 15) {
+                        d.line(sx + 7, ty, sx + 10, ty);
+                        d.setFontSize(5); d.setFont("helvetica", "normal"); d.setTextColor(100, 115, 130);
+                        d.text(`${e}m`, sx + 2, ty + 1);
                     }
                 }
 
@@ -608,7 +683,7 @@ export const generateDivingRRISIReport = async (
                     if (elevRaw == null || isNaN(parseFloat(String(elevRaw)))) return;
                     const elev = parseFloat(elevRaw);
                     const py = elevToY(elev);
-                    if (py < topY || py > bottomY) return;
+                    if (py < gTopY || py > gMudlineY + 15) return;
 
                     const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
                     const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
@@ -633,26 +708,37 @@ export const generateDivingRRISIReport = async (
                         d.circle(pipeCenterX - cw/2 - 1, py, 0.5, 'F');
                         d.circle(pipeCenterX + cw/2 + 1, py, 0.5, 'F');
 
-                        // Leader line & text callout
+                        // Left Side: Elevation Value
                         d.setDrawColor(...colors.navy); d.setLineWidth(0.2);
-                        d.line(pipeCenterX + cw/2 + 2, py, pipeCenterX + cw/2 + 6, py);
+                        const leftLineEnd = pipeCenterX - cw/2 - 2 - 5;
+                        d.line(pipeCenterX - cw/2 - 2, py, leftLineEnd, py);
                         d.setFontSize(5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
-                        d.text(`${elev.toFixed(1)}m ${qid} (Clamp)`, pipeCenterX + cw/2 + 7, py + 1.5);
-                    } else if (compCode === 'AN' || qid.includes('AN')) {
-                        // Anode shape
-                        d.setFillColor(245, 158, 11); d.circle(pipeCenterX, py, 2, 'F');
-                        d.setDrawColor(217, 119, 6); d.setLineWidth(0.3); d.circle(pipeCenterX, py, 2, 'S');
-                        d.setFontSize(5); d.setTextColor(180, 83, 9); d.setFont("helvetica", "bold");
-                        d.text(`${elev.toFixed(1)}m ${qid}`, pipeCenterX + 4, py + 1.5);
+                        d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1.2, { align: "right" });
+
+                        // Right Side: Object Name / QID
+                        const rightLineEnd = Math.min(pipeCenterX + cw/2 + 2 + 5, sx + sw - 20);
+                        d.line(pipeCenterX + cw/2 + 2, py, rightLineEnd, py);
+                        d.setFontSize(5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
+                        let displayQid = c.q_id || r.q_id || 'Clamp';
+                        const maxW = (sx + sw - 2) - (rightLineEnd + 1);
+                        if (d.getTextWidth(displayQid) > maxW) {
+                            while (displayQid.length > 3 && d.getTextWidth(displayQid + '...') > maxW) {
+                                displayQid = displayQid.slice(0, -1);
+                            }
+                            displayQid += '...';
+                        }
+                        d.text(displayQid, rightLineEnd + 1, py + 1.2);
                     } else {
-                        // General Node (Weld, Pipe section)
-                        d.setFillColor(...markerColor); d.circle(pipeCenterX, py, 1.5, 'F');
-                        d.setDrawColor(255, 255, 255); d.setLineWidth(0.2); d.circle(pipeCenterX, py, 1.5, 'S');
-                        
-                        d.setDrawColor(...markerColor); d.setLineWidth(0.2);
-                        d.line(pipeCenterX + 1.5, py, pipeCenterX + 5, py);
+                        // Normal Marker Dot
+                        d.setFillColor(...markerColor);
+                        d.circle(pipeCenterX, py, 1.8, 'F');
+                        d.setDrawColor(...markerColor); d.setLineWidth(0.1);
+
+                        // Left Side: Elevation Value
+                        const leftLineEnd = pipeCenterX - 2 - 5;
+                        d.line(pipeCenterX - 2, py, leftLineEnd, py);
                         d.setFontSize(5); d.setTextColor(...markerColor); d.setFont("helvetica", "bold");
-                        d.text(`${elev.toFixed(1)}m ${qid}`, pipeCenterX + 6, py + 1.5);
+                        d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1.2, { align: "right" });
                     }
                 });
             };
@@ -701,7 +787,6 @@ export const generateDivingRRISIReport = async (
                 return {
                     rowCells: [
                         String(itemNo),
-                        qid,
                         elevVal,
                         diveNo,
                         cpInfo.display,
@@ -715,10 +800,10 @@ export const generateDivingRRISIReport = async (
 
             autoTable(doc, {
                 startY: sketchY,
-                margin: { left: dX, right: margin, top: margin + 22 + 6, bottom: 20 },
+                margin: { left: dX, right: margin, top: margin + headerH + 6, bottom: 20 },
                 tableWidth: dW,
                 head: [
-                    ['Item No.', 'QID', 'Elev', 'Dive', 'CP', 'UT', 'Findings']
+                    ['Item No.', 'Elev', 'Dive', 'CP', 'UT', 'Findings']
                 ],
                 body: tableRows.map(tr => tr.rowCells),
                 theme: 'grid',
@@ -756,12 +841,11 @@ export const generateDivingRRISIReport = async (
                 },
                 columnStyles: {
                     0: { cellWidth: 12, halign: 'center' },
-                    1: { cellWidth: 20, fontStyle: 'bold', halign: 'left' },
+                    1: { cellWidth: 16, halign: 'center' },
                     2: { cellWidth: 14, halign: 'center' },
-                    3: { cellWidth: 13, halign: 'center' },
-                    4: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
-                    5: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
-                    6: { cellWidth: 'auto', halign: 'left' }
+                    3: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
+                    4: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+                    5: { cellWidth: 'auto', halign: 'left' }
                 },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);

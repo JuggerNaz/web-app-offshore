@@ -16,9 +16,18 @@ import {
 export const GET = withRole(["super_admin"], async (request, { params }) => {
   try {
     const { id } = await params;
-    const adminClient = createAdminClient();
+    let clientToUse: any;
+    try {
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        clientToUse = createAdminClient();
+      } else {
+        clientToUse = createClient();
+      }
+    } catch {
+      clientToUse = createClient();
+    }
 
-    const { data, error } = await (adminClient as any)
+    let { data, error } = await clientToUse
       .from("companies")
       .select(
         `
@@ -34,16 +43,39 @@ export const GET = withRole(["super_admin"], async (request, { params }) => {
       `
       )
       .eq("id", id)
-      .single();
+      .maybeSingle();
+
+    if (error && error.message?.includes("row-level security")) {
+      const sessionClient = createClient() as any;
+      const fallback = await sessionClient
+        .from("companies")
+        .select(
+          `
+          *,
+          company_memberships(
+            id,
+            user_id,
+            role,
+            is_active,
+            created_at,
+            user:profiles!user_id(id, email, full_name, designation)
+          )
+        `
+        )
+        .eq("id", id)
+        .maybeSingle();
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error || !data) {
       return apiNotFound("Organization not found");
     }
 
     return apiSuccess(data);
-  } catch (error) {
+  } catch (error: any) {
     console.error("[GET /api/admin/organizations/[id]] Error:", error);
-    return apiError("Internal server error", 500);
+    return apiError("Internal server error: " + (error?.message || "unknown"), 500);
   }
 });
 
@@ -154,35 +186,78 @@ export const DELETE = withRole(
   async (request, { params }) => {
     try {
       const { id } = await params;
-      const adminClient = createAdminClient();
+      let clientToUse: any;
+      try {
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          clientToUse = createAdminClient();
+        } else {
+          clientToUse = createClient();
+        }
+      } catch {
+        clientToUse = createClient();
+      }
 
-      const { data: org } = await (adminClient as any)
+      let { data: org, error: fetchError } = await clientToUse
         .from("companies")
         .select("id, is_active")
         .eq("id", id)
-        .single();
+        .maybeSingle();
+
+      if (fetchError && fetchError.message?.includes("row-level security")) {
+        const sessionClient = createClient() as any;
+        const fallback = await sessionClient
+          .from("companies")
+          .select("id, is_active")
+          .eq("id", id)
+          .maybeSingle();
+        org = fallback.data;
+        fetchError = fallback.error;
+      }
+
+      if (fetchError) {
+        return apiError("Database error: " + fetchError.message, 500);
+      }
 
       if (!org) {
         return apiNotFound("Organization not found");
       }
 
-      const { error } = await (adminClient as any)
+      let { error: updateError } = await clientToUse
         .from("companies")
         .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq("id", id);
 
-      if (error) {
-        console.error(
-          "[DELETE /api/admin/organizations/[id]] DB Error:",
-          error
-        );
-        return apiError("Failed to deactivate organization", 500);
+      if (updateError && updateError.message?.includes("row-level security")) {
+        const sessionClient = createClient() as any;
+        const fallback = await sessionClient
+          .from("companies")
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq("id", id);
+        updateError = fallback.error;
       }
 
-      return apiNoContent();
-    } catch (error) {
+      if (updateError) {
+        console.error(
+          "[DELETE /api/admin/organizations/[id]] DB Error:",
+          updateError
+        );
+        return apiError("Failed to deactivate organization: " + updateError.message, 500);
+      }
+
+      // Also deactivate all memberships for this company
+      try {
+        await clientToUse
+          .from("company_memberships")
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq("company_id", id);
+      } catch (memErr) {
+        console.warn("[DELETE /api/admin/organizations/[id]] Membership deactivate warning:", memErr);
+      }
+
+      return apiSuccess({ success: true, message: "Organization deactivated successfully" });
+    } catch (error: any) {
       console.error("[DELETE /api/admin/organizations/[id]] Error:", error);
-      return apiError("Internal server error", 500);
+      return apiError("Internal server error: " + (error?.message || "unknown"), 500);
     }
   }
 );

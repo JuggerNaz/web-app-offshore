@@ -52,7 +52,7 @@ SELECT
   s.pfield as structure_field,
   s.ptype as structure_spec_type,
   s.str_type as structure_base_type,
-  c.metadata->>'description' as description,
+  COALESCE(c.metadata->>'description', c.metadata->>'desc', c.metadata->>'component_description', c.comp_id, c.id_no) as description,
   c.metadata->>'material' as material,
   c.metadata->>'level' as level,
   c.metadata->>'face' as face,
@@ -60,10 +60,10 @@ SELECT
   c.metadata->>'structuralGroup' as structural_group,
   c.metadata->>'anodeType' as anode_type,
   (c.metadata->>'weight')::numeric as weight,
-  c.metadata->>'startNode' as start_node,
-  c.metadata->>'endNode' as end_node,
-  c.metadata->>'elevation1' as elevation1,
-  c.metadata->>'elevation2' as elevation2
+  COALESCE(c.metadata->>'startNode', c.metadata->>'s_node', c.metadata->>'start_node', c.metadata->>'sNode', c.metadata->>'s_leg', c.metadata->>'startLeg') as start_node,
+  COALESCE(c.metadata->>'endNode', c.metadata->>'f_node', c.metadata->>'e_node', c.metadata->>'end_node', c.metadata->>'fNode', c.metadata->>'eNode', c.metadata->>'f_leg', c.metadata->>'endLeg') as end_node,
+  COALESCE(c.metadata->>'elevation1', c.metadata->>'elv_1', c.metadata->>'elev_1', c.metadata->>'elevation_1', c.metadata->>'start_elevation', c.metadata->>'elev1') as elevation1,
+  COALESCE(c.metadata->>'elevation2', c.metadata->>'elv_2', c.metadata->>'elev_2', c.metadata->>'elevation_2', c.metadata->>'end_elevation', c.metadata->>'elev2') as elevation2
 FROM structure_components c
 LEFT JOIN v_smart_query_structures s ON c.structure_id = s.id;
 
@@ -114,11 +114,11 @@ SELECT
   c.comp_id as component_id_str,
   c.id_no as component_id_no,
   c.q_id as component_qid,
-  c.metadata->>'description' as component_description,
-  c.metadata->>'startNode' as start_node,
-  c.metadata->>'endNode' as end_node,
-  c.metadata->>'elevation1' as elevation1,
-  c.metadata->>'elevation2' as elevation2,
+  COALESCE(c.metadata->>'description', c.metadata->>'desc', c.metadata->>'component_description', c.comp_id, c.id_no) as component_description,
+  COALESCE(c.metadata->>'startNode', c.metadata->>'s_node', c.metadata->>'start_node', c.metadata->>'sNode', c.metadata->>'s_leg', c.metadata->>'startLeg') as start_node,
+  COALESCE(c.metadata->>'endNode', c.metadata->>'f_node', c.metadata->>'e_node', c.metadata->>'end_node', c.metadata->>'fNode', c.metadata->>'eNode', c.metadata->>'f_leg', c.metadata->>'endLeg') as end_node,
+  COALESCE(c.metadata->>'elevation1', c.metadata->>'elv_1', c.metadata->>'elev_1', c.metadata->>'elevation_1', c.metadata->>'start_elevation', c.metadata->>'elev1') as elevation1,
+  COALESCE(c.metadata->>'elevation2', c.metadata->>'elv_2', c.metadata->>'elev_2', c.metadata->>'elevation_2', c.metadata->>'end_elevation', c.metadata->>'elev2') as elevation2,
   
   j.name as jobpack_name,
   
@@ -182,11 +182,11 @@ SELECT
   c.comp_id as component_id_str,
   c.id_no as component_id_no,
   c.q_id as component_qid,
-  c.metadata->>'description' as component_description,
-  c.metadata->>'startNode' as start_node,
-  c.metadata->>'endNode' as end_node,
-  c.metadata->>'elevation1' as elevation1,
-  c.metadata->>'elevation2' as elevation2,
+  COALESCE(c.metadata->>'description', c.metadata->>'desc', c.metadata->>'component_description', c.comp_id, c.id_no) as component_description,
+  COALESCE(c.metadata->>'startNode', c.metadata->>'s_node', c.metadata->>'start_node', c.metadata->>'sNode', c.metadata->>'s_leg', c.metadata->>'startLeg') as start_node,
+  COALESCE(c.metadata->>'endNode', c.metadata->>'f_node', c.metadata->>'e_node', c.metadata->>'end_node', c.metadata->>'fNode', c.metadata->>'eNode', c.metadata->>'f_leg', c.metadata->>'endLeg') as end_node,
+  COALESCE(c.metadata->>'elevation1', c.metadata->>'elv_1', c.metadata->>'elev_1', c.metadata->>'elevation_1', c.metadata->>'start_elevation', c.metadata->>'elev1') as elevation1,
+  COALESCE(c.metadata->>'elevation2', c.metadata->>'elv_2', c.metadata->>'elev_2', c.metadata->>'elevation_2', c.metadata->>'end_elevation', c.metadata->>'elev2') as elevation2,
   
   j.name as jobpack_name
 FROM insp_anomalies a
