@@ -16,22 +16,29 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
-export default function Spec2Platform() {
-  const [pageId] = useAtom(urlId);
+export default function Spec2Platform({ platformId }: { platformId?: number | string } = {}) {
+  const [pageId, setPageId] = useAtom(urlId);
+  const activeId = platformId ? (typeof platformId === "number" ? platformId : parseInt(platformId)) || pageId : pageId;
   const [editingElevation, setEditingElevation] = useState<any | null>(null);
   const [isEditElvOpen, setIsEditElvOpen] = useState(false);
 
-  const { data, error, isLoading } = useSWR(`/api/platform/elevation/${pageId}`, fetcher);
+  React.useEffect(() => {
+    if (platformId && pageId !== Number(platformId)) {
+      setPageId(Number(platformId));
+    }
+  }, [platformId, pageId, setPageId]);
+
+  const { data, error, isLoading } = useSWR(activeId ? `/api/platform/elevation/${activeId}` : null, fetcher);
   const {
     data: levelData,
     error: levelError,
     isLoading: levelIsLoading,
-  } = useSWR(`/api/platform/level/${pageId}`, fetcher);
+  } = useSWR(activeId ? `/api/platform/level/${activeId}` : null, fetcher);
   const {
     data: facesData,
     error: facesError,
     isLoading: facesIsLoading,
-  } = useSWR(`/api/platform/faces/${pageId}`, fetcher);
+  } = useSWR(activeId ? `/api/platform/faces/${activeId}` : null, fetcher);
 
   const handleDelete = async (elev: any) => {
     try {
@@ -39,8 +46,8 @@ export default function Spec2Platform() {
         method: "DELETE",
         body: JSON.stringify(elev),
       });
-      mutate(`/api/platform/elevation/${pageId}`);
-      mutate(`/api/platform/level/${pageId}`);
+      mutate(`/api/platform/elevation/${activeId}`);
+      mutate(`/api/platform/level/${activeId}`);
       toast.success("Elevation deleted successfully");
     } catch (err) {
       toast.error("Failed to delete elevation");

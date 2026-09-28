@@ -20,7 +20,9 @@ import {
     useBounds,
     Float,
     useHelper,
+    GizmoHelper,
 } from "@react-three/drei";
+import { CustomGizmoViewcube } from "./CustomGizmoViewcube";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -33,6 +35,7 @@ import {
     clearPlatform3DSession,
     type Platform3DSessionState
 } from "../utils/platform-3d-storage";
+import { normalizeInspectionTaskCode, getTaskDefinition } from "@/components/dialogs/inspection-task-dialog";
 
 interface Component3D {
     id: number;
@@ -79,6 +82,12 @@ interface Structural3DViewerProps {
     selectedHistoricalCampaignId?: string | number;
     isInspectionMode?: boolean;
     selectedInspectionFilters?: string[];
+    inspectionSowItems?: any[];
+    selectedSowReportNo?: string | null;
+    isInspectionTaskMode?: boolean;
+    selectedInspectionTaskCode?: string | null;
+    inspectionTaskSowItems?: any[];
+    selectedTaskSowReportNo?: string | null;
     isLoading?: boolean;
 }
 
@@ -218,6 +227,19 @@ const ComponentMesh = ({
     const qIdUpper = (component?.q_id || "").toUpperCase();
     const isNode = (code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND") && !qIdUpper.includes("SUPP") && !qIdUpper.includes("CLP");
     const isAnode = code === "AN" || code.includes("ANOD");
+    const isFender =
+        code === "FD" ||
+        code === "BL" ||
+        code === "BLD" ||
+        code.includes("FEND") ||
+        code.includes("BOAT") ||
+        code.includes("LAND") ||
+        qIdUpper.includes("BOAT") ||
+        qIdUpper.includes("LANDING") ||
+        qIdUpper.includes("FEND") ||
+        qIdUpper.includes("FENDER") ||
+        qIdUpper.startsWith("BL") ||
+        qIdUpper.startsWith("BLD");
     const isCaissonSupportComponent = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
     const isConductorSupport =
         /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
@@ -226,7 +248,7 @@ const ComponentMesh = ({
     const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || isConductorSupport;
     const isRiserSupport = (qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || code === "CL" || code === "RC" || code.includes("CLAM")) && !isCaissonSupportComponent && !isGuideBucket;
     const isClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || isRiserSupport) && !isCaissonSupportComponent && !isGuideBucket;
-    const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport) || code.includes("WELD")) && !isClamp && !isGuideBucket;
+    const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport && !isCaissonSupportComponent && !isGuideBucket) || code.includes("WELD")) && !isClamp && !isGuideBucket && !isCaissonSupportComponent;
     const isCaisson = code === "CS" || code === "CA" || code.includes("CAIS");
     const isRiser = !isAnode && !isRiserSupport && !isCaisson && (
         code === "RS" ||
@@ -328,10 +350,11 @@ const ComponentMesh = ({
         euler.setFromQuaternion(quaternion);
     }
 
-    const showLabel = hovered || isSelected || (isWeld && showWeldNumbering);
+    const isNodeNumberTarget = (code === "WN" || isNode || code.includes("WELD")) && !isCaissonSupportComponent && !isGuideBucket && !isClamp && !isRiserSupport && !isAnode && !isFender && !isRiser && !qIdUpper.includes("SUPP") && !qIdUpper.includes("CLP");
+    const showLabel = hovered || isSelected || (isNodeNumberTarget && showWeldNumbering);
 
     let labelText = component.q_id;
-    if (isWeld) {
+    if (isNodeNumberTarget) {
         labelText = component.q_id.replace(/^(?:WN\s*N?|N\s*)/i, "").trim() || component.q_id;
     }
 
@@ -504,19 +527,6 @@ const ComponentMesh = ({
 
     if (hasNaN) return null;
 
-    const isFender =
-        code === "FD" ||
-        code === "BL" ||
-        code === "BLD" ||
-        code.includes("FEND") ||
-        code.includes("BOAT") ||
-        code.includes("LAND") ||
-        qIdUpper.includes("BOAT") ||
-        qIdUpper.includes("LANDING") ||
-        qIdUpper.includes("FEND") ||
-        qIdUpper.includes("FENDER") ||
-        qIdUpper.startsWith("BL") ||
-        qIdUpper.startsWith("BLD");
     if (isFender) {
         const md = component.metadata || {};
         let clockPos = parseFloat(md.clk_pos || "12");
@@ -573,6 +583,7 @@ const ComponentMesh = ({
         }
 
         const fenderGroup = useMemo(() => {
+            const calculatedClampRadius = Math.max(0.34, (thickness || 0.3) * 1.15);
             return new Fender({
                 height: fenderHeight,
                 widthBack: spanWidth,
@@ -582,10 +593,12 @@ const ComponentMesh = ({
                 isHovered: hovered,
                 localLeftTop,
                 localRightTop,
+                clampRadius: calculatedClampRadius,
             });
         }, [
             fenderHeight,
             spanWidth,
+            thickness,
             isSelected,
             hovered,
             localLeftTop.x, localLeftTop.y, localLeftTop.z,
@@ -678,34 +691,24 @@ const ComponentMesh = ({
         const guardCenter = legMidpoint.clone().add(finalOffset);
         guardCenter.y = yTop - guardHeight / 2;
 
-        // Compute leg coordinates at top and middle elevations
+        // Compute leg coordinates at top elevation
         const leg1Top = new THREE.Vector3(startVec.x, yTop, startVec.z);
         const leg2Top = new THREE.Vector3(endVec.x, yTop, endVec.z);
-        const leg1Mid = new THREE.Vector3(startVec.x, guardCenter.y + guardHeight / 6, startVec.z);
-        const leg2Mid = new THREE.Vector3(endVec.x, guardCenter.y + guardHeight / 6, endVec.z);
 
         // Convert coordinates to riser guard local space
         const loc1Top = leg1Top.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
         const loc2Top = leg2Top.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
-        const loc1Mid = leg1Mid.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
-        const loc2Mid = leg2Mid.clone().sub(guardCenter).applyAxisAngle(new THREE.Vector3(0, 1, 0), -finalGroupRotationAngle);
 
         // Determine left vs right legs horizontally in local space
         let localLeftTop: THREE.Vector3;
         let localRightTop: THREE.Vector3;
-        let localLeftMid: THREE.Vector3;
-        let localRightMid: THREE.Vector3;
 
         if (loc1Top.x < loc2Top.x) {
             localLeftTop = loc1Top;
             localRightTop = loc2Top;
-            localLeftMid = loc1Mid;
-            localRightMid = loc2Mid;
         } else {
             localLeftTop = loc2Top;
             localRightTop = loc1Top;
-            localLeftMid = loc2Mid;
-            localRightMid = loc1Mid;
         }
 
         const riserGuardGroup = useMemo(() => {
@@ -717,8 +720,6 @@ const ComponentMesh = ({
                 isHovered: hovered,
                 localLeftTop,
                 localRightTop,
-                localLeftMid,
-                localRightMid,
             });
         }, [
             guardHeight,
@@ -726,9 +727,7 @@ const ComponentMesh = ({
             isSelected,
             hovered,
             localLeftTop.x, localLeftTop.y, localLeftTop.z,
-            localRightTop.x, localRightTop.y, localRightTop.z,
-            localLeftMid.x, localLeftMid.y, localLeftMid.z,
-            localRightMid.x, localRightMid.y, localRightMid.z
+            localRightTop.x, localRightTop.y, localRightTop.z
         ]);
 
         return (
@@ -827,7 +826,7 @@ const ComponentMesh = ({
                     <meshBasicMaterial transparent opacity={0} />
                 </mesh>
 
-                {showLabel && (
+                {(hovered || isSelected) && (
                     <Html
                         distanceFactor={15}
                         position={[0, 0.65, 0]}
@@ -900,7 +899,7 @@ const ComponentMesh = ({
                     <meshBasicMaterial transparent opacity={0} />
                 </mesh>
 
-                {showLabel && (
+                {(hovered || isSelected) && (
                     <Html
                         distanceFactor={15}
                         position={[0, 0.6, 0]}
@@ -963,7 +962,7 @@ const ComponentMesh = ({
             >
                 <primitive object={riserClampGroup} />
 
-                {showLabel && (
+                {(hovered || isSelected) && (
                     <Html distanceFactor={15} position={[0, 0.5, 0]} center zIndexRange={[10, 0]}>
                         <div className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest whitespace-nowrap border pointer-events-none transition-all shadow-xl ${isSelected ? "bg-orange-500 text-white border-orange-400 scale-110 opacity-100 font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)]" : "bg-slate-900/90 text-slate-100 border-slate-700"}`}>
                             {labelText}
@@ -1373,9 +1372,8 @@ function CameraPersistenceTracker({
     const hasAppliedInitialRef = useRef(false);
 
     // Apply saved camera coordinates upon mount before first paint
-    useLayoutEffect(() => {
+    const applySavedState = React.useCallback(() => {
         if (!controls || !initialState || hasAppliedInitialRef.current) return;
-        hasAppliedInitialRef.current = true;
 
         if (initialState.cameraPosition && initialState.controlsTarget) {
             const [cx, cy, cz] = initialState.cameraPosition;
@@ -1388,64 +1386,92 @@ function CameraPersistenceTracker({
                 (controls as any).target.set(tx, ty, tz);
                 camera.lookAt(tx, ty, tz);
             }
+            if (initialState.cameraZoom && typeof (camera as any).zoom === "number" && isFinite(initialState.cameraZoom)) {
+                (camera as any).zoom = initialState.cameraZoom;
+            }
             camera.updateMatrixWorld(true);
             camera.updateProjectionMatrix();
-            if (typeof (controls as any).update === 'function') {
+            if (typeof (controls as any).update === "function") {
                 (controls as any).update();
             }
+            hasAppliedInitialRef.current = true;
             if (onRestored) {
                 onRestored();
             }
         }
     }, [controls, camera, initialState, onRestored]);
 
-    // Attach listeners to controls to save state on user movement
+    useLayoutEffect(() => {
+        applySavedState();
+    }, [applySavedState]);
+
+    // Double check on initial frame render in case OrbitControls attached controls asynchronously
+    useFrame(() => {
+        if (!hasAppliedInitialRef.current && controls && initialState) {
+            applySavedState();
+        }
+    });
+
+    // Save state helper that immediately writes coordinates & zoom to localStorage
+    const saveStateImmediate = React.useCallback(() => {
+        if (!controls || !platformId) return;
+        // Do not save until initial restore has been applied (avoids overwriting with default [0,0,0])
+        if (initialState && !hasAppliedInitialRef.current) return;
+
+        const orbControls = controls as any;
+        const cp = camera.position;
+        const ct = orbControls.target;
+        const cz = (camera as any).zoom || 1;
+
+        if (
+            isFinite(cp.x) && isFinite(cp.y) && isFinite(cp.z) &&
+            isFinite(ct.x) && isFinite(ct.y) && isFinite(ct.z)
+        ) {
+            savePlatform3DSession(platformId, {
+                cameraPosition: [cp.x, cp.y, cp.z],
+                controlsTarget: [ct.x, ct.y, ct.z],
+                cameraZoom: cz,
+                cameraDistance: cp.distanceTo(ct),
+            });
+        }
+    }, [controls, camera, platformId, initialState]);
+
+    // Attach listeners to controls and window unload events to ensure 100% real-time persistence
     useEffect(() => {
         if (!controls || !platformId) return;
 
         const orbControls = controls as any;
-        let debounceTimer: NodeJS.Timeout | null = null;
 
         const handleControlsChange = () => {
-            const cp = camera.position;
-            const ct = orbControls.target;
-            if (
-                isFinite(cp.x) && isFinite(cp.y) && isFinite(cp.z) &&
-                isFinite(ct.x) && isFinite(ct.y) && isFinite(ct.z)
-            ) {
-                if (debounceTimer) clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(() => {
-                    savePlatform3DSession(platformId, {
-                        cameraPosition: [cp.x, cp.y, cp.z],
-                        controlsTarget: [ct.x, ct.y, ct.z],
-                    });
-                }, 500);
-            }
+            saveStateImmediate();
         };
 
         const handleControlsEnd = () => {
-            const cp = camera.position;
-            const ct = orbControls.target;
-            if (
-                isFinite(cp.x) && isFinite(cp.y) && isFinite(cp.z) &&
-                isFinite(ct.x) && isFinite(ct.y) && isFinite(ct.z)
-            ) {
-                savePlatform3DSession(platformId, {
-                    cameraPosition: [cp.x, cp.y, cp.z],
-                    controlsTarget: [ct.x, ct.y, ct.z],
-                });
-            }
+            saveStateImmediate();
         };
 
-        orbControls.addEventListener('change', handleControlsChange);
-        orbControls.addEventListener('end', handleControlsEnd);
+        orbControls.addEventListener("change", handleControlsChange);
+        orbControls.addEventListener("end", handleControlsEnd);
+
+        // Capture instantaneous state if user refreshes (F5), navigates, or closes tab
+        const handleBeforeUnload = () => {
+            saveStateImmediate();
+        };
+        const handlePageHide = () => {
+            saveStateImmediate();
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        window.addEventListener("pagehide", handlePageHide);
 
         return () => {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            orbControls.removeEventListener('change', handleControlsChange);
-            orbControls.removeEventListener('end', handleControlsEnd);
+            saveStateImmediate();
+            orbControls.removeEventListener("change", handleControlsChange);
+            orbControls.removeEventListener("end", handleControlsEnd);
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+            window.removeEventListener("pagehide", handlePageHide);
         };
-    }, [controls, camera, platformId]);
+    }, [controls, platformId, saveStateImmediate]);
 
     return null;
 }
@@ -1453,24 +1479,23 @@ function CameraPersistenceTracker({
 function CameraRig({
     selectedPos,
     selectedCompId,
-    isActivated,
     isDirectClickRef,
     focusTargetPos,
     hasSavedCameraState = false,
 }: {
     selectedPos: THREE.Vector3 | null;
     selectedCompId?: number;
-    isActivated: boolean;
     isDirectClickRef: React.MutableRefObject<boolean>;
     focusTargetPos: THREE.Vector3 | null;
     hasSavedCameraState?: boolean;
 }) {
     const { camera, controls } = useThree();
     const animRef = useRef<number | null>(null);
+    const initialSessionAppliedRef = useRef(hasSavedCameraState);
     const prevSelectedCompIdRef = useRef<number | undefined>(undefined);
 
     useEffect(() => {
-        if (!isActivated || !controls) return;
+        if (!controls) return;
 
         const orbControls = controls as any;
         if (focusTargetPos) {
@@ -1508,10 +1533,9 @@ function CameraRig({
             if (animRef.current) cancelAnimationFrame(animRef.current);
             animRef.current = requestAnimationFrame(animate);
         }
-    }, [focusTargetPos, camera, controls, isActivated]);
+    }, [focusTargetPos, camera, controls]);
 
     useEffect(() => {
-        if (!isActivated) return;
         if (isDirectClickRef.current) {
             isDirectClickRef.current = false;
             prevSelectedCompIdRef.current = selectedCompId;
@@ -1523,7 +1547,8 @@ function CameraRig({
             return;
         }
         // If this is the initial render and we have a restored camera position, preserve it
-        if (prevSelectedCompIdRef.current === undefined && hasSavedCameraState) {
+        if (initialSessionAppliedRef.current) {
+            initialSessionAppliedRef.current = false;
             prevSelectedCompIdRef.current = selectedCompId;
             return;
         }
@@ -1540,7 +1565,7 @@ function CameraRig({
                 (controls as any).update();
             }
         }
-    }, [selectedPos, selectedCompId, camera, controls, isActivated, isDirectClickRef, focusTargetPos, hasSavedCameraState]);
+    }, [selectedPos, selectedCompId, camera, controls, isDirectClickRef, focusTargetPos, hasSavedCameraState]);
 
     return null;
 }
@@ -1563,6 +1588,9 @@ function InstancedComponentViewer({
     inspectionModeFilter = "BOTH",
     priorityScope = "BOTH",
     compareWithCurrent = true,
+    isInspectionTaskMode = false,
+    selectedInspectionTaskCode = "ALL",
+    sowTaskMap = null,
 }: {
     layouts: any[];
     selectedCompId?: number;
@@ -1581,6 +1609,9 @@ function InstancedComponentViewer({
     inspectionModeFilter?: "BOTH" | "ROV" | "DIVING";
     priorityScope?: "BOTH" | "ANOMALY" | "FINDING";
     compareWithCurrent?: boolean;
+    isInspectionTaskMode?: boolean;
+    selectedInspectionTaskCode?: string | null;
+    sowTaskMap?: Map<string | number, any> | null;
 }) {
     const weldRef = useRef<THREE.InstancedMesh>(null);
     const cylinderRef = useRef<THREE.InstancedMesh>(null);
@@ -1593,12 +1624,35 @@ function InstancedComponentViewer({
     const [hoveredComp, setHoveredComp] = useState<any | null>(null);
 
     const getInspectionColor = (item: any, defaultColor: string) => {
-        if (!isInspectionMode) return defaultColor;
-        const status = item.inspectionStatus || "Pending";
-        if (!selectedInspectionFilters.includes(status)) return defaultColor;
-        if (status === "Completed") return "#22c55e";
-        if (status === "Incomplete") return "#d97706";
-        return "#334155"; // Pending
+        // 1. If Inspection Task Mode is active
+        if (isInspectionTaskMode && sowTaskMap) {
+            const compId = item.comp?.id || item.comp?.comp_id || item.id;
+            const compQId = String(item.comp?.q_id || item.q_id || "").toUpperCase().trim();
+            const taskInfo = sowTaskMap.get(Number(compId)) || (compQId ? sowTaskMap.get(compQId) : null);
+
+            if (taskInfo) {
+                if (!selectedInspectionTaskCode || selectedInspectionTaskCode === "ALL") {
+                    return taskInfo.taskColor;
+                } else if (taskInfo.taskCode === selectedInspectionTaskCode) {
+                    return taskInfo.taskColor;
+                } else {
+                    return "#334155";
+                }
+            } else {
+                return "#334155";
+            }
+        }
+
+        // 2. Otherwise if Inspection Status Mode is active
+        if (isInspectionMode) {
+            const status = item.inspectionStatus || "Pending";
+            if (!selectedInspectionFilters.includes(status)) return defaultColor;
+            if (status === "Completed") return "#22c55e";
+            if (status === "Incomplete") return "#d97706";
+            return "#334155"; // Pending
+        }
+
+        return defaultColor;
     };
 
     const toVec3 = (v: any): THREE.Vector3 => {
@@ -1674,8 +1728,8 @@ function InstancedComponentViewer({
                 return;
             }
 
-            const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport) || code.includes("WELD")) && !isClamp;
-            const isNode = (code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND") && !isClamp && !isWeld;
+            const isWeld = (code === "WN" || (code === "WP" && !isRiserSupport && !isCaissonSupport && !isGuideBucket) || code.includes("WELD")) && !isClamp && !isCaissonSupport && !isGuideBucket;
+            const isNode = (code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND") && !isClamp && !isWeld && !isCaissonSupport && !isGuideBucket;
             const isAnode = code === "AN" || code.includes("ANOD") || qIdUpper === "AN" || qIdUpper.includes("ANOD") || qIdUpper.startsWith("BAN");
 
             const item = { ...layout, comp, code, qIdUpper };
@@ -2095,7 +2149,7 @@ function InstancedComponentViewer({
         elbowMesh.instanceMatrix.needsUpdate = true;
         if (elbowMesh.instanceColor) elbowMesh.instanceColor.needsUpdate = true;
         elbowMesh.count = elbowIndex;
-    }, [anodes, cylinders, selectedCompId, mainMemberIds, isInspectionMode, selectedInspectionFilters]);
+    }, [anodes, cylinders, selectedCompId, mainMemberIds, isInspectionMode, selectedInspectionFilters, isInspectionTaskMode, selectedInspectionTaskCode, sowTaskMap]);
 
     // Find layout of selected component for overlay label and highlight mesh
     const selectedLayout = useMemo(() => {
@@ -2247,11 +2301,16 @@ function InstancedComponentViewer({
 
             {/* Always Display Node Weld Numbers (Toggled via Node Numbers checkbox) */}
             {showWeldNumbering && welds.map((w, idx) => {
+                const comp = w.comp || w;
+                const rawLabel = comp?.q_id || w.q_id || `WN${idx + 1}`;
+                const qUpper = String(rawLabel).toUpperCase();
+                if (qUpper.includes("SUPP") || qUpper.includes("CLP") || qUpper.includes("CS-") || qUpper.includes("CAIS")) {
+                    return null;
+                }
                 const s = toVec3(w.start || w.position);
                 const e = toVec3(w.end || w.position);
                 const pos = [(s.x + e.x) / 2, (s.y + e.y) / 2 + 1.1, (s.z + e.z) / 2] as [number, number, number];
 
-                const rawLabel = w.comp?.q_id || w.q_id || `WN${idx + 1}`;
                 const labelText = rawLabel.replace(/^(?:WN\s*N?|N\s*)/i, "").trim() || rawLabel;
 
                 const compId = w.comp?.id || w.id;
@@ -2283,10 +2342,15 @@ function InstancedComponentViewer({
             })}
 
             {showWeldNumbering && spheres.map((sph, idx) => {
+                const comp = sph.comp || sph;
+                const rawLabel = comp?.q_id || sph.q_id || `N${idx + 1}`;
+                const qUpper = String(rawLabel).toUpperCase();
+                if (qUpper.includes("SUPP") || qUpper.includes("CLP") || qUpper.includes("CS-") || qUpper.includes("CAIS")) {
+                    return null;
+                }
                 const s = toVec3(sph.start || sph.position);
                 const pos = [s.x, s.y + 1.1, s.z] as [number, number, number];
 
-                const rawLabel = sph.comp?.q_id || sph.q_id || `N${idx + 1}`;
                 const labelText = rawLabel.replace(/^(?:WN\s*N?|N\s*)/i, "").trim() || rawLabel;
 
                 const compId = sph.comp?.id || sph.id;
@@ -2931,6 +2995,12 @@ export function Structural3DViewer({
     selectedHistoricalCampaignId: externalCampaignId = "ALL",
     isInspectionMode: externalIsInspectionMode = false,
     selectedInspectionFilters: externalSelectedInspectionFilters = ["Pending", "Completed", "Incomplete"],
+    inspectionSowItems = [],
+    selectedSowReportNo = null,
+    isInspectionTaskMode = false,
+    selectedInspectionTaskCode = "ALL",
+    inspectionTaskSowItems = [],
+    selectedTaskSowReportNo = null,
     isLoading = false
 }: Structural3DViewerProps) {
     const isWorkspace = Boolean(
@@ -2938,6 +3008,46 @@ export function Structural3DViewer({
         compactMode || 
         (currentRecords && currentRecords.length > 0)
     );
+
+    const sowStatusMap = useMemo(() => {
+        if (!inspectionSowItems || inspectionSowItems.length === 0) return null;
+        const map = new Map<string | number, { status: string; report_number?: string }>();
+        inspectionSowItems.forEach((item: any) => {
+            if (selectedSowReportNo && item.report_number && item.report_number !== selectedSowReportNo) {
+                return;
+            }
+            const rawStatus = (item.status || "Pending").toLowerCase().trim();
+            let status = "Pending";
+            if (rawStatus === "completed" || rawStatus === "complete" || rawStatus === "done") status = "Completed";
+            else if (rawStatus === "incomplete" || rawStatus === "anomaly" || rawStatus === "defect") status = "Incomplete";
+
+            if (item.component_id) map.set(Number(item.component_id), { status, report_number: item.report_number });
+            if (item.component_qid) map.set(item.component_qid.toUpperCase().trim(), { status, report_number: item.report_number });
+        });
+        return map;
+    }, [inspectionSowItems, selectedSowReportNo]);
+
+    const sowTaskMap = useMemo(() => {
+        if (!inspectionTaskSowItems || inspectionTaskSowItems.length === 0) return null;
+        const map = new Map<string | number, { taskCode: string; taskName?: string; taskColor: string; report_number?: string }>();
+        inspectionTaskSowItems.forEach((item: any) => {
+            if (selectedTaskSowReportNo && item.report_number && item.report_number !== selectedTaskSowReportNo) {
+                return;
+            }
+            const taskKey = normalizeInspectionTaskCode(item.inspection_code, item.inspection_name);
+            const taskDef = getTaskDefinition(item.inspection_code, item.inspection_name);
+            const taskInfo = {
+                taskCode: taskKey,
+                taskName: item.inspection_name || taskDef.label,
+                taskColor: taskDef.color,
+                report_number: item.report_number
+            };
+
+            if (item.component_id) map.set(Number(item.component_id), taskInfo);
+            if (item.component_qid) map.set(item.component_qid.toUpperCase().trim(), taskInfo);
+        });
+        return map;
+    }, [inspectionTaskSowItems, selectedTaskSowReportNo]);
 
     const activePlatformId = useMemo(() => {
         return (
@@ -3307,17 +3417,6 @@ export function Structural3DViewer({
     useEffect(() => {
         if (externalCampaignId) setSelectedCampaignId(externalCampaignId);
     }, [externalCampaignId]);
-    const [isActivated, setIsActivated] = useState<boolean>(() => Boolean(isWorkspace || selectedCompId));
-    const [isActivating, setIsActivating] = useState(false);
-
-    const handleActivate = () => {
-        if (isLoading) return;
-        setIsActivating(true);
-        setTimeout(() => {
-            setIsActivated(true);
-            setIsActivating(false);
-        }, 1200);
-    };
 
     // Helper to sanitize elevation typos
     const sanitizeElevation = (elvVal: any): number => {
@@ -3420,19 +3519,54 @@ export function Structural3DViewer({
 
             const isInspected = Boolean(dbItem.is_inspected);
             const hasAnomaly = Boolean(dbItem.has_anomaly);
-            const inspectionStatus = hasAnomaly
-                ? "Incomplete"
-                : isInspected
-                    ? "Completed"
-                    : "Pending";
+
+            let inspectionStatus = "Pending";
+            if (sowStatusMap) {
+                const matched = sowStatusMap.get(Number(baseCompIdStr)) || 
+                                sowStatusMap.get(Number(dbItem.component_id)) || 
+                                sowStatusMap.get(qIdUpper) ||
+                                (q_id ? sowStatusMap.get(q_id.toUpperCase().trim()) : null);
+                if (matched) {
+                    inspectionStatus = matched.status;
+                }
+            } else {
+                inspectionStatus = hasAnomaly
+                    ? "Incomplete"
+                    : isInspected
+                        ? "Completed"
+                        : "Pending";
+            }
 
             let inspectionColor = "#334155"; // Pending
             if (inspectionStatus === "Completed") inspectionColor = "#22c55e"; // Green
-            if (inspectionStatus === "Incomplete") inspectionColor = "#d97706"; // Dark Yellow
+            if (inspectionStatus === "Incomplete") inspectionColor = "#d97706"; // Dark Yellow / Amber
 
             const weldColor = isWeld ? "#cbd5e1" : null;
             const clampColor = (isClamp || isGuideBucket) ? "#facc15" : null;
-            const finalColor = isInspectionMode ? dbItem.inspection_color : (clampColor || weldColor || dbItem.color_hex || "#64748b");
+
+            let finalColor = clampColor || weldColor || dbItem.color_hex || "#64748b";
+
+            // 1. Task Mode Styling
+            if (isInspectionTaskMode && sowTaskMap) {
+                const taskInfo = sowTaskMap.get(Number(baseCompIdStr)) || 
+                                 sowTaskMap.get(dbItem.component_id) || 
+                                 sowTaskMap.get(q_id.toUpperCase().trim()) || 
+                                 sowTaskMap.get(dbQIdUpper) || 
+                                 null;
+                if (taskInfo) {
+                    if (!selectedInspectionTaskCode || selectedInspectionTaskCode === "ALL") {
+                        finalColor = taskInfo.taskColor;
+                    } else if (taskInfo.taskCode === selectedInspectionTaskCode) {
+                        finalColor = taskInfo.taskColor;
+                    } else {
+                        finalColor = "#334155";
+                    }
+                } else {
+                    finalColor = "#334155";
+                }
+            } else if (isInspectionMode) {
+                finalColor = inspectionColor;
+            }
 
             let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
                 ? [Number(dbItem.start_x), Number(dbItem.start_y), Number(dbItem.start_z)]
@@ -3495,7 +3629,7 @@ export function Structural3DViewer({
             foundationMembers: webapp3dData.foundationMembers || [],
             elvMarkers: webapp3dData.elvMarkers || []
         };
-    }, [webapp3dData, rawComponents, isInspectionMode]);
+    }, [webapp3dData, rawComponents, isInspectionMode, sowStatusMap, isInspectionTaskMode, sowTaskMap, selectedInspectionTaskCode]);
 
     const availableElevations = useMemo(() => {
         const values = elevations.map((e) => sanitizeElevation(e.elv));
@@ -3670,6 +3804,23 @@ export function Structural3DViewer({
         return componentLayouts.filter((layout: any) => {
             // 1. Elevation Filter
             if (selectedElevations.length > 0) {
+                const comp = layout.component || layout.originalComp || layout;
+                const code = (layout.code || comp.code || "").toUpperCase();
+                const qIdUpper = (layout.q_id || comp.q_id || "").toUpperCase();
+
+                const isCaissonSupport = (code === "WP" || code === "CL" || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP")) && (qIdUpper.includes("CS-") || qIdUpper.includes("CAIS"));
+                const isConductorSupport =
+                    /^(?:CD|COND)[-_0-9]+.*(?:SUPP|BUCK|GB|CGB|GUIDE|CLP)/i.test(qIdUpper) ||
+                    (qIdUpper.startsWith("CB-") || qIdUpper.startsWith("GB-") || qIdUpper.startsWith("CGB-")) ||
+                    (code === "CG" && qIdUpper.includes("BUCK"));
+                const isGuideBucket = code === "CB" || qIdUpper.includes("BUCKET") || qIdUpper.includes("GUIDE BUCKET") || isConductorSupport;
+                const isRiserSupportClamp = (code === "CL" || code === "RC" || code.includes("CLAM") || qIdUpper.includes("SUPP") || qIdUpper.includes("CLP") || qIdUpper.includes("CLAMP")) && !isCaissonSupport && !isGuideBucket;
+
+                // When filtering by elevation, exclude riser support clamps
+                if (isRiserSupportClamp) {
+                    return false;
+                }
+
                 const startY = layout.start ? layout.start[1] : (layout.position ? layout.position[1] : 0);
                 const endY = layout.end ? layout.end[1] : (layout.position ? layout.position[1] : 0);
 
@@ -3683,9 +3834,7 @@ export function Structural3DViewer({
                     if (isPointObject && Math.abs(startY - elv) <= 1.2) {
                         return true;
                     }
-                    const code = (layout.code || "").toUpperCase();
-                    const qId = (layout.q_id || "").toUpperCase();
-                    if (code.includes("NODE") || qId.includes("NODE") || code === "ND") {
+                    if (code.includes("NODE") || qIdUpper.includes("NODE") || code === "ND") {
                         if (Math.abs(startY - elv) <= 1.2 || Math.abs(endY - elv) <= 1.2) return true;
                     }
 
@@ -3738,12 +3887,6 @@ export function Structural3DViewer({
         }
     }, [fallbackComponents, onFallbackComponentsChange]);
 
-    React.useEffect(() => {
-        if (selectedCompId && !isActivated) {
-            setIsActivated(true);
-        }
-    }, [selectedCompId, isActivated]);
-
     const [focusTargetPos, setFocusTargetPos] = useState<THREE.Vector3 | null>(null);
     const [focusedCompName, setFocusedCompName] = useState<string | null>(null);
 
@@ -3774,7 +3917,34 @@ export function Structural3DViewer({
         return null;
     }, [selectedLayout]);
 
-    if (!isActivated) {
+    const [isActivated, setIsActivated] = useState<boolean>(false);
+    const [isActivating, setIsActivating] = useState<boolean>(false);
+
+    // Reset activation when platform changes
+    const prevPlatformIdRef = useRef(activePlatformId);
+    useEffect(() => {
+        if (prevPlatformIdRef.current !== activePlatformId) {
+            prevPlatformIdRef.current = activePlatformId;
+            setIsActivated(false);
+            setIsActivating(false);
+        }
+    }, [activePlatformId]);
+
+    useEffect(() => {
+        if (selectedCompId && !isActivated) {
+            setIsActivated(true);
+        }
+    }, [selectedCompId, isActivated]);
+
+    const handleActivate = () => {
+        setIsActivating(true);
+        setTimeout(() => {
+            setIsActivated(true);
+            setIsActivating(false);
+        }, 300);
+    };
+
+    if (!isActivated && !isInspectionWorkspace) {
         return (
             <div className="w-full h-full min-h-[450px] relative rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xl flex flex-col items-center justify-center p-8 transition-all duration-500">
                 <style>{`
@@ -3789,17 +3959,17 @@ export function Structural3DViewer({
                 <div className="absolute inset-0 bg-gradient-to-tr from-slate-50 via-white/90 to-blue-50/40 dark:from-slate-950 dark:via-slate-900/90 dark:to-blue-950/40 pointer-events-none" />
 
                 {isActivating ? (
-                    /* SCANNING / TELEMETRY LOADING STATE */
+                    /* SCANNING / TELEMETRY TRANSITION STATE */
                     <div className="relative z-10 flex flex-col items-center justify-center space-y-6 max-w-md text-center animate-in fade-in zoom-in duration-500">
                         {/* Scanning Hologram Ring */}
                         <div className="relative w-24 h-24 flex items-center justify-center">
                             <div className="absolute inset-0 rounded-full border-4 border-blue-500/10 border-t-blue-500 animate-spin" />
                             <div className="absolute inset-2 rounded-full border-4 border-indigo-500/10 border-b-indigo-500 animate-spin [animation-direction:reverse] [animation-duration:1.5s]" />
-                            <Box className="w-10 h-10 text-blue-400 animate-pulse" />
+                            <Box className="w-10 h-10 text-blue-500 dark:text-blue-400 animate-pulse" />
                         </div>
 
                         <div className="space-y-2">
-                            <h3 className="text-sm font-black uppercase tracking-[0.25em] text-blue-400 animate-pulse flex items-center justify-center gap-2">
+                            <h3 className="text-sm font-black uppercase tracking-[0.25em] text-blue-600 dark:text-blue-400 animate-pulse flex items-center justify-center gap-2">
                                 <Radio className="h-4 w-4 animate-ping text-blue-500" />
                                 Connecting Telemetry
                             </h3>
@@ -3813,29 +3983,19 @@ export function Structural3DViewer({
                             </div>
                         </div>
 
-                        {/* Fake Progress Bar */}
-                        <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden relative">
-                            <div
-                                className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-500 animate-[loading-bar_1.2s_ease-in-out_infinite]"
-                                style={{ width: "60%" }}
-                            />
+                        {/* Progress Bar */}
+                        <div className="w-48 h-1 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden relative">
+                            <div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-500 animate-[loading-bar_1.2s_ease-in-out_infinite]" style={{ width: '60%' }} />
                         </div>
                     </div>
                 ) : (
                     /* DEFER ACTIVATION / INITIAL PLACEHOLDER */
                     <div className="relative z-10 flex flex-col items-center justify-center space-y-8 max-w-xl text-center p-4">
                         {/* Top Decorative Tag */}
-                        {isLoading ? (
-                            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[9px] font-black text-amber-500 dark:text-amber-400 uppercase tracking-[0.3em] shadow-sm shadow-amber-500/5">
-                                <Loader2 className="w-3.5 h-3.5 stroke-[2.5] text-amber-500 dark:text-amber-400 animate-spin" />
-                                Syncing Platform Data...
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] shadow-sm shadow-blue-500/5 animate-pulse">
-                                <Compass className="w-3.5 h-3.5 stroke-[2] text-blue-400 animate-[spin_8s_linear_infinite]" />
-                                3D Modeling Utility Ready
-                            </div>
-                        )}
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-[0.3em] shadow-sm shadow-blue-500/5 animate-pulse">
+                            <Compass className="w-3.5 h-3.5 stroke-[2] text-blue-500 dark:text-blue-400 animate-[spin_8s_linear_infinite]" />
+                            3D Modeling Utility Ready
+                        </div>
 
                         {/* Title & Info */}
                         <div className="space-y-3">
@@ -3843,8 +4003,7 @@ export function Structural3DViewer({
                                 {platformDetails?.title || "INTERACTIVE PLATFORM"}
                             </h2>
                             <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider max-w-md mx-auto">
-                                Run diagnostics, view elevations, and inspect structural jacket anodes/welds in
-                                interactive 3D.
+                                Run diagnostics, view elevations, and inspect structural jacket anodes/welds in interactive 3D.
                             </p>
                         </div>
 
@@ -3853,10 +4012,10 @@ export function Structural3DViewer({
                             <div className="flex flex-col items-center justify-center text-center">
                                 {isLoading && components.length === 0 ? (
                                     <div className="h-6 flex items-center justify-center mb-1">
-                                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                                        <Loader2 className="w-4 h-4 text-blue-500 dark:text-blue-400 animate-spin" />
                                     </div>
                                 ) : (
-                                    <span className={cn("text-xl font-black text-blue-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                    <span className={cn("text-xl font-black text-blue-600 dark:text-blue-400 leading-none mb-1", isLoading && "animate-pulse")}>
                                         {components.length}
                                     </span>
                                 )}
@@ -3867,10 +4026,10 @@ export function Structural3DViewer({
                             <div className="flex flex-col items-center justify-center text-center border-x border-slate-200 dark:border-slate-800/80">
                                 {isLoading && availableElevations.length === 0 ? (
                                     <div className="h-6 flex items-center justify-center mb-1">
-                                        <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                                        <Loader2 className="w-4 h-4 text-indigo-500 dark:text-indigo-400 animate-spin" />
                                     </div>
                                 ) : (
-                                    <span className={cn("text-xl font-black text-indigo-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                    <span className={cn("text-xl font-black text-indigo-600 dark:text-indigo-400 leading-none mb-1", isLoading && "animate-pulse")}>
                                         {availableElevations.length}
                                     </span>
                                 )}
@@ -3881,10 +4040,10 @@ export function Structural3DViewer({
                             <div className="flex flex-col items-center justify-center text-center">
                                 {isLoading && availableFaces.length === 0 ? (
                                     <div className="h-6 flex items-center justify-center mb-1">
-                                        <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
+                                        <Loader2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400 animate-spin" />
                                     </div>
                                 ) : (
-                                    <span className={cn("text-xl font-black text-emerald-400 leading-none mb-1", isLoading && "animate-pulse")}>
+                                    <span className={cn("text-xl font-black text-emerald-600 dark:text-emerald-400 leading-none mb-1", isLoading && "animate-pulse")}>
                                         {availableFaces.length}
                                     </span>
                                 )}
@@ -3938,8 +4097,6 @@ export function Structural3DViewer({
         );
     }
 
-
-
     return (
         <div className="w-full h-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 relative rounded-3xl overflow-hidden shadow-2xl">
             {isLoading && (
@@ -3967,8 +4124,9 @@ export function Structural3DViewer({
                     makeDefault
                     position={initialSession?.cameraPosition && Array.isArray(initialSession.cameraPosition) ? initialSession.cameraPosition : [45, 45, 45]}
                     fov={45}
+                    zoom={initialSession?.cameraZoom && isFinite(initialSession.cameraZoom) ? initialSession.cameraZoom : 1}
                 />
-                <CameraRig selectedPos={selectedPos} selectedCompId={selectedCompId} isActivated={isActivated} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} hasSavedCameraState={hasSavedCameraState} />
+                <CameraRig selectedPos={selectedPos} selectedCompId={selectedCompId} isDirectClickRef={isDirectClickRef} focusTargetPos={focusTargetPos} hasSavedCameraState={hasSavedCameraState} />
                 <OrbitControls makeDefault minDistance={5} maxDistance={100} maxPolarAngle={Math.PI / 2} />
                 <CameraPersistenceTracker platformId={activePlatformId} initialState={initialSession} />
 
@@ -4056,6 +4214,9 @@ export function Structural3DViewer({
                             inspectionModeFilter={inspectionModeFilter}
                             priorityScope={priorityScope}
                             compareWithCurrent={compareWithCurrent}
+                            isInspectionTaskMode={isInspectionTaskMode}
+                            selectedInspectionTaskCode={selectedInspectionTaskCode}
+                            sowTaskMap={sowTaskMap}
                         />
                     </SelectToZoom>
                 </Bounds>
@@ -4141,6 +4302,10 @@ export function Structural3DViewer({
                     color="#0f172a"
                     position={[0, seabedY + 0.05, 0]}
                 />
+
+                <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+                    <CustomGizmoViewcube />
+                </GizmoHelper>
             </Canvas>
             </div>
 

@@ -13,6 +13,12 @@ export interface FenderOptions {
   isHovered?: boolean;
   localLeftTop?: THREE.Vector3;
   localRightTop?: THREE.Vector3;
+  clampRadius?: number;
+  clampHeight?: number;
+  clampFlangeWidth?: number;
+  clampFlangeThickness?: number;
+  clampColor?: string | number;
+  clampRotationAngle?: number;
 }
 
 export class Fender extends THREE.Group {
@@ -29,6 +35,12 @@ export class Fender extends THREE.Group {
     const secondaryRadius = options.secondaryRadius ?? 0.025;
     const braceRadius = options.braceRadius ?? 0.04;
 
+    const clampRadius = options.clampRadius ?? 0.34;
+    const clampHeight = options.clampHeight ?? 0.7;
+    const clampFlangeWidth = options.clampFlangeWidth ?? 0.22;
+    const clampFlangeThickness = options.clampFlangeThickness ?? 0.05;
+    const clampRotationAngle = options.clampRotationAngle ?? 0;
+
     // Default color is the same color as the members, unless hovered or selected
     let baseColorHex = options.color ?? '#cbd5e1';
     if (options.isSelected) {
@@ -43,6 +55,28 @@ export class Fender extends THREE.Group {
       roughness: 0.3,
       emissive: options.isSelected ? new THREE.Color('#ea580c') : new THREE.Color('#000000'),
       emissiveIntensity: options.isSelected ? 0.7 : options.isHovered ? 0.1 : 0,
+    });
+
+    let clampColorHex = options.clampColor ?? '#facc15'; // Safety Yellow by default (matching RiserClamp)
+    if (options.isSelected) {
+      clampColorHex = '#f97316';
+    } else if (options.isHovered) {
+      clampColorHex = '#fef08a';
+    }
+
+    const clampBodyMaterial = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(clampColorHex),
+      metalness: 0.5,
+      roughness: 0.3,
+      emissive: options.isSelected ? new THREE.Color('#ea580c') : options.isHovered ? new THREE.Color('#eab308') : new THREE.Color('#000000'),
+      emissiveIntensity: options.isSelected ? 0.7 : options.isHovered ? 0.3 : 0,
+      side: THREE.DoubleSide,
+    });
+
+    const clampDarkMaterial = new THREE.MeshStandardMaterial({
+      color: options.isSelected ? new THREE.Color('#ea580c') : new THREE.Color('#1e293b'),
+      metalness: 0.8,
+      roughness: 0.2,
     });
 
     const addTube = (p1: THREE.Vector3, p2: THREE.Vector3, radius: number) => {
@@ -146,16 +180,127 @@ export class Fender extends THREE.Group {
     // Right Side Upper Diagonal (rear upper platform -> front top)
     addTube(pUppPlat.rr, pTop.fr, braceRadius);
 
-    // 8. Visual Connection Brackets from Nodes to Upper Platform
+    // Helper function to create a single clamp assembly at the leg node
+    const createClampAssembly = (centerPos: THREE.Vector3, targetPos: THREE.Vector3) => {
+      const clampGroup = new THREE.Group();
+      clampGroup.position.copy(centerPos);
+
+      // Rotate clamp around Y axis so flanges orient perpendicularly to connection rod (along the red line)
+      const toTarget = new THREE.Vector3().subVectors(targetPos, centerPos);
+      toTarget.y = 0;
+      if (toTarget.lengthSq() > 0.0001) {
+        const yaw = Math.atan2(toTarget.x, toTarget.z);
+        clampGroup.rotation.y = yaw + clampRotationAngle;
+      }
+
+      // Helper to add clamp sub-mesh with non-blocking raycast so node weld clicks pass through
+      const addClampMesh = (mesh: THREE.Mesh) => {
+        mesh.raycast = () => {}; // Bypass raycasting so node welds / collars / spheres / tags are clicked through
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        clampGroup.add(mesh);
+      };
+
+      // 1. Central Sleeve (Full cylinder)
+      const sleeveGeom = new THREE.CylinderGeometry(clampRadius, clampRadius, clampHeight, 32);
+      const sleeveMesh = new THREE.Mesh(sleeveGeom, clampBodyMaterial);
+      addClampMesh(sleeveMesh);
+
+      // 2. Stiffener Ribs (Top, Bottom, and Middle rings)
+      const ribThickness = 0.035;
+      const ribProtrusion = 0.045;
+      const ribGeom = new THREE.CylinderGeometry(
+        clampRadius + ribProtrusion,
+        clampRadius + ribProtrusion,
+        ribThickness,
+        32
+      );
+
+      const topRib = new THREE.Mesh(ribGeom, clampBodyMaterial);
+      topRib.position.set(0, clampHeight / 2 - 0.08, 0);
+      addClampMesh(topRib);
+
+      const botRib = new THREE.Mesh(ribGeom, clampBodyMaterial);
+      botRib.position.set(0, -clampHeight / 2 + 0.08, 0);
+      addClampMesh(botRib);
+
+      const midRib = new THREE.Mesh(ribGeom, clampBodyMaterial);
+      midRib.position.set(0, 0, 0);
+      addClampMesh(midRib);
+
+      // 3. Side Bolting Flanges (Left and Right along X)
+      const flangeGeom = new THREE.BoxGeometry(
+        clampFlangeWidth,
+        clampHeight * 0.9,
+        clampFlangeThickness * 2 + 0.02
+      );
+
+      const rightFlange = new THREE.Mesh(flangeGeom, clampBodyMaterial);
+      rightFlange.position.set(clampRadius + clampFlangeWidth / 2 - 0.02, 0, 0);
+      addClampMesh(rightFlange);
+
+      const leftFlange = new THREE.Mesh(flangeGeom, clampBodyMaterial);
+      leftFlange.position.set(-(clampRadius + clampFlangeWidth / 2 - 0.02), 0, 0);
+      addClampMesh(leftFlange);
+
+      // 4. Bolts (passing through flanges along Z)
+      const boltRadius = 0.016;
+      const boltLength = clampFlangeThickness * 2 + 0.1;
+      const boltGeom = new THREE.CylinderGeometry(boltRadius, boltRadius, boltLength, 12);
+      boltGeom.rotateX(Math.PI / 2);
+
+      const boltPositionsY = [clampHeight * 0.3, 0, -clampHeight * 0.3];
+      const boltOffsetX = clampRadius + clampFlangeWidth * 0.5;
+
+      boltPositionsY.forEach((y) => {
+        const rightBolt = new THREE.Mesh(boltGeom, clampDarkMaterial);
+        rightBolt.position.set(boltOffsetX, y, 0);
+        addClampMesh(rightBolt);
+
+        const leftBolt = new THREE.Mesh(boltGeom, clampDarkMaterial);
+        leftBolt.position.set(-boltOffsetX, y, 0);
+        addClampMesh(leftBolt);
+      });
+
+      // Sharp outline edges for the clamp sleeve
+      const edgesGeom = new THREE.EdgesGeometry(sleeveGeom, 25);
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.35,
+      });
+      const line = new THREE.LineSegments(edgesGeom, lineMat);
+      line.raycast = () => {};
+      clampGroup.add(line);
+
+      return clampGroup;
+    };
+
+    // 8. Visual Connection Brackets & Leg Clamps from Nodes to Upper Platform
     if (options.localLeftTop) {
       const isLegInFront = options.localLeftTop.z >= 0;
       const target = isLegInFront ? pUppPlat.fl : pUppPlat.rl;
-      addTube(options.localLeftTop, target, braceRadius);
+      
+      const leftClamp = createClampAssembly(options.localLeftTop, target);
+      this.add(leftClamp);
+
+      // Connecting tube from the outer clamp collar towards the fender upper platform
+      const dirToTarget = new THREE.Vector3().subVectors(target, options.localLeftTop).normalize();
+      const rodStart = options.localLeftTop.clone().add(dirToTarget.clone().multiplyScalar(clampRadius));
+      addTube(rodStart, target, braceRadius);
     }
+
     if (options.localRightTop) {
       const isLegInFront = options.localRightTop.z >= 0;
       const target = isLegInFront ? pUppPlat.fr : pUppPlat.rr;
-      addTube(options.localRightTop, target, braceRadius);
+
+      const rightClamp = createClampAssembly(options.localRightTop, target);
+      this.add(rightClamp);
+
+      // Connecting tube from the outer clamp collar towards the fender upper platform
+      const dirToTarget = new THREE.Vector3().subVectors(target, options.localRightTop).normalize();
+      const rodStart = options.localRightTop.clone().add(dirToTarget.clone().multiplyScalar(clampRadius));
+      addTube(rodStart, target, braceRadius);
     }
   }
 
@@ -196,7 +341,7 @@ export class Fender extends THREE.Group {
     const lineMat = new THREE.LineBasicMaterial({
       color: 0x000000,
       transparent: true,
-      opacity: 0.5
+      opacity: 0.5,
     });
     const line = new THREE.LineSegments(edgesGeom, lineMat);
     mesh.add(line);
@@ -204,3 +349,4 @@ export class Fender extends THREE.Group {
     return mesh;
   }
 }
+

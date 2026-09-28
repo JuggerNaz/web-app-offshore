@@ -64,7 +64,7 @@ export class RiserGuard extends THREE.Group {
     addTube(new THREE.Vector3(-width / 2, yMid, 0), new THREE.Vector3(width / 2, yMid, 0), mainRadius);
     addTube(new THREE.Vector3(-width / 2, yBot, 0), new THREE.Vector3(width / 2, yBot, 0), mainRadius);
 
-    // 3. Support Brackets
+    // 3. Support Brackets (Top connection to platform legs)
     // Top-Left connection
     if (options.localLeftTop) {
       addTube(options.localLeftTop, new THREE.Vector3(-width / 2, yTop, 0), braceRadius);
@@ -72,14 +72,6 @@ export class RiserGuard extends THREE.Group {
     // Top-Right connection
     if (options.localRightTop) {
       addTube(options.localRightTop, new THREE.Vector3(width / 2, yTop, 0), braceRadius);
-    }
-    // Middle-Left connection
-    if (options.localLeftMid) {
-      addTube(options.localLeftMid, new THREE.Vector3(-width / 2, yMid, 0), braceRadius);
-    }
-    // Middle-Right connection
-    if (options.localRightMid) {
-      addTube(options.localRightMid, new THREE.Vector3(width / 2, yMid, 0), braceRadius);
     }
   }
 

@@ -578,7 +578,13 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
-        kp: component.metadata?.kp ?? (component.metadata?.end_kp !== undefined ? `${component.metadata?.start_kp ?? 0} - ${component.metadata?.end_kp}` : (component.metadata?.kp_end !== undefined ? `${component.metadata?.kp_start ?? 0} - ${component.metadata?.kp_end}` : "")) ?? "",
+        kp:
+          component.metadata?.kp ??
+          (component.metadata?.end_kp !== undefined
+            ? `${component.metadata?.start_kp ?? 0} - ${component.metadata?.end_kp}`
+            : component.metadata?.kp_end !== undefined
+            ? `${component.metadata?.kp_start ?? 0} - ${component.metadata?.kp_end}`
+            : ""),
         kp_unit: component.metadata?.kp_unit ?? component.metadata?.kp_u ?? "km",
         start_kp: component.metadata?.start_kp ?? component.metadata?.kp_start ?? "0",
         start_kp_unit: component.metadata?.start_kp_unit ?? component.metadata?.kp_u ?? "km",
@@ -929,6 +935,18 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         mutate(listKey);
       } else if (structureId) {
         mutate(`/api/structure-components/${structureId}`);
+      }
+
+      const targetStructureId = component?.structure_id || structureId;
+      const targetPageType = pageType || (component?.code?.toLowerCase() === "pp" ? "pipeline" : "platform");
+
+      if (targetStructureId && targetPageType === "platform") {
+        try {
+          await fetch(`/api/platform/webapp-3d/${targetStructureId}?resync=true`, { method: "POST" });
+          mutate(`/api/platform/webapp-3d/${targetStructureId}`);
+        } catch (err) {
+          console.error("Failed to resync 3D cache:", err);
+        }
       }
 
       toast("Component updated successfully", { position: "bottom-right" });

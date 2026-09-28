@@ -39,6 +39,7 @@ interface PlatformSpecsDialogProps {
     onOpenChange: (open: boolean) => void;
     platformDetails: any;
     isLoading?: boolean;
+    onSuccess?: (updatedPlatform: any) => void;
 }
 
 export function PlatformSpecsDialog({
@@ -46,6 +47,7 @@ export function PlatformSpecsDialog({
     onOpenChange,
     platformDetails,
     isLoading = false,
+    onSuccess,
 }: PlatformSpecsDialogProps) {
     const [, setPageId] = useAtom(urlId);
     const [, setPageType] = useAtom(urlType);
@@ -193,7 +195,7 @@ export function PlatformSpecsDialog({
                             <div className="p-4 sm:p-6">
                                 <TabsContent value="spec1" className="focus-visible:outline-none m-0">
                                     <Suspense fallback={<LoadingSpinner />}>
-                                        <SpecHead data={activePlatform} />
+                                        <SpecHead data={activePlatform} onSaved={onSuccess} />
                                     </Suspense>
                                 </TabsContent>
                                 <TabsContent value="spec2" className="focus-visible:outline-none m-0">
