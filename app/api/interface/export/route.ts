@@ -186,7 +186,13 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     ]);
 
     const compMap = new Map<number, any>();
-    (compData || []).forEach((c: any) => compMap.set(Number(c.id), c));
+    const compMapByCompId = new Map<number, any>();
+    const compMapByQid = new Map<string, any>();
+    (compData || []).forEach((c: any) => {
+      if (c.id != null) compMap.set(Number(c.id), c);
+      if (c.comp_id != null) compMapByCompId.set(Number(c.comp_id), c);
+      if (c.q_id) compMapByQid.set(String(c.q_id).trim().toUpperCase(), c);
+    });
 
     const compTypeMap = new Map<string, string>();
     (compTypesData || []).forEach((ct: any) => {
@@ -264,6 +270,52 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       console.error("[Interface Export] Error querying insp_records:", recordsError);
     }
     const allRecords = recordsData || [];
+
+    // Fetch any missing components referenced in allRecords
+    const missingCompIdSet = new Set<number>();
+    const missingQidSet = new Set<string>();
+
+    allRecords.forEach((r: any) => {
+      const cId = Number(r.component_id || r.inspection_data?.component_id || r.inspection_data?.comp_id);
+      if (!isNaN(cId) && cId > 0 && !compMap.has(cId) && !compMapByCompId.has(cId)) {
+        missingCompIdSet.add(cId);
+      }
+      const qVal = String(r.q_id || r.component_qid || r.inspection_data?.q_id || r.inspection_data?.component_qid || r.inspection_data?.component || "").trim().toUpperCase();
+      if (qVal && !compMapByQid.has(qVal)) {
+        missingQidSet.add(qVal);
+      }
+    });
+
+    if (missingCompIdSet.size > 0) {
+      const missingIds = Array.from(missingCompIdSet);
+      const [{ data: byIdComps }, { data: byCompIdComps }] = await Promise.all([
+        (supabase as any).from("structure_components").select("*").in("id", missingIds),
+        (supabase as any).from("structure_components").select("*").in("comp_id", missingIds),
+      ]);
+      (byIdComps || []).forEach((c: any) => {
+        if (c.id != null) compMap.set(Number(c.id), c);
+        if (c.comp_id != null) compMapByCompId.set(Number(c.comp_id), c);
+        if (c.q_id) compMapByQid.set(String(c.q_id).trim().toUpperCase(), c);
+      });
+      (byCompIdComps || []).forEach((c: any) => {
+        if (c.id != null) compMap.set(Number(c.id), c);
+        if (c.comp_id != null) compMapByCompId.set(Number(c.comp_id), c);
+        if (c.q_id) compMapByQid.set(String(c.q_id).trim().toUpperCase(), c);
+      });
+    }
+
+    if (missingQidSet.size > 0) {
+      const missingQids = Array.from(missingQidSet);
+      const { data: byQidComps } = await (supabase as any)
+        .from("structure_components")
+        .select("*")
+        .in("q_id", missingQids);
+      (byQidComps || []).forEach((c: any) => {
+        if (c.id != null) compMap.set(Number(c.id), c);
+        if (c.comp_id != null) compMapByCompId.set(Number(c.comp_id), c);
+        if (c.q_id) compMapByQid.set(String(c.q_id).trim().toUpperCase(), c);
+      });
+    }
 
     // 5. Fetch Anomalies
     let anomQuery = (supabase as any)
@@ -513,14 +565,18 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
           const strId = Number(linkedRec.structure_id);
           const strObj = structureMap.get(strId);
-          const compId = Number(linkedRec.component_id);
-          const comp = compMap.get(compId) || linkedRec.structure_components;
+          const recCompId = Number(linkedRec.component_id || linkedRec.inspection_data?.component_id || linkedRec.inspection_data?.comp_id);
+          const recQid = String(linkedRec.q_id || linkedRec.component_qid || linkedRec.inspection_data?.q_id || linkedRec.inspection_data?.component_qid || linkedRec.inspection_data?.component || "").trim().toUpperCase();
+          const comp = (!isNaN(recCompId) && recCompId > 0 ? (compMap.get(recCompId) || compMapByCompId.get(recCompId)) : null)
+            || (recQid ? compMapByQid.get(recQid) : null)
+            || linkedRec.structure_components
+            || linkedRec.component;
           const compMeta = comp?.metadata || {};
           const jp = jobpackMap.get(Number(linkedRec.jobpack_id));
 
           // Component Type description
-          const compCodeUpper = String(comp?.code || "").trim().toUpperCase();
-          const compTypeDesc = compTypeMap.get(compCodeUpper) || compMeta.comptype || comp?.type || "MEMBER";
+          const compCodeUpper = String(comp?.code || compMeta.code || compMeta.comp_code || linkedRec.inspection_data?.comp_code || "").trim().toUpperCase();
+          const compTypeDesc = compTypeMap.get(compCodeUpper) || compMeta.comptype || compMeta.comp_type || comp?.type || "MEMBER";
 
           // File name & Extension & Path & Details
           const origFileName = String(
@@ -576,19 +632,19 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             PFIELD: sanitizeText(strObj?.pfield || "Offshore").substring(0, 20),
             PDESC: sanitizeText(strObj?.pdesc || "Platform").substring(0, 50),
             DEF_UNIT: sanitizeText(strObj?.def_unit || "Metric").substring(0, 10),
-            COMP_ID: Number(comp?.id || compId || 1),
-            ID_NO: sanitizeText(comp?.id_no || "").substring(0, 25),
-            Q_ID: sanitizeText(comp?.q_id || "").substring(0, 16),
-            CODE: sanitizeText(comp?.code || "").substring(0, 2),
-            COMPDESC: sanitizeText(compMeta.description || compMeta.desc || comp?.description || comp?.name || "").substring(0, 40),
-            S_NODE: sanitizeText(compMeta.s_node || "").substring(0, 6),
-            F_NODE: sanitizeText(compMeta.f_node || "").substring(0, 6),
-            S_LEG: sanitizeText(compMeta.s_leg || "").substring(0, 2),
-            F_LEG: sanitizeText(compMeta.f_leg || "").substring(0, 2),
-            ELV_1: compMeta.elv_1 != null && compMeta.elv_1 !== "" ? Number(compMeta.elv_1) : (compMeta.start_elevation != null && compMeta.start_elevation !== "" ? Number(compMeta.start_elevation) : ""),
-            ELV_2: compMeta.elv_2 != null && compMeta.elv_2 !== "" ? Number(compMeta.elv_2) : (compMeta.end_elevation != null && compMeta.end_elevation !== "" ? Number(compMeta.end_elevation) : ""),
-            DIST: compMeta.dist != null && compMeta.dist !== "" ? Number(compMeta.dist) : (compMeta.distance != null && compMeta.distance !== "" ? Number(compMeta.distance) : ""),
-            CLK_POS: compMeta.clk_pos != null && compMeta.clk_pos !== "" ? Number(compMeta.clk_pos) : (compMeta.clock_position != null && compMeta.clock_position !== "" ? Number(compMeta.clock_position) : ""),
+            COMP_ID: Number(comp?.comp_id || comp?.id || recCompId || 1),
+            ID_NO: sanitizeText(comp?.id_no || compMeta.id_no || linkedRec.inspection_data?.id_no || "").substring(0, 25),
+            Q_ID: sanitizeText(comp?.q_id || compMeta.q_id || linkedRec.q_id || linkedRec.component_qid || linkedRec.inspection_data?.q_id || linkedRec.inspection_data?.component_qid || "").substring(0, 16),
+            CODE: sanitizeText(comp?.code || compMeta.code || compMeta.comp_code || linkedRec.inspection_data?.comp_code || "").substring(0, 2).toUpperCase(),
+            COMPDESC: sanitizeText(compMeta.description || compMeta.desc || comp?.description || comp?.name || linkedRec.inspection_data?.compdesc || linkedRec.inspection_data?.description || "").substring(0, 40),
+            S_NODE: sanitizeText(compMeta.s_node || compMeta.start_node || linkedRec.inspection_data?.s_node || "").substring(0, 6),
+            F_NODE: sanitizeText(compMeta.f_node || compMeta.end_node || linkedRec.inspection_data?.f_node || "").substring(0, 6),
+            S_LEG: sanitizeText(compMeta.s_leg || compMeta.start_leg || linkedRec.inspection_data?.s_leg || "").substring(0, 2),
+            F_LEG: sanitizeText(compMeta.f_leg || compMeta.end_leg || linkedRec.inspection_data?.f_leg || "").substring(0, 2),
+            ELV_1: compMeta.elv_1 != null && compMeta.elv_1 !== "" ? Number(compMeta.elv_1) : (compMeta.start_elevation != null && compMeta.start_elevation !== "" ? Number(compMeta.start_elevation) : (linkedRec.inspection_data?.elv_1 != null && linkedRec.inspection_data?.elv_1 !== "" ? Number(linkedRec.inspection_data?.elv_1) : "")),
+            ELV_2: compMeta.elv_2 != null && compMeta.elv_2 !== "" ? Number(compMeta.elv_2) : (compMeta.end_elevation != null && compMeta.end_elevation !== "" ? Number(compMeta.end_elevation) : (linkedRec.inspection_data?.elv_2 != null && linkedRec.inspection_data?.elv_2 !== "" ? Number(linkedRec.inspection_data?.elv_2) : "")),
+            DIST: compMeta.dist != null && compMeta.dist !== "" ? Number(compMeta.dist) : (compMeta.distance != null && compMeta.distance !== "" ? Number(compMeta.distance) : (linkedRec.inspection_data?.dist != null && linkedRec.inspection_data?.dist !== "" ? Number(linkedRec.inspection_data?.dist) : "")),
+            CLK_POS: compMeta.clk_pos != null && compMeta.clk_pos !== "" ? Number(compMeta.clk_pos) : (compMeta.clock_position != null && compMeta.clock_position !== "" ? Number(compMeta.clock_position) : (linkedRec.inspection_data?.clk_pos != null && linkedRec.inspection_data?.clk_pos !== "" ? Number(linkedRec.inspection_data?.clk_pos) : "")),
             COMPTYPE: sanitizeText(compTypeDesc).substring(0, 30),
             A_FILENAME: sanitizeText(origFileName).substring(0, 60),
             A_FILETYPE: sanitizeText(ext).substring(0, 3),
@@ -640,6 +696,12 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         }
         if (code === "FDS") {
           validCodes.push("FLOOD", "FMD", "FLOODED", "FDS", "FLOODED_MEMBER", "FMI", "FLOODED MEMBER", "RFMD", "ROVFMD", "ROV_FMD");
+        }
+        if (code === "DBS") {
+          validCodes.push("PL_DB", "DEBRIS", "DBS", "DBINS", "DEBINS", "DEBRIS_INSP", "DEBRIS INSPECTION", "RGVI", "RRISI", "RCOND", "RCASN");
+        }
+        if (code === "SCS") {
+          validCodes.push("SCOUR", "SCR", "RSCOR", "SCS", "SCOUR_SURVEY", "SCOUR_INSP", "SCOUR INSPECTION", "SCOUR SURVEY");
         }
 
         const matchingRecords = allRecords.filter((r: any) => {
@@ -926,6 +988,84 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             }
           }
 
+          if (code === "DBS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.distance_debris !== undefined ||
+              idata.length_debris !== undefined ||
+              idata.width_debris !== undefined ||
+              idata.height_debris !== undefined ||
+              idata.side_facing !== undefined ||
+              idata.debris_item !== undefined ||
+              idata.size_of_debris !== undefined ||
+              idata.db_cp_pulled !== undefined ||
+              idata.damage_caused !== undefined ||
+              idata.debris_removed !== undefined ||
+              recType === "PL_DB" ||
+              recType === "DEBRIS" ||
+              recType === "DBS" ||
+              recType === "RGVI" ||
+              recType === "RRISI" ||
+              recType === "RCOND" ||
+              recType === "RCASN" ||
+              recType.includes("DEBRIS") ||
+              recType.includes("PL_DB") ||
+              recType.includes("RGVI") ||
+              recType.includes("RRISI") ||
+              recType.includes("RCOND") ||
+              recType.includes("RCASN") ||
+              itypeCode === "PL_DB" ||
+              itypeCode === "DEBRIS" ||
+              itypeCode === "DBS" ||
+              itypeCode === "RGVI" ||
+              itypeCode === "RRISI" ||
+              itypeCode === "RCOND" ||
+              itypeCode === "RCASN" ||
+              itypeCode.includes("DEBRIS") ||
+              itypeCode.includes("PL_DB") ||
+              itypeCode.includes("RGVI") ||
+              itypeCode.includes("RRISI") ||
+              itypeCode.includes("RCOND") ||
+              itypeCode.includes("RCASN") ||
+              itypeName.includes("DEBRIS")
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "SCS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.scour_depth !== undefined ||
+              idata.scour_location !== undefined ||
+              idata.exposed_pile !== undefined ||
+              idata.Exposed_pile !== undefined ||
+              idata.burial_percent !== undefined ||
+              idata.Burial_percent !== undefined ||
+              idata.platform_face !== undefined ||
+              idata.mud_mat_height !== undefined ||
+              idata.frame_rdg !== undefined ||
+              idata.bottm_rdg !== undefined ||
+              idata.scour_rdg !== undefined ||
+              idata.scour_size !== undefined ||
+              recType === "SCOUR" ||
+              recType === "SCR" ||
+              recType === "RSCOR" ||
+              recType === "SCS" ||
+              recType.includes("SCOUR") ||
+              recType.includes("RSCOR") ||
+              itypeCode === "SCOUR" ||
+              itypeCode === "SCR" ||
+              itypeCode === "RSCOR" ||
+              itypeCode === "SCS" ||
+              itypeCode.includes("SCOUR") ||
+              itypeCode.includes("RSCOR") ||
+              itypeName.includes("SCOUR")
+            ) {
+              return true;
+            }
+          }
+
           if (recType.includes("PGS") && ["ANS", "CPS", "DBS", "FDS", "GVS", "MGS", "SCS"].includes(code)) return true;
           if (recType.includes("SZS") && ["CPS", "UTS"].includes(code)) return true;
           if (recType.includes("BSS") && ["CPS"].includes(code)) return true;
@@ -933,16 +1073,118 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           return false;
         });
 
-        matchingRecords.forEach((r: any) => {
+        let recordsToProcess = matchingRecords;
+
+        if (code === "SCS") {
+          const scsGroups = new Map<string, any[]>();
+          matchingRecords.forEach((r: any) => {
+            const idata = r.inspection_data || {};
+            const recQid = String(r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || "").trim().toUpperCase();
+            const recCompId = r.component_id || idata.component_id || idata.comp_id || "";
+            const groupKey = `${r.structure_id || ""}_${recQid || recCompId || r.insp_id}_${r.jobpack_id || ""}`;
+            if (!scsGroups.has(groupKey)) {
+              scsGroups.set(groupKey, []);
+            }
+            scsGroups.get(groupKey)!.push(r);
+          });
+
+          recordsToProcess = Array.from(scsGroups.values()).map((recs: any[]) => {
+            const primary = recs.find((r) => r.has_anomaly === true) ||
+                            recs.find((r) => String(r.status || "").toUpperCase() === "COMPLETED") ||
+                            recs[0];
+
+            let midPointVal: any = "";
+            let startLegVal: any = "";
+            let endLegVal: any = "";
+            let expPileLeg1Val = "NO";
+            let expPileLeg2Val = "NO";
+            let depth1Val: any = "";
+            let depth2Val: any = "";
+            let frameRdgVal: any = "";
+            let bottmRdgVal: any = "";
+            let scourRdgVal: any = "";
+            let scourSizeVal = "";
+
+            recs.forEach((r) => {
+              const idata = r.inspection_data || {};
+              const loc = String(idata.scour_location || idata.location || "").trim().toUpperCase();
+              const isStart = loc.includes("START") || loc.includes("LEG 1") || loc.includes("LEG1");
+              const isEnd = loc.includes("END") || loc.includes("LEG 2") || loc.includes("LEG2");
+              const isMid = loc.includes("MID") || loc === "MIDPOINT";
+
+              const depth = idata.scour_depth ?? idata.depth;
+              const expPile = idata.exposed_pile ?? idata.Exposed_pile;
+              const isExpPile = expPile === true || expPile === "true" || expPile === "True" || expPile === "TRUE" || expPile === "yes" || expPile === "Yes" || expPile === "YES" || expPile === 1 || expPile === "1";
+
+              if (isMid && depth != null && depth !== "") {
+                midPointVal = depth;
+              } else if (idata.mid_point != null && idata.mid_point !== "") {
+                midPointVal = idata.mid_point;
+              }
+
+              if (isStart) {
+                if (depth != null && depth !== "") depth1Val = depth;
+                if (isExpPile) expPileLeg1Val = "YES";
+                if (idata.leg_name || idata.leg1 || idata.start_leg) {
+                  startLegVal = idata.leg_name || idata.leg1 || idata.start_leg;
+                }
+              }
+              if (idata.depth1 != null && idata.depth1 !== "") depth1Val = idata.depth1;
+              if (idata.exp_pile_leg1 != null && idata.exp_pile_leg1 !== "") expPileLeg1Val = idata.exp_pile_leg1;
+
+              if (isEnd) {
+                if (depth != null && depth !== "") depth2Val = depth;
+                if (isExpPile) expPileLeg2Val = "YES";
+                if (idata.leg_name || idata.leg2 || idata.end_leg) {
+                  endLegVal = idata.leg_name || idata.leg2 || idata.end_leg;
+                }
+              }
+              if (idata.depth2 != null && idata.depth2 !== "") depth2Val = idata.depth2;
+              if (idata.exp_pile_leg2 != null && idata.exp_pile_leg2 !== "") expPileLeg2Val = idata.exp_pile_leg2;
+
+              if (idata.frame_rdg != null && idata.frame_rdg !== "") frameRdgVal = idata.frame_rdg;
+              if (idata.mud_mat_height != null && idata.mud_mat_height !== "") frameRdgVal = idata.mud_mat_height;
+              if (idata.bottm_rdg != null && idata.bottm_rdg !== "") bottmRdgVal = idata.bottm_rdg;
+              if (idata.bottom_reading != null && idata.bottom_reading !== "") bottmRdgVal = idata.bottom_reading;
+              if (idata.scour_rdg != null && idata.scour_rdg !== "") scourRdgVal = idata.scour_rdg;
+              if (idata.scour_reading != null && idata.scour_reading !== "") scourRdgVal = idata.scour_reading;
+              if (idata.scour_size) scourSizeVal = idata.scour_size;
+            });
+
+            return {
+              ...primary,
+              _scsMergedData: {
+                midPointVal,
+                startLegVal,
+                endLegVal,
+                expPileLeg1Val,
+                expPileLeg2Val,
+                depth1Val,
+                depth2Val,
+                frameRdgVal,
+                bottmRdgVal,
+                scourRdgVal,
+                scourSizeVal,
+              }
+            };
+          });
+        }
+
+        recordsToProcess.forEach((r: any) => {
           const strObj = structureMap.get(Number(r.structure_id));
-          const comp = compMap.get(Number(r.component_id));
+          const idata = r.inspection_data || {};
+          const recCompId = Number(r.component_id || idata.component_id || idata.comp_id);
+          const recQid = String(r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || "").trim().toUpperCase();
+          const comp = (!isNaN(recCompId) && recCompId > 0 ? (compMap.get(recCompId) || compMapByCompId.get(recCompId)) : null)
+            || (recQid ? compMapByQid.get(recQid) : null)
+            || r.structure_components
+            || r.component;
           const jp = jobpackMap.get(Number(r.jobpack_id));
           const meta = comp?.metadata || {};
-          const idata = r.inspection_data || {};
           const dj = r.dive_job_id ? diveJobMap.get(Number(r.dive_job_id)) : null;
           const linkedAnom = anomMapByInspId.get(Number(r.insp_id)) || (allAnomalies || []).find((a: any) => a.inspection_id === r.insp_id);
-          const recCompCodeUpper = String(comp?.code || "").trim().toUpperCase();
-          const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || comp?.type || (code === "UCS" || code === "CCS" ? "CALIBRATION" : "MEMBER");
+          const recCompCodeUpper = String(comp?.code || meta.code || meta.comp_code || idata.comp_code || idata.code || "").trim().toUpperCase();
+          const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || meta.comp_type || comp?.type || idata.comptype || (code === "UCS" || code === "CCS" ? "CALIBRATION" : "MEMBER");
           const resolvedDiveNo = dj?.dive_no || dj?.job_no || dj?.name || idata.dive_no || r.dive_no || (r.dive_job_id ? String(r.dive_job_id) : "");
           const isCalib = code === "UCS" || code === "CCS";
 
@@ -952,19 +1194,19 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             PFIELD: sanitizeText(strObj?.pfield || "").substring(0, 20),
             PDESC: sanitizeText(strObj?.pdesc || "").substring(0, 50),
             DEF_UNIT: sanitizeText(strObj?.def_unit || "Metric").substring(0, 10),
-            COMP_ID: isCalib ? "" : (comp?.id != null ? comp.id : (r.component_id || "")),
-            ID_NO: isCalib ? "" : sanitizeText(comp?.id_no || "").substring(0, 25),
-            Q_ID: isCalib ? "" : sanitizeText(comp?.q_id || idata.q_id || "").substring(0, 16),
-            CODE: isCalib ? "" : sanitizeText(comp?.code || "").substring(0, 2).toUpperCase(),
-            COMPDESC: isCalib ? "" : sanitizeText(meta.description || comp?.description || "").substring(0, 40),
-            S_NODE: isCalib ? "" : sanitizeText(meta.s_node || "").substring(0, 6),
-            F_NODE: isCalib ? "" : sanitizeText(meta.f_node || "").substring(0, 6),
-            S_LEG: isCalib ? "" : sanitizeText(meta.s_leg || "").substring(0, 2),
-            F_LEG: isCalib ? "" : sanitizeText(meta.f_leg || "").substring(0, 2),
-            ELV_1: isCalib ? "" : (meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (meta.start_elevation != null && meta.start_elevation !== "" ? Number(meta.start_elevation) : "")),
-            ELV_2: isCalib ? "" : (meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (meta.end_elevation != null && meta.end_elevation !== "" ? Number(meta.end_elevation) : "")),
-            DIST: isCalib ? "" : (meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (meta.distance != null && meta.distance !== "" ? Number(meta.distance) : "")),
-            CLK_POS: isCalib ? "" : (meta.clk_pos != null && meta.clk_pos !== "" ? (String(meta.clk_pos).toUpperCase() === "N/A" ? 0 : Number(meta.clk_pos)) : (meta.clock_position != null && meta.clock_position !== "" ? (String(meta.clock_position).toUpperCase() === "N/A" ? 0 : Number(meta.clock_position)) : 0)),
+            COMP_ID: isCalib ? "" : (comp?.comp_id != null ? comp.comp_id : (comp?.id != null ? comp.id : (r.component_id || idata.comp_id || idata.component_id || ""))),
+            ID_NO: isCalib ? "" : sanitizeText(comp?.id_no || meta.id_no || idata.id_no || "").substring(0, 25),
+            Q_ID: isCalib ? "" : sanitizeText(comp?.q_id || meta.q_id || r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || "").substring(0, 16),
+            CODE: isCalib ? "" : sanitizeText(comp?.code || meta.code || meta.comp_code || idata.comp_code || idata.code || "").substring(0, 2).toUpperCase(),
+            COMPDESC: isCalib ? "" : sanitizeText(meta.description || meta.desc || meta.compdesc || comp?.description || comp?.name || idata.compdesc || idata.component_description || idata.description || comp?.q_id || idata.q_id || "").substring(0, 40),
+            S_NODE: isCalib ? "" : sanitizeText(meta.s_node || meta.start_node || idata.s_node || idata.start_node || "").substring(0, 6),
+            F_NODE: isCalib ? "" : sanitizeText(meta.f_node || meta.end_node || idata.f_node || idata.end_node || "").substring(0, 6),
+            S_LEG: isCalib ? "" : sanitizeText(meta.s_leg || meta.start_leg || idata.s_leg || idata.start_leg || "").substring(0, 2),
+            F_LEG: isCalib ? "" : sanitizeText(meta.f_leg || meta.end_leg || idata.f_leg || idata.end_leg || "").substring(0, 2),
+            ELV_1: isCalib ? "" : (meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (meta.start_elevation != null && meta.start_elevation !== "" ? Number(meta.start_elevation) : (idata.elv_1 != null && idata.elv_1 !== "" ? Number(idata.elv_1) : (idata.start_elevation != null && idata.start_elevation !== "" ? Number(idata.start_elevation) : "")))),
+            ELV_2: isCalib ? "" : (meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (meta.end_elevation != null && meta.end_elevation !== "" ? Number(meta.end_elevation) : (idata.elv_2 != null && idata.elv_2 !== "" ? Number(idata.elv_2) : (idata.end_elevation != null && idata.end_elevation !== "" ? Number(idata.end_elevation) : "")))),
+            DIST: isCalib ? "" : (meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (meta.distance != null && meta.distance !== "" ? Number(meta.distance) : (idata.dist != null && idata.dist !== "" ? Number(idata.dist) : (idata.distance != null && idata.distance !== "" ? Number(idata.distance) : "")))),
+            CLK_POS: isCalib ? "" : (meta.clk_pos != null && meta.clk_pos !== "" ? (String(meta.clk_pos).toUpperCase() === "N/A" ? 0 : Number(meta.clk_pos)) : (meta.clock_position != null && meta.clock_position !== "" ? (String(meta.clock_position).toUpperCase() === "N/A" ? 0 : Number(meta.clock_position)) : (idata.clk_pos != null && idata.clk_pos !== "" ? (String(idata.clk_pos).toUpperCase() === "N/A" ? 0 : Number(idata.clk_pos)) : (idata.clock_position != null && idata.clock_position !== "" ? (String(idata.clock_position).toUpperCase() === "N/A" ? 0 : Number(idata.clock_position)) : 0)))),
             COMPTYPE: isCalib ? "" : sanitizeText(recCompTypeDesc).substring(0, 30),
             INSP_ID: r.insp_id,
             INSP_DATE: formatDateStr(r.inspection_date),
@@ -1038,6 +1280,112 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.GROWTH_CIRCUM = 85;
             baseRow.EFF_THK = 35;
             baseRow.MG_PROFILE = 50;
+          } else if (code === "SCS") {
+            baseRow.INSPECTOR = "";
+            baseRow.PROC = "";
+            baseRow.EQUIP = "";
+            baseRow.EQ_ID = "";
+            baseRow.SPEC = "";
+            baseRow.SURF_COND = "";
+            baseRow.CLEAN_MET = "";
+            baseRow.SCAF = "";
+
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+            const merged = (r as any)._scsMergedData || {};
+
+            baseRow.FRAME_RDG = toNum(merged.frameRdgVal ?? idata.frame_rdg ?? idata.mud_mat_height);
+            baseRow.BOTTM_RDG = toNum(merged.bottmRdgVal ?? idata.bottm_rdg ?? idata.bottom_reading);
+            baseRow.SCOUR_RDG = toNum(merged.scourRdgVal ?? idata.scour_rdg ?? idata.scour_reading);
+            baseRow.SCOUR_SIZE = sanitizeText(merged.scourSizeVal || idata.scour_size || "").substring(0, 20);
+            baseRow.MID_POINT = toNum(merged.midPointVal ?? idata.mid_point ?? (String(idata.scour_location || "").toUpperCase().includes("MID") ? idata.scour_depth : ""));
+            baseRow.LEG1 = sanitizeText(merged.startLegVal || idata.leg1 || idata.start_leg || meta.s_leg || meta.start_leg || comp?.s_leg || "").substring(0, 20);
+            baseRow.LEG2 = sanitizeText(merged.endLegVal || idata.leg2 || idata.end_leg || meta.f_leg || meta.end_leg || comp?.f_leg || "").substring(0, 20);
+            baseRow.EXP_PILE_LEG1 = sanitizeText(merged.expPileLeg1Val || idata.exp_pile_leg1 || (String(idata.scour_location || "").toUpperCase().includes("START") && (idata.exposed_pile || idata.Exposed_pile) ? "YES" : "NO")).substring(0, 3);
+            baseRow.EXP_PILE_LEG2 = sanitizeText(merged.expPileLeg2Val || idata.exp_pile_leg2 || (String(idata.scour_location || "").toUpperCase().includes("END") && (idata.exposed_pile || idata.Exposed_pile) ? "YES" : "NO")).substring(0, 3);
+            baseRow.DEPTH1 = toNum(merged.depth1Val ?? idata.depth1 ?? (String(idata.scour_location || "").toUpperCase().includes("START") ? idata.scour_depth : ""));
+            baseRow.DEPTH2 = toNum(merged.depth2Val ?? idata.depth2 ?? (String(idata.scour_location || "").toUpperCase().includes("END") ? idata.scour_depth : ""));
+          } else if (code === "DBS") {
+            const recTypeUpper = String(r.inspection_type_code || "").trim().toUpperCase();
+            const itype = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
+            const itypeCodeUpper = String(itype?.code || "").trim().toUpperCase();
+
+            const isRovDebrisAppend =
+              recTypeUpper === "RGVI" ||
+              recTypeUpper === "RRISI" ||
+              recTypeUpper === "RCOND" ||
+              recTypeUpper === "RCASN" ||
+              recTypeUpper.includes("RGVI") ||
+              recTypeUpper.includes("RRISI") ||
+              recTypeUpper.includes("RCOND") ||
+              recTypeUpper.includes("RCASN") ||
+              itypeCodeUpper === "RGVI" ||
+              itypeCodeUpper === "RRISI" ||
+              itypeCodeUpper === "RCOND" ||
+              itypeCodeUpper === "RCASN" ||
+              itypeCodeUpper.includes("RGVI") ||
+              itypeCodeUpper.includes("RRISI") ||
+              itypeCodeUpper.includes("RCOND") ||
+              itypeCodeUpper.includes("RCASN");
+
+            baseRow.INSPECTOR = "";
+            baseRow.PROC = "";
+            baseRow.EQUIP = "";
+            baseRow.EQ_ID = "";
+            baseRow.SPEC = "";
+            baseRow.SURF_COND = "";
+            baseRow.CLEAN_MET = "";
+            baseRow.SCAF = "";
+
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+            const toRoundNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Math.round(Number(val)) : "");
+            const toYesNo = (val: any) => {
+              if (
+                val === true ||
+                val === "true" ||
+                val === "True" ||
+                val === "TRUE" ||
+                val === "yes" ||
+                val === "Yes" ||
+                val === "YES" ||
+                val === 1 ||
+                val === "1"
+              ) {
+                return "YES";
+              }
+              return "NO";
+            };
+
+            baseRow.CP_RDG = idata.cp_rdg != null && idata.cp_rdg !== ""
+              ? Number(idata.cp_rdg)
+              : (idata.cp_reading != null && idata.cp_reading !== ""
+                ? Number(idata.cp_reading)
+                : (r.cp_rdg != null && r.cp_rdg !== "" ? Number(r.cp_rdg) : ""));
+
+            if (isRovDebrisAppend) {
+              baseRow.SIDE = "";
+              baseRow.DISTANC = "";
+              baseRow.CP_CURR = "";
+              baseRow.DAMAGE = "";
+              baseRow.REMOVED = "";
+              baseRow.LENGTH = "";
+              baseRow.HEIGHT = "";
+              baseRow.WIDTH = "";
+              baseRow.ITEM = sanitizeText(idata.debris || idata.debris_item || idata.item || idata.material || "").substring(0, 20);
+              baseRow.SIZE = "";
+              baseRow.ASSESSMENT = "";
+            } else {
+              baseRow.SIDE = sanitizeText(idata.side_facing || idata.side || "").substring(0, 20);
+              baseRow.DISTANC = toNum(idata.distance_debris ?? idata.distanc ?? idata.distance);
+              baseRow.CP_CURR = toYesNo(idata.db_cp_pulled ?? idata.cp_curr);
+              baseRow.DAMAGE = toYesNo(idata.damage_caused ?? idata.damage);
+              baseRow.REMOVED = toYesNo(idata.debris_removed ?? idata.removed);
+              baseRow.LENGTH = toRoundNum(idata.length_debris ?? idata.length);
+              baseRow.HEIGHT = toRoundNum(idata.height_debris ?? idata.height);
+              baseRow.WIDTH = toRoundNum(idata.width_debris ?? idata.width);
+              baseRow.ITEM = sanitizeText(idata.debris_item || idata.debris || idata.item || "").substring(0, 20);
+              baseRow.SIZE = sanitizeText(idata.size_of_debris || idata.size || "").substring(0, 20);
+              baseRow.ASSESSMENT = sanitizeText(idata.assessment || "").substring(0, 60);
+            }
           } else if (code === "FDS") {
             const recTypeUpper = String(r.inspection_type_code || "").trim().toUpperCase();
             const itype = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
@@ -1063,7 +1411,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
             if (isRfmdRec) {
               const memStatus = String(idata.member_status || "").trim().toUpperCase();
-              baseRow.FLOODED = memStatus === "FLOODED" ? "YES" : "NO";
+              baseRow.FLOODED = (memStatus === "FLOODED" || memStatus === "YES" || memStatus === "TRUE") ? "YES" : "NO";
             } else {
               const toBoolYesNo = (val: any) => {
                 if (
@@ -1082,7 +1430,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
                 return "NO";
               };
 
-              baseRow.FLOODED = toBoolYesNo(idata.flooded ?? idata.is_flooded);
+              const floodVal = idata.flooded ?? idata.is_flooded ?? (idata.member_status ? (String(idata.member_status).toUpperCase().includes("FLOOD") ? "YES" : "NO") : undefined);
+              baseRow.FLOODED = toBoolYesNo(floodVal);
             }
           } else if (code === "UTS") {
             const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
@@ -1735,14 +2084,39 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             itypeCodeForInspType.includes("RFMD") ||
             idata.member_status !== undefined;
 
+          const isRovDebrisAppend =
+            recTypeForInspType === "RGVI" ||
+            recTypeForInspType === "RRISI" ||
+            recTypeForInspType === "RCOND" ||
+            recTypeForInspType === "RCASN" ||
+            recTypeForInspType.includes("RGVI") ||
+            recTypeForInspType.includes("RRISI") ||
+            recTypeForInspType.includes("RCOND") ||
+            recTypeForInspType.includes("RCASN") ||
+            itypeCodeForInspType === "RGVI" ||
+            itypeCodeForInspType === "RRISI" ||
+            itypeCodeForInspType === "RCOND" ||
+            itypeCodeForInspType === "RCASN" ||
+            itypeCodeForInspType.includes("RGVI") ||
+            itypeCodeForInspType.includes("RRISI") ||
+            itypeCodeForInspType.includes("RCOND") ||
+            itypeCodeForInspType.includes("RCASN");
+
+          const isRovScourAppend =
+            recTypeForInspType === "RSCOR" ||
+            recTypeForInspType.includes("RSCOR") ||
+            itypeCodeForInspType === "RSCOR" ||
+            itypeCodeForInspType.includes("RSCOR") ||
+            Boolean(itypeNameForInspType.includes("SCOUR") && itypeForInspType?.methods?.includes("ROV"));
+
           baseRow.DEFECT = r.has_anomaly === true || Boolean(linkedAnom) ? "Yes" : "No";
-          baseRow.DFT_CODE_TYPE = sanitizeText(linkedAnom?.defect_type_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.defect_category_code || (linkedAnom ? "AW" : "")))).substring(0, 12);
-          baseRow.DEFECT_CODE = sanitizeText(["ITS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? (linkedAnom?.defect_category_code || "") : (linkedAnom?.defect_category_code || linkedAnom?.defect_code || "")).substring(0, 50);
-          baseRow.DEFECT_TYPE = sanitizeText(linkedAnom?.priority_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.priority || (linkedAnom ? "P3" : "")))).substring(0, 20);
-          baseRow.DEFECT_DESC = sanitizeText(["ITS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? (linkedAnom?.defect_description || "") : (linkedAnom?.defect_description || linkedAnom?.description || "")).substring(0, 250);
+          baseRow.DFT_CODE_TYPE = sanitizeText(linkedAnom?.defect_type_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.defect_type_code || linkedAnom?.defect_category_code || (linkedAnom ? "AW" : "")))).substring(0, 12);
+          baseRow.DEFECT_CODE = sanitizeText(linkedAnom?.defect_category_code || linkedAnom?.defect_code || "").substring(0, 50);
+          baseRow.DEFECT_TYPE = sanitizeText(linkedAnom?.priority_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.priority_code || linkedAnom?.priority || (linkedAnom ? "P3" : "")))).substring(0, 20);
+          baseRow.DEFECT_DESC = sanitizeText(linkedAnom?.defect_description || linkedAnom?.description || "").substring(0, 250);
           baseRow.DFT_REF_NO = sanitizeText(linkedAnom?.anomaly_ref_no || "").substring(0, 30);
-          baseRow.RECTIFID = linkedAnom?.is_rectified === true ? "Yes" : (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "No" : (linkedAnom?.status === "CLOSED" ? "Yes" : "No"));
-          baseRow.RECTIFID_DESC = sanitizeText(linkedAnom?.rectified_remarks || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.follow_up_notes || ""))).substring(0, 250);
+          baseRow.RECTIFID = linkedAnom?.is_rectified === true ? "Yes" : (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "No" : (code === "DBS" || code === "SCS" ? (linkedAnom?.is_rectified ? "Yes" : "No") : (linkedAnom?.status === "CLOSED" ? "Yes" : "No")));
+          baseRow.RECTIFID_DESC = sanitizeText(linkedAnom?.rectified_remarks || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (code === "DBS" || code === "SCS" ? (linkedAnom?.rectified_remarks || "") : (linkedAnom?.follow_up_notes || "")))).substring(0, 250);
           baseRow.RECT_DATE = linkedAnom?.rectified_date ? formatDateStr(linkedAnom.rectified_date) : "";
           baseRow.INSPNO = formatInspNo(r.jobpack_id || jp?.id);
           baseRow.JOBNAME = sanitizeText(jp?.name || `JP-${r.jobpack_id || 1}`).substring(0, 20);
@@ -1750,14 +2124,14 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           baseRow.INSP_DONE = String(r.status || "").toUpperCase() === "COMPLETED" ? "Yes" : (String(r.status || "").toUpperCase() === "INCOMPLETE" ? "No" : "No");
           baseRow.REC_DATE = formatDateStr(r.md_date || r.inspection_date);
           baseRow.INSP_COND = sanitizeText(r.description || idata.findings || idata.observations || "").substring(0, 1000);
-          baseRow.CMNTS = code === "BSS" || code === "SZS" || code === "VDS" ? "" : sanitizeText(r.comments || idata.comments || idata.cmnts || "").substring(0, 4000);
+          baseRow.CMNTS = code === "BSS" || code === "SZS" || code === "VDS" || code === "DBS" || code === "SCS" ? "" : sanitizeText(r.comments || idata.comments || idata.cmnts || "").substring(0, 4000);
           baseRow.JOB_TYPE = sanitizeText(resolvedJobType).substring(0, 20);
-          baseRow.LAST_MAJOR_INSPNO = sanitizeText(jp?.last_insp_no || "").substring(0, 11);
-          baseRow.INSPTYPE = code === "MPS" ? (isAcfmInsp ? "AFS" : "MPS") : (code === "UTS" ? (isSzoneInsp ? "SZS" : "UTS") : (code === "FDS" ? (isRfmdInsp ? "PGS" : "FDS") : code));
-          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (["ITS", "SZS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.evaluated_by || ""))).substring(0, 250);
+          baseRow.LAST_MAJOR_INSPNO = code === "DBS" || code === "SCS" ? "" : sanitizeText(jp?.last_insp_no || "").substring(0, 11);
+          baseRow.INSPTYPE = code === "MPS" ? (isAcfmInsp ? "AFS" : "MPS") : (code === "UTS" ? (isSzoneInsp ? "SZS" : "UTS") : (code === "FDS" ? (isRfmdInsp ? "PGS" : "FDS") : (code === "DBS" ? (isRovDebrisAppend ? "PGS" : "DBS") : (code === "SCS" ? (isRovScourAppend ? "PGS" : "SCS") : code))));
+          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (["ITS", "SZS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (code === "DBS" || code === "SCS" ? (linkedAnom?.reviewed_by || "") : (linkedAnom?.evaluated_by || "")))).substring(0, 250);
           baseRow.APPROV_BY = sanitizeText(linkedAnom?.approved_by || "").substring(0, 250);
 
-          if (code === "SZS" || code === "BSS" || code === "VDS") {
+          if (code === "SZS" || code === "BSS" || code === "VDS" || code === "DBS" || code === "SCS") {
             baseRow.CMNTS = "";
           }
 

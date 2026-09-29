@@ -180,9 +180,9 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     let rovQuery = (supabase as any).from("insp_rov_jobs").select("jobpack_id, structure_id").not("jobpack_id", "is", null);
 
     if (sIdNums.length > 0) {
-      recQuery = recQuery.in("structure_id", sIdNums);
-      diveQuery = diveQuery.in("structure_id", sIdNums);
-      rovQuery = rovQuery.in("structure_id", sIdNums);
+      recQuery = recQuery.in("structure_id", sIdNums).limit(5000);
+      diveQuery = diveQuery.in("structure_id", sIdNums).limit(1000);
+      rovQuery = rovQuery.in("structure_id", sIdNums).limit(1000);
     } else {
       recQuery = Promise.resolve({ data: [] });
       diveQuery = Promise.resolve({ data: [] });
@@ -190,11 +190,11 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     }
 
     if (sIdNums.length > 0 && cleanTitles.length > 0) {
-      sowQuery = sowQuery.or(`structure_id.in.(${sIdNums.join(",")}),structure_title.in.(${cleanTitles.map((t) => `"${t}"`).join(",")})`);
+      sowQuery = sowQuery.or(`structure_id.in.(${sIdNums.join(",")}),structure_title.in.(${cleanTitles.map((t) => `"${t}"`).join(",")})`).limit(2000);
     } else if (sIdNums.length > 0) {
-      sowQuery = sowQuery.in("structure_id", sIdNums);
+      sowQuery = sowQuery.in("structure_id", sIdNums).limit(2000);
     } else if (cleanTitles.length > 0) {
-      sowQuery = sowQuery.in("structure_title", cleanTitles);
+      sowQuery = sowQuery.in("structure_title", cleanTitles).limit(2000);
     } else {
       sowQuery = Promise.resolve({ data: [] });
     }

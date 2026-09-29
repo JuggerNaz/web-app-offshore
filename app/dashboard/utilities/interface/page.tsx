@@ -37,6 +37,8 @@ import {
   Sliders,
   FolderSync,
   Archive,
+  Hourglass,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +80,7 @@ export default function InterfaceModulePage() {
   const [isFetchingJobpacks, setIsFetchingJobpacks] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [structuresList, setStructuresList] = useState<any[]>([]);
+  const [allJobpacksMaster, setAllJobpacksMaster] = useState<any[]>([]);
   const [jobpacksList, setJobpacksList] = useState<any[]>([]);
   const [searchStructureQuery, setSearchStructureQuery] = useState<string>("");
   const [searchJobpackQuery, setSearchJobpackQuery] = useState<string>("");
@@ -137,76 +140,94 @@ export default function InterfaceModulePage() {
     },
   ]);
 
-  // ─── Initial Load ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    async function loadData() {
-      setIsLoadingData(true);
-      try {
-        const strRes = await fetch("/api/structures");
-        if (strRes.ok) {
-          const strJson = await strRes.json();
-          const list = strJson.data || [];
-          setStructuresList(list);
-          const platIds = list
-            .filter((s: any) => String(s.str_type).toUpperCase() === "PLATFORM")
-            .map((s: any) => s.str_id || s.id);
-          setSelectedStructureIds(platIds.length > 0 ? platIds : list.map((s: any) => s.str_id || s.id));
-        }
-      } catch (err) {
-        console.warn("[Interface] Load structures error:", err);
-      } finally {
-        setIsLoadingData(false);
+  // ─── Initial Load (Parallel Fetch) ──────────────────────────────────────────
+  const loadData = async () => {
+    setIsLoadingData(true);
+    try {
+      const [strRes, jpRes] = await Promise.all([
+        fetch("/api/structures"),
+        fetch("/api/jobpack?limit=1000"),
+      ]);
+      let sList: any[] = [];
+      let jList: any[] = [];
+      if (strRes.ok) {
+        const strJson = await strRes.json();
+        sList = strJson.data || [];
+        setStructuresList(sList);
+        const platIds = sList
+          .filter((s: any) => String(s.str_type).toUpperCase() === "PLATFORM")
+          .map((s: any) => s.str_id || s.id);
+        setSelectedStructureIds(platIds.length > 0 ? platIds : sList.map((s: any) => s.str_id || s.id));
       }
+      if (jpRes.ok) {
+        const jpJson = await jpRes.json();
+        jList = jpJson.data || [];
+        setAllJobpacksMaster(jList);
+      }
+    } catch (err) {
+      console.warn("[Interface] Load initial data error:", err);
+    } finally {
+      setIsLoadingData(false);
     }
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
 
-  // ─── Fetch Jobpacks Scoped Strictly to Selected Structure(s) ───────────────
+  const handleRefreshData = async () => {
+    await loadData();
+    toast.success("Asset structures & jobpack data refreshed");
+  };
+
+  // ─── Filter Jobpacks Scoped Strictly to Selected Structure(s) in Memory ─────
   useEffect(() => {
-    let isMounted = true;
-    async function loadScopedJobpacks() {
-      if (selectedStructureIds.length === 0) {
-        setJobpacksList([]);
-        setSelectedJobpackIds([]);
-        return;
-      }
-
-      setIsFetchingJobpacks(true);
-      try {
-        const idsParam = selectedStructureIds.join(",");
-        const selectedTitles = structuresList
-          .filter((s) => selectedStructureIds.includes(s.str_id || s.id))
-          .map((s) => s.str_name || s.title || "")
-          .filter(Boolean);
-        const titlesParam = encodeURIComponent(selectedTitles.join(","));
-
-        const url = `/api/jobpack?structure_ids=${idsParam}${titlesParam ? `&structure_titles=${titlesParam}` : ""}&limit=1000`;
-        const jpRes = await fetch(url);
-        if (jpRes.ok) {
-          const jpJson = await jpRes.json();
-          const list = jpJson.data || [];
-          if (isMounted) {
-            setJobpacksList(list);
-            // Automatically prune any selected jobpack IDs that are no longer part of the scoped structures
-            setSelectedJobpackIds((prev) =>
-              prev.filter((id) => list.some((jp: any) => jp.id === id))
-            );
-          }
-        }
-      } catch (err) {
-        console.warn("[Interface] Load scoped jobpacks error:", err);
-      } finally {
-        if (isMounted) {
-          setIsFetchingJobpacks(false);
-        }
-      }
+    if (selectedStructureIds.length === 0 || allJobpacksMaster.length === 0) {
+      setJobpacksList([]);
+      setSelectedJobpackIds([]);
+      return;
     }
 
-    loadScopedJobpacks();
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedStructureIds, structuresList]);
+    const selectedSet = new Set(selectedStructureIds.map(Number));
+    const selectedTitles = new Set(
+      structuresList
+        .filter((s) => selectedSet.has(Number(s.str_id || s.id)))
+        .map((s) => String(s.str_name || s.title || "").toLowerCase().trim())
+        .filter(Boolean)
+    );
+
+    const scoped = allJobpacksMaster.filter((jp: any) => {
+      // 1. Direct structure_id or platform_id / pipe_id
+      const directSId = Number(String(jp.metadata?.structure_id || jp.metadata?.platform_id || jp.metadata?.pipe_id || jp.metadata?.plat_id || jp.metadata?.str_id || "").replace(/^(platform|pipeline)-/, ""));
+      if (!isNaN(directSId) && directSId > 0 && selectedSet.has(directSId)) return true;
+
+      // 2. Direct title match
+      const directTitle = String(jp.metadata?.structure_name || jp.metadata?.plantype || jp.metadata?.title || "").toLowerCase().trim();
+      if (directTitle && (selectedTitles.has(directTitle) || Array.from(selectedTitles).some(st => directTitle.includes(st) || st.includes(directTitle)))) return true;
+
+      // 3. Array of structures in metadata
+      const structures = jp.metadata?.structures;
+      if (Array.isArray(structures) && structures.length > 0) {
+        return structures.some((s: any) => {
+          const sid = Number(String(s.id || s.structure_id || s.platform_id || s.pipe_id || s.str_id || s.plat_id || "").replace(/^(platform|pipeline)-/, ""));
+          if (!isNaN(sid) && selectedSet.has(sid)) return true;
+          const sName = String(s.title || s.name || s.code || "").toLowerCase().trim();
+          if (sName && (selectedTitles.has(sName) || Array.from(selectedTitles).some(st => sName.includes(st) || st.includes(sName)))) return true;
+          return false;
+        });
+      }
+
+      // If jobpack has no structure metadata and all structures are selected, include it
+      if (selectedSet.size === structuresList.length) return true;
+
+      return false;
+    });
+
+    setJobpacksList(scoped);
+    setSelectedJobpackIds((prev) =>
+      prev.filter((id) => scoped.some((jp: any) => jp.id === id))
+    );
+  }, [selectedStructureIds, structuresList, allJobpacksMaster]);
 
   // Active Client & Active Interface
   const activeClient = useMemo(() => {
@@ -858,41 +879,54 @@ export default function InterfaceModulePage() {
                     </div>
                   </div>
 
-                  {/* Filter Pills */}
-                  <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <button
-                      onClick={() => setStructureTypeFilter("ALL")}
-                      className={cn(
-                        "px-3 py-1 rounded-lg text-xs font-bold transition-all",
-                        structureTypeFilter === "ALL"
-                          ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
+                  {/* Header Actions: Refresh & Filter Pills */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRefreshData}
+                      disabled={isLoadingData}
+                      className="rounded-xl text-xs h-8 gap-1.5 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                     >
-                      All ({structuresList.length})
-                    </button>
-                    <button
-                      onClick={() => setStructureTypeFilter("PLATFORM")}
-                      className={cn(
-                        "px-3 py-1 rounded-lg text-xs font-bold transition-all",
-                        structureTypeFilter === "PLATFORM"
-                          ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
-                    >
-                      Platforms
-                    </button>
-                    <button
-                      onClick={() => setStructureTypeFilter("PIPELINE")}
-                      className={cn(
-                        "px-3 py-1 rounded-lg text-xs font-bold transition-all",
-                        structureTypeFilter === "PIPELINE"
-                          ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
-                    >
-                      Pipelines
-                    </button>
+                      <RefreshCw className={cn("h-3.5 w-3.5 text-blue-500", isLoadingData && "animate-spin")} />
+                      <span>{isLoadingData ? "Refreshing..." : "Refresh Assets"}</span>
+                    </Button>
+
+                    <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <button
+                        onClick={() => setStructureTypeFilter("ALL")}
+                        className={cn(
+                          "px-3 py-1 rounded-lg text-xs font-bold transition-all",
+                          structureTypeFilter === "ALL"
+                            ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        All ({structuresList.length})
+                      </button>
+                      <button
+                        onClick={() => setStructureTypeFilter("PLATFORM")}
+                        className={cn(
+                          "px-3 py-1 rounded-lg text-xs font-bold transition-all",
+                          structureTypeFilter === "PLATFORM"
+                            ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Platforms
+                      </button>
+                      <button
+                        onClick={() => setStructureTypeFilter("PIPELINE")}
+                        className={cn(
+                          "px-3 py-1 rounded-lg text-xs font-bold transition-all",
+                          structureTypeFilter === "PIPELINE"
+                            ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Pipelines
+                      </button>
+                    </div>
                   </div>
                 </div>
               </CardHeader>
@@ -904,6 +938,7 @@ export default function InterfaceModulePage() {
                       placeholder="Search structure name, pipeline code, or ID..."
                       value={searchStructureQuery}
                       onChange={(e) => setSearchStructureQuery(e.target.value)}
+                      disabled={isLoadingData}
                       className="pl-9 h-9 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
                     />
                   </div>
@@ -912,6 +947,7 @@ export default function InterfaceModulePage() {
                       variant="outline"
                       size="sm"
                       onClick={handleSelectAllStructures}
+                      disabled={isLoadingData || filteredStructures.length === 0}
                       className="rounded-xl text-xs h-8"
                     >
                       Select All Filtered ({filteredStructures.length})
@@ -920,6 +956,7 @@ export default function InterfaceModulePage() {
                       variant="outline"
                       size="sm"
                       onClick={handleClearStructures}
+                      disabled={isLoadingData || selectedStructureIds.length === 0}
                       className="rounded-xl text-xs h-8 text-slate-500"
                     >
                       Clear Selection
@@ -933,59 +970,95 @@ export default function InterfaceModulePage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-60 overflow-y-auto custom-scrollbar p-1">
-                  {filteredStructures.map((str) => {
-                    const strId = str.str_id || str.id;
-                    const isSelected = selectedStructureIds.includes(strId);
-                    const isPlat = str.str_type === "PLATFORM";
+                {isLoadingData ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-slate-500 dark:text-slate-400 gap-3 border border-dashed border-indigo-300/60 dark:border-indigo-800/60 rounded-2xl bg-indigo-50/30 dark:bg-indigo-950/20 animate-in fade-in duration-300">
+                    <div className="p-3 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 shadow-inner">
+                      <Hourglass className="h-8 w-8 animate-spin" style={{ animationDuration: "2.5s" }} />
+                    </div>
+                    <div className="text-center space-y-1">
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        Fetching Asset Structures & Titles...
+                      </p>
+                      <p className="text-xs text-slate-400 max-w-sm">
+                        Loading platforms, pipelines, and structural inspection components from the database.
+                      </p>
+                    </div>
+                  </div>
+                ) : filteredStructures.length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-dashed border-amber-300/50 bg-amber-500/5 text-center text-xs text-amber-700 dark:text-amber-400 space-y-3">
+                    <AlertCircle className="h-8 w-8 mx-auto text-amber-500 opacity-80" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-sm">No Asset Structures Retrieved</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                        No {structureTypeFilter !== "ALL" ? structureTypeFilter.toLowerCase() : ""} structures matched the current search filter or active organization.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleRefreshData}
+                      className="rounded-xl text-xs gap-1.5 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-950"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 text-amber-600" />
+                      Retry Structure Retrieval
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-60 overflow-y-auto custom-scrollbar p-1">
+                    {filteredStructures.map((str) => {
+                      const strId = str.str_id || str.id;
+                      const isSelected = selectedStructureIds.includes(strId);
+                      const isPlat = str.str_type === "PLATFORM";
 
-                    return (
-                      <div
-                        key={strId}
-                        onClick={() => handleToggleStructure(strId)}
-                        className={cn(
-                          "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 group",
-                          isSelected
-                            ? "bg-indigo-500/10 border-indigo-500/60 shadow-sm"
-                            : "bg-white/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-slate-400"
-                        )}
-                      >
-                        <div className="flex items-center justify-between">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[9px] px-1.5 py-0 font-bold",
-                              isPlat
-                                ? "text-blue-500 border-blue-400/40"
-                                : "text-emerald-500 border-emerald-400/40"
-                            )}
-                          >
-                            {str.str_type || "PLATFORM"}
-                          </Badge>
-                          <div
-                            className={cn(
-                              "h-4 w-4 rounded-full border flex items-center justify-center",
-                              isSelected
-                                ? "bg-indigo-600 border-indigo-600 text-white"
-                                : "border-slate-300 dark:border-slate-600"
-                            )}
-                          >
-                            {isSelected && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                          </div>
-                        </div>
-                        <p
-                          className="font-bold text-xs text-slate-900 dark:text-white truncate"
-                          title={str.str_name || str.title}
+                      return (
+                        <div
+                          key={strId}
+                          onClick={() => handleToggleStructure(strId)}
+                          className={cn(
+                            "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 group",
+                            isSelected
+                              ? "bg-indigo-500/10 border-indigo-500/60 shadow-sm ring-1 ring-indigo-500/30"
+                              : "bg-white/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-slate-400"
+                          )}
                         >
-                          {str.str_name || str.title || `Asset ${strId}`}
-                        </p>
-                        <p className="text-[10px] text-slate-400 truncate">
-                          {str.field_name || str.pfield || "Offshore"}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
+                          <div className="flex items-center justify-between">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[9px] px-1.5 py-0 font-bold",
+                                isPlat
+                                  ? "text-blue-500 border-blue-400/40"
+                                  : "text-emerald-500 border-emerald-400/40"
+                              )}
+                            >
+                              {str.str_type || "PLATFORM"}
+                            </Badge>
+                            <div
+                              className={cn(
+                                "h-4 w-4 rounded-full border flex items-center justify-center",
+                                isSelected
+                                  ? "bg-indigo-600 border-indigo-600 text-white"
+                                  : "border-slate-300 dark:border-slate-600"
+                              )}
+                            >
+                              {isSelected && <Check className="h-2.5 w-2.5 stroke-[3]" />}
+                            </div>
+                          </div>
+                          <p
+                            className="font-bold text-xs text-slate-900 dark:text-white truncate"
+                            title={str.title || str.str_name || str.name || `Asset ${strId}`}
+                          >
+                            {str.title || str.str_name || str.name || (isPlat ? `Platform ${strId}` : `Pipeline ${strId}`)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 truncate flex items-center justify-between gap-1">
+                            <span>{str.field_name || str.pfield || "Offshore"}</span>
+                            <span className="font-mono text-[9px] opacity-60">#{strId}</span>
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1007,7 +1080,7 @@ export default function InterfaceModulePage() {
                     </div>
                   </div>
 
-                  {selectedStructureIds.length > 0 && !isFetchingJobpacks && (
+                  {selectedStructureIds.length > 0 && !isLoadingData && !isFetchingJobpacks && (
                     <Badge variant="outline" className="font-mono text-[10px] bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20">
                       {jobpacksList.length} Jobpack{jobpacksList.length !== 1 ? "s" : ""} Scoped
                     </Badge>
@@ -1040,10 +1113,10 @@ export default function InterfaceModulePage() {
                   </button>
                 </div>
 
-                {isFetchingJobpacks ? (
-                  <div className="flex items-center justify-center py-8 text-xs text-slate-400 gap-2 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                    <RefreshCw className="h-4 w-4 animate-spin text-teal-500" />
-                    <span>Loading jobpacks for selected structure(s)...</span>
+                {isLoadingData || isFetchingJobpacks ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-xs text-teal-600 dark:text-teal-400 gap-2 border border-dashed border-teal-300/60 dark:border-teal-800/60 rounded-2xl bg-teal-50/30 dark:bg-teal-950/20 animate-in fade-in duration-300">
+                    <Hourglass className="h-6 w-6 animate-spin text-teal-500" style={{ animationDuration: "2.5s" }} />
+                    <span className="font-semibold">Retrieving jobpack scopes from database...</span>
                   </div>
                 ) : selectedStructureIds.length === 0 ? (
                   <div className="p-5 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-xs text-slate-400 space-y-1">
