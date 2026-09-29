@@ -8,12 +8,20 @@ import { apiSuccess, apiError, apiCreated } from "@/utils/api-response";
  * Returns list of members in the active company.
  * Protected by admin roles.
  */
-export const GET = withRole(["company_admin", "super_admin"], async (request, { company }) => {
+export const GET = withRole(["company_admin", "super_admin"], async (request, { company, membership }) => {
   try {
-    const supabase = createClient() as any;
+    let supabase = createClient() as any;
     
-    // Fetch memberships linked with user profiles
-    const { data: memberships, error } = await supabase
+    // Prefer adminClient if available to avoid RLS recursion/policy issues on memberships
+    try {
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        supabase = createAdminClient() as any;
+      }
+    } catch (_) {}
+
+    const targetCompanyId = company?.id || membership?.company_id || request.headers.get("x-company-id");
+    
+    let query = supabase
       .from("company_memberships")
       .select(`
         id,
@@ -24,8 +32,13 @@ export const GET = withRole(["company_admin", "super_admin"], async (request, { 
         created_at,
         updated_at,
         user:profiles!user_id(*)
-      `)
-      .eq("company_id", company.id);
+      `);
+
+    if (targetCompanyId) {
+      query = query.eq("company_id", targetCompanyId);
+    }
+
+    const { data: memberships, error } = await query;
 
     if (error) {
       console.error("[GET /api/admin/users] DB Error:", error);
@@ -37,17 +50,21 @@ export const GET = withRole(["company_admin", "super_admin"], async (request, { 
     }
 
     // Fetch user_roles for these user_ids
-    const userIds = memberships.map((m: any) => m.user_id);
-    const { data: userRoles, error: rolesError } = await supabase
-      .from("user_roles")
-      .select("user_id, role, modules")
-      .in("user_id", userIds);
+    const userIds = memberships.map((m: any) => m.user_id).filter(Boolean);
+    let userRoles: any[] = [];
+    if (userIds.length > 0) {
+      const { data: rolesData, error: rolesError } = await supabase
+        .from("user_roles")
+        .select("user_id, role, modules")
+        .in("user_id", userIds);
 
-    if (rolesError) {
-      console.error("[GET /api/admin/users] rolesError:", rolesError);
+      if (rolesError) {
+        console.error("[GET /api/admin/users] rolesError:", rolesError);
+      }
+      userRoles = rolesData || [];
     }
 
-    const rolesMap = new Map<string, any>(userRoles?.map((r: any) => [r.user_id, r]) || []);
+    const rolesMap = new Map<string, any>(userRoles.map((r: any) => [r.user_id, r]));
 
     const mergedMemberships = memberships.map((m: any) => ({
       ...m,

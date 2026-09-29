@@ -151,7 +151,14 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     (sowData || []).forEach((s: any) => sowMap.set(s.sow_id || s.id, s));
 
     // 3. Fetch Components Master & Component Types
-    const [{ data: compData }, { data: compTypesData }, { data: diveJobsData }, { data: rovJobsData }] = await Promise.all([
+    const [
+      { data: compData },
+      { data: compTypesData },
+      { data: diveJobsData },
+      { data: rovJobsData },
+      { data: videoTapesData },
+      { data: videoLogsData },
+    ] = await Promise.all([
       (supabase as any)
         .from("structure_components")
         .select("*")
@@ -168,6 +175,14 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         .from("insp_rov_jobs")
         .select("*")
         .limit(2000),
+      (supabase as any)
+        .from("insp_video_tapes")
+        .select("*")
+        .limit(5000),
+      (supabase as any)
+        .from("insp_video_logs")
+        .select("*")
+        .limit(10000),
     ]);
 
     const compMap = new Map<number, any>();
@@ -190,6 +205,26 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     (rovJobsData || []).forEach((rj: any) => {
       if (rj.rov_job_id != null) rovJobMap.set(Number(rj.rov_job_id), rj);
       if (rj.id != null) rovJobMap.set(Number(rj.id), rj);
+    });
+
+    const videoTapeMapByDiveJobId = new Map<number, any>();
+    const videoTapeMapById = new Map<number, any>();
+    (videoTapesData || []).forEach((vt: any) => {
+      if (vt.tape_id != null) videoTapeMapById.set(Number(vt.tape_id), vt);
+      if (vt.dive_job_id != null && !videoTapeMapByDiveJobId.has(Number(vt.dive_job_id))) {
+        videoTapeMapByDiveJobId.set(Number(vt.dive_job_id), vt);
+      }
+    });
+
+    const videoLogMapByTapeId = new Map<number, any>();
+    const videoLogMapByInspId = new Map<number, any>();
+    (videoLogsData || []).forEach((vl: any) => {
+      if (vl.tape_id != null && !videoLogMapByTapeId.has(Number(vl.tape_id))) {
+        videoLogMapByTapeId.set(Number(vl.tape_id), vl);
+      }
+      if (vl.inspection_id != null && !videoLogMapByInspId.has(Number(vl.inspection_id))) {
+        videoLogMapByInspId.set(Number(vl.inspection_id), vl);
+      }
     });
 
     // 3.5 Fetch Inspection Types
@@ -345,6 +380,24 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         return `${day}-${month}-${year}`;
       } catch {
         return String(d);
+      }
+    };
+
+    const formatTimeStr = (t: any): string => {
+      if (!t) return "";
+      try {
+        const dt = new Date(t);
+        if (!isNaN(dt.getTime())) {
+          const hh = String(dt.getUTCHours()).padStart(2, "0");
+          const mm = String(dt.getUTCMinutes()).padStart(2, "0");
+          const ss = String(dt.getUTCSeconds()).padStart(2, "0");
+          return `${hh}:${mm}:${ss}`;
+        }
+        const s = String(t).trim();
+        if (/^\d{2}:\d{2}:\d{2}/.test(s)) return s.substring(0, 8);
+        return s;
+      } catch {
+        return String(t);
       }
     };
 
@@ -558,6 +611,36 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         if (code === "ITS") {
           validCodes.push("PL_IC", "ITS", "ITEM", "ITEM_INSP", "ITMAIN");
         }
+        if (code === "AFS") {
+          validCodes.push("AFMC", "ACFMC", "ACFM", "AFS", "ACFM SURVEY");
+        }
+        if (code === "CVS") {
+          validCodes.push("CVINS", "CVI", "CLPIN", "CVS", "CLOSE VISUAL");
+        }
+        if (code === "BSS") {
+          validCodes.push("BSINS", "BSS", "BOLT", "BOLTED", "BOLTED SUPPORT", "BOLTED_SUPPORT");
+        }
+        if (code === "RSS") {
+          validCodes.push("RISER", "RSS", "RISER_SURVEY", "RISER SURVEY", "RISERSURVEY");
+        }
+        if (code === "CCS") {
+          validCodes.push("CPCLB", "ROVCPCLB", "DIVCPCLB", "CCS", "CP_CLB", "CP-CLB", "CP_CALIB", "CP CALIBRATION", "CPCALIB");
+        }
+        if (code === "MPS") {
+          validCodes.push("MPINS", "MPI", "MPS", "MAG", "MAG_PARTICLE", "MAGNETIC PARTICLE", "ACFMC", "AFMC", "ACFM", "AFS", "ACFM SURVEY");
+        }
+        if (code === "PHS") {
+          validCodes.push("PHOTO", "PHS", "PHOTOGRAPHY", "PHOTO_INSP", "PHOTO_INSPECTION");
+        }
+        if (code === "VDS") {
+          validCodes.push("VIDEO", "VDS", "DIVING", "ALL_DIVING", "VID", "VID_INSP");
+        }
+        if (code === "UTS") {
+          validCodes.push("UTWTK", "UT_WTK", "UTCLB", "UTINS", "WTINS", "UTS", "WALL_THICKNESS", "UT_WALL_THICKNESS", "SZONE", "SZS", "SPLASH_ZONE", "SPLASH ZONE", "SZINS");
+        }
+        if (code === "FDS") {
+          validCodes.push("FLOOD", "FMD", "FLOODED", "FDS", "FLOODED_MEMBER", "FMI", "FLOODED MEMBER", "RFMD", "ROVFMD", "ROV_FMD");
+        }
 
         const matchingRecords = allRecords.filter((r: any) => {
           const recType = String(r.inspection_type_code || "").trim().toUpperCase();
@@ -577,9 +660,268 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             }
           }
 
+          if (code === "CCS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.calib_block !== undefined ||
+              idata.pre_dive_cp_rdg !== undefined ||
+              idata.post_dive_cp_rdg !== undefined ||
+              idata.in_water1 !== undefined ||
+              recType === "CPCLB" ||
+              recType === "CCS" ||
+              recType === "ROVCPCLB" ||
+              recType === "DIVCPCLB" ||
+              recType.includes("CPCLB") ||
+              recType.includes("CP_CLB") ||
+              recType.includes("CP CALIB") ||
+              itypeCode === "CPCLB" ||
+              itypeCode === "CCS" ||
+              itypeCode.includes("CPCLB") ||
+              itypeName.includes("CP CALIBRATION")
+            ) {
+              return true;
+            }
+          }
+
           if (code === "ITS") {
             const idata = r.inspection_data || {};
             if (idata.item_type || idata.itemType || recType === "PL_IC" || itypeCode === "PL_IC" || itypeName.includes("ITEM")) {
+              return true;
+            }
+          }
+
+          if (code === "AFS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.acfmc_page !== undefined ||
+              idata.probe_fl !== undefined ||
+              idata.chord_weld_brace !== undefined ||
+              idata.probe_flow !== undefined ||
+              idata.chord_thick_3clk !== undefined ||
+              idata.brace_thick_3clk !== undefined ||
+              recType === "AFMC" ||
+              recType === "ACFMC" ||
+              recType.includes("ACFM") ||
+              recType.includes("AFMC") ||
+              itypeCode === "AFMC" ||
+              itypeCode === "ACFMC" ||
+              itypeCode.includes("ACFM") ||
+              itypeName.includes("ACFM")
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "CVS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.lighting_method !== undefined ||
+              idata.length !== undefined ||
+              idata.width !== undefined ||
+              recType === "CVINS" ||
+              recType === "CVI" ||
+              recType.includes("CVINS") ||
+              recType.includes("CVI") ||
+              itypeCode === "CVINS" ||
+              itypeCode === "CVI" ||
+              itypeName.includes("CLOSE VISUAL")
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "BSS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.no_bolts_pres_memb !== undefined ||
+              idata.appurtenance_clamp_type !== undefined ||
+              idata.member_clamp_cp !== undefined ||
+              idata.max_gap_top_member !== undefined ||
+              idata.max_gap_top_brace !== undefined ||
+              idata.clamp_coating_satisfactory !== undefined ||
+              recType === "BSINS" ||
+              recType === "BSS" ||
+              recType.includes("BSINS") ||
+              recType.includes("BOLT") ||
+              itypeCode === "BSINS" ||
+              itypeCode === "BSS" ||
+              itypeCode.includes("BSINS") ||
+              itypeName.includes("BOLTED")
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "RSS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.span_height !== undefined ||
+              idata.riserbend_elevation !== undefined ||
+              idata.marine_growth_soft !== undefined ||
+              idata.marine_growth_hard !== undefined ||
+              idata.wall_thickness !== undefined ||
+              recType === "RISER" ||
+              recType === "RSS" ||
+              recType.includes("RISER") ||
+              itypeCode === "RISER" ||
+              itypeCode === "RSS" ||
+              itypeCode.includes("RISER") ||
+              itypeName.includes("RISER")
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "MPS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.magnetic_ink !== undefined ||
+              idata.magnetic_method !== undefined ||
+              idata.background_condition !== undefined ||
+              idata.calib_block !== undefined ||
+              idata.magnetic_lifting_power !== undefined ||
+              idata.burmah_c_strip !== undefined ||
+              idata.probe !== undefined ||
+              idata.acfmc_page !== undefined ||
+              idata.probe_fl !== undefined ||
+              idata.chord_weld_brace !== undefined ||
+              idata.probe_flow !== undefined ||
+              idata.brace_thick_3clk !== undefined ||
+              idata.chord_thick_3clk !== undefined ||
+              recType === "MPINS" ||
+              recType === "MPI" ||
+              recType === "MPS" ||
+              recType === "ACFMC" ||
+              recType === "AFMC" ||
+              recType === "ACFM" ||
+              recType === "AFS" ||
+              recType.includes("MPINS") ||
+              recType.includes("MPI") ||
+              recType.includes("MAG") ||
+              recType.includes("ACFM") ||
+              recType.includes("AFMC") ||
+              itypeCode === "MPINS" ||
+              itypeCode === "MPI" ||
+              itypeCode === "MPS" ||
+              itypeCode === "ACFMC" ||
+              itypeCode === "AFMC" ||
+              itypeCode === "ACFM" ||
+              itypeCode === "AFS" ||
+              itypeCode.includes("MPINS") ||
+              itypeCode.includes("MPI") ||
+              itypeCode.includes("MAG") ||
+              itypeCode.includes("ACFM") ||
+              itypeName.includes("MAGNETIC") ||
+              itypeName.includes("MPI") ||
+              itypeName.includes("ACFM")
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "PHS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.camera_type !== undefined ||
+              idata.subject_of_photo !== undefined ||
+              idata.exposure_number !== undefined ||
+              idata.photo_no !== undefined ||
+              idata.film_type !== undefined ||
+              idata.film_no !== undefined ||
+              recType === "PHOTO" ||
+              recType === "PHS" ||
+              recType.includes("PHOTO") ||
+              itypeCode === "PHOTO" ||
+              itypeCode === "PHS" ||
+              itypeCode.includes("PHOTO") ||
+              itypeName.includes("PHOTO")
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "VDS") {
+            const dj = r.dive_job_id ? diveJobMap.get(Number(r.dive_job_id)) : null;
+            const tape = r.dive_job_id ? videoTapeMapByDiveJobId.get(Number(r.dive_job_id)) : null;
+            const itypeMethods = itype?.methods || [];
+            if (
+              r.dive_job_id != null ||
+              dj != null ||
+              tape != null ||
+              itypeMethods.includes("DIVING") ||
+              recType === "VIDEO" ||
+              recType === "VDS" ||
+              recType.includes("DIV") ||
+              itypeCode === "VIDEO" ||
+              itypeCode === "VDS" ||
+              itypeCode.includes("DIV") ||
+              itypeName.includes("DIV") ||
+              videoLogMapByInspId.has(Number(r.insp_id))
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "UTS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.ut_3_o_clock !== undefined ||
+              idata.ut_6_o_clock !== undefined ||
+              idata.ut_9_o_clock !== undefined ||
+              idata.ut_12_o_clock !== undefined ||
+              idata.nominal_thickness !== undefined ||
+              idata.max_reading !== undefined ||
+              idata.min_reading !== undefined ||
+              idata.avg_reading !== undefined ||
+              idata.wall_thickness_loss !== undefined ||
+              idata.scan_type !== undefined ||
+              idata.size_of_area_tested !== undefined ||
+              idata.reference_point_position !== undefined ||
+              recType === "UTWTK" ||
+              recType === "UTS" ||
+              recType === "SZONE" ||
+              recType === "SZS" ||
+              recType.includes("UTWTK") ||
+              recType.includes("UT_WTK") ||
+              recType.includes("SZONE") ||
+              recType.includes("SPLASH") ||
+              itypeCode === "UTWTK" ||
+              itypeCode === "UTS" ||
+              itypeCode === "SZONE" ||
+              itypeCode === "SZS" ||
+              itypeCode.includes("UTWTK") ||
+              itypeCode.includes("SZONE") ||
+              itypeName.includes("WALL THICKNESS") ||
+              itypeName.includes("UTWTK") ||
+              itypeName.includes("SPLASH")
+            ) {
+              return true;
+            }
+          }
+
+          if (code === "FDS") {
+            const idata = r.inspection_data || {};
+            if (
+              idata.flooded !== undefined ||
+              idata.grout !== undefined ||
+              idata.is_flooded !== undefined ||
+              idata.member_status !== undefined ||
+              recType === "FLOOD" ||
+              recType === "FDS" ||
+              recType === "FMD" ||
+              recType === "RFMD" ||
+              recType.includes("FLOOD") ||
+              recType.includes("FMD") ||
+              recType.includes("RFMD") ||
+              itypeCode === "FLOOD" ||
+              itypeCode === "FDS" ||
+              itypeCode === "FMD" ||
+              itypeCode === "RFMD" ||
+              itypeCode.includes("FLOOD") ||
+              itypeCode.includes("FMD") ||
+              itypeCode.includes("RFMD") ||
+              itypeName.includes("FLOOD")
+            ) {
               return true;
             }
           }
@@ -600,8 +942,9 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           const dj = r.dive_job_id ? diveJobMap.get(Number(r.dive_job_id)) : null;
           const linkedAnom = anomMapByInspId.get(Number(r.insp_id)) || (allAnomalies || []).find((a: any) => a.inspection_id === r.insp_id);
           const recCompCodeUpper = String(comp?.code || "").trim().toUpperCase();
-          const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || comp?.type || (code === "UCS" ? "CALIBRATION" : "MEMBER");
+          const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || comp?.type || (code === "UCS" || code === "CCS" ? "CALIBRATION" : "MEMBER");
           const resolvedDiveNo = dj?.dive_no || dj?.job_no || dj?.name || idata.dive_no || r.dive_no || (r.dive_job_id ? String(r.dive_job_id) : "");
+          const isCalib = code === "UCS" || code === "CCS";
 
           const baseRow: any = {
             STR_ID: r.structure_id || strObj?.plat_id || 1,
@@ -609,20 +952,20 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             PFIELD: sanitizeText(strObj?.pfield || "").substring(0, 20),
             PDESC: sanitizeText(strObj?.pdesc || "").substring(0, 50),
             DEF_UNIT: sanitizeText(strObj?.def_unit || "Metric").substring(0, 10),
-            COMP_ID: code === "UCS" ? "" : (comp?.id != null ? comp.id : (r.component_id || "")),
-            ID_NO: code === "UCS" ? "" : sanitizeText(comp?.id_no || "").substring(0, 25),
-            Q_ID: code === "UCS" ? "" : sanitizeText(comp?.q_id || idata.q_id || "").substring(0, 16),
-            CODE: code === "UCS" ? "" : sanitizeText(comp?.code || "").substring(0, 2).toUpperCase(),
-            COMPDESC: code === "UCS" ? "" : sanitizeText(meta.description || comp?.description || "").substring(0, 40),
-            S_NODE: code === "UCS" ? "" : sanitizeText(meta.s_node || "").substring(0, 6),
-            F_NODE: code === "UCS" ? "" : sanitizeText(meta.f_node || "").substring(0, 6),
-            S_LEG: code === "UCS" ? "" : sanitizeText(meta.s_leg || "").substring(0, 2),
-            F_LEG: code === "UCS" ? "" : sanitizeText(meta.f_leg || "").substring(0, 2),
-            ELV_1: code === "UCS" ? "" : (meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (meta.start_elevation != null && meta.start_elevation !== "" ? Number(meta.start_elevation) : "")),
-            ELV_2: code === "UCS" ? "" : (meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (meta.end_elevation != null && meta.end_elevation !== "" ? Number(meta.end_elevation) : "")),
-            DIST: code === "UCS" ? "" : (meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (meta.distance != null && meta.distance !== "" ? Number(meta.distance) : "")),
-            CLK_POS: code === "UCS" ? "" : (meta.clk_pos != null && meta.clk_pos !== "" ? (String(meta.clk_pos).toUpperCase() === "N/A" ? 0 : Number(meta.clk_pos)) : (meta.clock_position != null && meta.clock_position !== "" ? (String(meta.clock_position).toUpperCase() === "N/A" ? 0 : Number(meta.clock_position)) : 0)),
-            COMPTYPE: code === "UCS" ? "" : sanitizeText(recCompTypeDesc).substring(0, 30),
+            COMP_ID: isCalib ? "" : (comp?.id != null ? comp.id : (r.component_id || "")),
+            ID_NO: isCalib ? "" : sanitizeText(comp?.id_no || "").substring(0, 25),
+            Q_ID: isCalib ? "" : sanitizeText(comp?.q_id || idata.q_id || "").substring(0, 16),
+            CODE: isCalib ? "" : sanitizeText(comp?.code || "").substring(0, 2).toUpperCase(),
+            COMPDESC: isCalib ? "" : sanitizeText(meta.description || comp?.description || "").substring(0, 40),
+            S_NODE: isCalib ? "" : sanitizeText(meta.s_node || "").substring(0, 6),
+            F_NODE: isCalib ? "" : sanitizeText(meta.f_node || "").substring(0, 6),
+            S_LEG: isCalib ? "" : sanitizeText(meta.s_leg || "").substring(0, 2),
+            F_LEG: isCalib ? "" : sanitizeText(meta.f_leg || "").substring(0, 2),
+            ELV_1: isCalib ? "" : (meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (meta.start_elevation != null && meta.start_elevation !== "" ? Number(meta.start_elevation) : "")),
+            ELV_2: isCalib ? "" : (meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (meta.end_elevation != null && meta.end_elevation !== "" ? Number(meta.end_elevation) : "")),
+            DIST: isCalib ? "" : (meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (meta.distance != null && meta.distance !== "" ? Number(meta.distance) : "")),
+            CLK_POS: isCalib ? "" : (meta.clk_pos != null && meta.clk_pos !== "" ? (String(meta.clk_pos).toUpperCase() === "N/A" ? 0 : Number(meta.clk_pos)) : (meta.clock_position != null && meta.clock_position !== "" ? (String(meta.clock_position).toUpperCase() === "N/A" ? 0 : Number(meta.clock_position)) : 0)),
+            COMPTYPE: isCalib ? "" : sanitizeText(recCompTypeDesc).substring(0, 30),
             INSP_ID: r.insp_id,
             INSP_DATE: formatDateStr(r.inspection_date),
             INSP_TIME: sanitizeText(r.inspection_time || idata.insp_time || idata.time || "").substring(0, 8),
@@ -637,8 +980,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             SUPV: sanitizeText(dj?.dive_supervisor || dj?.supervisor || idata.supervisor || "").substring(0, 20),
             DIVR: sanitizeText(dj?.diver_name || idata.diver_name || idata.diver || "").substring(0, 20),
             DIVE_NO: sanitizeText(resolvedDiveNo).substring(0, 10),
-            ELEVATION: r.elevation != null && r.elevation !== "" ? Number(r.elevation) : (idata.elevation != null && idata.elevation !== "" ? Number(idata.elevation) : ""),
-            TOP_UND: sanitizeText(meta.top_und || (Number(r.elevation || idata.elevation || 0) < 0 ? "SUBSEA" : "TOPSIDE")).substring(0, 8),
+            ELEVATION: isCalib ? "" : (r.elevation != null && r.elevation !== "" ? Number(r.elevation) : (idata.elevation != null && idata.elevation !== "" ? Number(idata.elevation) : "")),
+            TOP_UND: isCalib ? "" : sanitizeText(meta.top_und || (Number(r.elevation || idata.elevation || 0) < 0 ? "SUBSEA" : "TOPSIDE")).substring(0, 8),
           };
 
           if (code === "ANS") {
@@ -695,41 +1038,174 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.GROWTH_CIRCUM = 85;
             baseRow.EFF_THK = 35;
             baseRow.MG_PROFILE = 50;
+          } else if (code === "FDS") {
+            const recTypeUpper = String(r.inspection_type_code || "").trim().toUpperCase();
+            const itype = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
+            const itypeCodeUpper = String(itype?.code || "").trim().toUpperCase();
+            const itypeNameUpper = String(itype?.name || "").trim().toUpperCase();
+
+            const isRfmdRec =
+              recTypeUpper === "RFMD" ||
+              recTypeUpper.includes("RFMD") ||
+              recTypeUpper.includes("ROVFMD") ||
+              itypeCodeUpper === "RFMD" ||
+              itypeCodeUpper.includes("RFMD") ||
+              idata.member_status !== undefined;
+
+            baseRow.INSPECTOR = "";
+            baseRow.PROC = "";
+            baseRow.EQUIP = "";
+            baseRow.EQ_ID = "";
+            baseRow.SPEC = "";
+            baseRow.SURF_COND = "";
+            baseRow.CLEAN_MET = "";
+            baseRow.SCAF = "";
+
+            if (isRfmdRec) {
+              const memStatus = String(idata.member_status || "").trim().toUpperCase();
+              baseRow.FLOODED = memStatus === "FLOODED" ? "YES" : "NO";
+            } else {
+              const toBoolYesNo = (val: any) => {
+                if (
+                  val === true ||
+                  val === "true" ||
+                  val === "True" ||
+                  val === "TRUE" ||
+                  val === "yes" ||
+                  val === "Yes" ||
+                  val === "YES" ||
+                  val === 1 ||
+                  val === "1"
+                ) {
+                  return "YES";
+                }
+                return "NO";
+              };
+
+              baseRow.FLOODED = toBoolYesNo(idata.flooded ?? idata.is_flooded);
+            }
           } else if (code === "UTS") {
-            const nomThk = Number(idata.nominal_thickness || 20);
-            baseRow.PROB_TYPE = sanitizeText(idata.probe_type || "Twin Crystal");
-            baseRow.PROB_SIZE_DIAM = 10;
-            baseRow.SCAN_TECH = "Manual Contact";
-            baseRow.COUPLANT = "Ultragel II";
-            baseRow.CALIB_BLK = "Step Wedge CB-01";
-            baseRow.CALIB_RANGE = "0 - 50 mm";
-            baseRow.CALIB_DATE = formatDateStr(r.inspection_date);
-            baseRow.PROB_FREQ = 5;
-            baseRow.SENS_LVL = "Standard";
-            baseRow.AREA_TEST = "Member Body";
-            baseRow.REF_POS = "Topside Datum";
-            baseRow.COMP_WALL_THK = nomThk;
-            baseRow.MAX_THK = nomThk + 0.2;
-            baseRow.MIN_THK = nomThk - 0.6;
-            baseRow.AVG_THK = nomThk - 0.2;
-            baseRow.WALL_THK_LOSS = 0.6;
-            baseRow.CORR_RATE = 0.05;
-            baseRow.NO_READINGS = 4;
-            baseRow.C01 = nomThk - 0.2;
-            baseRow.C02 = nomThk - 0.3;
-            baseRow.C03 = nomThk - 0.5;
-            baseRow.C04 = nomThk - 0.4;
-            baseRow.C05 = nomThk - 0.3;
-            baseRow.C06 = nomThk - 0.4;
-            baseRow.C07 = nomThk - 0.3;
-            baseRow.C08 = nomThk - 0.4;
-            baseRow.C09 = nomThk - 0.5;
-            baseRow.C10 = nomThk - 0.3;
-            baseRow.C11 = nomThk - 0.2;
-            baseRow.C12 = nomThk - 0.4;
-            baseRow.REF_NAME = "12 O'Clock Top";
-            baseRow.POSITION = "Mid-Span";
-            baseRow.READ_THICK = nomThk - 0.4;
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+
+            const recTypeUpper = String(r.inspection_type_code || "").trim().toUpperCase();
+            const itype = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
+            const itypeCodeUpper = String(itype?.code || "").trim().toUpperCase();
+            const itypeNameUpper = String(itype?.name || "").trim().toUpperCase();
+
+            const isSzoneRec =
+              recTypeUpper === "SZONE" ||
+              recTypeUpper === "SZS" ||
+              recTypeUpper.includes("SZONE") ||
+              recTypeUpper.includes("SPLASH") ||
+              itypeCodeUpper === "SZONE" ||
+              itypeCodeUpper === "SZS" ||
+              itypeCodeUpper.includes("SZONE") ||
+              itypeNameUpper.includes("SPLASH");
+
+            if (isSzoneRec) {
+              baseRow.INSPECTOR = "";
+              baseRow.PROC = "";
+              baseRow.EQUIP = "";
+              baseRow.EQ_ID = "";
+              baseRow.SPEC = "";
+              baseRow.SURF_COND = "";
+              baseRow.CLEAN_MET = "";
+              baseRow.SCAF = "";
+              baseRow.SUPV = sanitizeText(dj?.dive_supervisor || dj?.supervisor || idata.supervisor || "").substring(0, 20);
+              baseRow.DIVR = sanitizeText(dj?.diver_name || idata.diver_name || idata.diver || "").substring(0, 20);
+              baseRow.DIVE_NO = sanitizeText(resolvedDiveNo).substring(0, 10);
+              baseRow.ELEVATION = r.elevation != null && r.elevation !== "" ? Number(r.elevation) : (idata.elevation != null && idata.elevation !== "" ? Number(idata.elevation) : "");
+              baseRow.TOP_UND = sanitizeText(meta.top_und || (Number(r.elevation || idata.elevation || 0) < 0 ? "SUBSEA" : "TOPSIDE")).substring(0, 8);
+
+              baseRow.PROB_TYPE = "";
+              baseRow.PROB_SIZE_DIAM = "";
+              baseRow.SCAN_TECH = "";
+              baseRow.COUPLANT = "";
+              baseRow.CALIB_BLK = "";
+              baseRow.CALIB_RANGE = "";
+              baseRow.CALIB_DATE = "";
+              baseRow.PROB_FREQ = "";
+              baseRow.SENS_LVL = "";
+              baseRow.AREA_TEST = "";
+              baseRow.REF_POS = "";
+
+              const nomThk = toNum(idata.nominal_thickness ?? idata.comp_wall_thk);
+              baseRow.COMP_WALL_THK = nomThk;
+
+              const c3 = toNum(idata.ut_3_o_clock ?? idata.c03);
+              const c6 = toNum(idata.ut_6_o_clock ?? idata.c06);
+              const c9 = toNum(idata.ut_9_o_clock ?? idata.c09);
+              const c12 = toNum(idata.ut_12_o_clock ?? idata.c12);
+
+              const clockReadings = [c3, c6, c9, c12].filter((v): v is number => typeof v === "number" && !isNaN(v));
+
+              const maxThk = clockReadings.length > 0 ? Math.max(...clockReadings) : "";
+              const minThk = clockReadings.length > 0 ? Math.min(...clockReadings) : "";
+              const avgThk = clockReadings.length > 0 ? Number((clockReadings.reduce((a, b) => a + b, 0) / clockReadings.length).toFixed(3)) : "";
+              const wallLoss = (typeof nomThk === "number" && typeof minThk === "number") ? Number((nomThk - minThk).toFixed(3)) : "";
+
+              baseRow.MAX_THK = maxThk;
+              baseRow.MIN_THK = minThk;
+              baseRow.AVG_THK = avgThk;
+              baseRow.WALL_THK_LOSS = wallLoss;
+              baseRow.CORR_RATE = "";
+              baseRow.NO_READINGS = "";
+
+              baseRow.C01 = "";
+              baseRow.C02 = "";
+              baseRow.C03 = c3;
+              baseRow.C04 = "";
+              baseRow.C05 = "";
+              baseRow.C06 = c6;
+              baseRow.C07 = "";
+              baseRow.C08 = "";
+              baseRow.C09 = c9;
+              baseRow.C10 = "";
+              baseRow.C11 = "";
+              baseRow.C12 = c12;
+
+              baseRow.REF_NAME = "";
+              baseRow.POSITION = "";
+              baseRow.READ_THICK = "";
+            } else {
+              baseRow.PROB_TYPE = sanitizeText(idata.probe_type || idata.probe || idata.prob_type || "").substring(0, 20);
+              baseRow.PROB_SIZE_DIAM = toNum(idata.probe_size_diam ?? idata.probe_size ?? idata.prob_size_diam);
+              baseRow.SCAN_TECH = sanitizeText(idata.scan_type || idata.scan_tech || "").substring(0, 20);
+              baseRow.COUPLANT = sanitizeText(idata.couplant || "").substring(0, 20);
+              baseRow.CALIB_BLK = sanitizeText(idata.calib_block || idata.calib_blk || "").substring(0, 20);
+              baseRow.CALIB_RANGE = sanitizeText(idata.calib_range || "").substring(0, 20);
+              baseRow.CALIB_DATE = formatDateStr(idata.calib_date);
+              baseRow.PROB_FREQ = toNum(idata.probe_frequency ?? idata.prob_freq);
+              baseRow.SENS_LVL = sanitizeText(idata.sensitivity_level || idata.sens_lvl || "").substring(0, 20);
+              baseRow.AREA_TEST = sanitizeText(idata.size_of_area_tested || idata.area_test || idata.area_tested || "").substring(0, 20);
+              baseRow.REF_POS = sanitizeText(idata.ref_pos || "").substring(0, 20);
+              baseRow.COMP_WALL_THK = toNum(idata.nominal_thickness ?? idata.comp_wall_thk);
+              baseRow.MAX_THK = toNum(idata.max_reading ?? idata.max_thk);
+              baseRow.MIN_THK = toNum(idata.min_reading ?? idata.min_thk);
+              baseRow.AVG_THK = toNum(idata.avg_reading ?? idata.avg_thk);
+              baseRow.WALL_THK_LOSS = toNum(idata.wall_thickness_loss ?? idata.wall_thk_loss);
+              baseRow.CORR_RATE = toNum(idata.corr_rate ?? idata.corrosion_rate);
+
+              const clockReadings = [idata.ut_3_o_clock, idata.ut_6_o_clock, idata.ut_9_o_clock, idata.ut_12_o_clock];
+              const validCount = clockReadings.filter((v: any) => v !== null && v !== undefined && v !== "" && !isNaN(Number(v))).length;
+              baseRow.NO_READINGS = validCount > 0 ? validCount : (idata.no_readings != null && idata.no_readings !== "" && !isNaN(Number(idata.no_readings)) ? Number(idata.no_readings) : "");
+
+              baseRow.C01 = toNum(idata.c01);
+              baseRow.C02 = toNum(idata.c02);
+              baseRow.C03 = toNum(idata.ut_3_o_clock ?? idata.c03);
+              baseRow.C04 = toNum(idata.c04);
+              baseRow.C05 = toNum(idata.c05);
+              baseRow.C06 = toNum(idata.ut_6_o_clock ?? idata.c06);
+              baseRow.C07 = toNum(idata.c07);
+              baseRow.C08 = toNum(idata.c08);
+              baseRow.C09 = toNum(idata.ut_9_o_clock ?? idata.c09);
+              baseRow.C10 = toNum(idata.c10);
+              baseRow.C11 = toNum(idata.c11);
+              baseRow.C12 = toNum(idata.ut_12_o_clock ?? idata.c12);
+              baseRow.REF_NAME = sanitizeText(idata.ref_name || "").substring(0, 20);
+              baseRow.POSITION = sanitizeText(idata.reference_point_position || idata.position || "").substring(0, 20);
+              baseRow.READ_THICK = toNum(idata.read_thick ?? idata.read_thickness);
+            }
           } else if (code === "UCS") {
             baseRow.PROBE = sanitizeText(idata.probe || idata.probe_type || "");
             baseRow.PROBE_SIZE = sanitizeText(idata.probe_size || idata.probe_dia || idata.size || "");
@@ -747,6 +1223,26 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.LBL_4 = sanitizeText(idata.label04 || idata.lbl_4 || idata.label_4 || idata.lbl4 || "");
             baseRow.LBL_5 = sanitizeText(idata.label05 || idata.lbl_5 || idata.label_5 || idata.lbl5 || "");
             baseRow.LBL_6 = sanitizeText(idata.label06 || idata.lbl_6 || idata.label_6 || idata.lbl6 || "");
+          } else if (code === "CCS") {
+            baseRow.INSPECTOR = "";
+            baseRow.PROC = "";
+            baseRow.EQUIP = "";
+            baseRow.EQ_ID = "";
+            baseRow.SPEC = "";
+            baseRow.SURF_COND = "";
+            baseRow.CLEAN_MET = "";
+            baseRow.SCAF = "";
+            baseRow.ELEVATION = "";
+            baseRow.TOP_UND = "";
+
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+
+            baseRow.CLB_BLOCK = sanitizeText(idata.calib_block || idata.clb_block || "").substring(0, 20);
+            baseRow.PRE_DIVE = toNum(idata.pre_dive_cp_rdg ?? idata.pre_dive ?? idata.pre_dive_cp);
+            baseRow.IN_WATER1 = toNum(idata.in_water1 ?? idata.in_water_1);
+            baseRow.IN_WATER2 = toNum(idata.in_water2 ?? idata.in_water_2);
+            baseRow.IN_WATER3 = toNum(idata.in_water3 ?? idata.in_water_3);
+            baseRow.POST_DIVE = toNum(idata.post_dive_cp_rdg ?? idata.post_dive ?? idata.post_dive_cp);
           } else if (code === "ITS") {
             baseRow.CP_RDG = idata.cp_rdg != null && idata.cp_rdg !== ""
               ? Number(idata.cp_rdg)
@@ -776,30 +1272,492 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.C12 = idata.ut_12_o_clock != null && idata.ut_12_o_clock !== "" ? Number(idata.ut_12_o_clock) : (idata.c12 != null && idata.c12 !== "" ? Number(idata.c12) : "");
             baseRow.NOM_THK = idata.nominal_thick != null && idata.nominal_thick !== "" ? Number(idata.nominal_thick) : (idata.nominal_thickness != null && idata.nominal_thickness !== "" ? Number(idata.nominal_thickness) : "");
             baseRow.COAT_COVERAGE = idata.coating_coverage_percent != null && idata.coating_coverage_percent !== "" ? Number(idata.coating_coverage_percent) : (idata.coat_coverage != null && idata.coat_coverage !== "" ? Number(idata.coat_coverage) : "");
+          } else if (code === "AFS") {
+            baseRow.INSPECTOR = sanitizeText(r.inspector || idata.inspector || "").substring(0, 20);
+            baseRow.PROC = sanitizeText(r.procedure || idata.procedure || idata.proc || "").substring(0, 20);
+            baseRow.EQUIP = sanitizeText(r.equipment || idata.equipment || idata.calib_equipment_type || idata.equip || "").substring(0, 20);
+            baseRow.EQ_ID = sanitizeText(r.equipment_id || idata.equipment_id || idata.serial_number || idata.eq_id || "").substring(0, 20);
+            baseRow.SPEC = sanitizeText(r.spec || idata.spec || idata.specification || "").substring(0, 20);
+            baseRow.SURF_COND = sanitizeText(r.surf_cond || idata.surface_condition || idata.surf_cond || "").substring(0, 30);
+            baseRow.CLEAN_MET = sanitizeText(r.clean_met || idata.cleaning_method || idata.clean_met || "").substring(0, 20);
+            baseRow.SCAF = (idata.scaffolding || r.scaf || idata.scaf) ? "Yes" : "";
+            baseRow.FILE_NAME = sanitizeText(idata.file_name || idata.filename || "").substring(0, 20);
+            baseRow.PROB_NO = sanitizeText(idata.probe_fl || idata.prob_no || idata.probe_no || "").substring(0, 20);
+            baseRow.ORIENTATION = sanitizeText(idata.orientation || "").substring(0, 20);
+            baseRow.DIRECTION_TRAVL = sanitizeText(idata.direction_travl || idata.direction_travel || idata.dir_travel || "").substring(0, 20);
+            baseRow.CLCK_POS = sanitizeText(idata.clk_pos || idata.clck_pos || idata.clock_pos || "").substring(0, 20);
+            baseRow.OPERATOR = sanitizeText(idata.operator || r.operator || "").substring(0, 20);
+            baseRow.PROBE_FL = sanitizeText(idata.probe_flow || idata.probe_fl || "").substring(0, 20);
+            baseRow.CWB = sanitizeText(idata.chord_weld_brace || idata.cwb || "").substring(0, 20);
+            baseRow.PAGE = idata.acfmc_page != null && idata.acfmc_page !== ""
+              ? Number(idata.acfmc_page)
+              : (idata.page != null && idata.page !== "" ? Number(idata.page) : "");
+            baseRow.REPORT = sanitizeText(idata.report || idata.report_no || "").substring(0, 30);
+            baseRow.C_WALL_THK3 = idata.chord_thick_3clk != null && idata.chord_thick_3clk !== ""
+              ? Number(idata.chord_thick_3clk)
+              : (idata.c_wall_thk3 != null && idata.c_wall_thk3 !== "" ? Number(idata.c_wall_thk3) : "");
+            baseRow.C_WALL_THK6 = idata.chord_thick_6clk != null && idata.chord_thick_6clk !== ""
+              ? Number(idata.chord_thick_6clk)
+              : (idata.c_wall_thk6 != null && idata.c_wall_thk6 !== "" ? Number(idata.c_wall_thk6) : "");
+            baseRow.C_WALL_THK9 = idata.chord_thick_9clk != null && idata.chord_thick_9clk !== ""
+              ? Number(idata.chord_thick_9clk)
+              : (idata.c_wall_thk9 != null && idata.c_wall_thk9 !== "" ? Number(idata.c_wall_thk9) : "");
+            baseRow.C_WALL_THK12 = idata.chord_thick_12clk != null && idata.chord_thick_12clk !== ""
+              ? Number(idata.chord_thick_12clk)
+              : (idata.c_wall_thk12 != null && idata.c_wall_thk12 !== "" ? Number(idata.c_wall_thk12) : "");
+            baseRow.B_WALL_THK3 = idata.brace_thick_3clk != null && idata.brace_thick_3clk !== ""
+              ? Number(idata.brace_thick_3clk)
+              : (idata.b_wall_thk3 != null && idata.b_wall_thk3 !== "" ? Number(idata.b_wall_thk3) : "");
+            baseRow.B_WALL_THK6 = idata.brace_thick_6clk != null && idata.brace_thick_6clk !== ""
+              ? Number(idata.brace_thick_6clk)
+              : (idata.b_wall_thk6 != null && idata.b_wall_thk6 !== "" ? Number(idata.b_wall_thk6) : "");
+            baseRow.B_WALL_THK9 = idata.brace_thick_9clk != null && idata.brace_thick_9clk !== ""
+              ? Number(idata.brace_thick_9clk)
+              : (idata.b_wall_thk9 != null && idata.b_wall_thk9 !== "" ? Number(idata.b_wall_thk9) : "");
+            baseRow.B_WALL_THK12 = idata.brace_thick_12clk != null && idata.brace_thick_12clk !== ""
+              ? Number(idata.brace_thick_12clk)
+              : (idata.b_wall_thk12 != null && idata.b_wall_thk12 !== "" ? Number(idata.b_wall_thk12) : "");
+          } else if (code === "CVS") {
+            baseRow.INSPECTOR = sanitizeText(r.inspector || idata.inspector || "").substring(0, 20);
+            baseRow.PROC = sanitizeText(r.procedure || idata.procedure || idata.proc || "").substring(0, 20);
+            baseRow.EQUIP = sanitizeText(r.equipment || idata.equipment || idata.equip || "").substring(0, 20);
+            baseRow.EQ_ID = sanitizeText(r.equipment_id || idata.equipment_id || idata.eq_id || "").substring(0, 20);
+            baseRow.SPEC = sanitizeText(r.spec || idata.spec || idata.specification || "").substring(0, 20);
+            baseRow.SURF_COND = sanitizeText(idata.surface_condition || r.surf_cond || idata.surf_cond || "").substring(0, 30);
+            baseRow.CLEAN_MET = sanitizeText(idata.cleaning_method || r.clean_met || idata.clean_met || "").substring(0, 20);
+            baseRow.SCAF = (idata.scaffolding || r.scaf) ? "Yes" : "";
+            baseRow.LIGHT_METHOD = sanitizeText(idata.lighting_method || idata.light_method || "").substring(0, 20);
+            baseRow.LENGTH = idata.length != null && idata.length !== "" ? Number(idata.length) : "";
+            baseRow.WIDTH = idata.width != null && idata.width !== "" ? Number(idata.width) : "";
+          } else if (code === "BSS") {
+            baseRow.INSPECTOR = "";
+            baseRow.PROC = "";
+            baseRow.EQUIP = "";
+            baseRow.EQ_ID = "";
+            baseRow.SPEC = "";
+            baseRow.SURF_COND = "";
+            baseRow.CLEAN_MET = "";
+            baseRow.SCAF = "";
+
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+            const toBoolYesNo = (val: any) => {
+              if (
+                val === null ||
+                val === undefined ||
+                val === "" ||
+                val === false ||
+                val === "false" ||
+                val === "False" ||
+                val === "FALSE" ||
+                val === "no" ||
+                val === "No" ||
+                val === "NO" ||
+                val === 0 ||
+                val === "0"
+              ) {
+                return "NO";
+              }
+              return "YES";
+            };
+
+            baseRow.NO_BOLTS_PRES_MEMB = toNum(idata.no_bolts_pres_memb ?? idata.no_bolts_pres_member);
+            baseRow.NO_BOLTS_LOSE_MEMB = toNum(idata.no_bolts_loose_memb ?? idata.no_bolts_lose_memb ?? idata.no_bolts_loose_member);
+            baseRow.NO_BOLTS_MIS_MEMB = toNum(idata.no_bolts_miss_memb ?? idata.no_bolts_mis_memb ?? idata.no_bolts_missing_member);
+            baseRow.LINER_MEMB = toBoolYesNo(idata.liner_present_member_end ?? idata.liner_memb);
+            baseRow.LINER_COMP = toBoolYesNo(idata.liner_present_component_end ?? idata.liner_comp);
+            baseRow.CLMP_COATING = toBoolYesNo(idata.clamp_coating_satisfactory ?? idata.clmp_coating);
+            baseRow.EARTHWIRE_BOLT = toBoolYesNo(idata.earthing_wire_or_bolt_present ?? idata.earthwire_bolt);
+            baseRow.BOLTS_NUTTED = toBoolYesNo(idata.all_bolts_double_nutted ?? idata.bolts_nutted);
+            baseRow.WASHER_PRES = toBoolYesNo(idata.washers_present_all_bolts ?? idata.washer_pres);
+            baseRow.GAP_TOP_MEMB = toNum(idata.max_gap_top_member ?? idata.gap_top_memb);
+            baseRow.GAP_BOT_MEMB = toNum(idata.max_gap_bottom_member ?? idata.gap_bot_memb);
+            baseRow.GAP_TOP_COMP = toNum(idata.max_gap_top_brace ?? idata.gap_top_comp);
+            baseRow.GAP_BOT_COMP = toNum(idata.max_gap_bottom_brace ?? idata.gap_bot_comp);
+            baseRow.FLNG_MEMB = toNum(idata.max_flange_misalign_member ?? idata.flng_memb);
+            baseRow.FLNG_COMP = toNum(idata.max_flange_misalign_brace ?? idata.flng_comp);
+            baseRow.NO_BOLTS_PRES_COMP = toNum(idata.no_bolts_pres_brace ?? idata.no_bolts_pres_comp);
+            baseRow.NO_BOLTS_LOSE_COMP = toNum(idata.no_bolts_loose_brace ?? idata.no_bolts_lose_comp);
+            baseRow.NO_BOLTS_MIS_COMP = toNum(idata.no_bolts_miss_brace ?? idata.no_bolts_mis_comp);
+            baseRow.RISER_CP = toNum(idata.appurtenance_cp ?? idata.riser_cp);
+            baseRow.RISER_CLMP_CP = toNum(idata.appurtenance_clamp_cp ?? idata.riser_clmp_cp);
+            baseRow.STUB_CP = toNum(idata.stub_cp ?? idata.appurtenance_clamp_cp);
+            baseRow.MEMB_CLMP_CP = toNum(idata.member_clamp_cp ?? idata.memb_clmp_cp);
+            baseRow.MEMB_CP = toNum(idata.member_cp ?? idata.memb_cp);
+            baseRow.RSR_CLMP_TYPE = sanitizeText(idata.appurtenance_clamp_type ?? idata.rsr_clmp_type ?? idata.clamp_type ?? "").substring(0, 20);
+          } else if (code === "RSS") {
+            baseRow.INSPECTOR = "";
+            baseRow.PROC = "";
+            baseRow.EQUIP = "";
+            baseRow.EQ_ID = "";
+            baseRow.SPEC = "";
+            baseRow.SURF_COND = "";
+            baseRow.CLEAN_MET = "";
+            baseRow.SCAF = "";
+
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+            const toBoolYesNo = (val: any) => {
+              if (
+                val === null ||
+                val === undefined ||
+                val === "" ||
+                val === false ||
+                val === "false" ||
+                val === "False" ||
+                val === "FALSE" ||
+                val === "no" ||
+                val === "No" ||
+                val === "NO" ||
+                val === 0 ||
+                val === "0"
+              ) {
+                return "NO";
+              }
+              return "YES";
+            };
+
+            baseRow.CP_RDG = toNum(idata.cp_rdg ?? idata.cp_reading ?? r.cp_rdg);
+            baseRow.RISER_PRES = toBoolYesNo(idata.riser_present ?? idata.riser_pres);
+            baseRow.TYPE = sanitizeText(idata.type || idata.riser_type || "").substring(0, 20);
+            baseRow.DIAMETER = toNum(idata.diameter || idata.pipe_dia);
+            baseRow.WALL_THK = toNum(idata.wall_thickness ?? idata.wall_thk ?? idata.nominal_thickness);
+            baseRow.COAT_TYP = sanitizeText(idata.coating_type || idata.coat_typ || "").substring(0, 20);
+
+            let mgVal = "";
+            if (idata.marine_growth_soft !== undefined || idata.marine_growth_hard !== undefined) {
+              const mgSoft = Number(idata.marine_growth_soft);
+              const mgHard = Number(idata.marine_growth_hard);
+              if (!isNaN(mgSoft) && !isNaN(mgHard)) {
+                mgVal = String(mgSoft + mgHard);
+              } else if (!isNaN(mgSoft)) {
+                mgVal = String(mgSoft);
+              } else if (!isNaN(mgHard)) {
+                mgVal = String(mgHard);
+              } else {
+                mgVal = `${idata.marine_growth_soft || ""} ${idata.marine_growth_hard || ""}`.trim();
+              }
+            } else if (idata.mg !== undefined) {
+              mgVal = String(idata.mg);
+            }
+            baseRow.MG = sanitizeText(mgVal).substring(0, 25);
+
+            baseRow.BOTTM_HT = toNum(idata.span_height ?? idata.bottm_ht);
+            baseRow.ELEV_BOTTM = toNum(idata.riserbend_elevation ?? idata.elev_bottm);
+            baseRow.KNEE_BRACE = toBoolYesNo(idata.knee_brace);
+            baseRow.SUPP_BEAM = toBoolYesNo(idata.supp_beam ?? idata.support_beam);
+            baseRow.GUARD = toBoolYesNo(idata.guard ?? idata.riser_guard);
+            baseRow.PHYS_DMG = toBoolYesNo(idata.phys_dmg ?? idata.physical_damage);
+            baseRow.COAT_DMG = toBoolYesNo(idata.coat_dmg ?? idata.coating_damage);
+            baseRow.CLAMP_QID = sanitizeText(idata.clamp_qid || "").substring(0, 25);
+            baseRow.ON = sanitizeText(idata.on || "").substring(0, 1);
+            baseRow.NO_BOLTS = toNum(idata.no_bolts);
+            baseRow.NO_NUTS = toNum(idata.no_nuts);
+            baseRow.NO_M_BOLTS = toNum(idata.no_m_bolts ?? idata.no_missing_bolts);
+            baseRow.NO_M_NUTS = toNum(idata.no_m_nuts ?? idata.no_missing_nuts);
+            baseRow.NO_L_BOLTS = toNum(idata.no_l_bolts ?? idata.no_loose_bolts);
+            baseRow.NO_L_NUTS = toNum(idata.no_l_nuts ?? idata.no_loose_nuts);
+            baseRow.NUT_SIZE = toNum(idata.nut_size);
+            baseRow.BOLT_SIZE = toNum(idata.bolt_size);
+            baseRow.GAP = toNum(idata.gap);
+            baseRow.CP_IN = toNum(idata.cp_in);
+            baseRow.CP_OUT = toNum(idata.cp_out);
+            baseRow.GASKET_DMG = sanitizeText(idata.gasket_dmg || idata.gasket_info || "").substring(0, 20);
+            baseRow.REF_NAME = sanitizeText(idata.ref_name || "").substring(0, 20);
+            baseRow.POSITION = sanitizeText(idata.position || "").substring(0, 20);
+            baseRow.READ_THICK = toNum(idata.read_thick ?? idata.read_thickness);
+          } else if (code === "MPS") {
+            const recTypeUpper = String(r.inspection_type_code || "").trim().toUpperCase();
+            const itype = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
+            const itypeCodeUpper = String(itype?.code || "").trim().toUpperCase();
+            const itypeNameUpper = String(itype?.name || "").trim().toUpperCase();
+
+            const isAcfmRec =
+              recTypeUpper === "ACFMC" ||
+              recTypeUpper === "AFMC" ||
+              recTypeUpper === "AFS" ||
+              recTypeUpper === "ACFM" ||
+              recTypeUpper.includes("ACFM") ||
+              recTypeUpper.includes("AFMC") ||
+              itypeCodeUpper === "ACFMC" ||
+              itypeCodeUpper === "AFMC" ||
+              itypeCodeUpper === "ACFM" ||
+              itypeCodeUpper === "AFS" ||
+              itypeCodeUpper.includes("ACFM") ||
+              itypeNameUpper.includes("ACFM") ||
+              idata.acfmc_page !== undefined ||
+              idata.chord_weld_brace !== undefined;
+
+            baseRow.INSPECTOR = sanitizeText(r.inspector || idata.inspector || "").substring(0, 20);
+            baseRow.PROC = sanitizeText(r.procedure || idata.procedure || idata.proc || "").substring(0, 20);
+            baseRow.EQUIP = sanitizeText(r.equipment || idata.equipment || idata.calib_equipment_type || idata.equip || "").substring(0, 20);
+            baseRow.EQ_ID = sanitizeText(r.equipment_id || idata.equipment_id || idata.serial_number || idata.eq_id || "").substring(0, 20);
+            baseRow.SPEC = sanitizeText(r.spec || idata.spec || idata.specification || "").substring(0, 20);
+            baseRow.SURF_COND = sanitizeText(idata.surface_condition || r.surf_cond || idata.surf_cond || "").substring(0, 30);
+            baseRow.CLEAN_MET = sanitizeText(idata.cleaning_method || r.clean_met || idata.clean_met || "").substring(0, 20);
+            baseRow.SCAF = (idata.scaffolding || r.scaf || idata.scaf) ? "Yes" : "";
+
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+            const toBoolYesNo = (val: any) => {
+              if (
+                val === true ||
+                val === "true" ||
+                val === "True" ||
+                val === "TRUE" ||
+                val === "yes" ||
+                val === "Yes" ||
+                val === "YES" ||
+                val === 1 ||
+                val === "1"
+              ) {
+                return "YES";
+              }
+              return "NO";
+            };
+
+            if (isAcfmRec) {
+              baseRow.CALIB_BLK = "";
+              baseRow.MAGNT_INK = "";
+              baseRow.MAGNT_METHOD = "";
+              baseRow.BAKGD_CONT = "";
+              baseRow.MAGNT_LIFT_POWER = "";
+              baseRow.ORIENTATION = sanitizeText(idata.orientation ?? "").substring(0, 20);
+              baseRow.LIGHT_METHOD = "";
+              baseRow.CURR_COIL_MAGN = "";
+              baseRow.VOLT_COIL_MAGN = "";
+              baseRow.MAGN_CURR_POLE = "";
+              baseRow.DEMAGN = toBoolYesNo(idata.demagnetised ?? idata.demagnetized ?? idata.demagn);
+              baseRow.DISTANCE = "";
+              baseRow.INDICATION = "";
+              baseRow.SIZE = "";
+              baseRow.BURMAH = "";
+              baseRow.PROBE_FL = sanitizeText(idata.probe_fl ?? idata.probe ?? idata.probe_flow ?? "").substring(0, 20);
+              baseRow.WALL_THK3 = toNum(idata.brace_thick_3clk ?? idata.wall_thk3 ?? idata.b_wall_thk3);
+              baseRow.WALL_THK6 = toNum(idata.brace_thick_6clk ?? idata.wall_thk6 ?? idata.b_wall_thk6);
+              baseRow.WALL_THK9 = toNum(idata.brace_thick_9clk ?? idata.wall_thk9 ?? idata.b_wall_thk9);
+              baseRow.WALL_THK12 = toNum(idata.brace_thick_12clk ?? idata.wall_thk12 ?? idata.b_wall_thk12);
+              baseRow.C_WALL_THK3 = toNum(idata.chord_thick_3clk ?? idata.c_wall_thk3);
+              baseRow.C_WALL_THK6 = toNum(idata.chord_thick_6clk ?? idata.c_wall_thk6);
+              baseRow.C_WALL_THK9 = toNum(idata.chord_thick_9clk ?? idata.chord_thick9clk ?? idata.c_wall_thk9);
+              baseRow.C_WALL_THK12 = toNum(idata.chord_thick_12clk ?? idata.c_wall_thk12);
+              baseRow.T_CHORD1 = "";
+              baseRow.T_CHORD2 = "";
+              baseRow.T_CHORD3 = "";
+              baseRow.T_CHORD4 = "";
+              baseRow.WELD1 = "";
+              baseRow.WELD2 = "";
+              baseRow.WELD3 = "";
+              baseRow.WELD4 = "";
+              baseRow.T_BRACE1 = "";
+              baseRow.T_BRACE2 = "";
+              baseRow.T_BRACE3 = "";
+              baseRow.T_BRACE4 = "";
+              baseRow.CP_WALL_THK3 = "";
+              baseRow.CP_WALL_THK6 = "";
+              baseRow.CP_WALL_THK9 = "";
+              baseRow.CP_WALL_THK12 = "";
+              baseRow.SPEC_THK_CHORD = "";
+              baseRow.SPEC_THK_BRACE = "";
+              baseRow.POSITION = "";
+              baseRow.UTWT = "";
+              baseRow.UNDERCUT = "";
+            } else {
+              baseRow.CALIB_BLK = sanitizeText(idata.calib_block ?? idata.calib_blk ?? "").substring(0, 20);
+              baseRow.MAGNT_INK = sanitizeText(idata.magnetic_ink ?? idata.magnt_ink ?? "").substring(0, 20);
+              baseRow.MAGNT_METHOD = sanitizeText(idata.magnetic_method ?? idata.magnt_method ?? "").substring(0, 20);
+              baseRow.BAKGD_CONT = sanitizeText(idata.background_condition ?? idata.bakgd_cont ?? "").substring(0, 20);
+              baseRow.MAGNT_LIFT_POWER = toNum(idata.magnetic_lifting_power ?? idata.magnt_lift_power);
+              baseRow.ORIENTATION = sanitizeText(idata.orientation ?? "").substring(0, 20);
+              baseRow.LIGHT_METHOD = sanitizeText(idata.lighting_method ?? idata.light_method ?? "").substring(0, 20);
+              baseRow.CURR_COIL_MAGN = toNum(idata.current_in_coil_magnet ?? idata.curr_coil_magn);
+              baseRow.VOLT_COIL_MAGN = toNum(idata.voltage_in_coil_magnet ?? idata.volt_coil_magn);
+              baseRow.MAGN_CURR_POLE = toNum(idata.current_pole_spacing ?? idata.magn_curr_pole);
+              baseRow.DEMAGN = toBoolYesNo(idata.demagnetised ?? idata.demagnetized ?? idata.demagn);
+              baseRow.DISTANCE = toNum(idata.distance ?? idata.dist_from_datum);
+              baseRow.INDICATION = sanitizeText(idata.indication ?? "").substring(0, 20);
+              baseRow.SIZE = sanitizeText(idata.probe_size ?? idata.size ?? "").substring(0, 20);
+              baseRow.BURMAH = sanitizeText(idata.burmah_c_strip ?? idata.burmah ?? "").substring(0, 20);
+              baseRow.PROBE_FL = sanitizeText(idata.probe ?? idata.probe_fl ?? idata.probe_flow ?? "").substring(0, 20);
+              baseRow.WALL_THK3 = toNum(idata.brace_thick_3clk ?? idata.wall_thk3);
+              baseRow.WALL_THK6 = toNum(idata.brace_thick_6clk ?? idata.wall_thk6);
+              baseRow.WALL_THK9 = toNum(idata.brace_thick_9clk ?? idata.wall_thk9);
+              baseRow.WALL_THK12 = toNum(idata.brace_thick_12clk ?? idata.wall_thk12);
+              baseRow.C_WALL_THK3 = toNum(idata.chord_thick_3clk ?? idata.c_wall_thk3);
+              baseRow.C_WALL_THK6 = toNum(idata.chord_thick_6clk ?? idata.c_wall_thk6);
+              baseRow.C_WALL_THK9 = toNum(idata.chord_thick9clk ?? idata.chord_thick_9clk ?? idata.c_wall_thk9);
+              baseRow.C_WALL_THK12 = toNum(idata.chord_thick_12clk ?? idata.c_wall_thk12);
+              baseRow.T_CHORD1 = sanitizeText(idata.toe_chord_6_9 ?? idata.t_chord1 ?? "").substring(0, 50);
+              baseRow.T_CHORD2 = sanitizeText(idata.toe_chord_9_12 ?? idata.t_chord2 ?? "").substring(0, 50);
+              baseRow.T_CHORD3 = sanitizeText(idata.toe_chord_12_3 ?? idata.t_chord3 ?? "").substring(0, 50);
+              baseRow.T_CHORD4 = sanitizeText(idata.toe_chord_3_6 ?? idata.t_chord4 ?? "").substring(0, 50);
+              baseRow.WELD1 = sanitizeText(idata.weld_6_9 ?? idata.weld1 ?? "").substring(0, 50);
+              baseRow.WELD2 = sanitizeText(idata.weld_9_12 ?? idata.weld2 ?? "").substring(0, 50);
+              baseRow.WELD3 = sanitizeText(idata.weld_12_3 ?? idata.weld3 ?? "").substring(0, 50);
+              baseRow.WELD4 = sanitizeText(idata.weld_3_6 ?? idata.weld4 ?? "").substring(0, 50);
+              baseRow.T_BRACE1 = sanitizeText(idata.toe_brace_6_9 ?? idata.t_brace1 ?? "").substring(0, 50);
+              baseRow.T_BRACE2 = sanitizeText(idata.toe_brace_9_12 ?? idata.t_brace2 ?? "").substring(0, 50);
+              baseRow.T_BRACE3 = sanitizeText(idata.toe_brace_12_3 ?? idata.t_brace3 ?? "").substring(0, 50);
+              baseRow.T_BRACE4 = sanitizeText(idata.toe_brace_3_6 ?? idata.t_brace4 ?? "").substring(0, 50);
+              baseRow.CP_WALL_THK3 = toNum(idata.cp_at_3clk ?? idata.cp_wall_thk3);
+              baseRow.CP_WALL_THK6 = toNum(idata.cp_at_6clk ?? idata.cp_wall_thk6);
+              baseRow.CP_WALL_THK9 = toNum(idata.cp_at_9clk ?? idata.cp_wall_thk9);
+              baseRow.CP_WALL_THK12 = toNum(idata.cp_at_12clk ?? idata.cp_wall_thk12);
+              baseRow.SPEC_THK_CHORD = toNum(idata.chord_nominal_thickness ?? idata.spec_thk_chord);
+              baseRow.SPEC_THK_BRACE = toNum(idata.brace_nominal_thickness ?? idata.spec_thk_brace);
+              baseRow.POSITION = sanitizeText(idata.position ?? "").substring(0, 20);
+              baseRow.UTWT = toNum(idata.utwt ?? idata.ut_wall_thickness);
+              baseRow.UNDERCUT = toNum(idata.undercut);
+            }
+          } else if (code === "PHS") {
+            baseRow.INSPECTOR = sanitizeText(r.inspector || idata.inspector || "").substring(0, 20);
+            baseRow.PROC = sanitizeText(r.procedure || idata.procedure || idata.proc || "").substring(0, 20);
+            baseRow.EQUIP = sanitizeText(r.equipment || idata.equipment || idata.calib_equipment_type || idata.equip || "").substring(0, 20);
+            baseRow.EQ_ID = sanitizeText(r.equipment_id || idata.equipment_id || idata.serial_number || idata.eq_id || "").substring(0, 20);
+            baseRow.SPEC = sanitizeText(r.spec || idata.spec || idata.specification || "").substring(0, 20);
+            baseRow.SURF_COND = sanitizeText(idata.surface_condition || r.surf_cond || idata.surf_cond || "").substring(0, 30);
+            baseRow.CLEAN_MET = sanitizeText(idata.cleaning_method || r.clean_met || idata.clean_met || "").substring(0, 20);
+            baseRow.SCAF = (idata.scaffolding || r.scaf || idata.scaf) ? "Yes" : "";
+
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+
+            baseRow.LIGHT_METHOD = sanitizeText(idata.lighting_method || idata.light_method || "").substring(0, 20);
+            baseRow.FILM_TYPE = sanitizeText(idata.film_type || "").substring(0, 20);
+            baseRow.DESCRIPTION = sanitizeText(idata.description || idata.desc || "").substring(0, 50);
+            baseRow.WRK_PERMIT_ISSUE_DATE = formatDateStr(idata.wrk_permit_issue_date || idata.work_permit_issued_date || idata.permit_date);
+            baseRow.EXPOSURE_NO = toNum(idata.exposure_number ?? idata.exposure_no);
+            baseRow.SUBJECT = sanitizeText(idata.subject_of_photo || idata.subject || "").substring(0, 30);
+            baseRow.FILM_NO = sanitizeText(idata.film_no || "").substring(0, 20);
+            baseRow.FILM_SPEED = sanitizeText(idata.film_speed || "").substring(0, 10);
+            baseRow.CAMERA_TYP = sanitizeText(idata.camera_type || idata.camera_typ || "").substring(0, 20);
+            baseRow.LENS = sanitizeText(idata.lens || "").substring(0, 10);
+            baseRow.SNAP = sanitizeText(idata.snap || "").substring(0, 10);
+            baseRow.PHOTO_NO = sanitizeText(idata.photo_no || "").substring(0, 10);
+            baseRow.FILM_REF = sanitizeText(idata.film_ref || idata.film_reference || "").substring(0, 20);
+          } else if (code === "VDS") {
+            const dj = r.dive_job_id ? diveJobMap.get(Number(r.dive_job_id)) : null;
+            const tape = r.dive_job_id ? videoTapeMapByDiveJobId.get(Number(r.dive_job_id)) : null;
+            const videoLog = (tape?.tape_id ? videoLogMapByTapeId.get(Number(tape.tape_id)) : null) || videoLogMapByInspId.get(Number(r.insp_id));
+
+            baseRow.COMP_ID = "";
+            baseRow.ID_NO = "";
+            baseRow.Q_ID = "";
+            baseRow.CODE = "";
+            baseRow.COMPDESC = "";
+            baseRow.S_NODE = "";
+            baseRow.F_NODE = "";
+            baseRow.S_LEG = "";
+            baseRow.F_LEG = "";
+            baseRow.ELV_1 = "";
+            baseRow.ELV_2 = "";
+            baseRow.DIST = "";
+            baseRow.CLK_POS = "";
+            baseRow.COMPTYPE = "";
+
+            baseRow.INSP_ID = videoLog?.video_log_id != null ? videoLog.video_log_id : r.insp_id;
+            baseRow.INSP_DATE = videoLog?.event_time ? formatDateStr(videoLog.event_time) : formatDateStr(r.inspection_date);
+            baseRow.INSP_TIME = videoLog?.event_time ? formatTimeStr(videoLog.event_time) : formatTimeStr(r.inspection_time || idata.time || "");
+
+            baseRow.INSPECTOR = "";
+            baseRow.PROC = "";
+            baseRow.EQUIP = "";
+            baseRow.EQ_ID = "";
+            baseRow.SPEC = "";
+            baseRow.SURF_COND = "";
+            baseRow.CLEAN_MET = "";
+            baseRow.SCAF = "";
+            baseRow.SUPV = sanitizeText(dj?.dive_supervisor || dj?.supervisor || "").substring(0, 20);
+            baseRow.DIVR = sanitizeText(dj?.diver_name || "").substring(0, 20);
+            baseRow.DIVE_NO = sanitizeText(dj?.dive_no || dj?.job_no || (r.dive_job_id ? String(r.dive_job_id) : "")).substring(0, 10);
+            baseRow.ELEVATION = "";
+            baseRow.TOP_UND = "";
+
+            baseRow.LIGHT_METHOD = "";
+            baseRow.TAPE_TYPE = sanitizeText(tape?.tape_type || idata.tape_type || "").substring(0, 20);
+            baseRow.TAPE_NO = sanitizeText(tape?.tape_no || idata.tape_no || "").substring(0, 20);
+
+            const subjectParts = [tape?.remarks, videoLog?.event_type || idata.subject].filter(Boolean);
+            baseRow.SUBJECT = sanitizeText(subjectParts.join(" ") || "").substring(0, 30);
+            baseRow.TAPE_FOOTAGE = sanitizeText(videoLog?.timecode_start ? formatTimeStr(videoLog.timecode_start) : (idata.tape_footage || "")).substring(0, 30);
+            baseRow.TAPE_PERMIT_ISSUE_DATE = "";
           }
 
+          let resolvedJobType = "";
+          if (r.sow_report_no && sowData) {
+            const matchSow = (sowData || []).find((s: any) =>
+              (Number(s.structure_id) === Number(r.structure_id) || Number(s.plat_id) === Number(r.structure_id)) &&
+              Number(s.jobpack_id) === Number(r.jobpack_id)
+            );
+            if (matchSow) {
+              if (Array.isArray(matchSow.report_numbers)) {
+                const rep = matchSow.report_numbers.find((rn: any) => String(rn.number || rn.no || rn.report_no || "").trim() === String(r.sow_report_no).trim());
+                if (rep?.job_type) resolvedJobType = rep.job_type;
+              }
+              if (!resolvedJobType && matchSow.job_type) resolvedJobType = matchSow.job_type;
+            }
+          }
+          if (!resolvedJobType) {
+            resolvedJobType = jp?.job_type || "";
+          }
+
+          const recTypeForInspType = String(r.inspection_type_code || "").trim().toUpperCase();
+          const itypeForInspType = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
+          const itypeCodeForInspType = String(itypeForInspType?.code || "").trim().toUpperCase();
+          const itypeNameForInspType = String(itypeForInspType?.name || "").trim().toUpperCase();
+          const isAcfmInsp =
+            recTypeForInspType === "ACFMC" ||
+            recTypeForInspType === "AFMC" ||
+            recTypeForInspType === "AFS" ||
+            recTypeForInspType === "ACFM" ||
+            recTypeForInspType.includes("ACFM") ||
+            recTypeForInspType.includes("AFMC") ||
+            itypeCodeForInspType === "ACFMC" ||
+            itypeCodeForInspType === "AFMC" ||
+            itypeCodeForInspType === "ACFM" ||
+            itypeCodeForInspType === "AFS" ||
+            itypeCodeForInspType.includes("ACFM") ||
+            itypeNameForInspType.includes("ACFM") ||
+            idata.acfmc_page !== undefined ||
+            idata.chord_weld_brace !== undefined;
+
+          const isSzoneInsp =
+            recTypeForInspType === "SZONE" ||
+            recTypeForInspType === "SZS" ||
+            recTypeForInspType.includes("SZONE") ||
+            recTypeForInspType.includes("SPLASH") ||
+            itypeCodeForInspType === "SZONE" ||
+            itypeCodeForInspType === "SZS" ||
+            itypeCodeForInspType.includes("SZONE") ||
+            itypeNameForInspType.includes("SPLASH");
+
+          const isRfmdInsp =
+            recTypeForInspType === "RFMD" ||
+            recTypeForInspType.includes("RFMD") ||
+            recTypeForInspType.includes("ROVFMD") ||
+            itypeCodeForInspType === "RFMD" ||
+            itypeCodeForInspType.includes("RFMD") ||
+            idata.member_status !== undefined;
+
           baseRow.DEFECT = r.has_anomaly === true || Boolean(linkedAnom) ? "Yes" : "No";
-          baseRow.DFT_CODE_TYPE = sanitizeText(linkedAnom?.defect_type_code || linkedAnom?.defect_category_code || (linkedAnom ? "AW" : "")).substring(0, 12);
-          baseRow.DEFECT_CODE = sanitizeText(code === "ITS" ? (linkedAnom?.defect_category_code || "") : (linkedAnom?.defect_category_code || linkedAnom?.defect_code || "")).substring(0, 50);
-          baseRow.DEFECT_TYPE = sanitizeText(linkedAnom?.priority_code || linkedAnom?.priority || (linkedAnom ? "P3" : "")).substring(0, 20);
-          baseRow.DEFECT_DESC = sanitizeText(code === "ITS" ? (linkedAnom?.defect_description || "") : (linkedAnom?.defect_description || linkedAnom?.description || "")).substring(0, 250);
+          baseRow.DFT_CODE_TYPE = sanitizeText(linkedAnom?.defect_type_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.defect_category_code || (linkedAnom ? "AW" : "")))).substring(0, 12);
+          baseRow.DEFECT_CODE = sanitizeText(["ITS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? (linkedAnom?.defect_category_code || "") : (linkedAnom?.defect_category_code || linkedAnom?.defect_code || "")).substring(0, 50);
+          baseRow.DEFECT_TYPE = sanitizeText(linkedAnom?.priority_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.priority || (linkedAnom ? "P3" : "")))).substring(0, 20);
+          baseRow.DEFECT_DESC = sanitizeText(["ITS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? (linkedAnom?.defect_description || "") : (linkedAnom?.defect_description || linkedAnom?.description || "")).substring(0, 250);
           baseRow.DFT_REF_NO = sanitizeText(linkedAnom?.anomaly_ref_no || "").substring(0, 30);
-          baseRow.RECTIFID = linkedAnom?.is_rectified === true || linkedAnom?.status === "CLOSED" ? "Yes" : "No";
-          baseRow.RECTIFID_DESC = sanitizeText(linkedAnom?.rectified_remarks || linkedAnom?.follow_up_notes || "").substring(0, 250);
-          baseRow.RECT_DATE = linkedAnom?.rectified_date ? formatDateStr(linkedAnom.rectified_date) : (linkedAnom?.created_at ? formatDateStr(linkedAnom.created_at) : "");
+          baseRow.RECTIFID = linkedAnom?.is_rectified === true ? "Yes" : (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "No" : (linkedAnom?.status === "CLOSED" ? "Yes" : "No"));
+          baseRow.RECTIFID_DESC = sanitizeText(linkedAnom?.rectified_remarks || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.follow_up_notes || ""))).substring(0, 250);
+          baseRow.RECT_DATE = linkedAnom?.rectified_date ? formatDateStr(linkedAnom.rectified_date) : "";
           baseRow.INSPNO = formatInspNo(r.jobpack_id || jp?.id);
           baseRow.JOBNAME = sanitizeText(jp?.name || `JP-${r.jobpack_id || 1}`).substring(0, 20);
           baseRow.STATUS = sanitizeText(jp?.status || "OPEN").substring(0, 10).toUpperCase();
-          baseRow.INSP_DONE = String(r.status || "").toUpperCase() === "COMPLETED" ? "Yes" : (String(r.status || "").toUpperCase() === "INCOMPLETE" ? "No" : "Yes");
+          baseRow.INSP_DONE = String(r.status || "").toUpperCase() === "COMPLETED" ? "Yes" : (String(r.status || "").toUpperCase() === "INCOMPLETE" ? "No" : "No");
+          baseRow.REC_DATE = formatDateStr(r.md_date || r.inspection_date);
           baseRow.INSP_COND = sanitizeText(r.description || idata.findings || idata.observations || "").substring(0, 1000);
-          baseRow.CMNTS = sanitizeText(r.comments || idata.comments || idata.cmnts || "").substring(0, 4000);
-          baseRow.JOB_TYPE = sanitizeText(jp?.job_type || "").substring(0, 20);
+          baseRow.CMNTS = code === "BSS" || code === "SZS" || code === "VDS" ? "" : sanitizeText(r.comments || idata.comments || idata.cmnts || "").substring(0, 4000);
+          baseRow.JOB_TYPE = sanitizeText(resolvedJobType).substring(0, 20);
           baseRow.LAST_MAJOR_INSPNO = sanitizeText(jp?.last_insp_no || "").substring(0, 11);
-          baseRow.INSPTYPE = code;
-          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (code === "ITS" || code === "SZS" ? "" : (linkedAnom?.evaluated_by || ""))).substring(0, 250);
+          baseRow.INSPTYPE = code === "MPS" ? (isAcfmInsp ? "AFS" : "MPS") : (code === "UTS" ? (isSzoneInsp ? "SZS" : "UTS") : (code === "FDS" ? (isRfmdInsp ? "PGS" : "FDS") : code));
+          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (["ITS", "SZS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.evaluated_by || ""))).substring(0, 250);
           baseRow.APPROV_BY = sanitizeText(linkedAnom?.approved_by || "").substring(0, 250);
 
-          if (code === "SZS") {
+          if (code === "SZS" || code === "BSS" || code === "VDS") {
             baseRow.CMNTS = "";
           }
 

@@ -41,6 +41,7 @@ const AVAILABLE_MODULES = [
     "Reports",
     "Executive Summary",
     "Oracle Migration",
+    "Interface",
     "Library",
     "Platform 3D",
     "Inspection Type",
