@@ -17,8 +17,23 @@ import {
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ReportWizard } from "./report-wizard";
-import { FinalDatasheetBuilder } from "./final-datasheet-builder";
+import dynamic from "next/dynamic";
+
+// ReportWizard is a very large client module (~374KB, pulls the full
+// jspdf/docx/xlsx report-generator chain). Load it client-side only so the
+// Netlify SSR edge function renders just this lightweight shell instead of
+// timing out on the full tree.
+const ReportWizard = dynamic(
+    () => import("./report-wizard").then((mod) => mod.ReportWizard),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="flex-1 flex items-center justify-center text-sm font-bold text-slate-400">
+                Loading Report Wizard...
+            </div>
+        ),
+    }
+);
 
 // Dynamically import generators for legacy/direct access
 // (Ideally this logic should move into ReportWizard over time)
