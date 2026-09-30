@@ -1,3 +1,5 @@
+"use client";
+
 import dynamic from "next/dynamic";
 
 // The workspace is a very large client component tree. Server-rendering it
