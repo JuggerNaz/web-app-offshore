@@ -59,6 +59,7 @@ import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
 import { PlatformSpecsDialog } from "@/components/dialogs/platform-specs-dialog";
 import { InspectionStatusDialog } from "@/components/dialogs/inspection-status-dialog";
 import { InspectionTaskDialog } from "@/components/dialogs/inspection-task-dialog";
+import { InspectionStatusOverlay } from "./_components/InspectionStatusOverlay";
 import { ExternalLink } from "lucide-react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
@@ -192,6 +193,31 @@ export default function Platform3DPage() {
         const s = Array.isArray(inspectionTaskSowResponse.data) ? inspectionTaskSowResponse.data[0] : inspectionTaskSowResponse.data;
         return s?.items || [];
     }, [inspectionTaskSowResponse]);
+
+    // Fetch Jobpacks for selected platform to resolve names & active detection
+    const { data: platformJobpacksData } = useSWR(
+        selectedPlatform ? `/api/jobpack?structure_id=${selectedPlatform.plat_id}&pageSize=50` : null,
+        fetcher
+    );
+    const platformJobpacks = useMemo(() => platformJobpacksData?.data || [], [platformJobpacksData]);
+
+    // Inspection Status Bottom Overlay state
+    const [isInspectionOverlayDismissed, setIsInspectionOverlayDismissed] = useState(false);
+    const activeInspectionJobpackId = inspectionJobpackId || inspectionTaskJobpackId;
+    const activeInspectionSowReportNo = inspectionSowReportNo || inspectionTaskSowReportNo;
+    const activeInspectionSowItems = inspectionJobpackId ? inspectionSowItems : (inspectionTaskJobpackId ? inspectionTaskSowItems : []);
+
+    const activeJobpackName = useMemo(() => {
+        if (!activeInspectionJobpackId) return null;
+        const match = platformJobpacks.find((j: any) => Number(j.id) === Number(activeInspectionJobpackId));
+        return match?.jobpack_no || match?.name || `Jobpack #${activeInspectionJobpackId}`;
+    }, [activeInspectionJobpackId, platformJobpacks]);
+
+    const isInspectionOverlayVisible = Boolean(
+        selectedComponent &&
+        !isInspectionOverlayDismissed &&
+        (activeInspectionJobpackId !== null || activeInspectionSowItems.length > 0)
+    );
 
     // WINCAIRS Mode state & Fallback Dialog state
     const [useWincairsMode, setUseWincairsMode] = useState(false);
@@ -636,6 +662,7 @@ export default function Platform3DPage() {
     const handleSelectComponent = (comp: any) => {
         setSelectedComponent(comp);
         setIsSpecOpen(true);
+        setIsInspectionOverlayDismissed(false);
     };
 
     const handleSelectPlatform = (p: Platform) => {
@@ -697,8 +724,6 @@ export default function Platform3DPage() {
                         <div>
                             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-0.5">
                                 <span className="text-blue-600">3D Explorer</span>
-                                <div className="h-1 w-1 rounded-full bg-slate-300" />
-                                <span>{selectedPlatform.ptype || "PLATFORM"}</span>
                             </div>
                             <button
                                 type="button"
@@ -915,6 +940,20 @@ export default function Platform3DPage() {
                             selectedTaskSowReportNo={inspectionTaskSowReportNo}
                             isLoading={isPlatformDataLoading}
                         />
+
+                        {/* Bottom Semi-Transparent Inspection Status Overlay */}
+                        {isInspectionOverlayVisible && selectedComponent && (
+                            <InspectionStatusOverlay
+                                platformId={selectedPlatform.plat_id}
+                                platformTitle={selectedPlatform.title}
+                                component={selectedComponent}
+                                jobpackId={activeInspectionJobpackId}
+                                jobpackName={activeJobpackName}
+                                sowReportNo={activeInspectionSowReportNo}
+                                sowItems={activeInspectionSowItems}
+                                onClose={() => setIsInspectionOverlayDismissed(true)}
+                            />
+                        )}
                     </div>
 
                     {isSpecOpen && selectedComponent && (

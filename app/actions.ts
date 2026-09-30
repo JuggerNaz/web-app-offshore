@@ -306,6 +306,8 @@ export const updateUserProfileAction = async (formData: FormData) => {
   const designation = formData.get("designation")?.toString();
   const avatarUrl = formData.get("avatar_url")?.toString();
 
+  const { data: { user } } = await supabase.auth.getUser();
+
   const { error } = await supabase.auth.updateUser({
     data: {
       full_name: fullName,
@@ -313,6 +315,14 @@ export const updateUserProfileAction = async (formData: FormData) => {
       avatar_url: avatarUrl,
     },
   });
+
+  if (user?.id) {
+    await (supabase as any).from("profiles").update({
+      full_name: fullName,
+      designation: designation,
+      avatar_url: avatarUrl,
+    }).eq("id", user.id);
+  }
 
   if (error) {
     console.error("Profile update failed:", error.message);

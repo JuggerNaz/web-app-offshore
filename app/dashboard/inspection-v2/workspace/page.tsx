@@ -9002,8 +9002,20 @@ function V10PreviewLayout() {
       newParams.delete("recordId");
       newParams.delete("compId");
       router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
+    } else if (!recordIdParam && compIdParam && isReadyForComps && allComps.length > 0 && !hasAutoEditedRef.current) {
+      hasAutoEditedRef.current = true;
+      const targetComp = allComps.find(
+        (c: any) => String(c.id || c.comp_id) === String(compIdParam) || 
+                    (c.q_id && String(c.q_id).toUpperCase() === String(compIdParam).toUpperCase())
+      );
+      if (targetComp) {
+        setSelectedComp(targetComp);
+      }
+      const newParams = new URLSearchParams(window.location.search);
+      newParams.delete("compId");
+      router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
     }
-  }, [recordIdParam, isReadyForComps, allComps, handleEditRecord, router]);
+  }, [recordIdParam, compIdParam, isReadyForComps, allComps, handleEditRecord, setSelectedComp, router]);
 
   const flexLayoutStyles = (
     <style dangerouslySetInnerHTML={{ __html: `
