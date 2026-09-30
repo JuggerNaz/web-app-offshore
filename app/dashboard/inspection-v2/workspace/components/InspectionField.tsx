@@ -579,6 +579,40 @@ const InspectionField = ({
         );
     }
 
+    if (p.name === 'mgi_profile' || p.type === 'mgi_profile_display') {
+        const displayVal = currentValue
+            ? (typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue).replace(/[^\d.-]/g, '')) || '')
+            : (dynamicProps?.max_allowable_thickness ?? '');
+
+        return (
+            <div className="relative flex items-center gap-1">
+                <Input
+                    type="number"
+                    step="0.1"
+                    value={displayVal}
+                    onChange={(e) => {
+                        if (readOnly) return;
+                        const val = e.target.value;
+                        const num = parseFloat(val);
+                        handler('mgi_profile', val ? `${val}mm` : '');
+                        handler('max_allowable_thickness', isNaN(num) ? '' : num);
+                        if (type === 'primary') {
+                            setDebouncedProps((prev: any) => ({
+                                ...prev,
+                                mgi_profile: val ? `${val}mm` : '',
+                                max_allowable_thickness: isNaN(num) ? '' : num
+                            }));
+                        }
+                    }}
+                    readOnly={readOnly}
+                    placeholder="Max Allowable (mm)"
+                    className={`h-8 text-xs font-semibold bg-white dark:bg-slate-900 ${borderClass} ${ringClass} flex-1 dark:text-slate-200`}
+                />
+                <span className="text-[10px] font-bold text-slate-500 px-1">mm</span>
+            </div>
+        );
+    }
+
     return (
         <div className="relative flex items-center gap-1">
             <Input

@@ -419,43 +419,83 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     };
 
     React.useEffect(() => {
-        if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
         if (!activeSpec || !['MGI', 'RMGI', 'DMGI', 'MGROW'].includes(activeSpec.toUpperCase())) return;
-        const vDepthRaw = getFormDepth();
-        const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
-        const waterDepth = resolveWaterDepth();
-        const applicableMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
-        if (applicableMax === null) return;
-        const formattedThreshold = `${applicableMax.toFixed(1)}mm`;
-        if (dynamicProps?.mgi_profile !== formattedThreshold && handleDynamicPropChange) {
-            handleDynamicPropChange('mgi_profile', formattedThreshold);
+
+        let applicableMax: number | null = null;
+
+        // When viewing or editing an existing record, retrieve the max allowable MGI from the record
+        if (isEditing && (dynamicProps?.max_allowable_thickness != null || dynamicProps?.mgi_profile != null)) {
+            if (dynamicProps?.max_allowable_thickness != null && dynamicProps.max_allowable_thickness !== "") {
+                const num = parseFloat(String(dynamicProps.max_allowable_thickness));
+                if (!isNaN(num)) applicableMax = num;
+            }
+            if (applicableMax === null && dynamicProps?.mgi_profile != null && dynamicProps.mgi_profile !== "") {
+                const num = parseFloat(String(dynamicProps.mgi_profile).replace(/[^\d.-]/g, ''));
+                if (!isNaN(num)) applicableMax = num;
+            }
         }
-        if (dynamicProps?.max_allowable_thickness !== applicableMax && handleDynamicPropChange) {
-            handleDynamicPropChange('max_allowable_thickness', applicableMax);
+
+        // For a new record (or if existing record does not have a saved value), calculate from current active MGI profile settings
+        if (applicableMax === null) {
+            if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
+            const vDepthRaw = getFormDepth();
+            const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
+            const waterDepth = resolveWaterDepth();
+            applicableMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
+            if (applicableMax === null) return;
+            const formattedThreshold = `${applicableMax.toFixed(1)}mm`;
+            if (dynamicProps?.mgi_profile !== formattedThreshold && handleDynamicPropChange) {
+                handleDynamicPropChange('mgi_profile', formattedThreshold);
+            }
+            if (dynamicProps?.max_allowable_thickness !== applicableMax && handleDynamicPropChange) {
+                handleDynamicPropChange('max_allowable_thickness', applicableMax);
+            }
+            if (activeMGIProfile?.id && dynamicProps?._mgi_profile_id !== activeMGIProfile.id && handleDynamicPropChange) {
+                handleDynamicPropChange('_mgi_profile_id', activeMGIProfile.id);
+            }
         }
-        if (activeMGIProfile?.id && dynamicProps?._mgi_profile_id !== activeMGIProfile.id && handleDynamicPropChange) {
-            handleDynamicPropChange('_mgi_profile_id', activeMGIProfile.id);
-        }
-        const thicknessFields = ['mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9'];
+
+        const thicknessFields = [
+            'mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9',
+            'marine_growth_hard', 'hard_growth', 'effective_thickness'
+        ];
         const currentMaxT = Math.max(...thicknessFields.map(f => parseFloat(dynamicProps?.[f]) || 0));
-        if (currentMaxT > applicableMax) {
+        if (applicableMax !== null && currentMaxT > applicableMax) {
             if (lastFlaggedThreshold !== applicableMax && findingType !== 'Anomaly') {
                 setFindingType('Anomaly');
                 setLastFlaggedThreshold(applicableMax);
                 setAnomalyData((prev: any) => ({
                     ...prev,
                     defectCode: 'Marine Growth',
-                    description: `MGI Thickness threshold breached. Depth: ${vDepthRaw}${vDepthUnit}. Threshold: ${applicableMax.toFixed(1)}mm. Measured: ${currentMaxT}mm.`,
+                    description: `MGI Thickness threshold breached. Depth: ${getFormDepth()}${dynamicProps?.verification_depth_unit || 'm'}. Threshold: ${applicableMax!.toFixed(1)}mm. Measured: ${currentMaxT}mm.`,
                     priority: 'Anomalous'
                 }));
                 toast.warning(`MGI Threshold Breached (${applicableMax.toFixed(1)}mm)! Switch to Anomaly detected.`, {
-                    description: `Measured ${currentMaxT}mm at ${vDepthRaw}${vDepthUnit} depth.`
+                    description: `Measured ${currentMaxT}mm at ${getFormDepth()}${dynamicProps?.verification_depth_unit || 'm'} depth.`
                 });
             }
         } else if (lastFlaggedThreshold === applicableMax && findingType === 'Anomaly' && anomalyData.defectCode === 'Marine Growth') {
             setLastFlaggedThreshold(null);
         }
-    }, [dynamicProps?.mgi_hard_thickness_at_12, dynamicProps?.mgi_hard_thickness_at_3, dynamicProps?.mgi_hard_thickness_at_6, dynamicProps?.mgi_hard_thickness_at_9, dynamicProps?.verification_depth, dynamicProps?.verification_depth_unit, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev]);
+    }, [
+        dynamicProps?.mgi_hard_thickness_at_12,
+        dynamicProps?.mgi_hard_thickness_at_3,
+        dynamicProps?.mgi_hard_thickness_at_6,
+        dynamicProps?.mgi_hard_thickness_at_9,
+        dynamicProps?.marine_growth_hard,
+        dynamicProps?.hard_growth,
+        dynamicProps?.effective_thickness,
+        dynamicProps?.verification_depth,
+        dynamicProps?.verification_depth_unit,
+        dynamicProps?.mgi_profile,
+        dynamicProps?.max_allowable_thickness,
+        activeMGIProfile,
+        headerData.waterDepth,
+        activeSpec,
+        selectedComp.depth,
+        selectedComp.lowestElev,
+        isEditing
+    ]);
 
     React.useEffect(() => {
         if (!activeSpec || (activeSpec.toUpperCase() !== 'UTWTK' && activeSpec.toUpperCase() !== 'RUTWT' && activeSpec.toUpperCase() !== 'DUTWT' && activeSpec.toUpperCase() !== 'SZONE' && activeSpec.toUpperCase() !== 'RSZCI' && activeSpec.toUpperCase() !== 'DSZCI')) return;
@@ -1502,6 +1542,16 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     const softFields = mgiFields.filter((p: any) => p && p.groupRow === 'soft');
                                     const profileField = mgiFields.find((p: any) => p && p.type === 'mgi_profile_display');
                                     const resolveApplicableMax = () => {
+                                        // When viewing or editing an existing record, retrieve from the inspection record
+                                        if (dynamicProps?.max_allowable_thickness != null && dynamicProps.max_allowable_thickness !== "") {
+                                            const num = parseFloat(String(dynamicProps.max_allowable_thickness));
+                                            if (!isNaN(num)) return num;
+                                        }
+                                        if (dynamicProps?.mgi_profile != null && dynamicProps.mgi_profile !== "") {
+                                            const num = parseFloat(String(dynamicProps.mgi_profile).replace(/[^\d.-]/g, ''));
+                                            if (!isNaN(num)) return num;
+                                        }
+                                        // For new record, calculate from current active MGI profile settings
                                         const vDepthRaw = getFormDepth();
                                         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
                                         const waterDepth = resolveWaterDepth();
@@ -1528,9 +1578,52 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                  })()}</span>
                                                               </div>
                                                          </div>
-                                                         {activeMGIProfile && (
-                                                             <div className="flex flex-col items-end"><span className="text-[10px] font-black text-teal-600 dark:text-teal-400 bg-teal-100/50 dark:bg-teal-900/30 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800">MAX: {resolveApplicableMax()?.toFixed(1) ?? '—'}mm</span></div>
-                                                         )}
+                                                         <div className="flex items-center gap-1.5 bg-teal-100/70 dark:bg-teal-900/40 px-2 py-0.5 rounded border border-teal-300 dark:border-teal-700 shadow-sm">
+                                                             <label htmlFor="mgi-max-input" className="text-[10px] font-black text-teal-800 dark:text-teal-300 uppercase tracking-wider cursor-pointer">
+                                                                 MAX:
+                                                             </label>
+                                                             <input
+                                                                 id="mgi-max-input"
+                                                                 type="number"
+                                                                 step="0.1"
+                                                                 value={
+                                                                     dynamicProps?.max_allowable_thickness !== undefined && dynamicProps?.max_allowable_thickness !== null && dynamicProps?.max_allowable_thickness !== ""
+                                                                         ? dynamicProps.max_allowable_thickness
+                                                                         : (dynamicProps?.mgi_profile ? parseFloat(String(dynamicProps.mgi_profile).replace(/[^\d.-]/g, '')) || '' : (resolveApplicableMax() ?? ''))
+                                                                 }
+                                                                 onChange={(e) => {
+                                                                     const raw = e.target.value;
+                                                                     const num = parseFloat(raw);
+                                                                     if (handleDynamicPropChange) {
+                                                                         handleDynamicPropChange('max_allowable_thickness', isNaN(num) ? '' : num);
+                                                                         handleDynamicPropChange('mgi_profile', raw ? `${raw}mm` : '');
+                                                                     }
+                                                                 }}
+                                                                 className="w-16 h-5 px-1.5 text-[10px] font-black text-right text-teal-900 dark:text-teal-100 bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 rounded focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-inner"
+                                                                 placeholder="—"
+                                                             />
+                                                             <span className="text-[9px] font-black text-teal-700 dark:text-teal-300">mm</span>
+                                                             {activeMGIProfile && (
+                                                                 <button
+                                                                     type="button"
+                                                                     title="Reset to Active Profile threshold"
+                                                                     onClick={() => {
+                                                                         const vDepthRaw = getFormDepth();
+                                                                         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
+                                                                         const waterDepth = resolveWaterDepth();
+                                                                         const profMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
+                                                                         if (profMax !== null && handleDynamicPropChange) {
+                                                                             handleDynamicPropChange('max_allowable_thickness', profMax);
+                                                                             handleDynamicPropChange('mgi_profile', `${profMax.toFixed(1)}mm`);
+                                                                             toast.info(`Reset to active MGI profile: ${profMax.toFixed(1)}mm`);
+                                                                         }
+                                                                     }}
+                                                                     className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-200 p-0.5 rounded transition-colors"
+                                                                 >
+                                                                     <RefreshCw className="w-3 h-3" />
+                                                                 </button>
+                                                             )}
+                                                         </div>
                                                     </div>
                                                     {profileField && !activeMGIProfile && (
                                                         <div className="flex items-center gap-2 p-2.5 bg-amber-50/50 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-800/40 rounded-lg">

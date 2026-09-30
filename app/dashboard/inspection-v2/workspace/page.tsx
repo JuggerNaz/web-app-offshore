@@ -108,6 +108,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { parseClientDate, toUtcIsoTimestamp, toDatetimeLocalString, formatClientTime } from "@/utils/client-date";
+import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
@@ -7051,30 +7052,20 @@ function V10PreviewLayout() {
       }
 
       // Synchronous auto-calculation for MGI Profile threshold
-      if (['MGI', 'RMGI', 'DMGI', 'MGROW'].includes(specStr) && activeMGIProfile && activeMGIProfile.thresholds?.length > 0) {
-          const vDepthRaw = activeProps.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
-          const vDepthUnit = activeProps.verification_depth_unit || 'm';
-          const waterDepth = Math.abs(headerData.waterDepth || 0);
-          
-          let val = parseFloat(vDepthRaw);
-          if (!isNaN(val)) {
-             if (vDepthUnit === 'ft') val = val * 0.3048;
-             const sorted = [...activeMGIProfile.thresholds].sort((a: any, b: any) => a.depth - b.depth);
-             let foundThreshold: any = null;
-             for (let i = 0; i < sorted.length; i++) {
-                 if (val <= sorted[i].depth) {
-                     foundThreshold = sorted[i].max_thickness;
-                     break;
-                 }
-             }
-             if (foundThreshold === null && sorted.length > 0) {
-                 foundThreshold = sorted[sorted.length - 1].max_thickness;
-             }
-             
-             if (foundThreshold !== null) {
-                 activeProps.mgi_profile = `${foundThreshold.toFixed(1)}mm`;
-                 activeProps.max_allowable_thickness = foundThreshold;
-             }
+      if (['MGI', 'RMGI', 'DMGI', 'MGROW'].includes(specStr)) {
+          if (editingRecordId && (activeProps.mgi_profile || activeProps.max_allowable_thickness)) {
+              if (!activeProps.mgi_profile && activeProps.max_allowable_thickness != null) {
+                  activeProps.mgi_profile = `${Number(activeProps.max_allowable_thickness).toFixed(1)}mm`;
+              }
+          } else if (activeMGIProfile && activeMGIProfile.thresholds?.length > 0) {
+              const vDepthRaw = activeProps.verification_depth || (selectedComp.lowestElev && selectedComp.lowestElev !== '-' ? selectedComp.lowestElev : selectedComp.depth) || '0';
+              const vDepthUnit = activeProps.verification_depth_unit || 'm';
+              const waterDepth = Math.abs(headerData.waterDepth || 0);
+              const applicableMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
+              if (applicableMax !== null) {
+                  activeProps.mgi_profile = `${applicableMax.toFixed(1)}mm`;
+                  activeProps.max_allowable_thickness = applicableMax;
+              }
           }
       }
 
@@ -7113,7 +7104,9 @@ function V10PreviewLayout() {
           "verification_depth", "verification_depth_unit",
           "inspection_date", "inspection_time", "tape_count_no",
           "incomplete_reason", "has_anomaly",
-          "flow_direction", "insp_mode", "inspection_direction", "inspection_location"
+          "flow_direction", "insp_mode", "inspection_direction", "inspection_location",
+          "mgi_profile", "max_allowable_thickness", "_mgi_profile_id", "effective_thickness",
+          "marine_growth_hard", "marine_growth_soft"
         ]);
 
         Object.keys(activeProps).forEach((key) => {
@@ -7217,6 +7210,8 @@ function V10PreviewLayout() {
         })(),
         inspection_data: {
           ...activeProps,
+          mgi_profile: activeProps.mgi_profile || null,
+          max_allowable_thickness: activeProps.max_allowable_thickness != null && activeProps.max_allowable_thickness !== "" ? Number(activeProps.max_allowable_thickness) : (activeProps.mgi_profile ? parseFloat(String(activeProps.mgi_profile).replace(/[^\d.-]/g, '')) || null : null),
           _meta_timecode: formatTime(
             Number(
               activeProps.tape_count_no !== undefined &&
@@ -7227,7 +7222,7 @@ function V10PreviewLayout() {
             )
           ),
           _meta_status: findingType,
-          _mgi_profile_id: activeMGIProfile?.id || null,
+          _mgi_profile_id: activeProps._mgi_profile_id || activeMGIProfile?.id || null,
           incomplete_reason: findingType === "Incomplete" ? incompleteReason : null,
         },
         archived_data: newArchivedData,
@@ -7802,6 +7797,22 @@ function V10PreviewLayout() {
     }
     if (fullRecord.inspection_date) initialProps.inspection_date = fullRecord.inspection_date;
     if (fullRecord.inspection_time) initialProps.inspection_time = fullRecord.inspection_time;
+
+    // Explicitly restore mgi_profile and max_allowable_thickness from inspection_data or top-level record
+    if (parsedData.mgi_profile !== undefined && parsedData.mgi_profile !== null && parsedData.mgi_profile !== "") {
+      initialProps.mgi_profile = String(parsedData.mgi_profile);
+    } else if (fullRecord.mgi_profile) {
+      initialProps.mgi_profile = String(fullRecord.mgi_profile);
+    }
+    if (parsedData.max_allowable_thickness !== undefined && parsedData.max_allowable_thickness !== null && parsedData.max_allowable_thickness !== "") {
+      initialProps.max_allowable_thickness = Number(parsedData.max_allowable_thickness);
+    } else if (initialProps.mgi_profile) {
+      const num = parseFloat(String(initialProps.mgi_profile).replace(/[^\d.-]/g, ''));
+      if (!isNaN(num)) initialProps.max_allowable_thickness = num;
+    }
+    if (parsedData._mgi_profile_id) {
+      initialProps._mgi_profile_id = parsedData._mgi_profile_id;
+    }
 
     // Sync debris_desc from description on load if it's a Debris record
     if (activeSpec === 'RSEAB' && initialProps.category === 'Debris') {
