@@ -37,12 +37,21 @@ const getJobpackDate = (jp: any): string | null => {
   return meta.istart || meta.date_start || meta.start_date || meta.startDate || null;
 };
 
+// Jobpack metadata start dates come in mixed formats (e.g. "27-MAY-21", ISO strings).
+// Parse with explicit formats; fall back to JS Date only when none match so moment
+// never falls back to its unreliable native-date parsing (deprecation warning).
+const JOBPACK_DATE_FORMATS = ["DD-MMM-YY", "DD-MMM-YYYY", moment.ISO_8601];
+const parseJobpackDate = (value: string) => {
+  const parsed = moment(value, JOBPACK_DATE_FORMATS);
+  return parsed.isValid() ? parsed : moment(new Date(value));
+};
+
 const getJobpackYear = (jp: any): string => {
   const meta = jp?.metadata || {};
   const dateVal = meta.istart || meta.date_start || meta.start_date || meta.startDate;
   if (dateVal) {
-    const parsed = new Date(dateVal).getFullYear();
-    if (!isNaN(parsed)) return parsed.toString();
+    const parsed = parseJobpackDate(dateVal);
+    if (parsed.isValid()) return parsed.year().toString();
   }
   if (meta.year) return String(meta.year);
   // Match 4 digit year from name (e.g., 00-0001/2004 or 00-00042/2001)
@@ -429,7 +438,7 @@ export default function JobpackPage() {
                                   {start ? (
                                     <div className="flex items-center gap-1.5">
                                       <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                                      <span>{moment(start).format("DD MMM YYYY")}</span>
+                                      <span>{parseJobpackDate(start).format("DD MMM YYYY")}</span>
                                     </div>
                                   ) : (
                                     <span className="text-slate-300 text-xs">N/A</span>

@@ -25,10 +25,18 @@ import {
   Layers3
 } from "lucide-react";
 import { Command as CommandPrimitive } from "cmdk";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { searchGlobal, SearchResult } from "@/lib/search-actions";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
+
+// ReportPreviewDialog statically imports jsPDF; lazy-load it so the heavy
+// report/PDF dependency chain stays out of every dashboard page's SSR graph
+// and initial client bundle (this component lives in the dashboard layout).
+const ReportPreviewDialog = dynamic(
+  () => import("@/components/ReportPreviewDialog").then((mod) => mod.ReportPreviewDialog),
+  { ssr: false }
+);
 import { cn } from "@/lib/utils";
 import {
   getTemplatesForInspectionType,
