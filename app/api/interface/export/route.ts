@@ -20,6 +20,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       structureType = "ALL", // "ALL" | "PLATFORM" | "PIPELINE"
       jobpackMode = "ALL", // "ALL" | "SELECTED"
       jobpackIds = [],
+      sowReportMode = "ALL", // "ALL" | "SELECTED"
       sowReportNos = [],
       sowReportNo = "",
       inspectionTypes = [],
@@ -30,6 +31,14 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       singleTableCode = null, // e.g. "ANS", "CPS", etc.
       singleTableId = null,   // e.g. "sics-ans"
     } = body;
+
+    const effectiveSowReportNos: string[] = (
+      Array.isArray(sowReportNos) && sowReportNos.length > 0
+        ? sowReportNos
+        : (sowReportNo && sowReportNo !== "ALL" ? [sowReportNo] : [])
+    ).map((s) => String(s).trim()).filter(Boolean);
+
+    const isSowFiltered = (sowReportMode === "SELECTED" || effectiveSowReportNos.length > 0) && effectiveSowReportNos.length > 0;
 
     // Resolve client & interface definition
     const clientProfile: ClientProfile = INITIAL_CLIENT_PROFILES.find((c) => c.id === clientId) || INITIAL_CLIENT_PROFILES[0];
@@ -68,6 +77,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       PHS: ["PHOTO", "PHS", "PGS"],
       VDS: ["VIDEO", "VDS", "PGS"],
       PGS: ["RGVI", "RMGI", "RSANI", "RFMD", "RSCOR", "RCASN", "RCOND", "RICMI", "RRISI", "RSEAB", "RSWNI", "RSZCI", "RUTWT", "RWDI", "PGS", "ROVGEN"],
+      RSS: ["RISER", "RSS", "RISER_SURVEY", "RISER SURVEY", "RISERSURVEY", "RRISI", "RGVI", "PGS"],
     };
 
     const needsAttachments = templatesToProcess.some((t) => t.queryStrategy === "ATTACHMENTS" || t.identifierCode === "ATS");
@@ -202,7 +212,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     ] = await Promise.all([
       (supabase as any)
         .from("structure_components")
-        .select("id, comp_id, q_id, id_no, code, description, name, structure_id, metadata")
+        .select("*")
         .in("structure_id", activeStrIds.length > 0 ? activeStrIds : [-999999])
         .limit(10000),
       (supabase as any)
@@ -210,12 +220,12 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         .select("code, descrip, name"),
       (supabase as any)
         .from("insp_dive_jobs")
-        .select("id, dive_job_id, dive_no, job_no, name, diver_name, dive_supervisor, supervisor")
-        .limit(2000),
+        .select("*")
+        .limit(10000),
       (supabase as any)
         .from("insp_rov_jobs")
-        .select("id, rov_job_id, rov_job_no, job_no, name, pilot_name, supervisor")
-        .limit(2000),
+        .select("*")
+        .limit(10000),
       needsVideo
         ? (supabase as any).from("insp_video_tapes").select("*").limit(5000)
         : Promise.resolve({ data: [] }),
@@ -233,14 +243,33 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
     const compMap = new Map<number, any>();
     const compMapByCompId = new Map<number, any>();
+    const compMapByStrAndId = new Map<string, any>();
+    const compMapByStrAndCompId = new Map<string, any>();
     const compMapByQid = new Map<string, any>();
+    const compMapByStrAndQid = new Map<string, any>();
 
     const indexComponent = (c: any) => {
       if (!c) return;
+      if (!c.code && c.id_no && typeof c.id_no === "string" && c.id_no.includes("/")) {
+        const prefix = c.id_no.split("/")[0].trim().toUpperCase();
+        if (prefix.length >= 2 && prefix.length <= 4) {
+          c.code = prefix.substring(0, 2);
+        }
+      }
       const numId = Number(c.id);
-      if (!isNaN(numId) && numId > 0) compMap.set(numId, c);
+      if (!isNaN(numId) && numId > 0) {
+        compMap.set(numId, c);
+        if (c.structure_id) {
+          compMapByStrAndId.set(`${c.structure_id}_${numId}`, c);
+        }
+      }
       const numCompId = Number(c.comp_id);
-      if (!isNaN(numCompId) && numCompId > 0) compMapByCompId.set(numCompId, c);
+      if (!isNaN(numCompId) && numCompId > 0) {
+        compMapByCompId.set(numCompId, c);
+        if (c.structure_id) {
+          compMapByStrAndCompId.set(`${c.structure_id}_${numCompId}`, c);
+        }
+      }
 
       const registerKey = (rawKey: any) => {
         if (!rawKey) return;
@@ -248,23 +277,32 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         if (!strKey) return;
         compMapByQid.set(strKey, c);
         if (c.structure_id) {
-          compMapByQid.set(`${c.structure_id}_${strKey}`, c);
+          compMapByStrAndQid.set(`${c.structure_id}_${strKey}`, c);
         }
         const normKey = strKey.replace(/[^A-Z0-9]/g, "");
         if (normKey && normKey !== strKey) {
           compMapByQid.set(`NORM_${normKey}`, c);
           if (c.structure_id) {
-            compMapByQid.set(`${c.structure_id}_NORM_${normKey}`, c);
+            compMapByStrAndQid.set(`${c.structure_id}_NORM_${normKey}`, c);
           }
         }
       };
 
       registerKey(c.q_id);
       registerKey(c.id_no);
+      registerKey(c.name);
+      registerKey(c.code);
       registerKey(c.metadata?.q_id);
+      registerKey(c.metadata?.qid);
       registerKey(c.metadata?.id_no);
+      registerKey(c.metadata?.idno);
+      registerKey(c.metadata?.anode_no);
+      registerKey(c.metadata?.anod_no);
+      registerKey(c.metadata?.anode_tag);
       registerKey(c.metadata?.description);
+      registerKey(c.metadata?.descr);
       registerKey(c.metadata?.desc);
+      registerKey(c.metadata?.compdesc);
     };
 
     (compData || []).forEach(indexComponent);
@@ -277,23 +315,118 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     });
 
     const diveJobMap = new Map<number, any>();
-    (diveJobsData || []).forEach((dj: any) => {
-      if (dj.dive_job_id != null) diveJobMap.set(Number(dj.dive_job_id), dj);
-      if (dj.id != null) diveJobMap.set(Number(dj.id), dj);
-    });
+    const diveJobMapByStrAndId = new Map<string, any>();
+    const diveJobMapByJpAndId = new Map<string, any>();
+    const diveJobMapByNo = new Map<string, any>();
+    const diveJobMapByStrAndNo = new Map<string, any>();
+    const diveJobMapByJpAndNo = new Map<string, any>();
+
+    const indexDiveJob = (dj: any) => {
+      if (!dj) return;
+      const numId = Number(dj.id);
+      if (!isNaN(numId) && numId > 0) {
+        diveJobMap.set(numId, dj);
+        if (dj.structure_id) diveJobMapByStrAndId.set(`${dj.structure_id}_${numId}`, dj);
+        if (dj.jobpack_id) diveJobMapByJpAndId.set(`${dj.jobpack_id}_${numId}`, dj);
+      }
+      const numDiveJobId = Number(dj.dive_job_id);
+      if (!isNaN(numDiveJobId) && numDiveJobId > 0) {
+        diveJobMap.set(numDiveJobId, dj);
+        if (dj.structure_id) diveJobMapByStrAndId.set(`${dj.structure_id}_${numDiveJobId}`, dj);
+        if (dj.jobpack_id) diveJobMapByJpAndId.set(`${dj.jobpack_id}_${numDiveJobId}`, dj);
+      }
+
+      const registerDiveNo = (rawNo: any) => {
+        if (!rawNo) return;
+        const strNo = String(rawNo).trim().toUpperCase();
+        if (!strNo) return;
+        diveJobMapByNo.set(strNo, dj);
+        if (dj.structure_id) diveJobMapByStrAndNo.set(`${dj.structure_id}_${strNo}`, dj);
+        if (dj.jobpack_id) diveJobMapByJpAndNo.set(`${dj.jobpack_id}_${strNo}`, dj);
+
+        const normDigits = strNo.replace(/[^\d]/g, "");
+        if (normDigits && normDigits !== strNo) {
+          diveJobMapByNo.set(normDigits, dj);
+          diveJobMapByNo.set(`DIVE_${normDigits}`, dj);
+          if (dj.structure_id) {
+            diveJobMapByStrAndNo.set(`${dj.structure_id}_${normDigits}`, dj);
+            diveJobMapByStrAndNo.set(`${dj.structure_id}_DIVE_${normDigits}`, dj);
+          }
+          if (dj.jobpack_id) {
+            diveJobMapByJpAndNo.set(`${dj.jobpack_id}_${normDigits}`, dj);
+            diveJobMapByJpAndNo.set(`${dj.jobpack_id}_DIVE_${normDigits}`, dj);
+          }
+        }
+      };
+
+      registerDiveNo(dj.dive_no);
+      registerDiveNo(dj.deployment_no);
+      registerDiveNo(dj.job_no);
+      registerDiveNo(dj.name);
+      registerDiveNo(dj.diveno);
+    };
+
+    (diveJobsData || []).forEach(indexDiveJob);
 
     const rovJobMap = new Map<number, any>();
-    (rovJobsData || []).forEach((rj: any) => {
-      if (rj.rov_job_id != null) rovJobMap.set(Number(rj.rov_job_id), rj);
-      if (rj.id != null) rovJobMap.set(Number(rj.id), rj);
-    });
+    const rovJobMapByStrAndId = new Map<string, any>();
+    const rovJobMapByJpAndId = new Map<string, any>();
+    const rovJobMapByNo = new Map<string, any>();
+    const rovJobMapByStrAndNo = new Map<string, any>();
+    const rovJobMapByJpAndNo = new Map<string, any>();
+
+    const indexRovJob = (rj: any) => {
+      if (!rj) return;
+      const numId = Number(rj.id);
+      if (!isNaN(numId) && numId > 0) {
+        rovJobMap.set(numId, rj);
+        if (rj.structure_id) rovJobMapByStrAndId.set(`${rj.structure_id}_${numId}`, rj);
+        if (rj.jobpack_id) rovJobMapByJpAndId.set(`${rj.jobpack_id}_${numId}`, rj);
+      }
+      const numRovJobId = Number(rj.rov_job_id);
+      if (!isNaN(numRovJobId) && numRovJobId > 0) {
+        rovJobMap.set(numRovJobId, rj);
+        if (rj.structure_id) rovJobMapByStrAndId.set(`${rj.structure_id}_${numRovJobId}`, rj);
+        if (rj.jobpack_id) rovJobMapByJpAndId.set(`${rj.jobpack_id}_${numRovJobId}`, rj);
+      }
+
+      const registerRovNo = (rawNo: any) => {
+        if (!rawNo) return;
+        const strNo = String(rawNo).trim().toUpperCase();
+        if (!strNo) return;
+        rovJobMapByNo.set(strNo, rj);
+        if (rj.structure_id) rovJobMapByStrAndNo.set(`${rj.structure_id}_${strNo}`, rj);
+        if (rj.jobpack_id) rovJobMapByJpAndNo.set(`${rj.jobpack_id}_${strNo}`, rj);
+
+        const normDigits = strNo.replace(/[^\d]/g, "");
+        if (normDigits && normDigits !== strNo) {
+          rovJobMapByNo.set(normDigits, rj);
+          if (rj.structure_id) rovJobMapByStrAndNo.set(`${rj.structure_id}_${normDigits}`, rj);
+          if (rj.jobpack_id) rovJobMapByJpAndNo.set(`${rj.jobpack_id}_${normDigits}`, rj);
+        }
+      };
+
+      registerRovNo(rj.deployment_no);
+      registerRovNo(rj.rov_job_no);
+      registerRovNo(rj.job_no);
+      registerRovNo(rj.name);
+      registerRovNo(rj.dive_no);
+      registerRovNo(rj.diveno);
+    };
+
+    (rovJobsData || []).forEach(indexRovJob);
 
     const videoTapeMapByDiveJobId = new Map<number, any>();
+    const videoTapeMapByRovJobId = new Map<number, any>();
     const videoTapeMapById = new Map<number, any>();
     (videoTapesData || []).forEach((vt: any) => {
       if (vt.tape_id != null) videoTapeMapById.set(Number(vt.tape_id), vt);
+      if (vt.id != null) videoTapeMapById.set(Number(vt.id), vt);
       if (vt.dive_job_id != null && !videoTapeMapByDiveJobId.has(Number(vt.dive_job_id))) {
         videoTapeMapByDiveJobId.set(Number(vt.dive_job_id), vt);
+      }
+      if (vt.rov_job_id != null && !videoTapeMapByRovJobId.has(Number(vt.rov_job_id))) {
+        videoTapeMapByRovJobId.set(Number(vt.rov_job_id), vt);
       }
     });
 
@@ -344,10 +477,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     if (jobpackMode === "SELECTED" && jobpackIds.length > 0) {
       inspQuery = inspQuery.in("jobpack_id", jobpackIds.map(Number));
     }
-    if (sowReportNos && sowReportNos.length > 0) {
-      inspQuery = inspQuery.in("sow_report_no", sowReportNos);
-    } else if (sowReportNo && sowReportNo !== "ALL") {
-      inspQuery = inspQuery.eq("sow_report_no", sowReportNo);
+    if (isSowFiltered) {
+      inspQuery = inspQuery.in("sow_report_no", effectiveSowReportNos);
     }
     if (isSingleTableExport && singleCode && targetCodesMap[singleCode]) {
       inspQuery = inspQuery.in("inspection_type_code", targetCodesMap[singleCode]);
@@ -355,33 +486,85 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       inspQuery = inspQuery.in("inspection_type_code", inspectionTypes);
     }
 
-    const { data: recordsData, error: recordsError } = await inspQuery.limit(5000);
+    const { data: recordsData, error: recordsError } = await inspQuery.limit(10000);
     if (recordsError) {
       console.error("[Interface Export] Error querying insp_records:", recordsError);
     }
-    const allRecords = recordsData || [];
+    let allRecords = recordsData || [];
+
+    if (isSowFiltered) {
+      const sowSet = new Set(effectiveSowReportNos.map((s) => s.toUpperCase()));
+      allRecords = allRecords.filter((r: any) => {
+        const idata = r.inspection_data || {};
+        const rSow = String(r.sow_report_no || "").trim().toUpperCase();
+        const iSow = String(idata.sow_report_no || idata.sow_no || idata.report_no || "").trim().toUpperCase();
+        return (rSow && sowSet.has(rSow)) || (iSow && sowSet.has(iSow));
+      });
+    }
 
     // Fetch any missing components referenced in allRecords
     const missingCompIdSet = new Set<number>();
     const missingQidSet = new Set<string>();
+    const extraStrIdSet = new Set<number>();
 
     allRecords.forEach((r: any) => {
-      const cId = Number(r.component_id || r.inspection_data?.component_id || r.inspection_data?.comp_id || r.inspection_data?.structure_component_id || r.inspection_data?.compid);
-      if (!isNaN(cId) && cId > 0 && !compMap.has(cId) && !compMapByCompId.has(cId)) {
-        missingCompIdSet.add(cId);
+      const idata = r.inspection_data || {};
+      const strId = Number(r.structure_id);
+      if (strId && !activeStrIds.includes(strId)) {
+        extraStrIdSet.add(strId);
       }
-      const rawQid = String(r.q_id || r.component_qid || r.inspection_data?.q_id || r.inspection_data?.component_qid || r.inspection_data?.component || r.inspection_data?.comp_qid || r.inspection_data?.id_no || r.inspection_data?.component_id_no || "").trim();
-      const qVal = rawQid.toUpperCase();
-      if (qVal && !compMapByQid.has(qVal) && (!r.structure_id || !compMapByQid.has(`${r.structure_id}_${qVal}`))) {
-        missingQidSet.add(rawQid);
-      }
+
+      [
+        Number(r.component_id),
+        Number(idata.component_id),
+        Number(idata.comp_id),
+        Number(idata.structure_component_id),
+        Number(idata.compid),
+        Number(idata.anode_id),
+        Number(idata.member_id),
+      ].forEach((cid) => {
+        if (!isNaN(cid) && cid > 0 && !compMap.has(cid) && !compMapByCompId.has(cid)) {
+          missingCompIdSet.add(cid);
+        }
+      });
+
+      [
+        String(r.q_id || ""),
+        String(r.component_qid || ""),
+        String(idata.q_id || ""),
+        String(idata.component_qid || ""),
+        String(idata.component || ""),
+        String(idata.comp_qid || ""),
+        String(idata.id_no || ""),
+        String(idata.component_id_no || ""),
+        String(idata.anode_no || ""),
+        String(idata.anod_no || ""),
+        String(idata.anode_tag || ""),
+        String(idata.member || ""),
+        String(idata.member_name || ""),
+      ].forEach((rawQid) => {
+        const qVal = rawQid.trim().toUpperCase();
+        if (qVal && !compMapByQid.has(qVal) && (!strId || !compMapByStrAndQid.has(`${strId}_${qVal}`))) {
+          missingQidSet.add(qVal);
+        }
+      });
     });
+
+    if (extraStrIdSet.size > 0) {
+      const extraStrIds = Array.from(extraStrIdSet);
+      const { data: extraComps } = await (supabase as any)
+        .from("structure_components")
+        .select("*")
+        .in("structure_id", extraStrIds)
+        .limit(10000);
+      (extraComps || []).forEach(indexComponent);
+    }
 
     if (missingCompIdSet.size > 0) {
       const missingIds = Array.from(missingCompIdSet);
       const [{ data: byIdComps }, { data: byCompIdComps }] = await Promise.all([
-        (supabase as any).from("structure_components").select("id, comp_id, q_id, id_no, code, description, name, structure_id, metadata").in("id", missingIds),
-        (supabase as any).from("structure_components").select("id, comp_id, q_id, id_no, code, description, name, structure_id, metadata").in("comp_id", missingIds),
+        (supabase as any).from("structure_components").select("*").in("id", missingIds),
+        (supabase as any).from("structure_components").select("*").in("comp_id", missingIds),
       ]);
       (byIdComps || []).forEach(indexComponent);
       (byCompIdComps || []).forEach(indexComponent);
@@ -390,28 +573,146 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     if (missingQidSet.size > 0) {
       const missingQids = Array.from(missingQidSet);
       const [{ data: byQidComps }, { data: byIdNoComps }] = await Promise.all([
-        (supabase as any).from("structure_components").select("id, comp_id, q_id, id_no, code, description, name, structure_id, metadata").in("q_id", missingQids),
-        (supabase as any).from("structure_components").select("id, comp_id, q_id, id_no, code, description, name, structure_id, metadata").in("id_no", missingQids),
+        (supabase as any).from("structure_components").select("*").in("q_id", missingQids),
+        (supabase as any).from("structure_components").select("*").in("id_no", missingQids),
       ]);
       (byQidComps || []).forEach(indexComponent);
       (byIdNoComps || []).forEach(indexComponent);
     }
 
-    // 5. Fetch Anomalies
+    // Collect any missing dive jobs or ROV jobs referenced in allRecords
+    const missingDiveJobIdSet = new Set<number>();
+    const missingDiveNoSet = new Set<string>();
+    const missingRovJobIdSet = new Set<number>();
+    const missingRovNoSet = new Set<string>();
+
+    allRecords.forEach((r: any) => {
+      const idata = r.inspection_data || {};
+      const didCandidates = [
+        Number(r.dive_job_id),
+        Number(idata.dive_job_id),
+        Number(idata.dive_id),
+        Number(idata.divejob_id),
+        Number(r.rov_job_id),
+        Number(idata.rov_job_id),
+        Number(idata.rov_id),
+      ].filter((n) => !isNaN(n) && n > 0);
+
+      didCandidates.forEach((did) => {
+        if (!diveJobMap.has(did)) missingDiveJobIdSet.add(did);
+        if (!rovJobMap.has(did)) missingRovJobIdSet.add(did);
+      });
+
+      const dnoCandidates = [
+        String(r.dive_no || ""),
+        String(idata.dive_no || ""),
+        String(idata.diveno || ""),
+        String(idata.dive_num || ""),
+        String(idata.deployment_no || ""),
+        String(idata.dive || ""),
+        String(r.rov_job_no || ""),
+        String(idata.rov_job_no || ""),
+        String(idata.rov_no || ""),
+        String(idata.rov_num || ""),
+        String(idata.rov || ""),
+      ].map((s) => s.trim().toUpperCase()).filter(Boolean);
+
+      dnoCandidates.forEach((dVal) => {
+        if (!diveJobMapByNo.has(dVal)) missingDiveNoSet.add(dVal);
+        if (!rovJobMapByNo.has(dVal)) missingRovNoSet.add(dVal);
+      });
+    });
+
+    if (missingDiveJobIdSet.size > 0) {
+      const missingDids = Array.from(missingDiveJobIdSet);
+      const [{ data: byIdDjs }, { data: byJobIdDjs }] = await Promise.all([
+        (supabase as any).from("insp_dive_jobs").select("*").in("id", missingDids),
+        (supabase as any).from("insp_dive_jobs").select("*").in("dive_job_id", missingDids),
+      ]);
+      (byIdDjs || []).forEach(indexDiveJob);
+      (byJobIdDjs || []).forEach(indexDiveJob);
+    }
+
+    if (missingDiveNoSet.size > 0) {
+      const missingDnos = Array.from(missingDiveNoSet);
+      const [{ data: byDiveNoDjs }, { data: byDeployNoDjs }, { data: byJobNoDjs }] = await Promise.all([
+        (supabase as any).from("insp_dive_jobs").select("*").in("dive_no", missingDnos),
+        (supabase as any).from("insp_dive_jobs").select("*").in("deployment_no", missingDnos),
+        (supabase as any).from("insp_dive_jobs").select("*").in("job_no", missingDnos),
+      ]);
+      (byDiveNoDjs || []).forEach(indexDiveJob);
+      (byDeployNoDjs || []).forEach(indexDiveJob);
+      (byJobNoDjs || []).forEach(indexDiveJob);
+    }
+
+    if (missingRovJobIdSet.size > 0) {
+      const missingRids = Array.from(missingRovJobIdSet);
+      const [{ data: byIdRjs }, { data: byJobIdRjs }] = await Promise.all([
+        (supabase as any).from("insp_rov_jobs").select("*").in("id", missingRids),
+        (supabase as any).from("insp_rov_jobs").select("*").in("rov_job_id", missingRids),
+      ]);
+      (byIdRjs || []).forEach(indexRovJob);
+      (byJobIdRjs || []).forEach(indexRovJob);
+    }
+
+    if (missingRovNoSet.size > 0) {
+      const missingRnos = Array.from(missingRovNoSet);
+      const [{ data: byDeployRjs }, { data: byJobNoRjs }, { data: byRovJobNoRjs }] = await Promise.all([
+        (supabase as any).from("insp_rov_jobs").select("*").in("deployment_no", missingRnos),
+        (supabase as any).from("insp_rov_jobs").select("*").in("job_no", missingRnos),
+        (supabase as any).from("insp_rov_jobs").select("*").in("rov_job_no", missingRnos),
+      ]);
+      (byDeployRjs || []).forEach(indexRovJob);
+      (byJobNoRjs || []).forEach(indexRovJob);
+      (byRovJobNoRjs || []).forEach(indexRovJob);
+    }
+
+    // 5. Fetch Anomalies (insp_anomalies where inspection_id = insp_records.insp_id)
     let allAnomalies: any[] = [];
     const anomMapByInspId = new Map<number, any>();
     if (templatesToProcess.some((t) => t.queryStrategy === "INSP_RECORDS")) {
-      let anomQuery = (supabase as any)
-        .from("insp_anomalies")
-        .select("id, anomaly_no, inspection_id, structure_id, anomaly_type, description, severity, status");
-      if (activeStrIds.length > 0) {
-        anomQuery = anomQuery.in("structure_id", activeStrIds);
+      const allInspIds = allRecords
+        .map((r: any) => Number(r.insp_id))
+        .filter((id: number) => !isNaN(id) && id > 0);
+
+      if (allInspIds.length > 0) {
+        for (let i = 0; i < allInspIds.length; i += 500) {
+          const chunk = allInspIds.slice(i, i + 500);
+          const { data: anomBatch, error: anomErr } = await (supabase as any)
+            .from("insp_anomalies")
+            .select("*")
+            .in("inspection_id", chunk);
+
+          if (!anomErr && anomBatch) {
+            allAnomalies.push(...anomBatch);
+            anomBatch.forEach((a: any) => {
+              if (a.inspection_id != null) {
+                anomMapByInspId.set(Number(a.inspection_id), a);
+              }
+            });
+          }
+        }
       }
-      const { data: anomaliesData } = await anomQuery.limit(5000);
-      allAnomalies = anomaliesData || [];
-      allAnomalies.forEach((a: any) => {
-        if (a.inspection_id != null) anomMapByInspId.set(Number(a.inspection_id), a);
-      });
+
+      if (activeStrIds.length > 0 && allAnomalies.length === 0) {
+        let anomQuery = (supabase as any)
+          .from("insp_anomalies")
+          .select("*")
+          .in("structure_id", activeStrIds);
+        if (jobpackMode === "SELECTED" && jobpackIds.length > 0) {
+          anomQuery = anomQuery.in("jobpack_id", jobpackIds.map(Number));
+        }
+        if (isSowFiltered) {
+          anomQuery = anomQuery.in("sow_report_no", effectiveSowReportNos);
+        }
+        const { data: anomaliesData } = await anomQuery.limit(10000);
+        (anomaliesData || []).forEach((a: any) => {
+          if (a.inspection_id != null && !anomMapByInspId.has(Number(a.inspection_id))) {
+            anomMapByInspId.set(Number(a.inspection_id), a);
+            allAnomalies.push(a);
+          }
+        });
+      }
     }
 
     // 6. Fetch Pipeline Events / Geo
@@ -862,41 +1163,121 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
           if (code === "ANS") {
             const idata = r.inspection_data || {};
-            const recCompId = Number(r.component_id || idata.component_id || idata.comp_id || idata.structure_component_id || idata.compid);
-            const rawQid = String(r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || idata.comp_qid || idata.id_no || idata.component_id_no || "").trim();
-            const recQidUpper = rawQid.toUpperCase();
-            const normQid = recQidUpper.replace(/[^A-Z0-9]/g, "");
+            const candidateCompIds = [
+              Number(r.component_id),
+              Number(idata.component_id),
+              Number(idata.comp_id),
+              Number(idata.structure_component_id),
+              Number(idata.compid),
+              Number(idata.anode_id),
+              Number(idata.member_id),
+            ].filter((n) => !isNaN(n) && n > 0);
+
+            const candidateQids = [
+              String(r.q_id || ""),
+              String(r.component_qid || ""),
+              String(idata.q_id || ""),
+              String(idata.component_qid || ""),
+              String(idata.component || ""),
+              String(idata.comp_qid || ""),
+              String(idata.id_no || ""),
+              String(idata.component_id_no || ""),
+              String(idata.anode_no || ""),
+              String(idata.anod_no || ""),
+              String(idata.anode_tag || ""),
+              String(idata.member || ""),
+              String(idata.member_name || ""),
+              String(idata.tag || ""),
+            ].map((s) => s.trim()).filter((s) => s.length > 0);
+
             const strIdNum = Number(r.structure_id);
-            const comp = (!isNaN(recCompId) && recCompId > 0 ? (compMap.get(recCompId) || compMapByCompId.get(recCompId)) : null)
-              || (recQidUpper && strIdNum ? compMapByQid.get(`${strIdNum}_${recQidUpper}`) : null)
-              || (recQidUpper ? compMapByQid.get(recQidUpper) : null)
-              || (normQid && strIdNum ? compMapByQid.get(`${strIdNum}_NORM_${normQid}`) : null)
-              || (normQid ? compMapByQid.get(`NORM_${normQid}`) : null)
-              || r.structure_components
-              || r.component;
-            const recCompCode = String(comp?.code || comp?.metadata?.code || idata.comp_code || idata.code || "").trim().toUpperCase();
+            let comp: any = null;
 
-            const isRovAnode = (["RGVI", "RSANI"].includes(recType) || ["RGVI", "RSANI"].includes(itypeCode) || recType.includes("RSANI") || itypeCode.includes("RSANI")) && (recCompCode === "AN" || recQidUpper.startsWith("AN"));
-
-            if (
-              isRovAnode ||
-              idata.anode_cp !== undefined ||
-              idata.anode_output !== undefined ||
-              idata.anode_depletion_percent !== undefined ||
-              idata.anode_depletion !== undefined ||
-              idata.anode_type !== undefined ||
-              idata.anode_length !== undefined ||
-              idata.anode_secured_to_structure !== undefined ||
-              ["ANODE", "ANOD", "ANS", "RANS", "PL_AN", "ANMIN"].includes(recType) ||
-              ["ANODE", "ANOD", "ANS", "RANS", "PL_AN", "ANMIN"].includes(itypeCode) ||
-              recType.includes("ANOD") ||
-              recType.includes("PL_AN") ||
-              itypeCode.includes("ANOD") ||
-              itypeCode.includes("PL_AN") ||
-              itypeName.includes("ANODE")
-            ) {
-              return true;
+            if (strIdNum) {
+              for (const cid of candidateCompIds) {
+                comp = compMapByStrAndId.get(`${strIdNum}_${cid}`) || compMapByStrAndCompId.get(`${strIdNum}_${cid}`);
+                if (comp) break;
+              }
             }
+            if (!comp) {
+              for (const cid of candidateCompIds) {
+                comp = compMap.get(cid) || compMapByCompId.get(cid);
+                if (comp) break;
+              }
+            }
+            if (!comp && strIdNum) {
+              for (const qid of candidateQids) {
+                const qUpper = qid.toUpperCase();
+                const norm = qUpper.replace(/[^A-Z0-9]/g, "");
+                comp = compMapByStrAndQid.get(`${strIdNum}_${qUpper}`)
+                  || (norm ? compMapByStrAndQid.get(`${strIdNum}_NORM_${norm}`) : null);
+                if (comp) break;
+              }
+            }
+            if (!comp) {
+              for (const qid of candidateQids) {
+                const qUpper = qid.toUpperCase();
+                const norm = qUpper.replace(/[^A-Z0-9]/g, "");
+                comp = compMapByQid.get(qUpper)
+                  || (norm ? compMapByQid.get(`NORM_${norm}`) : null);
+                if (comp) break;
+              }
+            }
+            if (!comp) {
+              comp = r.structure_components || r.component;
+            }
+
+            const rawIdNo = String(comp?.id_no || comp?.metadata?.id_no || idata.id_no || r.id_no || "").trim().toUpperCase();
+            let idNoPrefix = "";
+            if (rawIdNo.includes("/")) {
+              idNoPrefix = rawIdNo.split("/")[0].trim();
+            }
+
+            const recCompCode = String(comp?.code || comp?.metadata?.code || comp?.metadata?.comp_code || idata.comp_code || idata.code || r.code || "").trim().toUpperCase();
+            const rawQid = String(comp?.q_id || comp?.metadata?.q_id || r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || "").trim().toUpperCase();
+            const compDesc = String(comp?.description || comp?.name || comp?.metadata?.description || comp?.metadata?.compdesc || idata.compdesc || idata.description || "").trim().toUpperCase();
+
+            // 1. Explicit reject if known non-anode component code or non-anode id_no prefix (e.g. VD, BL, CL, RG, SG, CU, MB, LG, ND, BR)
+            if (recCompCode && recCompCode !== "AN") {
+              return false;
+            }
+            if (idNoPrefix && idNoPrefix !== "AN") {
+              return false;
+            }
+
+            // 2. Reject if description indicates non-anode structure component unless it explicitly mentions ANODE
+            if (
+              (compDesc.includes("BOATLANDING") || compDesc.includes("GUARD") || compDesc.includes("MEMBER") || compDesc.includes("DIAGONAL") || compDesc.includes("CONDUCTOR") || compDesc.includes("CAISSON") || compDesc.includes("RISER") || compDesc.includes("SUPPORT")) &&
+              !compDesc.includes("ANODE") &&
+              !rawQid.startsWith("BAN") &&
+              !rawQid.startsWith("LAN") &&
+              !rawQid.startsWith("CAN") &&
+              !rawQid.startsWith("TAN") &&
+              !rawQid.startsWith("AN")
+            ) {
+              return false;
+            }
+
+            // 3. Strictly require that this is an ANODE component
+            const isAnodeComp =
+              recCompCode === "AN" ||
+              idNoPrefix === "AN" ||
+              rawQid.startsWith("BAN") ||
+              rawQid.startsWith("LAN") ||
+              rawQid.startsWith("CAN") ||
+              rawQid.startsWith("TAN") ||
+              rawQid.startsWith("ANODE") ||
+              (rawQid.startsWith("AN") && !rawQid.startsWith("ANS")) ||
+              candidateQids.some((q) => {
+                const u = q.toUpperCase();
+                return u.startsWith("BAN") || u.startsWith("LAN") || u.startsWith("CAN") || u.startsWith("TAN") || u.startsWith("ANODE") || (u.startsWith("AN") && !u.startsWith("ANS"));
+              });
+
+            if (!isAnodeComp) {
+              return false;
+            }
+
+            return true;
           }
 
           if (code === "PGS") {
@@ -983,18 +1364,26 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           if (code === "RSS") {
             const idata = r.inspection_data || {};
             if (
+              recType === "RISER" ||
+              recType === "RSS" ||
+              recType === "RRISI" ||
+              recType.includes("RISER") ||
+              itypeCode === "RISER" ||
+              itypeCode === "RSS" ||
+              itypeCode === "RRISI" ||
+              itypeCode.includes("RISER") ||
+              itypeName.includes("RISER") ||
               idata.span_height !== undefined ||
               idata.riserbend_elevation !== undefined ||
               idata.marine_growth_soft !== undefined ||
               idata.marine_growth_hard !== undefined ||
               idata.wall_thickness !== undefined ||
-              recType === "RISER" ||
-              recType === "RSS" ||
-              recType.includes("RISER") ||
-              itypeCode === "RISER" ||
-              itypeCode === "RSS" ||
-              itypeCode.includes("RISER") ||
-              itypeName.includes("RISER")
+              idata.riser_present !== undefined ||
+              idata.riser_pres !== undefined ||
+              idata.riser_type !== undefined ||
+              idata.clamp_qid !== undefined ||
+              idata.no_bolts !== undefined ||
+              idata.no_nuts !== undefined
             ) {
               return true;
             }
@@ -1156,47 +1545,21 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
           if (code === "DBS") {
             const idata = r.inspection_data || {};
-            if (
-              idata.distance_debris !== undefined ||
-              idata.length_debris !== undefined ||
-              idata.width_debris !== undefined ||
-              idata.height_debris !== undefined ||
-              idata.side_facing !== undefined ||
-              idata.debris_item !== undefined ||
-              idata.size_of_debris !== undefined ||
-              idata.db_cp_pulled !== undefined ||
-              idata.damage_caused !== undefined ||
-              idata.debris_removed !== undefined ||
-              recType === "PL_DB" ||
-              recType === "DEBRIS" ||
-              recType === "DBS" ||
-              recType === "RGVI" ||
-              recType === "RRISI" ||
-              recType === "RCOND" ||
-              recType === "RCASN" ||
-              recType.includes("DEBRIS") ||
-              recType.includes("PL_DB") ||
-              recType.includes("RGVI") ||
-              recType.includes("RRISI") ||
-              recType.includes("RCOND") ||
-              recType.includes("RCASN") ||
-              itypeCode === "PL_DB" ||
-              itypeCode === "DEBRIS" ||
-              itypeCode === "DBS" ||
-              itypeCode === "RGVI" ||
-              itypeCode === "RRISI" ||
-              itypeCode === "RCOND" ||
-              itypeCode === "RCASN" ||
-              itypeCode.includes("DEBRIS") ||
-              itypeCode.includes("PL_DB") ||
-              itypeCode.includes("RGVI") ||
-              itypeCode.includes("RRISI") ||
-              itypeCode.includes("RCOND") ||
-              itypeCode.includes("RCASN") ||
-              itypeName.includes("DEBRIS")
-            ) {
-              return true;
+            const debrisCandidate = idata.debris ?? idata.debris_item ?? idata.item ?? idata.debris_type ?? idata.debris_name ?? idata.size_of_debris ?? idata.material ?? r.debris ?? r.item ?? r.debris_item;
+            const debrisStr = debrisCandidate != null ? String(debrisCandidate).trim().toUpperCase() : "";
+            const isInvalidDebrisStr = !debrisStr || ["NULL", "UNDEFINED", "NONE", "N/A", "NA", "N.A.", "NIL", "NO", "FALSE", "0"].includes(debrisStr);
+
+            const hasDimensions = (idata.length_debris != null && idata.length_debris !== "" && Number(idata.length_debris) > 0) ||
+                                  (idata.width_debris != null && idata.width_debris !== "" && Number(idata.width_debris) > 0) ||
+                                  (idata.height_debris != null && idata.height_debris !== "" && Number(idata.height_debris) > 0);
+
+            const hasDebrisOrItem = (!isInvalidDebrisStr) || hasDimensions || (idata.debris_present === true || String(idata.debris_present).toUpperCase() === "YES" || String(idata.debris_present).toUpperCase() === "TRUE");
+
+            if (!hasDebrisOrItem) {
+              return false;
             }
+
+            return true;
           }
 
           if (code === "SCS") {
@@ -1289,7 +1652,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             }
           }
 
-          if (recType.includes("PGS") && ["ANS", "CPS", "DBS", "FDS", "GVS", "MGS", "SCS"].includes(code)) return true;
+          if (recType.includes("PGS") && ["CPS", "FDS", "GVS", "MGS", "SCS"].includes(code)) return true;
           if (recType.includes("SZS") && ["CPS", "UTS"].includes(code)) return true;
           if ((recType.includes("BSS") || recType.includes("BSINS")) && ["CPS"].includes(code)) return true;
           if (recType.includes("AFS") && ["MPS"].includes(code)) return true;
@@ -1397,38 +1760,455 @@ export const POST = withTenant(async (request, { companyId, user }) => {
           const strObj = structureMap.get(Number(r.structure_id));
           const idata = r.inspection_data || {};
           const strIdNum = Number(r.structure_id);
-          const recCompId = Number(r.component_id || idata.component_id || idata.comp_id || idata.structure_component_id || idata.compid);
-          const rawQid = String(r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || idata.comp_qid || idata.id_no || idata.component_id_no || "").trim();
-          const recQidUpper = rawQid.toUpperCase();
-          const normQid = recQidUpper.replace(/[^A-Z0-9]/g, "");
 
-          const comp = (!isNaN(recCompId) && recCompId > 0 ? (compMap.get(recCompId) || compMapByCompId.get(recCompId)) : null)
-            || (recQidUpper && strIdNum ? compMapByQid.get(`${strIdNum}_${recQidUpper}`) : null)
-            || (recQidUpper ? compMapByQid.get(recQidUpper) : null)
-            || (normQid && strIdNum ? compMapByQid.get(`${strIdNum}_NORM_${normQid}`) : null)
-            || (normQid ? compMapByQid.get(`NORM_${normQid}`) : null)
-            || r.structure_components
-            || r.component;
-          const jp = jobpackMap.get(Number(r.jobpack_id));
-          const meta = comp?.metadata || {};
-          const dj = r.dive_job_id ? diveJobMap.get(Number(r.dive_job_id)) : null;
-          const linkedAnom = anomMapByInspId.get(Number(r.insp_id)) || (allAnomalies || []).find((a: any) => a.inspection_id === r.insp_id);
-          const recCompCodeUpper = String(comp?.code || meta.code || meta.comp_code || idata.comp_code || idata.code || "").trim().toUpperCase();
-          const recCompTypeDesc = compTypeMap.get(recCompCodeUpper) || meta.comptype || meta.comp_type || comp?.type || idata.comptype || (code === "UCS" || code === "CCS" ? "CALIBRATION" : "MEMBER");
-          const resolvedDiveNo = dj?.dive_no || dj?.job_no || dj?.name || idata.dive_no || r.dive_no || (r.dive_job_id ? String(r.dive_job_id) : "");
-          const isCalib = code === "UCS" || code === "CCS";
+          const candidateCompIds = [
+            Number(r.component_id),
+            Number(idata.component_id),
+            Number(idata.comp_id),
+            Number(idata.structure_component_id),
+            Number(idata.compid),
+            Number(idata.anode_id),
+            Number(idata.member_id),
+          ].filter((n) => !isNaN(n) && n > 0);
 
-          // Resolution for COMP_ID: structure_components.id (positive integer), never 0.
-          let resolvedCompId: any = "";
-          if (!isCalib) {
-            if (comp?.id != null && Number(comp.id) > 0) {
-              resolvedCompId = Number(comp.id);
-            } else if (comp?.comp_id != null && Number(comp.comp_id) > 0) {
-              resolvedCompId = Number(comp.comp_id);
-            } else if (!isNaN(recCompId) && recCompId > 0) {
-              resolvedCompId = recCompId;
+          const candidateQids = [
+            String(r.q_id || ""),
+            String(r.component_qid || ""),
+            String(idata.q_id || ""),
+            String(idata.component_qid || ""),
+            String(idata.component || ""),
+            String(idata.comp_qid || ""),
+            String(idata.id_no || ""),
+            String(idata.component_id_no || ""),
+            String(idata.anode_no || ""),
+            String(idata.anod_no || ""),
+            String(idata.anode_tag || ""),
+            String(idata.member || ""),
+            String(idata.member_name || ""),
+            String(idata.tag || ""),
+          ].map((s) => s.trim()).filter((s) => s.length > 0);
+
+          let comp: any = null;
+
+          // 1. By structure_id + ID / comp_id
+          if (strIdNum) {
+            for (const cid of candidateCompIds) {
+              comp = compMapByStrAndId.get(`${strIdNum}_${cid}`) || compMapByStrAndCompId.get(`${strIdNum}_${cid}`);
+              if (comp) break;
             }
           }
+
+          // 2. By global ID / comp_id
+          if (!comp) {
+            for (const cid of candidateCompIds) {
+              comp = compMap.get(cid) || compMapByCompId.get(cid);
+              if (comp) break;
+            }
+          }
+
+          // 3. By structure_id + QID / tag / id_no
+          if (!comp && strIdNum) {
+            for (const qid of candidateQids) {
+              const qUpper = qid.toUpperCase();
+              const norm = qUpper.replace(/[^A-Z0-9]/g, "");
+              comp = compMapByStrAndQid.get(`${strIdNum}_${qUpper}`)
+                || (norm ? compMapByStrAndQid.get(`${strIdNum}_NORM_${norm}`) : null);
+              if (comp) break;
+            }
+          }
+
+          // 4. By global QID / tag / id_no
+          if (!comp) {
+            for (const qid of candidateQids) {
+              const qUpper = qid.toUpperCase();
+              const norm = qUpper.replace(/[^A-Z0-9]/g, "");
+              comp = compMapByQid.get(qUpper)
+                || (norm ? compMapByQid.get(`NORM_${norm}`) : null);
+              if (comp) break;
+            }
+          }
+
+          // 5. Embedded
+          if (!comp) {
+            comp = r.structure_components || r.component;
+          }
+
+          const jp = jobpackMap.get(Number(r.jobpack_id));
+          const meta = comp?.metadata || {};
+          const isCalib = code === "UCS" || code === "CCS";
+          const jpIdNum = Number(r.jobpack_id);
+
+          const recTypeUpper = String(r.inspection_type_code || r.insp_type || r.insptype || r.type || "").trim().toUpperCase();
+          const idataInspType = String(idata.inspection_type_code || idata.insp_type || idata.insptype || idata.inspection_type || idata.type || "").trim().toUpperCase();
+          const itype = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
+          const itypeCodeUpper = String(itype?.code || "").trim().toUpperCase();
+          const itypeNameUpper = String(itype?.name || "").trim().toUpperCase();
+
+          const rovInspectionCodes = new Set([
+            "RGVI", "RMGI", "RSANI", "RFMD", "RSCOR", "RCASN", "RCOND", "RICMI", "RRISI", "RSEAB", "RSWNI", "RSZCI", "RUTWT", "RWDI", "PGS", "ROV", "RCP"
+          ]);
+
+          const isPgsInspection =
+            code === "PGS" ||
+            recTypeUpper === "PGS" ||
+            recTypeUpper.includes("PGS") ||
+            idataInspType === "PGS" ||
+            idataInspType.includes("PGS") ||
+            itypeCodeUpper === "PGS" ||
+            itypeNameUpper.includes("PGS") ||
+            itypeNameUpper.includes("PLATFORM GENERAL");
+
+          const isRovInspection =
+            isPgsInspection ||
+            (r.rov_job_id != null && Number(r.rov_job_id) > 0) ||
+            rovInspectionCodes.has(code) ||
+            rovInspectionCodes.has(recTypeUpper) ||
+            rovInspectionCodes.has(idataInspType) ||
+            rovInspectionCodes.has(itypeCodeUpper) ||
+            recTypeUpper.startsWith("R") ||
+            idataInspType.startsWith("R") ||
+            itypeCodeUpper.startsWith("R") ||
+            recTypeUpper.includes("ROV") ||
+            idataInspType.includes("ROV") ||
+            itypeNameUpper.includes("ROV") ||
+            String(r.mode || idata.mode || "").toUpperCase().includes("ROV");
+
+          // Dive Job Multi-Tier Lookup (insp_dive_jobs)
+          const candidateDiveIds = [
+            Number(r.dive_job_id),
+            Number(idata.dive_job_id),
+            Number(idata.dive_id),
+            Number(idata.divejob_id),
+          ].filter((n) => !isNaN(n) && n > 0);
+
+          const candidateDiveNos = [
+            String(r.dive_no || ""),
+            String(idata.dive_no || ""),
+            String(idata.diveno || ""),
+            String(idata.dive_num || ""),
+            String(idata.deployment_no || ""),
+            String(idata.dive || ""),
+            String(r.dive_job_id || ""),
+            String(idata.dive_job_id || ""),
+          ].map((s) => s.trim()).filter((s) => s.length > 0);
+
+          let dj: any = null;
+          if (strIdNum) {
+            for (const did of candidateDiveIds) {
+              dj = diveJobMapByStrAndId.get(`${strIdNum}_${did}`);
+              if (dj) break;
+            }
+          }
+          if (!dj && jpIdNum) {
+            for (const did of candidateDiveIds) {
+              dj = diveJobMapByJpAndId.get(`${jpIdNum}_${did}`);
+              if (dj) break;
+            }
+          }
+          if (!dj) {
+            for (const did of candidateDiveIds) {
+              dj = diveJobMap.get(did);
+              if (dj) break;
+            }
+          }
+          if (!dj && strIdNum) {
+            for (const dno of candidateDiveNos) {
+              const dnoUpper = dno.toUpperCase();
+              const norm = dnoUpper.replace(/[^\d]/g, "");
+              dj = diveJobMapByStrAndNo.get(`${strIdNum}_${dnoUpper}`)
+                || (norm ? diveJobMapByStrAndNo.get(`${strIdNum}_${norm}`) : null)
+                || (norm ? diveJobMapByStrAndNo.get(`${strIdNum}_DIVE_${norm}`) : null);
+              if (dj) break;
+            }
+          }
+          if (!dj && jpIdNum) {
+            for (const dno of candidateDiveNos) {
+              const dnoUpper = dno.toUpperCase();
+              const norm = dnoUpper.replace(/[^\d]/g, "");
+              dj = diveJobMapByJpAndNo.get(`${jpIdNum}_${dnoUpper}`)
+                || (norm ? diveJobMapByJpAndNo.get(`${jpIdNum}_${norm}`) : null)
+                || (norm ? diveJobMapByJpAndNo.get(`${jpIdNum}_DIVE_${norm}`) : null);
+              if (dj) break;
+            }
+          }
+          if (!dj) {
+            for (const dno of candidateDiveNos) {
+              const dnoUpper = dno.toUpperCase();
+              const norm = dnoUpper.replace(/[^\d]/g, "");
+              dj = diveJobMapByNo.get(dnoUpper)
+                || (norm ? diveJobMapByNo.get(norm) : null)
+                || (norm ? diveJobMapByNo.get(`DIVE_${norm}`) : null);
+              if (dj) break;
+            }
+          }
+          if (!dj) {
+            dj = r.insp_dive_jobs || r.dive_job || idata.dive_job;
+          }
+
+          // ROV Job Multi-Tier Lookup (insp_rov_jobs)
+          const candidateRovIds = [
+            Number(r.rov_job_id),
+            Number(idata.rov_job_id),
+            Number(idata.rov_id),
+            ...(isPgsInspection ? [Number(r.dive_job_id), Number(idata.dive_job_id), Number(idata.dive_id)] : []),
+          ].filter((n) => !isNaN(n) && n > 0);
+
+          const candidateRovNos = [
+            String(r.rov_job_no || ""),
+            String(idata.rov_job_no || ""),
+            String(idata.rov_no || ""),
+            String(idata.rov_num || ""),
+            String(idata.rov || ""),
+            ...(isPgsInspection ? [String(r.dive_no || ""), String(idata.dive_no || ""), String(idata.deployment_no || "")] : []),
+          ].map((s) => s.trim()).filter((s) => s.length > 0);
+
+          let rj: any = null;
+          if (strIdNum) {
+            for (const rid of candidateRovIds) {
+              rj = rovJobMapByStrAndId.get(`${strIdNum}_${rid}`);
+              if (rj) break;
+            }
+          }
+          if (!rj && jpIdNum) {
+            for (const rid of candidateRovIds) {
+              rj = rovJobMapByJpAndId.get(`${jpIdNum}_${rid}`);
+              if (rj) break;
+            }
+          }
+          if (!rj) {
+            for (const rid of candidateRovIds) {
+              rj = rovJobMap.get(rid);
+              if (rj) break;
+            }
+          }
+          if (!rj && strIdNum) {
+            for (const rno of candidateRovNos) {
+              const rnoUpper = rno.toUpperCase();
+              const norm = rnoUpper.replace(/[^\d]/g, "");
+              rj = rovJobMapByStrAndNo.get(`${strIdNum}_${rnoUpper}`)
+                || (norm ? rovJobMapByStrAndNo.get(`${strIdNum}_${norm}`) : null);
+              if (rj) break;
+            }
+          }
+          if (!rj && jpIdNum) {
+            for (const rno of candidateRovNos) {
+              const rnoUpper = rno.toUpperCase();
+              const norm = rnoUpper.replace(/[^\d]/g, "");
+              rj = rovJobMapByJpAndNo.get(`${jpIdNum}_${rnoUpper}`)
+                || (norm ? rovJobMapByJpAndNo.get(`${jpIdNum}_${norm}`) : null);
+              if (rj) break;
+            }
+          }
+          if (!rj) {
+            for (const rno of candidateRovNos) {
+              const rnoUpper = rno.toUpperCase();
+              const norm = rnoUpper.replace(/[^\d]/g, "");
+              rj = rovJobMapByNo.get(rnoUpper)
+                || (norm ? rovJobMapByNo.get(norm) : null);
+              if (rj) break;
+            }
+          }
+          if (!rj) {
+            rj = r.insp_rov_jobs || r.rov_job || idata.rov_job;
+          }
+
+          const linkedAnom = anomMapByInspId.get(Number(r.insp_id))
+            || (Array.isArray(r.insp_anomalies) && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null)
+            || (allAnomalies || []).find((a: any) => Number(a.inspection_id) === Number(r.insp_id));
+
+          // Resolution for COMP_ID: structure_components.id or comp_id, positive integer, never 0.
+          let resolvedCompId: any = "";
+          if (!isCalib) {
+            if (comp?.comp_id != null && Number(comp.comp_id) > 0) {
+              resolvedCompId = Number(comp.comp_id);
+            } else if (comp?.id != null && Number(comp.id) > 0) {
+              resolvedCompId = Number(comp.id);
+            } else if (candidateCompIds.length > 0) {
+              resolvedCompId = candidateCompIds[0];
+            }
+          }
+
+          // Resolution for ID_NO
+          const resolvedIdNo = isCalib ? "" : sanitizeText(
+            comp?.id_no || meta.id_no || meta.idno || idata.id_no || idata.idno || idata.component_id_no || r.id_no || comp?.q_id || meta.q_id || idata.q_id || ""
+          ).substring(0, 25);
+
+          // Resolution for Q_ID
+          const resolvedQId = isCalib ? "" : sanitizeText(
+            comp?.q_id || meta.q_id || meta.qid || r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || idata.comp_qid || idata.anode_no || idata.anod_no || idata.anode_tag || idata.member || idata.member_name || comp?.id_no || meta.id_no || idata.id_no || ""
+          ).substring(0, 16);
+
+          // Resolution for CODE
+          const resolvedCode = isCalib ? "" : sanitizeText(
+            comp?.code || meta.code || meta.comp_code || idata.comp_code || idata.code || r.code || (code === "ANS" ? "AN" : (code === "CPS" ? "CP" : ""))
+          ).substring(0, 2).toUpperCase();
+
+          // Resolution for COMPDESC
+          const resolvedCompDesc = isCalib ? "" : sanitizeText(
+            meta.description || meta.descr || meta.desc || meta.compdesc || meta.component_description || comp?.description || comp?.name || idata.compdesc || idata.component_description || idata.description || idata.desc || idata.descr || comp?.q_id || idata.q_id || ""
+          ).substring(0, 40);
+
+          // Resolution for Nodes & Legs
+          const resolvedSNode = isCalib ? "" : sanitizeText(comp?.s_node || meta.s_node || meta.snode || meta.start_node || meta.startnode || idata.s_node || idata.snode || idata.start_node || idata.startnode || "").substring(0, 6);
+          const resolvedFNode = isCalib ? "" : sanitizeText(comp?.f_node || meta.f_node || meta.fnode || meta.end_node || meta.endnode || idata.f_node || idata.fnode || idata.end_node || idata.endnode || "").substring(0, 6);
+          const resolvedSLeg = isCalib ? "" : sanitizeText(comp?.s_leg || meta.s_leg || meta.sleg || meta.start_leg || meta.startleg || idata.s_leg || idata.sleg || idata.start_leg || idata.startleg || idata.leg_name || idata.leg1 || "").substring(0, 2);
+          const resolvedFLeg = isCalib ? "" : sanitizeText(comp?.f_leg || meta.f_leg || meta.fleg || meta.end_leg || meta.endleg || idata.f_leg || idata.fleg || idata.end_leg || idata.endleg || idata.leg2 || "").substring(0, 2);
+
+          // Resolution for Elevations
+          const rawElv1 = comp?.elv_1 ?? meta.elv_1 ?? meta.elv1 ?? meta.start_elevation ?? meta.startelevation ?? meta.elevation_1 ?? idata.elv_1 ?? idata.elv1 ?? idata.start_elevation ?? idata.elevation_1 ?? idata.depth1 ?? r.elevation;
+          const resolvedElv1 = isCalib ? "" : (rawElv1 != null && rawElv1 !== "" && !isNaN(Number(rawElv1)) ? Number(rawElv1) : "");
+
+          const rawElv2 = comp?.elv_2 ?? meta.elv_2 ?? meta.elv2 ?? meta.end_elevation ?? meta.endelevation ?? meta.elevation_2 ?? idata.elv_2 ?? idata.elv2 ?? idata.end_elevation ?? idata.elevation_2 ?? idata.depth2;
+          const resolvedElv2 = isCalib ? "" : (rawElv2 != null && rawElv2 !== "" && !isNaN(Number(rawElv2)) ? Number(rawElv2) : "");
+
+          const rawDist = comp?.dist ?? meta.dist ?? meta.distance ?? idata.dist ?? idata.distance;
+          const resolvedDist = isCalib ? "" : (rawDist != null && rawDist !== "" && !isNaN(Number(rawDist)) ? Number(rawDist) : "");
+
+          const rawClk = comp?.clk_pos ?? meta.clk_pos ?? meta.clkpos ?? meta.clock_position ?? meta.clock ?? meta.cp_clock ?? idata.clk_pos ?? idata.clkpos ?? idata.clock_position ?? idata.clock ?? idata.cp_clock;
+          let resolvedClkPos: any = isCalib ? "" : 0;
+          if (!isCalib && rawClk != null && rawClk !== "") {
+            const clkStr = String(rawClk).toUpperCase().trim();
+            if (clkStr === "N/A" || clkStr === "NA" || clkStr === "NONE") {
+              resolvedClkPos = 0;
+            } else if (!isNaN(Number(rawClk))) {
+              resolvedClkPos = Number(rawClk);
+            }
+          }
+
+          // Resolution for COMPTYPE
+          const recCompTypeDesc = compTypeMap.get(resolvedCode)
+            || compTypeMap.get(String(comp?.code || meta.code || "").trim().toUpperCase())
+            || comp?.type
+            || comp?.comp_type
+            || meta.comptype
+            || meta.comp_type
+            || idata.comptype
+            || idata.comp_type
+            || (isCalib ? "CALIBRATION" : (code === "ANS" ? "ANODE" : (code === "CPS" ? "CP SURVEY" : "MEMBER")));
+
+          let resolvedDiveNo = "";
+          let resolvedDiver = "";
+          let resolvedSupervisor = "";
+
+          if (isRovInspection) {
+            // For PGS and all ROV inspection types, refer to rov_job_id and fetch from insp_rov_jobs (with fallback to insp_dive_jobs)
+            resolvedDiveNo = rj?.deployment_no
+              || rj?.rov_job_no
+              || rj?.job_no
+              || rj?.name
+              || rj?.dive_no
+              || dj?.deployment_no
+              || dj?.dive_no
+              || dj?.job_no
+              || dj?.name
+              || r.dive_no
+              || idata.dive_no
+              || idata.deployment_no
+              || r.rov_job_no
+              || idata.rov_job_no
+              || idata.rov_no
+              || idata.diveno
+              || idata.dive_num
+              || idata.dive
+              || "";
+
+            resolvedDiver = rj?.rov_operator
+              || rj?.pilot_name
+              || rj?.pilot
+              || rj?.pilot_1
+              || rj?.diver_name
+              || rj?.diver
+              || idata.rov_operator
+              || idata.pilot_name
+              || idata.pilot
+              || r.pilot_name
+              || r.pilot
+              || dj?.diver_name
+              || dj?.diver
+              || dj?.standby_diver
+              || r.diver_name
+              || r.diver
+              || idata.diver_name
+              || idata.diver
+              || idata.inspector
+              || r.inspector
+              || "";
+
+            resolvedSupervisor = rj?.rov_supervisor
+              || rj?.supervisor
+              || rj?.report_coordinator
+              || idata.rov_supervisor
+              || idata.supervisor
+              || r.rov_supervisor
+              || r.supervisor
+              || dj?.dive_supervisor
+              || dj?.supervisor
+              || dj?.report_coordinator
+              || r.dive_supervisor
+              || idata.dive_supervisor
+              || idata.dive_supv
+              || idata.supv
+              || "";
+          } else {
+            // For other inspection types, refer to dive_job_id and fetch from insp_dive_jobs (with fallback to insp_rov_jobs)
+            resolvedDiveNo = dj?.dive_no
+              || dj?.deployment_no
+              || dj?.job_no
+              || dj?.name
+              || rj?.deployment_no
+              || rj?.rov_job_no
+              || rj?.job_no
+              || rj?.name
+              || r.dive_no
+              || idata.dive_no
+              || idata.deployment_no
+              || idata.diveno
+              || idata.dive_num
+              || idata.dive
+              || r.rov_job_no
+              || idata.rov_job_no
+              || "";
+
+            resolvedDiver = dj?.diver_name
+              || dj?.diver
+              || dj?.standby_diver
+              || rj?.rov_operator
+              || rj?.pilot_name
+              || rj?.pilot
+              || rj?.pilot_1
+              || r.diver_name
+              || r.diver
+              || idata.diver_name
+              || idata.diver
+              || idata.diver1
+              || idata.rov_operator
+              || idata.pilot_name
+              || idata.pilot
+              || idata.inspector
+              || r.inspector
+              || "";
+
+            resolvedSupervisor = dj?.dive_supervisor
+              || dj?.supervisor
+              || dj?.report_coordinator
+              || r.dive_supervisor
+              || r.supervisor
+              || idata.dive_supervisor
+              || idata.supervisor
+              || idata.dive_supv
+              || idata.supv
+              || idata.super_visor
+              || rj?.rov_supervisor
+              || rj?.supervisor
+              || rj?.report_coordinator
+              || idata.rov_supervisor
+              || r.rov_supervisor
+              || "";
+          }
+
+          const resolvedInspector = isRovInspection
+            ? (r.inspector || idata.inspector || rj?.pilot_name || rj?.pilot || dj?.diver_name || "")
+            : (r.inspector || idata.inspector || dj?.diver_name || dj?.diver || rj?.pilot_name || "");
 
           const baseRow: any = {
             STR_ID: r.structure_id || strObj?.plat_id || 1,
@@ -1437,23 +2217,23 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             PDESC: sanitizeText(strObj?.pdesc || "").substring(0, 50),
             DEF_UNIT: sanitizeText(strObj?.def_unit || "Metric").substring(0, 10),
             COMP_ID: resolvedCompId,
-            ID_NO: isCalib ? "" : sanitizeText(comp?.id_no || meta.id_no || idata.id_no || idata.component_id_no || "").substring(0, 25),
-            Q_ID: isCalib ? "" : sanitizeText(comp?.q_id || meta.q_id || r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || idata.comp_qid || "").substring(0, 16),
-            CODE: isCalib ? "" : sanitizeText(comp?.code || meta.code || meta.comp_code || idata.comp_code || idata.code || "").substring(0, 2).toUpperCase(),
-            COMPDESC: isCalib ? "" : sanitizeText(meta.description || meta.desc || meta.compdesc || comp?.description || comp?.name || idata.compdesc || idata.component_description || idata.description || comp?.q_id || idata.q_id || "").substring(0, 40),
-            S_NODE: isCalib ? "" : sanitizeText(meta.s_node || meta.start_node || idata.s_node || idata.start_node || "").substring(0, 6),
-            F_NODE: isCalib ? "" : sanitizeText(meta.f_node || meta.end_node || idata.f_node || idata.end_node || "").substring(0, 6),
-            S_LEG: isCalib ? "" : sanitizeText(meta.s_leg || meta.start_leg || idata.s_leg || idata.start_leg || "").substring(0, 2),
-            F_LEG: isCalib ? "" : sanitizeText(meta.f_leg || meta.end_leg || idata.f_leg || idata.end_leg || "").substring(0, 2),
-            ELV_1: isCalib ? "" : (meta.elv_1 != null && meta.elv_1 !== "" ? Number(meta.elv_1) : (meta.start_elevation != null && meta.start_elevation !== "" ? Number(meta.start_elevation) : (idata.elv_1 != null && idata.elv_1 !== "" ? Number(idata.elv_1) : (idata.start_elevation != null && idata.start_elevation !== "" ? Number(idata.start_elevation) : "")))),
-            ELV_2: isCalib ? "" : (meta.elv_2 != null && meta.elv_2 !== "" ? Number(meta.elv_2) : (meta.end_elevation != null && meta.end_elevation !== "" ? Number(meta.end_elevation) : (idata.elv_2 != null && idata.elv_2 !== "" ? Number(idata.elv_2) : (idata.end_elevation != null && idata.end_elevation !== "" ? Number(idata.end_elevation) : "")))),
-            DIST: isCalib ? "" : (meta.dist != null && meta.dist !== "" ? Number(meta.dist) : (meta.distance != null && meta.distance !== "" ? Number(meta.distance) : (idata.dist != null && idata.dist !== "" ? Number(idata.dist) : (idata.distance != null && idata.distance !== "" ? Number(idata.distance) : "")))),
-            CLK_POS: isCalib ? "" : (meta.clk_pos != null && meta.clk_pos !== "" ? (String(meta.clk_pos).toUpperCase() === "N/A" ? 0 : Number(meta.clk_pos)) : (meta.clock_position != null && meta.clock_position !== "" ? (String(meta.clock_position).toUpperCase() === "N/A" ? 0 : Number(meta.clock_position)) : (idata.clk_pos != null && idata.clk_pos !== "" ? (String(idata.clk_pos).toUpperCase() === "N/A" ? 0 : Number(idata.clk_pos)) : (idata.clock_position != null && idata.clock_position !== "" ? (String(idata.clock_position).toUpperCase() === "N/A" ? 0 : Number(idata.clock_position)) : 0)))),
+            ID_NO: resolvedIdNo,
+            Q_ID: resolvedQId,
+            CODE: resolvedCode,
+            COMPDESC: resolvedCompDesc,
+            S_NODE: resolvedSNode,
+            F_NODE: resolvedFNode,
+            S_LEG: resolvedSLeg,
+            F_LEG: resolvedFLeg,
+            ELV_1: resolvedElv1,
+            ELV_2: resolvedElv2,
+            DIST: resolvedDist,
+            CLK_POS: resolvedClkPos,
             COMPTYPE: isCalib ? "" : sanitizeText(recCompTypeDesc).substring(0, 30),
             INSP_ID: r.insp_id,
             INSP_DATE: formatDateStr(r.inspection_date),
             INSP_TIME: sanitizeText(r.inspection_time || idata.insp_time || idata.time || "").substring(0, 8),
-            INSPECTOR: sanitizeText(r.inspector || idata.inspector || idata.diver_name || dj?.diver_name || "").substring(0, 20),
+            INSPECTOR: sanitizeText(resolvedInspector).substring(0, 20),
             PROC: sanitizeText(r.procedure || idata.procedure || idata.proc || "").substring(0, 20),
             EQUIP: sanitizeText(r.equipment || idata.equipment || idata.calib_equipment_type || idata.equip || "").substring(0, 20),
             EQ_ID: sanitizeText(r.equipment_id || idata.equipment_id || idata.serial_number || idata.eq_id || "").substring(0, 20),
@@ -1461,14 +2241,29 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             SURF_COND: sanitizeText(r.surf_cond || idata.surface_condition || idata.surf_cond || "").substring(0, 30),
             CLEAN_MET: sanitizeText(r.clean_met || idata.cleaning_method || idata.clean_met || "").substring(0, 20),
             SCAF: (idata.scaffolding || r.scaf || idata.scaf) ? "Yes" : "",
-            SUPV: sanitizeText(dj?.dive_supervisor || dj?.supervisor || idata.supervisor || "").substring(0, 20),
-            DIVR: sanitizeText(dj?.diver_name || idata.diver_name || idata.diver || "").substring(0, 20),
+            SUPV: sanitizeText(resolvedSupervisor).substring(0, 20),
+            DIVR: sanitizeText(resolvedDiver).substring(0, 20),
             DIVE_NO: sanitizeText(resolvedDiveNo).substring(0, 10),
             ELEVATION: isCalib ? "" : (r.elevation != null && r.elevation !== "" ? Number(r.elevation) : (idata.elevation != null && idata.elevation !== "" ? Number(idata.elevation) : "")),
             TOP_UND: isCalib ? "" : sanitizeText(meta.top_und || (Number(r.elevation || idata.elevation || 0) < 0 ? "SUBSEA" : "TOPSIDE")).substring(0, 8),
           };
 
           if (code === "ANS") {
+            const rawIdNo = String(comp?.id_no || meta.id_no || idata.id_no || r.id_no || "").trim().toUpperCase();
+            const idNoPrefix = rawIdNo.includes("/") ? rawIdNo.split("/")[0].trim() : "";
+            const rawQid = String(comp?.q_id || meta.q_id || r.q_id || r.component_qid || idata.q_id || idata.component_qid || idata.component || "").trim().toUpperCase();
+            const explicitCode = String(comp?.code || meta.code || meta.comp_code || idata.comp_code || idata.code || r.code || "").trim().toUpperCase();
+
+            // Safety guard: If component is non-anode, skip this row!
+            if ((explicitCode && explicitCode !== "AN") || (idNoPrefix && idNoPrefix !== "AN")) {
+              return;
+            }
+            const isAnode = explicitCode === "AN" || idNoPrefix === "AN" || rawQid.startsWith("BAN") || rawQid.startsWith("LAN") || rawQid.startsWith("CAN") || rawQid.startsWith("TAN") || rawQid.startsWith("ANODE") || (rawQid.startsWith("AN") && !rawQid.startsWith("ANS"));
+            if (!isAnode) {
+              return;
+            }
+
+            baseRow.CODE = "AN";
             baseRow.INSPECTOR = "";
             baseRow.PROC = "";
             baseRow.EQUIP = "";
@@ -1729,6 +2524,20 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.DEPTH1 = toNum(merged.depth1Val ?? idata.depth1 ?? (String(idata.scour_location || "").toUpperCase().includes("START") ? idata.scour_depth : ""));
             baseRow.DEPTH2 = toNum(merged.depth2Val ?? idata.depth2 ?? (String(idata.scour_location || "").toUpperCase().includes("END") ? idata.scour_depth : ""));
           } else if (code === "DBS") {
+            const debrisCandidate = idata.debris ?? idata.debris_item ?? idata.item ?? idata.debris_type ?? idata.debris_name ?? idata.size_of_debris ?? idata.material ?? r.debris ?? r.item ?? r.debris_item;
+            const debrisStr = debrisCandidate != null ? String(debrisCandidate).trim().toUpperCase() : "";
+            const isInvalidDebrisStr = !debrisStr || ["NULL", "UNDEFINED", "NONE", "N/A", "NA", "N.A.", "NIL", "NO", "FALSE", "0"].includes(debrisStr);
+
+            const hasDimensions = (idata.length_debris != null && idata.length_debris !== "" && Number(idata.length_debris) > 0) ||
+                                  (idata.width_debris != null && idata.width_debris !== "" && Number(idata.width_debris) > 0) ||
+                                  (idata.height_debris != null && idata.height_debris !== "" && Number(idata.height_debris) > 0);
+
+            const hasDebrisOrItem = (!isInvalidDebrisStr) || hasDimensions || (idata.debris_present === true || String(idata.debris_present).toUpperCase() === "YES" || String(idata.debris_present).toUpperCase() === "TRUE");
+
+            if (!hasDebrisOrItem) {
+              return;
+            }
+
             const recTypeUpper = String(r.inspection_type_code || "").trim().toUpperCase();
             const itype = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
             const itypeCodeUpper = String(itype?.code || "").trim().toUpperCase();
@@ -1785,6 +2594,11 @@ export const POST = withTenant(async (request, { companyId, user }) => {
                 ? Number(idata.cp_reading)
                 : (r.cp_rdg != null && r.cp_rdg !== "" ? Number(r.cp_rdg) : ""));
 
+            let resolvedItem = sanitizeText(idata.debris_item || idata.debris || idata.item || idata.debris_name || idata.debris_type || idata.material || r.item || r.debris || "").substring(0, 20);
+            if (!resolvedItem && hasDimensions) {
+              resolvedItem = "DEBRIS";
+            }
+
             if (isRovDebrisAppend) {
               baseRow.SIDE = "";
               baseRow.DISTANC = "";
@@ -1794,7 +2608,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
               baseRow.LENGTH = "";
               baseRow.HEIGHT = "";
               baseRow.WIDTH = "";
-              baseRow.ITEM = sanitizeText(idata.debris || idata.debris_item || idata.item || idata.material || "").substring(0, 20);
+              baseRow.ITEM = resolvedItem;
               baseRow.SIZE = "";
               baseRow.ASSESSMENT = "";
             } else {
@@ -1806,7 +2620,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
               baseRow.LENGTH = toRoundNum(idata.length_debris ?? idata.length);
               baseRow.HEIGHT = toRoundNum(idata.height_debris ?? idata.height);
               baseRow.WIDTH = toRoundNum(idata.width_debris ?? idata.width);
-              baseRow.ITEM = sanitizeText(idata.debris_item || idata.debris || idata.item || "").substring(0, 20);
+              baseRow.ITEM = resolvedItem;
               baseRow.SIZE = sanitizeText(idata.size_of_debris || idata.size || "").substring(0, 20);
               baseRow.ASSESSMENT = sanitizeText(idata.assessment || "").substring(0, 60);
             }
@@ -2405,8 +3219,9 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.PHOTO_NO = sanitizeText(idata.photo_no || "").substring(0, 10);
             baseRow.FILM_REF = sanitizeText(idata.film_ref || idata.film_reference || "").substring(0, 20);
           } else if (code === "VDS") {
-            const dj = r.dive_job_id ? diveJobMap.get(Number(r.dive_job_id)) : null;
-            const tape = r.dive_job_id ? videoTapeMapByDiveJobId.get(Number(r.dive_job_id)) : null;
+            const tape = (r.rov_job_id ? videoTapeMapByRovJobId.get(Number(r.rov_job_id)) : null)
+              || (r.dive_job_id ? videoTapeMapByDiveJobId.get(Number(r.dive_job_id)) : null)
+              || (r.dive_job_id ? videoTapeMapById.get(Number(r.dive_job_id)) : null);
             const videoLog = (tape?.tape_id ? videoLogMapByTapeId.get(Number(tape.tape_id)) : null) || videoLogMapByInspId.get(Number(r.insp_id));
 
             baseRow.COMP_ID = "";
@@ -2436,9 +3251,9 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.SURF_COND = "";
             baseRow.CLEAN_MET = "";
             baseRow.SCAF = "";
-            baseRow.SUPV = sanitizeText(dj?.dive_supervisor || dj?.supervisor || "").substring(0, 20);
-            baseRow.DIVR = sanitizeText(dj?.diver_name || "").substring(0, 20);
-            baseRow.DIVE_NO = sanitizeText(dj?.dive_no || dj?.job_no || (r.dive_job_id ? String(r.dive_job_id) : "")).substring(0, 10);
+            baseRow.SUPV = sanitizeText(resolvedSupervisor).substring(0, 20);
+            baseRow.DIVR = sanitizeText(resolvedDiver).substring(0, 20);
+            baseRow.DIVE_NO = sanitizeText(resolvedDiveNo).substring(0, 10);
             baseRow.ELEVATION = "";
             baseRow.TOP_UND = "";
 
@@ -2451,13 +3266,15 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.TAPE_FOOTAGE = sanitizeText(videoLog?.timecode_start ? formatTimeStr(videoLog.timecode_start) : (idata.tape_footage || "")).substring(0, 30);
             baseRow.TAPE_PERMIT_ISSUE_DATE = "";
           } else if (code === "PGS") {
+            const tape = (r.rov_job_id ? videoTapeMapByRovJobId.get(Number(r.rov_job_id)) : null)
+              || (r.dive_job_id ? videoTapeMapByDiveJobId.get(Number(r.dive_job_id)) : null);
             baseRow.INSP_ID = r.insp_id;
-            baseRow.SUPV = sanitizeText(dj?.dive_supervisor || dj?.supervisor || idata.supervisor || "").substring(0, 20);
-            baseRow.TAPE_NO = sanitizeText(idata.tape_no || "").substring(0, 50);
+            baseRow.SUPV = sanitizeText(resolvedSupervisor).substring(0, 20);
+            baseRow.TAPE_NO = sanitizeText(idata.tape_no || tape?.tape_no || "").substring(0, 50);
             baseRow.COUNTER_NO = idata.counter_no != null && idata.counter_no !== "" ? toRoundNum(idata.counter_no) : "";
             baseRow.I_DATE = formatDateStr(r.inspection_date);
             baseRow.I_TIME = sanitizeText(r.inspection_time || idata.insp_time || idata.time || "").substring(0, 8);
-            baseRow.DIVER = sanitizeText(dj?.diver_name || idata.diver_name || idata.diver || "").substring(0, 20);
+            baseRow.DIVER = sanitizeText(resolvedDiver).substring(0, 20);
             baseRow.DIVE_NO = sanitizeText(resolvedDiveNo).substring(0, 10);
             baseRow.ELV = r.elevation != null && r.elevation !== "" ? Number(r.elevation) : (idata.elevation != null && idata.elevation !== "" ? Number(idata.elevation) : "");
             baseRow.COMP_COND = sanitizeText(idata.component_condition || "").substring(0, 20);

@@ -148,18 +148,18 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
   }
 
   // First create parent structure entry to satisfy foreign key constraint
-  const { error: structureError } = await supabase
+  const { error: structureError } = await (supabase as any)
     .from("structure")
-    .insert({ str_id: candidateId, str_type: "PLATFORM" });
+    .insert({ str_id: candidateId, str_type: "PLATFORM", ...(companyId ? { company_id: companyId } : {}) });
 
   if (structureError) {
     return handleSupabaseError(structureError, "Failed to create structure entry for platform");
   }
 
   // Next insert platform entry with the unique candidateId
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("platform")
-    .insert({ ...body, plat_id: candidateId })
+    .insert({ ...body, plat_id: candidateId, ...(companyId ? { company_id: companyId } : {}) })
     .select()
     .single();
 

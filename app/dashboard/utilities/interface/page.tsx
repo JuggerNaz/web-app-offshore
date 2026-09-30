@@ -87,6 +87,13 @@ export default function InterfaceModulePage() {
   const [selectedPreviewSheetId, setSelectedPreviewSheetId] = useState<string>("sics-ans");
   const [searchSheetQuery, setSearchSheetQuery] = useState<string>("");
 
+  // SOW Scope Selection
+  const [sowReportMode, setSowReportMode] = useState<"ALL" | "SELECTED">("ALL");
+  const [selectedSowReportNos, setSelectedSowReportNos] = useState<string[]>([]);
+  const [searchSowQuery, setSearchSowQuery] = useState<string>("");
+  const [inspectionFiltersMaster, setInspectionFiltersMaster] = useState<{ jobpack_id: number; structure_id: number; sow_report_no: string }[]>([]);
+  const [isLoadingSows, setIsLoadingSows] = useState<boolean>(false);
+
   // Modals for Registering / Editing
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState<boolean>(false);
   const [newClientCode, setNewClientCode] = useState<string>("");
@@ -228,6 +235,110 @@ export default function InterfaceModulePage() {
       prev.filter((id) => scoped.some((jp: any) => jp.id === id))
     );
   }, [selectedStructureIds, structuresList, allJobpacksMaster]);
+
+  // ─── Fetch SOW & Inspection Filters for Scoped Structures ───────────────────
+  useEffect(() => {
+    if (selectedStructureIds.length === 0) {
+      setInspectionFiltersMaster([]);
+      return;
+    }
+    let isCurrent = true;
+    setIsLoadingSows(true);
+    fetch("/api/reports/inspection-filters")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isCurrent) return;
+        if (data.success && Array.isArray(data.data)) {
+          setInspectionFiltersMaster(data.data);
+        }
+      })
+      .catch((err) => console.error("[Interface] Error fetching inspection filters:", err))
+      .finally(() => {
+        if (isCurrent) setIsLoadingSows(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedStructureIds]);
+
+  // ─── Filter SOW Reports Scoped to Selected Structures & Jobpacks ───────────
+  const scopedSowReports = useMemo(() => {
+    if (selectedStructureIds.length === 0) return [];
+    const selectedStrSet = new Set(selectedStructureIds.map(Number));
+    const activeJpSet = new Set(
+      (jobpackMode === "SELECTED" && selectedJobpackIds.length > 0
+        ? selectedJobpackIds
+        : jobpacksList.map((jp) => jp.id)
+      ).map(Number)
+    );
+
+    const sowMap = new Map<string, { sow_report_no: string; jobpack_id?: number; jobpack_name?: string; structure_id?: number }>();
+
+    // 1. From inspectionFiltersMaster
+    inspectionFiltersMaster.forEach((f) => {
+      const sId = Number(f.structure_id);
+      const jpId = Number(f.jobpack_id);
+      const sowNo = (f.sow_report_no || "").trim();
+      if (!sowNo) return;
+      if (selectedStrSet.has(sId) && (activeJpSet.size === 0 || activeJpSet.has(jpId))) {
+        const jpObj = allJobpacksMaster.find((jp) => jp.id === jpId);
+        if (!sowMap.has(sowNo.toUpperCase())) {
+          sowMap.set(sowNo.toUpperCase(), {
+            sow_report_no: sowNo,
+            jobpack_id: jpId,
+            jobpack_name: jpObj?.name || (jpId ? `JP-${jpId}` : "Active"),
+            structure_id: sId,
+          });
+        }
+      }
+    });
+
+    // 2. From jobpack metadata
+    jobpacksList.forEach((jp) => {
+      if (jobpackMode === "SELECTED" && selectedJobpackIds.length > 0 && !selectedJobpackIds.includes(jp.id)) {
+        return;
+      }
+      const rawSows = [
+        jp.metadata?.sow_report_no,
+        jp.metadata?.sow_no,
+        jp.metadata?.report_no,
+        ...(Array.isArray(jp.metadata?.sow_reports) ? jp.metadata.sow_reports : []),
+        ...(Array.isArray(jp.metadata?.sows) ? jp.metadata.sows : []),
+        ...(Array.isArray(jp.metadata?.sow_list) ? jp.metadata.sow_list : []),
+        ...(Array.isArray(jp.metadata?.scopes) ? jp.metadata.scopes : []),
+      ];
+
+      rawSows.forEach((item) => {
+        if (!item) return;
+        const sowStr = String(typeof item === "object" ? (item.sow_report_no || item.report_no || item.name || item.id || "") : item).trim();
+        if (sowStr && !sowMap.has(sowStr.toUpperCase())) {
+          sowMap.set(sowStr.toUpperCase(), {
+            sow_report_no: sowStr,
+            jobpack_id: jp.id,
+            jobpack_name: jp.name,
+          });
+        }
+      });
+    });
+
+    return Array.from(sowMap.values());
+  }, [selectedStructureIds, jobpackMode, selectedJobpackIds, jobpacksList, inspectionFiltersMaster, allJobpacksMaster]);
+
+  const filteredSowReports = useMemo(() => {
+    if (!searchSowQuery.trim()) return scopedSowReports;
+    const q = searchSowQuery.toLowerCase().trim();
+    return scopedSowReports.filter((s) =>
+      s.sow_report_no.toLowerCase().includes(q) ||
+      (s.jobpack_name && s.jobpack_name.toLowerCase().includes(q))
+    );
+  }, [scopedSowReports, searchSowQuery]);
+
+  const handleToggleSowReport = (sowNo: string) => {
+    setSelectedSowReportNos((prev) =>
+      prev.includes(sowNo) ? prev.filter((item) => item !== sowNo) : [...prev, sowNo]
+    );
+  };
 
   // Active Client & Active Interface
   const activeClient = useMemo(() => {
@@ -378,6 +489,8 @@ export default function InterfaceModulePage() {
           structureType: structureTypeFilter,
           jobpackMode,
           jobpackIds: selectedJobpackIds,
+          sowReportMode,
+          sowReportNos: selectedSowReportNos,
           inspectionTypes: selectedInspectionTypes,
           format: fileFormat,
           destinationFolder,
@@ -445,6 +558,8 @@ export default function InterfaceModulePage() {
           structureType: structureTypeFilter,
           jobpackMode,
           jobpackIds: selectedJobpackIds,
+          sowReportMode,
+          sowReportNos: selectedSowReportNos,
           inspectionTypes: selectedInspectionTypes,
           format: exportFormat,
           destinationFolder,
@@ -1232,6 +1347,138 @@ export default function InterfaceModulePage() {
                         ))
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* SOW Scope Selector (Optional Multi-SOW Filter) */}
+                {selectedStructureIds.length > 0 && scopedSowReports.length > 0 && (
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3 animate-in fade-in duration-300">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileSpreadsheet className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          SOW Report Number Filter
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          (Filter specific SOW report no. under jobpack)
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/20">
+                        {scopedSowReports.length} SOW Report{scopedSowReports.length !== 1 ? "s" : ""} Available
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <button
+                        onClick={() => setSowReportMode("ALL")}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center",
+                          sowReportMode === "ALL"
+                            ? "bg-white dark:bg-slate-700 text-cyan-600 dark:text-cyan-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        All SOW Reports for Jobpack ({scopedSowReports.length})
+                      </button>
+                      <button
+                        onClick={() => setSowReportMode("SELECTED")}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center",
+                          sowReportMode === "SELECTED"
+                            ? "bg-white dark:bg-slate-700 text-cyan-600 dark:text-cyan-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Specific Selected SOW Reports ({selectedSowReportNos.length})
+                      </button>
+                    </div>
+
+                    {sowReportMode === "SELECTED" ? (
+                      <div className="space-y-2 animate-in fade-in duration-300">
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <Input
+                              placeholder="Search SOW report number..."
+                              value={searchSowQuery}
+                              onChange={(e) => setSearchSowQuery(e.target.value)}
+                              className="pl-8 h-8 text-xs rounded-xl"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedSowReportNos(filteredSowReports.map((s) => s.sow_report_no))}
+                            className="text-[11px] h-8 px-2 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10"
+                          >
+                            Select All
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedSowReportNos([])}
+                            className="text-[11px] h-8 px-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          >
+                            Clear
+                          </Button>
+                        </div>
+
+                        <div className="max-h-44 overflow-y-auto custom-scrollbar space-y-1 p-1">
+                          {filteredSowReports.length === 0 ? (
+                            <p className="text-center py-4 text-xs text-slate-400">No matching SOW report numbers</p>
+                          ) : (
+                            filteredSowReports.map((sow) => {
+                              const isSel = selectedSowReportNos.includes(sow.sow_report_no);
+                              return (
+                                <div
+                                  key={sow.sow_report_no}
+                                  onClick={() => handleToggleSowReport(sow.sow_report_no)}
+                                  className={cn(
+                                    "p-2 rounded-xl border text-xs flex items-center justify-between cursor-pointer transition-all",
+                                    isSel
+                                      ? "bg-cyan-500/10 border-cyan-500/50 font-bold text-cyan-800 dark:text-cyan-200 shadow-sm"
+                                      : "bg-white/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-cyan-400/40"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2.5 truncate">
+                                    <div
+                                      className={cn(
+                                        "h-4 w-4 rounded-md border flex items-center justify-center shrink-0 transition-colors",
+                                        isSel
+                                          ? "bg-cyan-600 border-cyan-600 text-white"
+                                          : "border-slate-300 dark:border-slate-600"
+                                      )}
+                                    >
+                                      {isSel && <Check className="h-3 w-3 stroke-[3]" />}
+                                    </div>
+                                    <span className="font-mono font-semibold">{sow.sow_report_no}</span>
+                                  </div>
+                                  {sow.jobpack_name && (
+                                    <Badge variant="outline" className="text-[9px] font-mono shrink-0 max-w-[180px] truncate">
+                                      {sow.jobpack_name}
+                                    </Badge>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+                        {scopedSowReports.map((sow) => (
+                          <Badge
+                            key={sow.sow_report_no}
+                            variant="secondary"
+                            className="font-mono text-[10px] bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 px-2 py-0.5"
+                          >
+                            {sow.sow_report_no}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
