@@ -23,7 +23,8 @@ import {
     Video,
     History,
     ArrowRightLeft,
-    Film
+    Film,
+    Anchor
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -95,6 +96,8 @@ interface WorkspaceDialogsProps {
         isMovementLogOpen: boolean;
         isEditTapeOpen: boolean;
         jobTapes?: any[];
+        deployments?: any[];
+        editTapeDeploymentId?: string;
         editTapeNo: string;
         editTapeChapter: string;
         editTapeStatus: string;
@@ -221,6 +224,7 @@ interface WorkspaceDialogsProps {
         setLastStartEventForEdit: (event: any) => void;
         setIsMovementLogOpen: (open: boolean) => void;
         setIsEditTapeOpen: (open: boolean) => void;
+        setEditTapeDeploymentId?: (val: string) => void;
         setEditTapeNo: (val: string) => void;
         setEditTapeChapter: (val: string) => void;
         setEditTapeStatus: (val: string) => void;
@@ -470,6 +474,8 @@ export function WorkspaceDialogs({
         lastStartEventForEdit,
         isMovementLogOpen,
         isEditTapeOpen,
+        deployments,
+        editTapeDeploymentId,
         editTapeNo,
         editTapeChapter,
         editTapeStatus,
@@ -590,6 +596,7 @@ export function WorkspaceDialogs({
         setLastStartEventForEdit,
         setIsMovementLogOpen,
         setIsEditTapeOpen,
+        setEditTapeDeploymentId,
         setEditTapeNo,
         setEditTapeChapter,
         setEditTapeStatus,
@@ -1090,6 +1097,42 @@ export function WorkspaceDialogs({
                                     placeholder="Enter tape reference..."
                                     className="h-11 text-sm font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-blue-500/5 transition-all"
                                 />
+                            </div>
+
+                            {/* Linked Dive / ROV Deployment Reassignment */}
+                            <div className="space-y-1.5 p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/40">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-300 tracking-wider flex items-center gap-1.5">
+                                        <Anchor className="w-3.5 h-3.5 text-blue-500" />
+                                        Linked {inspMethod === "DIVING" ? "Dive Log" : "ROV Log"}
+                                    </Label>
+                                    <Badge variant="outline" className="text-[9px] font-bold border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400">
+                                        Reassign Deployment
+                                    </Badge>
+                                </div>
+                                <Select 
+                                    value={String(editTapeDeploymentId || activeDep?.id || "")} 
+                                    onValueChange={(val) => setEditTapeDeploymentId && setEditTapeDeploymentId(val)}
+                                >
+                                    <SelectTrigger className="h-10 text-xs font-bold bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100">
+                                        <SelectValue placeholder={`Select ${inspMethod === "DIVING" ? "Dive" : "ROV Job"}...`} />
+                                    </SelectTrigger>
+                                    <SelectContent className="dark:bg-slate-950 dark:border-slate-800">
+                                        {(deployments || []).map((dep: any) => {
+                                            const depId = String(dep.id || dep.dive_job_id || dep.rov_job_id);
+                                            const depNo = dep.jobNo || dep.name || `Job #${depId}`;
+                                            const depDate = dep.date || dep.dive_date || dep.rov_date || "";
+                                            return (
+                                                <SelectItem key={depId} value={depId} className="text-xs font-bold py-1.5">
+                                                    {depNo} {depDate ? `(${depDate})` : ""}
+                                                </SelectItem>
+                                            );
+                                        })}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                    Reassigning this tape to another {inspMethod === "DIVING" ? "Dive" : "ROV"} will automatically transfer this tape, its video timeline logs, and all linked inspection records to that deployment.
+                                </p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

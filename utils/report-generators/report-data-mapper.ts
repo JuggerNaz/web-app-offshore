@@ -110,9 +110,28 @@ export const mapInspectionDataForDocx = async (
                 .from('attachment')
                 .select('*')
                 .in('source_id', recordIds)
-                .in('source_type', ['inspection', 'INSPECTION'])
+                .in('source_type', ['inspection', 'INSPECTION', 'insp_record', 'INSP_RECORD', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'INSPECTION_RECORD'])
                 .is('is_deleted', false);
             attachments = data || [];
+
+            if (attachments.length === 0) {
+                const { data: media } = await supabase
+                    .from('insp_media' as any)
+                    .select('*')
+                    .in('inspection_id', recordIds);
+                if (media && media.length > 0) {
+                    attachments = media.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Photo ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        source_type: 'inspection',
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || 'inspection-media'
+                    }));
+                }
+            }
         } catch (e) {
             console.error("Failed to fetch attachments for docx:", e);
         }

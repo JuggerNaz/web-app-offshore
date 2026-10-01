@@ -11,7 +11,7 @@ import {
     SelectValue 
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Video, Play, Pause, Square, Plus, Edit, Trash2, History } from "lucide-react";
+import { Video, Play, Pause, Square, Plus, Edit, Trash2, History, ArrowRightLeft } from "lucide-react";
 import { format } from "date-fns";
 
 interface TapeManagementCardProps {
@@ -92,6 +92,18 @@ export const TapeManagementCardPipeline: React.FC<TapeManagementCardProps> = ({
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent side="top"><p className="text-[10px] font-bold">Edit Tape</p></TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        onClick={handleOpenEditTape}
+                                        disabled={!tapeId}
+                                        className="p-1 text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-200 dark:hover:bg-white/10 rounded transition-all disabled:opacity-30 disabled:pointer-events-none"
+                                    >
+                                        <ArrowRightLeft className="w-3 h-3" />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top"><p className="text-[10px] font-bold">Transfer / Reassign Tape to Dive</p></TooltipContent>
                             </Tooltip>
                             <Tooltip>
                                 <TooltipTrigger asChild>

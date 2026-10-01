@@ -1949,7 +1949,7 @@ export default function InterfaceModulePage() {
                                   <td className="p-3 font-mono text-slate-400">{idx + 1}</td>
                                   <td className="p-3 font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                     <span className="font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-md text-xs font-bold">
-                                      {col.header}
+                                      {col.header.toLowerCase()}
                                     </span>
                                   </td>
                                   <td className="p-3">

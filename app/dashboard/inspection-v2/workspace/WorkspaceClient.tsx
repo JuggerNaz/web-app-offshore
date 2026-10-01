@@ -1520,6 +1520,7 @@ function V10PreviewLayout() {
   const [editTapeChapter, setEditTapeChapter] = useState("");
   const [editTapeRemarks, setEditTapeRemarks] = useState("");
   const [editTapeStatus, setEditTapeStatus] = useState("ACTIVE");
+  const [editTapeDeploymentId, setEditTapeDeploymentId] = useState<string>("");
   const [isNewTapeOpen, setIsNewTapeOpen] = useState(false);
   const [newTapeNo, setNewTapeNo] = useState("");
   const [newTapeChapter, setNewTapeChapter] = useState("");
@@ -1569,7 +1570,12 @@ function V10PreviewLayout() {
         const startTime = new Date(lastLog.eventTime).getTime();
         const now = new Date().getTime();
         const elapsedSeconds = Math.floor((now - startTime) / 1000);
-        currentCounter += Math.max(0, elapsedSeconds);
+        // If elapsed time is greater than 12 hours, this is a historical tape, not an active real-time live recording
+        if (elapsedSeconds > 43200) {
+          setVidState("PAUSED");
+        } else {
+          currentCounter += Math.max(0, elapsedSeconds);
+        }
       }
       setVidTimer(currentCounter);
     } else {
@@ -4762,7 +4768,11 @@ function V10PreviewLayout() {
             const startTime = parseDbDate(lastLog.event_time).getTime();
             const now = new Date().getTime();
             const elapsedSeconds = Math.floor((now - startTime) / 1000);
-            currentCounter += Math.max(0, elapsedSeconds);
+            if (elapsedSeconds > 43200) {
+              setVidState("PAUSED");
+            } else {
+              currentCounter += Math.max(0, elapsedSeconds);
+            }
           }
           setVidTimer(currentCounter);
         } else {
@@ -5549,6 +5559,8 @@ function V10PreviewLayout() {
       setEditTapeChapter(String(tape.chapter_no || ""));
       setEditTapeRemarks(tape.remarks || "");
       setEditTapeStatus(tape.status || "ACTIVE");
+      const currentDepId = String(tape.dive_job_id || tape.rov_job_id || activeDep?.id || "");
+      setEditTapeDeploymentId(currentDepId);
       setIsEditTapeOpen(true);
     }
   };
@@ -5557,17 +5569,54 @@ function V10PreviewLayout() {
     if (!tapeId) return;
     setIsCommitting(true);
     try {
+      const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
+      const targetDepId = editTapeDeploymentId ? Number(editTapeDeploymentId) : (activeDep?.id ? Number(activeDep.id) : null);
+
+      const updateTapePayload: any = {
+        tape_no: editTapeNo,
+        chapter_no: parseInt(editTapeChapter) || 1,
+        remarks: editTapeRemarks,
+        status: editTapeStatus,
+      };
+      if (targetDepId) {
+        updateTapePayload[jobCol] = targetDepId;
+      }
+
       const { error } = await supabase
         .from("insp_video_tapes")
-        .update({
-          tape_no: editTapeNo,
-          chapter_no: parseInt(editTapeChapter) || 1,
-          remarks: editTapeRemarks,
-          status: editTapeStatus,
-        })
+        .update(updateTapePayload)
         .eq("tape_id", tapeId);
 
       if (error) throw error;
+
+      // When the tape is reassigned to another Dive / ROV, update all linked inspection records too
+      if (targetDepId) {
+        const targetDepObj = deployments.find((d) => String(d.id || d.dive_job_id || d.rov_job_id) === String(targetDepId));
+        const targetJobNo = targetDepObj?.jobNo || targetDepObj?.name;
+
+        const { data: tapeRecords } = await supabase
+          .from("insp_records")
+          .select("insp_id, inspection_data")
+          .eq("tape_id", tapeId);
+
+        if (tapeRecords && tapeRecords.length > 0) {
+          await Promise.all(
+            tapeRecords.map(async (rec: any) => {
+              const updatedData = {
+                ...(rec.inspection_data || {}),
+                ...(targetJobNo ? { dive_no: targetJobNo, rov_job_no: targetJobNo } : {}),
+              };
+              return supabase
+                .from("insp_records")
+                .update({
+                  [jobCol]: targetDepId,
+                  inspection_data: updatedData,
+                })
+                .eq("insp_id", rec.insp_id);
+            })
+          );
+        }
+      }
 
       // Update local state
       setJobTapes((prev) =>
@@ -5579,6 +5628,7 @@ function V10PreviewLayout() {
                 chapter_no: parseInt(editTapeChapter) || 1,
                 remarks: editTapeRemarks,
                 status: editTapeStatus,
+                ...(targetDepId ? { [jobCol]: targetDepId } : {}),
               }
             : t
         )
@@ -5588,10 +5638,11 @@ function V10PreviewLayout() {
       setActiveChapter(parseInt(editTapeChapter) || 1);
 
       setIsEditTapeOpen(false);
-      toast.success("Tape details updated successfully");
+      toast.success("Tape details and linked inspection records updated successfully");
 
       // Refresh history to ensure tape numbers in table are updated
       fetchHistory();
+      syncDeploymentState();
     } catch (err: any) {
       console.error("Failed to update tape:", err);
       toast.error(`Update failed: ${err.message}`);
@@ -9695,6 +9746,8 @@ function V10PreviewLayout() {
           isMovementLogOpen,
           isEditTapeOpen,
           jobTapes,
+          deployments,
+          editTapeDeploymentId,
           editTapeNo,
           editTapeChapter,
           editTapeStatus,
@@ -9816,6 +9869,7 @@ function V10PreviewLayout() {
           setLastStartEventForEdit,
           setIsMovementLogOpen,
           setIsEditTapeOpen,
+          setEditTapeDeploymentId,
           setEditTapeNo,
           setEditTapeChapter,
           setEditTapeStatus,

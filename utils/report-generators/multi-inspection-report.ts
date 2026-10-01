@@ -63,13 +63,32 @@ export const generateMultiInspectionReport = async (
                 .eq('inspection_id', inspectionId);
 
             // 3. Fetch Attachments
-            const { data: attachmentsData } = await supabase
+            let { data: attachmentsData } = await supabase
                 .from('attachment')
                 .select('*')
                 .eq('source_id', inspectionId)
-                .eq('source_type', 'inspection');
+                .in('source_type', ['inspection', 'INSPECTION', 'insp_record', 'INSP_RECORD', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'INSPECTION_RECORD'])
+                .is('is_deleted', false);
 
             (inspection as any).insp_anomalies = anomalies || [];
+            if (!attachmentsData || attachmentsData.length === 0) {
+                const { data: mediaData } = await supabase
+                    .from('insp_media' as any)
+                    .select('*')
+                    .eq('inspection_id', inspectionId);
+                if (mediaData && mediaData.length > 0) {
+                    attachmentsData = mediaData.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Photo ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        source_type: 'inspection',
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || 'inspection-media'
+                    }));
+                }
+            }
             (inspection as any).attachment = attachmentsData || [];
 
             // --- HEADER ---

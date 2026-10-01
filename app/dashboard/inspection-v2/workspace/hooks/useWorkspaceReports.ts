@@ -1881,7 +1881,7 @@ export function useWorkspaceReports(
                 .from('attachment')
                 .select('*')
                 .in('source_id', inspIds)
-                .in('source_type', ['inspection', 'INSPECTION'])
+                .in('source_type', ['inspection', 'INSPECTION', 'insp_record', 'INSP_RECORD', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'INSPECTION_RECORD'])
                 .is('is_deleted', false);
             dbAttachments = data || [];
         }
@@ -1920,7 +1920,7 @@ export function useWorkspaceReports(
                 .from('attachment')
                 .select('*')
                 .in('source_id', inspIds)
-                .in('source_type', ['inspection', 'INSPECTION'])
+                .in('source_type', ['inspection', 'INSPECTION', 'insp_record', 'INSP_RECORD', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'INSPECTION_RECORD'])
                 .is('is_deleted', false);
             dbAttachments = data || [];
         }

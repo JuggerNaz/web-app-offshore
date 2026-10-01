@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
     const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabase = useAdmin ? createAdminClient() : createClient();
@@ -63,7 +65,9 @@ export async function GET(request: NextRequest) {
         headers: {
             "Content-Type": data.type || "image/jpeg",
             "Content-Length": data.size.toString(),
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": "private, no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         },

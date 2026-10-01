@@ -3753,40 +3753,60 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         });
       }
 
+      // Value lookup helper resilient to casing differences
+      const resolveRowVal = (row: any, col: any) => {
+        const k = col.key;
+        const h = col.header;
+        let val = undefined;
+        if (k && row[k] !== undefined) val = row[k];
+        else if (h && row[h] !== undefined) val = row[h];
+        else if (k && row[String(k).toUpperCase()] !== undefined) val = row[String(k).toUpperCase()];
+        else if (h && row[String(h).toUpperCase()] !== undefined) val = row[String(h).toUpperCase()];
+        else if (k && row[String(k).toLowerCase()] !== undefined) val = row[String(k).toLowerCase()];
+        else if (h && row[String(h).toLowerCase()] !== undefined) val = row[String(h).toLowerCase()];
+        return val;
+      };
+
       const formattedBaseName = `${dateFormattedYymmdd}-01-${code}`;
       const txtFileName = `${formattedBaseName}.txt`;
       const xlsxFileName = `${formattedBaseName}.xlsx`;
       const csvFileName = `${formattedBaseName}.csv`;
       
-      // 1. Build Tab-Delimited text content
-      const headers = sheetDef.columns.map((c) => c.header);
+      // Ensure all column headers are strictly lowercase
+      const lowerColumns = sheetDef.columns.map((c) => ({
+        ...c,
+        header: String(c.header || c.key || "").toLowerCase(),
+      }));
+
+      // 1. Build Tab-Delimited text content (all headers lowercase)
+      const headers = lowerColumns.map((c) => c.header);
       const textLines: string[] = [headers.join("\t")];
       sheetRows.forEach((row) => {
-        const rowVals = sheetDef.columns.map((c) => {
-          const val = row[c.key] ?? row[c.header];
+        const rowVals = lowerColumns.map((c) => {
+          const val = resolveRowVal(row, c);
           return sanitizeText(cleanCellValue(val));
         });
         textLines.push(rowVals.join("\t"));
       });
       const textContent = textLines.join("\r\n");
 
-      // 2. Build Comma-Delimited CSV content
-      const csvLines: string[] = [sheetDef.columns.map((c) => escapeCsvValue(c.header)).join(",")];
+      // 2. Build Comma-Delimited CSV content (all headers lowercase)
+      const csvLines: string[] = [headers.map((h) => escapeCsvValue(h)).join(",")];
       sheetRows.forEach((row) => {
-        const rowVals = sheetDef.columns.map((c) => {
-          const val = row[c.key] ?? row[c.header];
+        const rowVals = lowerColumns.map((c) => {
+          const val = resolveRowVal(row, c);
           return escapeCsvValue(cleanCellValue(val));
         });
         csvLines.push(rowVals.join(","));
       });
       const csvContent = csvLines.join("\r\n");
 
-      // 3. Build Individual XLSX Buffer (Always print the column header for each column as the first row even if 0 records exist)
+      // 3. Build Individual XLSX Buffer (all headers lowercase)
       const aoaRows: any[][] = [
         headers,
         ...sheetRows.map((row) =>
-          sheetDef.columns.map((c) => {
-            const val = row[c.key] ?? row[c.header];
+          lowerColumns.map((c) => {
+            const val = resolveRowVal(row, c);
             return cleanCellValue(val);
           })
         ),
@@ -3794,7 +3814,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
       const singleWb = XLSX.utils.book_new();
       const singleWs = XLSX.utils.aoa_to_sheet(aoaRows);
-      singleWs["!cols"] = sheetDef.columns.map((c) => ({ wch: Math.max(c.width || 14, (c.header || "").length + 2) }));
+      singleWs["!cols"] = lowerColumns.map((c) => ({ wch: Math.max(c.width || 14, (c.header || "").length + 2) }));
       const safeSheetName = (sheetDef.sheetName || code).replace(/[\\/?*:[\]]/g, "_").substring(0, 31);
       XLSX.utils.book_append_sheet(singleWb, singleWs, safeSheetName);
       const xlsxBuffer = XLSX.write(singleWb, { type: "buffer", bookType: "xlsx" }) as Buffer;
@@ -3806,7 +3826,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         xlsxFileName,
         txtFileName,
         csvFileName,
-        columns: sheetDef.columns,
+        columns: lowerColumns,
         rows: sheetRows,
         textContent,
         csvContent,
@@ -3853,15 +3873,23 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             });
             serverSavedPath = targetDir;
           } else if (format === "single_xlsx") {
-            // Consolidated single .xlsx with multiple tabs
+            // Consolidated single .xlsx with multiple tabs (all headers lowercase)
             const combinedWb = XLSX.utils.book_new();
             tablesOutput.forEach((tbl) => {
-              const tblHeaders = tbl.columns.map((c: any) => c.header);
+              const tblHeaders = tbl.columns.map((c: any) => String(c.header || c.key || "").toLowerCase());
               const aoaData: any[][] = [
                 tblHeaders,
                 ...tbl.rows.map((row: any) =>
                   tbl.columns.map((c: any) => {
-                    const val = row[c.key] ?? row[c.header];
+                    const k = c.key;
+                    const h = c.header;
+                    let val = undefined;
+                    if (k && row[k] !== undefined) val = row[k];
+                    else if (h && row[h] !== undefined) val = row[h];
+                    else if (k && row[String(k).toUpperCase()] !== undefined) val = row[String(k).toUpperCase()];
+                    else if (h && row[String(h).toUpperCase()] !== undefined) val = row[String(h).toUpperCase()];
+                    else if (k && row[String(k).toLowerCase()] !== undefined) val = row[String(k).toLowerCase()];
+                    else if (h && row[String(h).toLowerCase()] !== undefined) val = row[String(h).toLowerCase()];
                     return cleanCellValue(val);
                   })
                 ),
@@ -3936,12 +3964,20 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     if (format === "single_xlsx") {
       const workbook = XLSX.utils.book_new();
       tablesOutput.forEach((tbl) => {
-        const tblHeaders = tbl.columns.map((c: any) => c.header);
+        const tblHeaders = tbl.columns.map((c: any) => String(c.header || c.key || "").toLowerCase());
         const aoaData: any[][] = [
           tblHeaders,
           ...tbl.rows.map((row: any) =>
             tbl.columns.map((c: any) => {
-              const val = row[c.key] ?? row[c.header];
+              const k = c.key;
+              const h = c.header;
+              let val = undefined;
+              if (k && row[k] !== undefined) val = row[k];
+              else if (h && row[h] !== undefined) val = row[h];
+              else if (k && row[String(k).toUpperCase()] !== undefined) val = row[String(k).toUpperCase()];
+              else if (h && row[String(h).toUpperCase()] !== undefined) val = row[String(h).toUpperCase()];
+              else if (k && row[String(k).toLowerCase()] !== undefined) val = row[String(k).toLowerCase()];
+              else if (h && row[String(h).toLowerCase()] !== undefined) val = row[String(h).toLowerCase()];
               return cleanCellValue(val);
             })
           ),

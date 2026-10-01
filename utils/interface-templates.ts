@@ -60,69 +60,79 @@ export interface ClientProfile {
 
 // ─── Common SICS Field Definitions ───────────────────────────────────────────
 const SICS_COMMON_PREFIX: TemplateColumn[] = [
-  { key: "STR_ID", header: "STR_ID", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Structure ID (IDAMS Sequence No.)", required: true },
-  { key: "TITLE", header: "TITLE", dataType: "string", width: 20, dataSize: 20, description: "Structure Title", required: true },
-  { key: "PFIELD", header: "PFIELD", dataType: "string", width: 20, dataSize: 20, description: "Field Name" },
-  { key: "PDESC", header: "PDESC", dataType: "string", width: 30, dataSize: 50, description: "Structure Description" },
-  { key: "DEF_UNIT", header: "DEF_UNIT", dataType: "string", width: 10, dataSize: 10, description: "Structure Unit Type (Metric / Imperial)" },
-  { key: "COMP_ID", header: "COMP_ID", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Component ID", required: true },
-  { key: "ID_NO", header: "ID_NO", dataType: "string", width: 20, dataSize: 25, description: "Comp. ID No. (System Generated)" },
-  { key: "Q_ID", header: "Q_ID", dataType: "string", width: 16, dataSize: 16, description: "Comp. Q ID (User Generated)", required: true },
-  { key: "CODE", header: "CODE", dataType: "string", width: 8, dataSize: 2, description: "Comp. Type Code" },
-  { key: "COMPDESC", header: "COMPDESC", dataType: "string", width: 24, dataSize: 40, description: "Comp. Description" },
-  { key: "S_NODE", header: "S_NODE", dataType: "string", width: 10, dataSize: 6, description: "Comp. Start Node" },
-  { key: "F_NODE", header: "F_NODE", dataType: "string", width: 10, dataSize: 6, description: "Comp. End Node" },
-  { key: "S_LEG", header: "S_LEG", dataType: "string", width: 8, dataSize: 2, description: "Comp. Start Leg" },
-  { key: "F_LEG", header: "F_LEG", dataType: "string", width: 8, dataSize: 2, description: "Comp. End Leg" },
-  { key: "ELV_1", header: "ELV_1", dataType: "number", width: 12, dataSize: 8, decSize: 3, description: "Comp. Start Elevation (m / ft)" },
-  { key: "ELV_2", header: "ELV_2", dataType: "number", width: 12, dataSize: 8, decSize: 3, description: "Comp. End Elevation (m / ft)" },
-  { key: "DIST", header: "DIST", dataType: "number", width: 10, dataSize: 6, decSize: 2, description: "Distance (m / ft)" },
-  { key: "CLK_POS", header: "CLK_POS", dataType: "number", width: 10, dataSize: 4, decSize: 2, description: "Clock Position" },
-  { key: "COMPTYPE", header: "COMPTYPE", dataType: "string", width: 20, dataSize: 30, description: "Component Type" },
-  { key: "INSP_ID", header: "INSP_ID", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Inspection ID", required: true },
-  { key: "INSP_DATE", header: "INSP_DATE", dataType: "date", width: 14, description: "Inspection Date", required: true },
-  { key: "INSP_TIME", header: "INSP_TIME", dataType: "string", width: 10, dataSize: 8, description: "Inspection Time" },
-  { key: "INSPECTOR", header: "INSPECTOR", dataType: "string", width: 18, dataSize: 20, description: "Inspector Name" },
-  { key: "PROC", header: "PROC", dataType: "string", width: 16, dataSize: 20, description: "Procedure Reference" },
-  { key: "EQUIP", header: "EQUIP", dataType: "string", width: 16, dataSize: 20, description: "Equipment" },
-  { key: "EQ_ID", header: "EQ_ID", dataType: "string", width: 16, dataSize: 20, description: "Equipment ID" },
-  { key: "SPEC", header: "SPEC", dataType: "string", width: 16, dataSize: 20, description: "Specification" },
-  { key: "SURF_COND", header: "SURF_COND", dataType: "string", width: 18, dataSize: 30, description: "Surface Condition" },
-  { key: "CLEAN_MET", header: "CLEAN_MET", dataType: "string", width: 16, dataSize: 20, description: "Cleaning Method" },
-  { key: "SCAF", header: "SCAF", dataType: "string", width: 8, dataSize: 3, description: "Scaffolding (Yes/No)" },
-  { key: "SUPV", header: "SUPV", dataType: "string", width: 16, dataSize: 20, description: "Supervisor Name" },
-  { key: "DIVR", header: "DIVR", dataType: "string", width: 16, dataSize: 20, description: "Diver / ROV Name" },
-  { key: "DIVE_NO", header: "DIVE_NO", dataType: "string", width: 12, dataSize: 10, description: "Diver No. / Dive Log No." },
-  { key: "ELEVATION", header: "ELEVATION", dataType: "number", width: 12, dataSize: 9, decSize: 3, description: "Comp. Elevation (m / ft)" },
-  { key: "TOP_UND", header: "TOP_UND", dataType: "string", width: 12, dataSize: 8, description: "Topside or Underwater" },
+  { key: "STR_ID", header: "str_id", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Structure ID (IDAMS Sequence No.)", required: true },
+  { key: "TITLE", header: "title", dataType: "string", width: 20, dataSize: 20, description: "Structure Title", required: true },
+  { key: "PFIELD", header: "pfield", dataType: "string", width: 20, dataSize: 20, description: "Field Name" },
+  { key: "PDESC", header: "pdesc", dataType: "string", width: 30, dataSize: 50, description: "Structure Description" },
+  { key: "DEF_UNIT", header: "def_unit", dataType: "string", width: 10, dataSize: 10, description: "Structure Unit Type (Metric / Imperial)" },
+  { key: "COMP_ID", header: "comp_id", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Component ID", required: true },
+  { key: "ID_NO", header: "id_no", dataType: "string", width: 20, dataSize: 25, description: "Comp. ID No. (System Generated)" },
+  { key: "Q_ID", header: "q_id", dataType: "string", width: 16, dataSize: 16, description: "Comp. Q ID (User Generated)", required: true },
+  { key: "CODE", header: "code", dataType: "string", width: 8, dataSize: 2, description: "Comp. Type Code" },
+  { key: "COMPDESC", header: "compdesc", dataType: "string", width: 24, dataSize: 40, description: "Comp. Description" },
+  { key: "S_NODE", header: "s_node", dataType: "string", width: 10, dataSize: 6, description: "Comp. Start Node" },
+  { key: "F_NODE", header: "f_node", dataType: "string", width: 10, dataSize: 6, description: "Comp. End Node" },
+  { key: "S_LEG", header: "s_leg", dataType: "string", width: 8, dataSize: 2, description: "Comp. Start Leg" },
+  { key: "F_LEG", header: "f_leg", dataType: "string", width: 8, dataSize: 2, description: "Comp. End Leg" },
+  { key: "ELV_1", header: "elv_1", dataType: "number", width: 12, dataSize: 8, decSize: 3, description: "Comp. Start Elevation (m / ft)" },
+  { key: "ELV_2", header: "elv_2", dataType: "number", width: 12, dataSize: 8, decSize: 3, description: "Comp. End Elevation (m / ft)" },
+  { key: "DIST", header: "dist", dataType: "number", width: 10, dataSize: 6, decSize: 2, description: "Distance (m / ft)" },
+  { key: "CLK_POS", header: "clk_pos", dataType: "number", width: 10, dataSize: 4, decSize: 2, description: "Clock Position" },
+  { key: "COMPTYPE", header: "comptype", dataType: "string", width: 20, dataSize: 30, description: "Component Type" },
+  { key: "INSP_ID", header: "insp_id", dataType: "number", width: 12, dataSize: 12, decSize: 0, description: "Inspection ID", required: true },
+  { key: "INSP_DATE", header: "insp_date", dataType: "date", width: 14, description: "Inspection Date", required: true },
+  { key: "INSP_TIME", header: "insp_time", dataType: "string", width: 10, dataSize: 8, description: "Inspection Time" },
+  { key: "INSPECTOR", header: "inspector", dataType: "string", width: 18, dataSize: 20, description: "Inspector Name" },
+  { key: "PROC", header: "proc", dataType: "string", width: 16, dataSize: 20, description: "Procedure Reference" },
+  { key: "EQUIP", header: "equip", dataType: "string", width: 16, dataSize: 20, description: "Equipment" },
+  { key: "EQ_ID", header: "eq_id", dataType: "string", width: 16, dataSize: 20, description: "Equipment ID" },
+  { key: "SPEC", header: "spec", dataType: "string", width: 16, dataSize: 20, description: "Specification" },
+  { key: "SURF_COND", header: "surf_cond", dataType: "string", width: 18, dataSize: 30, description: "Surface Condition" },
+  { key: "CLEAN_MET", header: "clean_met", dataType: "string", width: 16, dataSize: 20, description: "Cleaning Method" },
+  { key: "SCAF", header: "scaf", dataType: "string", width: 8, dataSize: 3, description: "Scaffolding (Yes/No)" },
+  { key: "SUPV", header: "supv", dataType: "string", width: 16, dataSize: 20, description: "Supervisor Name" },
+  { key: "DIVR", header: "divr", dataType: "string", width: 16, dataSize: 20, description: "Diver / ROV Name" },
+  { key: "DIVE_NO", header: "dive_no", dataType: "string", width: 12, dataSize: 10, description: "Diver No. / Dive Log No." },
+  { key: "ELEVATION", header: "elevation", dataType: "number", width: 12, dataSize: 9, decSize: 3, description: "Comp. Elevation (m / ft)" },
+  { key: "TOP_UND", header: "top_und", dataType: "string", width: 12, dataSize: 8, description: "Topside or Underwater" },
 ];
 
 const SICS_COMMON_SUFFIX: TemplateColumn[] = [
-  { key: "DEFECT", header: "DEFECT", dataType: "string", width: 8, dataSize: 3, description: "Defect Present? (YES/NO)" },
-  { key: "DFT_CODE_TYPE", header: "DFT_CODE_TYPE", dataType: "string", width: 14, dataSize: 12, description: "Defect Code Type (AW, DB, PD, etc.)" },
-  { key: "DEFECT_CODE", header: "DEFECT_CODE", dataType: "string", width: 18, dataSize: 50, description: "Defect Code" },
-  { key: "DEFECT_TYPE", header: "DEFECT_TYPE", dataType: "string", width: 16, dataSize: 20, description: "Defect Rating" },
-  { key: "DEFECT_DESC", header: "DEFECT_DESC", dataType: "string", width: 30, dataSize: 250, description: "Defect Comments" },
-  { key: "DFT_REF_NO", header: "DFT_REF_NO", dataType: "string", width: 18, dataSize: 30, description: "Defect Reference No." },
-  { key: "RECTIFID", header: "RECTIFID", dataType: "string", width: 10, dataSize: 3, description: "Defect Rectified? (YES/NO)" },
-  { key: "RECTIFID_DESC", header: "RECTIFID_DESC", dataType: "string", width: 28, dataSize: 250, description: "Rectified Comments" },
-  { key: "RECT_DATE", header: "RECT_DATE", dataType: "date", width: 14, description: "Rectified Date" },
-  { key: "INSPNO", header: "INSPNO", dataType: "string", width: 16, dataSize: 11, description: "Inspection / SOW Report No.", required: true },
-  { key: "JOBNAME", header: "JOBNAME", dataType: "string", width: 20, dataSize: 20, description: "SOW / Jobpack Name", required: true },
-  { key: "STATUS", header: "STATUS", dataType: "string", width: 12, dataSize: 10, description: "SOW/Jobpack Status (OPEN / CLOSED)" },
-  { key: "INSP_DONE", header: "INSP_DONE", dataType: "string", width: 10, dataSize: 3, description: "Inspection Done (YES/NO)" },
-  { key: "REC_DATE", header: "REC_DATE", dataType: "date", width: 14, description: "Record Last Modified Date" },
-  { key: "INSP_COND", header: "INSP_COND", dataType: "string", width: 40, dataSize: 1000, description: "Findings (Single-line space separated)" },
-  { key: "CMNTS", header: "CMNTS", dataType: "string", width: 40, dataSize: 4000, description: "Comments (Single-line space separated)" },
-  { key: "JOB_TYPE", header: "JOB_TYPE", dataType: "string", width: 16, dataSize: 20, description: "Job/Scope Type (MAJOR, PARTIAL, SPECIAL, PIPELINE)" },
-  { key: "LAST_MAJOR_INSPNO", header: "LAST_MAJOR_INSPNO", dataType: "string", width: 18, dataSize: 11, description: "Last Major Inspection No." },
-  { key: "INSPTYPE", header: "INSPTYPE", dataType: "string", width: 10, dataSize: 3, description: "Inspection Type Identifier Code" },
-  { key: "EVAL_BY", header: "EVAL_BY", dataType: "string", width: 20, dataSize: 250, description: "Anomaly Rectification Evaluated By" },
-  { key: "APPROV_BY", header: "APPROV_BY", dataType: "string", width: 20, dataSize: 250, description: "Anomaly Rectification Approved By" },
+  { key: "DEFECT", header: "defect", dataType: "string", width: 8, dataSize: 3, description: "Defect Present? (YES/NO)" },
+  { key: "DFT_CODE_TYPE", header: "dft_code_type", dataType: "string", width: 14, dataSize: 12, description: "Defect Code Type (AW, DB, PD, etc.)" },
+  { key: "DEFECT_CODE", header: "defect_code", dataType: "string", width: 18, dataSize: 50, description: "Defect Code" },
+  { key: "DEFECT_TYPE", header: "defect_type", dataType: "string", width: 16, dataSize: 20, description: "Defect Rating" },
+  { key: "DEFECT_DESC", header: "defect_desc", dataType: "string", width: 30, dataSize: 250, description: "Defect Comments" },
+  { key: "DFT_REF_NO", header: "dft_ref_no", dataType: "string", width: 18, dataSize: 30, description: "Defect Reference No." },
+  { key: "RECTIFID", header: "rectifid", dataType: "string", width: 10, dataSize: 3, description: "Defect Rectified? (YES/NO)" },
+  { key: "RECTIFID_DESC", header: "rectifid_desc", dataType: "string", width: 28, dataSize: 250, description: "Rectified Comments" },
+  { key: "RECT_DATE", header: "rect_date", dataType: "date", width: 14, description: "Rectified Date" },
+  { key: "INSPNO", header: "inspno", dataType: "string", width: 16, dataSize: 11, description: "Inspection / SOW Report No.", required: true },
+  { key: "JOBNAME", header: "jobname", dataType: "string", width: 20, dataSize: 20, description: "SOW / Jobpack Name", required: true },
+  { key: "STATUS", header: "status", dataType: "string", width: 12, dataSize: 10, description: "SOW/Jobpack Status (OPEN / CLOSED)" },
+  { key: "INSP_DONE", header: "insp_done", dataType: "string", width: 10, dataSize: 3, description: "Inspection Done (YES/NO)" },
+  { key: "REC_DATE", header: "rec_date", dataType: "date", width: 14, description: "Record Last Modified Date" },
+  { key: "INSP_COND", header: "insp_cond", dataType: "string", width: 40, dataSize: 1000, description: "Findings (Single-line space separated)" },
+  { key: "CMNTS", header: "cmnts", dataType: "string", width: 40, dataSize: 4000, description: "Comments (Single-line space separated)" },
+  { key: "JOB_TYPE", header: "job_type", dataType: "string", width: 16, dataSize: 20, description: "Job/Scope Type (MAJOR, PARTIAL, SPECIAL, PIPELINE)" },
+  { key: "LAST_MAJOR_INSPNO", header: "last_major_inspno", dataType: "string", width: 18, dataSize: 11, description: "Last Major Inspection No." },
+  { key: "INSPTYPE", header: "insptype", dataType: "string", width: 10, dataSize: 3, description: "Inspection Type Identifier Code" },
+  { key: "EVAL_BY", header: "eval_by", dataType: "string", width: 20, dataSize: 250, description: "Anomaly Rectification Evaluated By" },
+  { key: "APPROV_BY", header: "approv_by", dataType: "string", width: 20, dataSize: 250, description: "Anomaly Rectification Approved By" },
 ];
 
+export function normalizeTemplateHeaders(templates: TemplateSheet[]): TemplateSheet[] {
+  return templates.map((t) => ({
+    ...t,
+    columns: t.columns.map((col) => ({
+      ...col,
+      header: (col.header || col.key || "").toLowerCase(),
+    })),
+  }));
+}
+
 // ─── 24 Official PCSB SICS Interface Templates ──────────────────────────────
-export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
+const RAW_PCSB_SICS_TEMPLATES: TemplateSheet[] = [
   // 1. ANS - Anode Inspection
   {
     id: "sics-ans",
@@ -1027,6 +1037,9 @@ export const PCSB_SICS_TEMPLATES: TemplateSheet[] = [
   },
 ];
 
+// Export normalized 24 SICS templates with all column headers in lowercase
+export const PCSB_SICS_TEMPLATES: TemplateSheet[] = normalizeTemplateHeaders(RAW_PCSB_SICS_TEMPLATES);
+
 export const INITIAL_CLIENT_PROFILES: ClientProfile[] = [
   {
     id: "pcsb",
@@ -1059,7 +1072,7 @@ export const INITIAL_CLIENT_PROFILES: ClientProfile[] = [
         fileNamePattern: "PCSB_iPIMS_{PIPELINE}_{YEAR}_{DATE}.zip",
         destinationFolder: "C:\\Offshore_Transfers\\PCSB\\iPIMS_Pipeline_Deliverables\\",
         description: "Petronas Carigali Pipeline Integrity Management System (iPIMS) individual interface files for subsea pipelines.",
-        templates: [
+        templates: normalizeTemplateHeaders([
           {
             id: "ipims_header",
             identifierCode: "PLH",
@@ -1068,17 +1081,17 @@ export const INITIAL_CLIENT_PROFILES: ClientProfile[] = [
             queryStrategy: "STRUCTURE_SUMMARY",
             description: "Pipeline header, route information, diameter, burial status, and campaign",
             columns: [
-              { key: "item_no", header: "NO", dataType: "number", width: 8, required: true },
-              { key: "str_code", header: "PIPELINE_CODE", dataType: "string", width: 18, required: true },
-              { key: "str_name", header: "PIPELINE_NAME", dataType: "string", width: 30, required: true },
-              { key: "pfield", header: "FIELD_LOCATION", dataType: "string", width: 22 },
-              { key: "start_kp", header: "KP_START", dataType: "number", width: 14 },
-              { key: "end_kp", header: "KP_END", dataType: "number", width: 14 },
-              { key: "total_length", header: "TOTAL_LENGTH_KM", dataType: "number", width: 18 },
-              { key: "pipe_dia", header: "OUTER_DIA_INCH", dataType: "number", width: 16 },
-              { key: "jobpack_no", header: "JOBPACK_REF", dataType: "string", width: 20 },
-              { key: "survey_year", header: "SURVEY_YEAR", dataType: "string", width: 14 },
-              { key: "export_date", header: "EXPORT_DATE", dataType: "date", width: 18 }
+              { key: "item_no", header: "no", dataType: "number", width: 8, required: true },
+              { key: "str_code", header: "pipeline_code", dataType: "string", width: 18, required: true },
+              { key: "str_name", header: "pipeline_name", dataType: "string", width: 30, required: true },
+              { key: "pfield", header: "field_location", dataType: "string", width: 22 },
+              { key: "start_kp", header: "kp_start", dataType: "number", width: 14 },
+              { key: "end_kp", header: "kp_end", dataType: "number", width: 14 },
+              { key: "total_length", header: "total_length_km", dataType: "number", width: 18 },
+              { key: "pipe_dia", header: "outer_dia_inch", dataType: "number", width: 16 },
+              { key: "jobpack_no", header: "jobpack_ref", dataType: "string", width: 20 },
+              { key: "survey_year", header: "survey_year", dataType: "string", width: 14 },
+              { key: "export_date", header: "export_date", dataType: "date", width: 18 }
             ]
           },
           {
@@ -1090,16 +1103,16 @@ export const INITIAL_CLIENT_PROFILES: ClientProfile[] = [
             inspectionTypeCode: ["CPCLB", "CPINS", "PIPECP"],
             description: "Subsea pipeline continuous trailing-wire / stab cathodic protection potential profile",
             columns: [
-              { key: "item_no", header: "NO", dataType: "number", width: 8, required: true },
-              { key: "str_name", header: "PIPELINE_NAME", dataType: "string", width: 26, required: true },
-              { key: "jobpack_no", header: "JOBPACK_NO", dataType: "string", width: 18 },
-              { key: "kp_position", header: "KP_STATION", dataType: "number", width: 16, required: true },
-              { key: "water_depth", header: "WATER_DEPTH_M", dataType: "number", width: 16 },
-              { key: "cp_reading", header: "CP_READING_MV", dataType: "number", width: 18, required: true },
-              { key: "easting", header: "EASTING_X", dataType: "number", width: 16 },
-              { key: "northing", header: "NORTHING_Y", dataType: "number", width: 16 },
-              { key: "protection_status", header: "CP_STATUS", dataType: "string", width: 18 },
-              { key: "insp_date", header: "SURVEY_DATE", dataType: "date", width: 16 }
+              { key: "item_no", header: "no", dataType: "number", width: 8, required: true },
+              { key: "str_name", header: "pipeline_name", dataType: "string", width: 26, required: true },
+              { key: "jobpack_no", header: "jobpack_no", dataType: "string", width: 18 },
+              { key: "kp_position", header: "kp_station", dataType: "number", width: 16, required: true },
+              { key: "water_depth", header: "water_depth_m", dataType: "number", width: 16 },
+              { key: "cp_reading", header: "cp_reading_mv", dataType: "number", width: 18, required: true },
+              { key: "easting", header: "easting_x", dataType: "number", width: 16 },
+              { key: "northing", header: "northing_y", dataType: "number", width: 16 },
+              { key: "protection_status", header: "cp_status", dataType: "string", width: 18 },
+              { key: "insp_date", header: "survey_date", dataType: "date", width: 16 }
             ]
           },
           {
@@ -1111,15 +1124,15 @@ export const INITIAL_CLIENT_PROFILES: ClientProfile[] = [
             inspectionTypeCode: ["ANMIN", "ANODE"],
             description: "Pipeline bracelet / sacrificial anode depletion and physical condition",
             columns: [
-              { key: "item_no", header: "NO", dataType: "number", width: 8, required: true },
-              { key: "str_name", header: "PIPELINE_NAME", dataType: "string", width: 26, required: true },
-              { key: "anode_ref", header: "ANODE_ID_TAG", dataType: "string", width: 20, required: true },
-              { key: "kp_position", header: "KP_LOCATION", dataType: "number", width: 16, required: true },
-              { key: "water_depth", header: "WATER_DEPTH_M", dataType: "number", width: 16 },
-              { key: "anode_depletion", header: "DEPLETION_PCT", dataType: "string", width: 16 },
-              { key: "cp_reading", header: "ANODE_CP_MV", dataType: "number", width: 18 },
-              { key: "comp_cond", header: "PHYSICAL_CONDITION", dataType: "string", width: 22 },
-              { key: "insp_date", header: "INSPECTION_DATE", dataType: "date", width: 16 }
+              { key: "item_no", header: "no", dataType: "number", width: 8, required: true },
+              { key: "str_name", header: "pipeline_name", dataType: "string", width: 26, required: true },
+              { key: "anode_ref", header: "anode_id_tag", dataType: "string", width: 20, required: true },
+              { key: "kp_position", header: "kp_location", dataType: "number", width: 16, required: true },
+              { key: "water_depth", header: "water_depth_m", dataType: "number", width: 16 },
+              { key: "anode_depletion", header: "depletion_pct", dataType: "string", width: 16 },
+              { key: "cp_reading", header: "anode_cp_mv", dataType: "number", width: 18 },
+              { key: "comp_cond", header: "physical_condition", dataType: "string", width: 22 },
+              { key: "insp_date", header: "inspection_date", dataType: "date", width: 16 }
             ]
           },
           {
@@ -1131,19 +1144,19 @@ export const INITIAL_CLIENT_PROFILES: ClientProfile[] = [
             queryFilter: { feature_type: "SPAN" },
             description: "Pipeline seabed unsupported span lengths, seabed clearance gaps, and coordinates",
             columns: [
-              { key: "item_no", header: "NO", dataType: "number", width: 8, required: true },
-              { key: "str_name", header: "PIPELINE_NAME", dataType: "string", width: 26, required: true },
-              { key: "span_id", header: "SPAN_TAG", dataType: "string", width: 18, required: true },
-              { key: "start_kp", header: "START_KP", dataType: "number", width: 14, required: true },
-              { key: "end_kp", header: "END_KP", dataType: "number", width: 14, required: true },
-              { key: "span_length", header: "SPAN_LENGTH_M", dataType: "number", width: 18, required: true },
-              { key: "span_gap", header: "MAX_GAP_HEIGHT_M", dataType: "number", width: 18, required: true },
-              { key: "water_depth", header: "WATER_DEPTH_M", dataType: "number", width: 16 },
-              { key: "easting", header: "EASTING_X", dataType: "number", width: 16 },
-              { key: "northing", header: "NORTHING_Y", dataType: "number", width: 16 },
-              { key: "criticality", header: "SPAN_SEVERITY", dataType: "string", width: 18 },
-              { key: "rectification", header: "REMEDIATION_PLAN", dataType: "string", width: 28 },
-              { key: "survey_date", header: "SURVEY_DATE", dataType: "date", width: 16 }
+              { key: "item_no", header: "no", dataType: "number", width: 8, required: true },
+              { key: "str_name", header: "pipeline_name", dataType: "string", width: 26, required: true },
+              { key: "span_id", header: "span_tag", dataType: "string", width: 18, required: true },
+              { key: "start_kp", header: "start_kp", dataType: "number", width: 14, required: true },
+              { key: "end_kp", header: "end_kp", dataType: "number", width: 14, required: true },
+              { key: "span_length", header: "span_length_m", dataType: "number", width: 18, required: true },
+              { key: "span_gap", header: "max_gap_height_m", dataType: "number", width: 18, required: true },
+              { key: "water_depth", header: "water_depth_m", dataType: "number", width: 16 },
+              { key: "easting", header: "easting_x", dataType: "number", width: 16 },
+              { key: "northing", header: "northing_y", dataType: "number", width: 16 },
+              { key: "criticality", header: "span_severity", dataType: "string", width: 18 },
+              { key: "rectification", header: "remediation_plan", dataType: "string", width: 28 },
+              { key: "survey_date", header: "survey_date", dataType: "date", width: 16 }
             ]
           },
           {
@@ -1154,18 +1167,18 @@ export const INITIAL_CLIENT_PROFILES: ClientProfile[] = [
             queryStrategy: "PIPE_GEO_EVENTS",
             description: "Pipeline burial, exposure, seabed crossing, mattress, and debris events",
             columns: [
-              { key: "item_no", header: "NO", dataType: "number", width: 8, required: true },
-              { key: "str_name", header: "PIPELINE_NAME", dataType: "string", width: 26, required: true },
-              { key: "start_kp", header: "KP_START", dataType: "number", width: 14, required: true },
-              { key: "end_kp", header: "KP_END", dataType: "number", width: 14 },
-              { key: "event_name", header: "EVENT_TYPE", dataType: "string", width: 24, required: true },
-              { key: "feature_type", header: "FEATURE_CATEGORY", dataType: "string", width: 20 },
-              { key: "burial_depth", header: "BURIAL_DEPTH_M", dataType: "number", width: 18 },
-              { key: "water_depth", header: "WATER_DEPTH_M", dataType: "number", width: 16 },
-              { key: "debris_info", header: "DEBRIS_REMARKS", dataType: "string", width: 30 },
-              { key: "easting", header: "EASTING_X", dataType: "number", width: 16 },
-              { key: "northing", header: "NORTHING_Y", dataType: "number", width: 16 },
-              { key: "survey_date", header: "SURVEY_DATE", dataType: "date", width: 16 }
+              { key: "item_no", header: "no", dataType: "number", width: 8, required: true },
+              { key: "str_name", header: "pipeline_name", dataType: "string", width: 26, required: true },
+              { key: "start_kp", header: "kp_start", dataType: "number", width: 14, required: true },
+              { key: "end_kp", header: "kp_end", dataType: "number", width: 14 },
+              { key: "event_name", header: "event_type", dataType: "string", width: 24, required: true },
+              { key: "feature_type", header: "feature_category", dataType: "string", width: 20 },
+              { key: "burial_depth", header: "burial_depth_m", dataType: "number", width: 18 },
+              { key: "water_depth", header: "water_depth_m", dataType: "number", width: 16 },
+              { key: "debris_info", header: "debris_remarks", dataType: "string", width: 30 },
+              { key: "easting", header: "easting_x", dataType: "number", width: 16 },
+              { key: "northing", header: "northing_y", dataType: "number", width: 16 },
+              { key: "survey_date", header: "survey_date", dataType: "date", width: 16 }
             ]
           },
           {
@@ -1176,21 +1189,21 @@ export const INITIAL_CLIENT_PROFILES: ClientProfile[] = [
             queryStrategy: "ANOMALIES",
             description: "Pipeline defects, coating loss, mechanical dents, and integrity findings",
             columns: [
-              { key: "item_no", header: "NO", dataType: "number", width: 8, required: true },
-              { key: "anomaly_ref", header: "ANOMALY_REF_NO", dataType: "string", width: 20, required: true },
-              { key: "str_name", header: "PIPELINE_NAME", dataType: "string", width: 26, required: true },
-              { key: "kp_position", header: "KP_LOCATION", dataType: "number", width: 16 },
-              { key: "defect_type", header: "DEFECT_TYPE", dataType: "string", width: 18, required: true },
-              { key: "defect_category", header: "CATEGORY", dataType: "string", width: 18 },
-              { key: "priority", header: "PRIORITY_RATING", dataType: "string", width: 18, required: true },
-              { key: "status", header: "STATUS", dataType: "string", width: 14, required: true },
-              { key: "description", header: "DEFECT_DESCRIPTION", dataType: "string", width: 45 },
-              { key: "dimensions", header: "DIMENSIONS_LXW", dataType: "string", width: 20 },
-              { key: "rectification", header: "ACTION_REQUIRED", dataType: "string", width: 40 },
-              { key: "discovery_date", header: "DISCOVERY_DATE", dataType: "date", width: 16 }
+              { key: "item_no", header: "no", dataType: "number", width: 8, required: true },
+              { key: "anomaly_ref", header: "anomaly_ref_no", dataType: "string", width: 20, required: true },
+              { key: "str_name", header: "pipeline_name", dataType: "string", width: 26, required: true },
+              { key: "kp_position", header: "kp_location", dataType: "number", width: 16 },
+              { key: "defect_type", header: "defect_type", dataType: "string", width: 18, required: true },
+              { key: "defect_category", header: "category", dataType: "string", width: 18 },
+              { key: "priority", header: "priority_rating", dataType: "string", width: 18, required: true },
+              { key: "status", header: "status", dataType: "string", width: 14, required: true },
+              { key: "description", header: "defect_description", dataType: "string", width: 45 },
+              { key: "dimensions", header: "dimensions_lxw", dataType: "string", width: 20 },
+              { key: "rectification", header: "action_required", dataType: "string", width: 40 },
+              { key: "discovery_date", header: "discovery_date", dataType: "date", width: 16 }
             ]
           }
-        ]
+        ]),
       }
     ]
   }

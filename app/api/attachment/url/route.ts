@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
 import { getStorageHandler } from "@/utils/storage-factory";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/attachment/url?id=[id]&path=[path]
  * Generates/streams attachment binary or redirects to a temporary signed URL.
@@ -74,7 +76,9 @@ export async function GET(request: NextRequest) {
         headers: {
           "Content-Type": mime,
           "Content-Length": buffer.length.toString(),
-          "Cache-Control": "public, max-age=3600",
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
         },
       });
     }
@@ -122,7 +126,9 @@ export async function GET(request: NextRequest) {
         const headers = new Headers();
         headers.set("Content-Type", data.type || "image/jpeg");
         headers.set("Content-Length", data.size.toString());
-        headers.set("Cache-Control", "public, max-age=86400"); // Cache for 24 hours
+        headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        headers.set("Pragma", "no-cache");
+        headers.set("Expires", "0");
         headers.set("Access-Control-Allow-Origin", "*");
         headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
         return new Response(buffer, { status: 200, headers });
@@ -149,7 +155,9 @@ export async function GET(request: NextRequest) {
         const headers = new Headers();
         headers.set("Content-Type", contentType);
         if (contentLength) headers.set("Content-Length", contentLength);
-        headers.set("Cache-Control", "public, max-age=3600");
+        headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        headers.set("Pragma", "no-cache");
+        headers.set("Expires", "0");
         headers.set("Access-Control-Allow-Origin", "*");
         headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
         return new Response(response.body, { status: 200, headers });

@@ -466,12 +466,39 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         setIsAddModalOpen(true);
     };
 
+    // Helper to robustly match any raw action or DB code to standard actions
+    const isActionMatch = (currentFormAction: string, act: typeof STANDARD_ACTIONS[0]) => {
+        if (!currentFormAction) return act.value === "START TAPE";
+        const cur = currentFormAction.trim().toUpperCase();
+        const val = (act.value || "").toUpperCase();
+        const db = (act.dbCode || "").toUpperCase();
+        const lbl = (act.label || "").toUpperCase();
+
+        if (cur === val || cur === db || cur === lbl) return true;
+        if (val === "START TAPE" && (cur === "NEW_LOG_START" || cur === "START" || cur === "START TAPE" || cur.includes("START TAPE"))) return true;
+        if (val === "STOP TAPE" && (cur === "END" || cur === "STOP" || cur === "STOP TAPE" || cur.includes("STOP TAPE"))) return true;
+        if (val === "PAUSE" && (cur === "PAUSE" || cur === "PAUSE TAPE" || cur.includes("PAUSE"))) return true;
+        if (val === "RESUME" && (cur === "RESUME" || cur === "RESUME TAPE" || cur.includes("RESUME"))) return true;
+        if (val === "START TASK" && (cur === "START_TASK" || cur === "START TASK")) return true;
+        if (val === "STOP TASK" && (cur === "STOP_TASK" || cur === "STOP TASK")) return true;
+        if (val === "NOTE" && (cur === "NOTE" || cur === "REMARK" || cur.includes("NOTE") || cur.includes("REMARK"))) return true;
+        if (val === "PRE-INSPECTION" && (cur === "PRE_INSPECTION" || cur === "PRE-INSPECTION" || cur.includes("PRE-INSPECTION") || cur.includes("PRE_INSPECTION"))) return true;
+        if (val === "POST-INSPECTION" && (cur === "POST_INSPECTION" || cur === "POST-INSPECTION" || cur.includes("POST-INSPECTION") || cur.includes("POST_INSPECTION"))) return true;
+        if (val === "INTRODUCTION" && (cur === "INTRODUCTION" || cur.includes("INTRO"))) return true;
+        if (val === "CUSTOM" && (cur === "CUSTOM" || cur === "CUSTOM EVENT")) return true;
+        return false;
+    };
+
     // Open Edit Modal for a specific event
     const handleOpenEditModal = (ev: any) => {
         setFormEditingId({ id: ev.id, realId: ev.realId, logType: ev.logType || "video_log" });
         setFormTapeNo(ev.tapeNo || commonTapeNo);
         setFormChapterNo(String(ev.chapterNo || "1"));
-        setFormAction(ev.action || "START TAPE");
+        
+        const rawAction = ev.action || "START TAPE";
+        const matched = STANDARD_ACTIONS.find(a => isActionMatch(rawAction, a));
+        setFormAction(matched ? matched.value : (rawAction || "CUSTOM"));
+        
         setFormTimecode(ev.time || "00:00:00");
         setFormRemarks(ev.remarks || "");
         setIsAutoDateCalculated(false);
@@ -557,12 +584,41 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             const totalCounterSecs = timecodeToSeconds(formTimecode);
 
             // Map UI action to standard DB event_type code
-            const matchedStandard = STANDARD_ACTIONS.find(a => a.value === formAction || a.label === formAction);
-            let dbEventType = matchedStandard?.dbCode || formAction;
-            if (formAction === "START TAPE") dbEventType = "NEW_LOG_START";
-            if (formAction === "STOP TAPE") dbEventType = "END";
-            if (formAction === "PAUSE") dbEventType = "PAUSE";
-            if (formAction === "RESUME") dbEventType = "RESUME";
+            const ALLOWED_DB_TYPES = new Set([
+                'NEW_LOG_START', 'INTRODUCTION', 'PRE_INSPECTION', 'POST_INSPECTION',
+                'INSPECTION', 'ANOMALY', 'START_TASK', 'STOP_TASK', 'PAUSE_TASK',
+                'RESUME_TASK', 'PAUSE', 'RESUME', 'END', 'NOTE', 'CUSTOM', 'SNAPSHOT'
+            ]);
+
+            const normalizedAction = (formAction || "").trim().toUpperCase();
+            let dbEventType = "CUSTOM";
+
+            if (normalizedAction === "START TAPE" || normalizedAction === "START" || normalizedAction === "NEW_LOG_START") {
+                dbEventType = "NEW_LOG_START";
+            } else if (normalizedAction === "STOP TAPE" || normalizedAction === "STOP" || normalizedAction === "END") {
+                dbEventType = "END";
+            } else if (normalizedAction === "PAUSE" || normalizedAction === "PAUSE TAPE") {
+                dbEventType = "PAUSE";
+            } else if (normalizedAction === "RESUME" || normalizedAction === "RESUME TAPE") {
+                dbEventType = "RESUME";
+            } else if (normalizedAction === "START TASK" || normalizedAction === "START_TASK") {
+                dbEventType = "START_TASK";
+            } else if (normalizedAction === "STOP TASK" || normalizedAction === "STOP_TASK") {
+                dbEventType = "STOP_TASK";
+            } else if (normalizedAction.includes("NOTE") || normalizedAction.includes("REMARK")) {
+                dbEventType = "NOTE";
+            } else if (normalizedAction.includes("PRE-INSPECTION") || normalizedAction === "PRE_INSPECTION") {
+                dbEventType = "PRE_INSPECTION";
+            } else if (normalizedAction.includes("POST-INSPECTION") || normalizedAction === "POST_INSPECTION") {
+                dbEventType = "POST_INSPECTION";
+            } else if (normalizedAction === "INTRODUCTION") {
+                dbEventType = "INTRODUCTION";
+            } else if (ALLOWED_DB_TYPES.has(normalizedAction)) {
+                dbEventType = normalizedAction;
+            } else {
+                const matchedStandard = STANDARD_ACTIONS.find(a => a.value.toUpperCase() === normalizedAction || a.label.toUpperCase() === normalizedAction);
+                dbEventType = matchedStandard?.dbCode || "CUSTOM";
+            }
 
             if (isEditModalOpen && formEditingId) {
                 // UPDATE existing event
@@ -1211,12 +1267,27 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                         </div>
 
                         {/* 2. Action Selector (Standard List) */}
-                        <div className="space-y-1.5">
-                            <Label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Action / Status Event</Label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-[10px] font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
+                                    <Video className="w-3.5 h-3.5 text-blue-400" />
+                                    Action / Status Event
+                                </Label>
+                                {(() => {
+                                    const currentSelected = STANDARD_ACTIONS.find(a => isActionMatch(formAction, a));
+                                    const displayLabel = currentSelected ? currentSelected.label : (formAction || "Select Action");
+                                    return (
+                                        <div className="flex items-center gap-1.5 text-[10px] font-black text-white bg-blue-600 px-3 py-0.5 rounded-full shadow-md shadow-blue-500/30 border border-blue-400">
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                            <span>Current: {displayLabel}</span>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                 {STANDARD_ACTIONS.map((act) => {
                                     const IconComp = act.icon;
-                                    const isSelected = formAction === act.value;
+                                    const isSelected = isActionMatch(formAction, act);
                                     return (
                                         <button
                                             key={act.value}
@@ -1225,15 +1296,15 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                 if (isEdit) setFormAction(act.value);
                                                 else handleAddFormChange(formTapeNo, formChapterNo, act.value);
                                             }}
-                                            className={`p-2 rounded-lg text-left text-xs font-bold transition-all flex items-center gap-2 border ${
+                                            className={`p-2.5 rounded-xl text-left text-xs font-bold transition-all flex items-center gap-2 border ${
                                                 isSelected
-                                                    ? "bg-blue-600/25 border-blue-500 text-white shadow-sm ring-1 ring-blue-500"
-                                                    : "bg-slate-900/80 border-slate-800 text-slate-300 hover:bg-slate-850 hover:text-white"
+                                                    ? "bg-blue-600 border-blue-400 text-white font-black shadow-lg shadow-blue-500/40 ring-2 ring-blue-400 scale-[1.02]"
+                                                    : "bg-slate-900/90 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-700"
                                             }`}
                                         >
-                                            <IconComp className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                                            <IconComp className={`w-4 h-4 shrink-0 ${isSelected ? "text-white" : "text-slate-400 opacity-80"}`} />
                                             <span className="truncate">{act.label}</span>
-                                            {isSelected && <Check className="w-3 h-3 ml-auto text-blue-400 shrink-0" />}
+                                            {isSelected && <CheckCircle2 className="w-4 h-4 ml-auto text-white shrink-0 animate-in zoom-in-75" />}
                                         </button>
                                     );
                                 })}
