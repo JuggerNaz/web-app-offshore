@@ -540,6 +540,88 @@
             ]
         },
         {
+            "code": "BOTTM",
+            "name": "Bottom / Seabed Survey",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "face",
+                    "label": "Platform Face",
+                    "type": "combo",
+                    "lib_code": "platform_faces",
+                    "required": false
+                },
+                {
+                    "name": "leg1",
+                    "label": "Leg 1",
+                    "type": "string",
+                    "required": false
+                },
+                {
+                    "name": "leg2",
+                    "label": "Leg 2",
+                    "type": "string",
+                    "required": false
+                },
+                {
+                    "name": "midpoint",
+                    "label": "Midpoint",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "depth1",
+                    "label": "Depth 1",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "depth2",
+                    "label": "Depth 2",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "depth_midpoint ",
+                    "label": "Depth (Midpoint)",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "dist_leg1",
+                    "label": "Distance from Leg 1",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "dist_midpoint",
+                    "label": "Distance from Midpoint",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                }
+            ]
+        },
+        {
             "code": "CLEAN",
             "name": "Cleaning",
             "methods": [

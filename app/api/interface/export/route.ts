@@ -78,6 +78,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       VDS: ["VIDEO", "VDS", "PGS"],
       PGS: ["RGVI", "RMGI", "RSANI", "RFMD", "RSCOR", "RCASN", "RCOND", "RICMI", "RRISI", "RSEAB", "RSWNI", "RSZCI", "RUTWT", "RWDI", "PGS", "ROVGEN"],
       RSS: ["RISER", "RSS", "RISER_SURVEY", "RISER SURVEY", "RISERSURVEY", "RRISI", "RGVI", "PGS"],
+      BTS: ["BOTTM"],
     };
 
     const needsAttachments = templatesToProcess.some((t) => t.queryStrategy === "ATTACHMENTS" || t.identifierCode === "ATS");
@@ -441,16 +442,40 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       }
     });
 
-    // 3.5 Fetch Inspection Types & MGI Profiles
-    const [{ data: inspTypesData }, mgiProfilesRes] = await Promise.all([
+    // 3.5 Fetch Inspection Types, MGI Profiles & Library Lists (AMLY_COD, AMLY_TYP)
+    const [{ data: inspTypesData }, mgiProfilesRes, { data: libListData }] = await Promise.all([
       (supabase as any)
         .from("inspection_type")
         .select("id, code, name, metadata"),
       needsMgiProfiles
         ? (supabase as any).from("mgi_profiles").select("*").eq("is_archived", false)
         : Promise.resolve({ data: [] }),
+      (supabase as any)
+        .from("u_lib_list")
+        .select("lib_code, lib_id, lib_desc")
+        .in("lib_code", ["AMLY_COD", "AMLY_TYP", "ANOD_TYP"]),
     ]);
     const mgiProfilesData = mgiProfilesRes?.data || [];
+
+    const amlyCodDescToId = new Map<string, string>();
+    const amlyTypDescToId = new Map<string, string>();
+    const anodTypDescToId = new Map<string, string>();
+    (libListData || []).forEach((item: any) => {
+      const lCode = String(item.lib_code || "").trim().toUpperCase();
+      const lId = String(item.lib_id || "").trim();
+      const lDesc = String(item.lib_desc || "").trim();
+
+      if (lCode === "AMLY_COD") {
+        if (lDesc) amlyCodDescToId.set(lDesc.toLowerCase(), lId);
+        if (lId) amlyCodDescToId.set(lId.toLowerCase(), lId);
+      } else if (lCode === "AMLY_TYP") {
+        if (lDesc) amlyTypDescToId.set(lDesc.toLowerCase(), lId);
+        if (lId) amlyTypDescToId.set(lId.toLowerCase(), lId);
+      } else if (lCode === "ANOD_TYP") {
+        if (lDesc) anodTypDescToId.set(lDesc.toLowerCase(), lId);
+        if (lId) anodTypDescToId.set(lId.toLowerCase(), lId);
+      }
+    });
 
     const inspTypeMapById = new Map<number, any>();
     const inspTypeMapByCode = new Map<string, any>();
@@ -790,7 +815,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
         if (isNaN(val) || !isFinite(val)) return "";
         return val;
       }
-      if (typeof val === "boolean") return val ? "Yes" : "No";
+      if (typeof val === "boolean") return val ? "YES" : "NO";
       return String(val).replace(/[\r\n\t]+/g, " ").trim();
     };
 
@@ -800,9 +825,99 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       return !isNaN(n) && isFinite(n) ? Math.round(n) : "";
     };
 
+    const parseGrowthPercent = (val: any): number | string => {
+      if (val == null || val === "") return "";
+      if (typeof val === "number") {
+        return !isNaN(val) && isFinite(val) ? Math.round(val) : "";
+      }
+      const s = String(val).replace(/[\r\n\t]+/g, " ").trim();
+      if (!s) return "";
+
+      // If value is "All over" / "All" -> 100
+      if (/all\s*over/i.test(s) || /^all$/i.test(s)) {
+        return 100;
+      }
+
+      // Extract numbers and get maximum range value (e.g. "0-10" -> 10, "10-20" -> 20, "20 - 40%" -> 40)
+      const nums = s.replace(/%/g, " ").match(/\d+(?:\.\d+)?/g);
+      if (nums && nums.length > 0) {
+        const parsedNums = nums.map(Number).filter((n) => !isNaN(n) && isFinite(n));
+        if (parsedNums.length > 0) {
+          return Math.round(Math.max(...parsedNums));
+        }
+      }
+
+      return "";
+    };
+
+    const parseAnodeDepletion = (val: any): number | string => {
+      if (val == null || val === "") return "";
+      const s = String(val).replace(/[\r\n\t]+/g, " ").trim();
+      if (!s || /unable to estimate|n\/a|none|nil/i.test(s)) return "";
+
+      // 1. Explicit range checks
+      if (/75\s*[-–—~to\/]\s*100/i.test(s) || />\s*75/i.test(s) || /76\s*[-–—~to\/]\s*100/i.test(s)) {
+        return 76;
+      }
+      if (/50\s*[-–—~to\/]\s*75/i.test(s)) {
+        return 75;
+      }
+      if (/25\s*[-–—~to\/]\s*50/i.test(s)) {
+        return 50;
+      }
+      if (/0\s*[-–—~to\/]\s*25/i.test(s) || /<\s*25/i.test(s)) {
+        return 25;
+      }
+
+      // 2. Numeric range / value extraction
+      const nums = s.replace(/%/g, " ").match(/\d+(?:\.\d+)?/g);
+      if (nums && nums.length > 0) {
+        const numVals = nums.map(Number).filter((n) => !isNaN(n) && isFinite(n));
+        if (numVals.length >= 2) {
+          const minN = Math.min(...numVals);
+          const maxN = Math.max(...numVals);
+          if (maxN > 75 || minN >= 75) return 76;
+          if (maxN > 50 || minN >= 50) return 75;
+          if (maxN > 25 || minN >= 25) return 50;
+          return 25;
+        } else if (numVals.length === 1) {
+          const n = numVals[0];
+          if (n === 76) return 76;
+          if (n === 75) return 75;
+          if (n === 50) return 50;
+          if (n === 25) return 25;
+          if (n > 75) return 76;
+          if (n > 50) return 75;
+          if (n > 25) return 50;
+          return 25;
+        }
+      }
+
+      return "";
+    };
+
     const formatInspNo = (jobpackId: any): string => {
       const numId = Number(jobpackId) || 0;
       return String(numId + 10000).padStart(11, "0");
+    };
+
+    const formatScourAtLoc = (val: any): string => {
+      if (val == null) return "";
+      const s = String(val).replace(/[\r\n\t]+/g, " ").trim();
+      if (!s) return "";
+
+      // If the value is At Midpoint replace and insert as MIDPOINT
+      if (/^(?:at\s+)?mid[\s\-]?point$/i.test(s) || /^midpoint$/i.test(s)) {
+        return "MIDPOINT";
+      }
+
+      // For Leg names replace with the leg name only eg. Leg : B2 as B2, At Leg: B2 as B2, Location: Leg : B2 as B2
+      const legMatch = s.match(/^(?:location\s*:\s*)?(?:at\s+)?leg\s*[:\-]?\s*(.+)$/i);
+      if (legMatch && legMatch[1]) {
+        return sanitizeText(legMatch[1]).toUpperCase();
+      }
+
+      return sanitizeText(s).toUpperCase();
     };
 
     const formatDateStr = (d: any): string => {
@@ -1652,6 +1767,16 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             }
           }
 
+          if (code === "BTS") {
+            if (
+              recType === "BOTTM" ||
+              itypeCode === "BOTTM"
+            ) {
+              return true;
+            }
+            return false;
+          }
+
           if (recType.includes("PGS") && ["CPS", "FDS", "GVS", "MGS", "SCS"].includes(code)) return true;
           if (recType.includes("SZS") && ["CPS", "UTS"].includes(code)) return true;
           if ((recType.includes("BSS") || recType.includes("BSINS")) && ["CPS"].includes(code)) return true;
@@ -1679,9 +1804,51 @@ export const POST = withTenant(async (request, { companyId, user }) => {
                             recs.find((r) => String(r.status || "").toUpperCase() === "COMPLETED") ||
                             recs[0];
 
+            // Resolve component for this QID / group to obtain Start/End leg & Start/End node
+            let groupComp: any = null;
+            for (const r of recs) {
+              const strIdNum = Number(r.structure_id);
+              const idata = r.inspection_data || {};
+              const cIds = [Number(r.component_id), Number(idata.component_id), Number(idata.comp_id)].filter((n) => !isNaN(n) && n > 0);
+              const qIds = [String(r.q_id || ""), String(r.component_qid || ""), String(idata.q_id || ""), String(idata.component_qid || ""), String(idata.component || "")].map((s) => s.trim()).filter((s) => s.length > 0);
+
+              if (strIdNum) {
+                for (const cid of cIds) {
+                  groupComp = compMapByStrAndId.get(`${strIdNum}_${cid}`) || compMapByStrAndCompId.get(`${strIdNum}_${cid}`);
+                  if (groupComp) break;
+                }
+                if (!groupComp) {
+                  for (const qid of qIds) {
+                    const qUpper = qid.toUpperCase();
+                    const norm = qUpper.replace(/[^A-Z0-9]/g, "");
+                    groupComp = compMapByStrAndQid.get(`${strIdNum}_${qUpper}`) || (norm ? compMapByStrAndQid.get(`${strIdNum}_NORM_${norm}`) : null);
+                    if (groupComp) break;
+                  }
+                }
+              }
+              if (!groupComp) {
+                for (const qid of qIds) {
+                  const qUpper = qid.toUpperCase();
+                  const norm = qUpper.replace(/[^A-Z0-9]/g, "");
+                  groupComp = compMapByQid.get(qUpper) || (norm ? compMapByQid.get(`NORM_${norm}`) : null);
+                  if (groupComp) break;
+                }
+              }
+              if (groupComp || r.structure_components) {
+                groupComp = groupComp || r.structure_components;
+                break;
+              }
+            }
+
+            const gMeta = groupComp?.metadata || {};
+            const sLeg = String(groupComp?.s_leg || gMeta.s_leg || gMeta.start_leg || "").trim().toUpperCase();
+            const sNode = String(groupComp?.s_node || gMeta.s_node || gMeta.start_node || "").trim().toUpperCase();
+            const fLeg = String(groupComp?.f_leg || gMeta.f_leg || gMeta.end_leg || "").trim().toUpperCase();
+            const fNode = String(groupComp?.f_node || gMeta.f_node || gMeta.end_node || "").trim().toUpperCase();
+
             let midPointVal: any = "";
-            let startLegVal: any = "";
-            let endLegVal: any = "";
+            let startLegVal: any = sLeg;
+            let endLegVal: any = fLeg;
             let expPileLeg1Val = "NO";
             let expPileLeg2Val = "NO";
             let depth1Val: any = "";
@@ -1693,13 +1860,22 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
             recs.forEach((r) => {
               const idata = r.inspection_data || {};
-              const loc = String(idata.scour_location || idata.location || "").trim().toUpperCase();
-              const isStart = loc.includes("START") || loc.includes("LEG 1") || loc.includes("LEG1");
-              const isEnd = loc.includes("END") || loc.includes("LEG 2") || loc.includes("LEG2");
-              const isMid = loc.includes("MID") || loc === "MIDPOINT";
+              const rawLoc = String(idata.scour_location || idata.scour_at_loc || idata.location || "").trim();
+              const locUpper = rawLoc.toUpperCase();
+              const cleanLoc = formatScourAtLoc(rawLoc);
+
+              const isStart = locUpper.includes("START") || locUpper.includes("LEG 1") || locUpper.includes("LEG1") || locUpper.includes("NODE 1") || locUpper.includes("NODE1") ||
+                              Boolean(sLeg && (cleanLoc === sLeg || locUpper.includes(sLeg))) ||
+                              Boolean(sNode && (cleanLoc === sNode || locUpper.includes(sNode)));
+
+              const isEnd = locUpper.includes("END") || locUpper.includes("LEG 2") || locUpper.includes("LEG2") || locUpper.includes("NODE 2") || locUpper.includes("NODE2") ||
+                            Boolean(fLeg && (cleanLoc === fLeg || locUpper.includes(fLeg))) ||
+                            Boolean(fNode && (cleanLoc === fNode || locUpper.includes(fNode)));
+
+              const isMid = locUpper.includes("MID") || locUpper === "MIDPOINT" || cleanLoc === "MIDPOINT";
 
               const depth = idata.scour_depth ?? idata.depth;
-              const expPile = idata.exposed_pile ?? idata.Exposed_pile;
+              const expPile = idata.exposed_pile ?? idata.Exposed_pile ?? idata.pile_exposed;
               const isExpPile = expPile === true || expPile === "true" || expPile === "True" || expPile === "TRUE" || expPile === "yes" || expPile === "Yes" || expPile === "YES" || expPile === 1 || expPile === "1";
 
               if (isMid && depth != null && depth !== "") {
@@ -1711,8 +1887,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
               if (isStart) {
                 if (depth != null && depth !== "") depth1Val = depth;
                 if (isExpPile) expPileLeg1Val = "YES";
-                if (idata.leg_name || idata.leg1 || idata.start_leg) {
-                  startLegVal = idata.leg_name || idata.leg1 || idata.start_leg;
+                if (!startLegVal && (cleanLoc || idata.leg_name || idata.leg1 || idata.start_leg)) {
+                  startLegVal = sLeg || cleanLoc || idata.leg_name || idata.leg1 || idata.start_leg;
                 }
               }
               if (idata.depth1 != null && idata.depth1 !== "") depth1Val = idata.depth1;
@@ -1721,8 +1897,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
               if (isEnd) {
                 if (depth != null && depth !== "") depth2Val = depth;
                 if (isExpPile) expPileLeg2Val = "YES";
-                if (idata.leg_name || idata.leg2 || idata.end_leg) {
-                  endLegVal = idata.leg_name || idata.leg2 || idata.end_leg;
+                if (!endLegVal && (cleanLoc || idata.leg_name || idata.leg2 || idata.end_leg)) {
+                  endLegVal = fLeg || cleanLoc || idata.leg_name || idata.leg2 || idata.end_leg;
                 }
               }
               if (idata.depth2 != null && idata.depth2 !== "") depth2Val = idata.depth2;
@@ -1741,8 +1917,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
               ...primary,
               _scsMergedData: {
                 midPointVal,
-                startLegVal,
-                endLegVal,
+                startLegVal: startLegVal || sLeg,
+                endLegVal: endLegVal || fLeg,
                 expPileLeg1Val,
                 expPileLeg2Val,
                 depth1Val,
@@ -2281,13 +2457,17 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.CIRC_C1 = sanitizeText(idata.circumference_c1 ?? idata.circ_c1 ?? "").substring(0, 20);
             baseRow.CIRC_C2 = sanitizeText(idata.circumference_c2 ?? idata.circ_c2 ?? "").substring(0, 20);
             baseRow.CIRC_C3 = sanitizeText(idata.circumference_c3 ?? idata.circ_c3 ?? "").substring(0, 20);
-            baseRow.TYPE = sanitizeText(idata.anode_type ?? idata.type ?? "").substring(0, 20);
+            const rawAnodeType = sanitizeText(idata.anode_type ?? idata.type ?? comp?.metadata?.anode_type ?? comp?.metadata?.type ?? meta?.anode_type ?? meta?.type ?? "");
+            const matchedAnodeTypeId = rawAnodeType
+              ? (anodTypDescToId.get(rawAnodeType.toLowerCase()) || rawAnodeType)
+              : "";
+            baseRow.TYPE = sanitizeText(matchedAnodeTypeId).substring(0, 20);
 
             const rawSecured = idata.anode_secured_to_structure ?? idata.secured;
             const isSecured = rawSecured === true || String(rawSecured).trim().toUpperCase() === "YES" || String(rawSecured).trim().toUpperCase() === "TRUE";
             baseRow.SECURED = rawSecured != null && rawSecured !== "" ? (isSecured ? "YES" : "NO") : "";
 
-            baseRow.DEPLETION = idata.anode_depletion_percent != null && idata.anode_depletion_percent !== "" ? Number(idata.anode_depletion_percent) : (idata.anode_depletion != null && idata.anode_depletion !== "" ? Number(idata.anode_depletion) : (idata.depletion != null && idata.depletion !== "" ? Number(idata.depletion) : ""));
+            baseRow.DEPLETION = parseAnodeDepletion(idata.anode_depletion_percent ?? idata.anode_depletion ?? idata.depletion ?? comp?.metadata?.anode_depletion_percent ?? comp?.metadata?.anode_depletion ?? meta?.anode_depletion_percent ?? meta?.anode_depletion);
             baseRow.TOPSTUB_CP = idata.topstub_cp != null && idata.topstub_cp !== "" ? Number(idata.topstub_cp) : "";
             baseRow.BOTSTUB_CP = idata.bottomstub_cp != null && idata.bottomstub_cp !== "" ? Number(idata.bottomstub_cp) : (idata.botstub_cp != null && idata.botstub_cp !== "" ? Number(idata.botstub_cp) : "");
             baseRow.AVG_PIT = idata.avg_pitting_depth != null && idata.avg_pitting_depth !== "" ? Number(idata.avg_pitting_depth) : (idata.avg_pit != null && idata.avg_pit !== "" ? Number(idata.avg_pit) : "");
@@ -2465,8 +2645,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.MG_PROFILE = resolvedMgProfile !== "" ? Number(resolvedMgProfile) : "";
 
             if (isRovMarineGrowthAppend) {
-              baseRow.HARD_GROWTH = toRoundNum(idata.marine_growth_hard ?? idata.mgi_hard_growth ?? idata.hard_growth);
-              baseRow.SOFT_GROWTH = toRoundNum(idata.marine_growth_soft ?? idata.mgi_soft_growth ?? idata.soft_growth);
+              baseRow.HARD_GROWTH = parseGrowthPercent(idata.marine_growth_hard ?? idata.mgi_hard_growth ?? idata.hard_growth);
+              baseRow.SOFT_GROWTH = parseGrowthPercent(idata.marine_growth_soft ?? idata.mgi_soft_growth ?? idata.soft_growth);
               baseRow.COATING_DAMAGE = "";
               baseRow.PHYSICAL_DAMAGE = "";
               baseRow.CIRCUM_PFIVE = "";
@@ -2486,8 +2666,8 @@ export const POST = withTenant(async (request, { companyId, user }) => {
 
               baseRow.EFF_THK = hardThks.length > 0 ? Math.max(...hardThks) : toNum(idata.effective_thickness ?? idata.eff_thk);
             } else {
-              baseRow.HARD_GROWTH = toRoundNum(idata.mgi_hard_growth ?? idata.hard_growth);
-              baseRow.SOFT_GROWTH = toRoundNum(idata.mgi_soft_growth ?? idata.soft_growth);
+              baseRow.HARD_GROWTH = parseGrowthPercent(idata.mgi_hard_growth ?? idata.hard_growth ?? idata.marine_growth_hard);
+              baseRow.SOFT_GROWTH = parseGrowthPercent(idata.mgi_soft_growth ?? idata.soft_growth ?? idata.marine_growth_soft);
               baseRow.COATING_DAMAGE = toYesNo(idata.coating_damage);
               baseRow.PHYSICAL_DAMAGE = idata.physical_damage != null ? toYesNo(idata.physical_damage) : "";
               baseRow.CIRCUM_PFIVE = toNum(idata.circumferential_measurement_5m_above ?? idata.circum_pfive ?? idata.circumferential_measurement_p5);
@@ -2512,17 +2692,39 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
             const merged = (r as any)._scsMergedData || {};
 
+            const cObj = comp;
+            const cMeta = meta || comp?.metadata || {};
+            const sLeg = String(cObj?.s_leg || cMeta.s_leg || cMeta.start_leg || "").trim().toUpperCase();
+            const sNode = String(cObj?.s_node || cMeta.s_node || cMeta.start_node || "").trim().toUpperCase();
+            const fLeg = String(cObj?.f_leg || cMeta.f_leg || cMeta.end_leg || "").trim().toUpperCase();
+            const fNode = String(cObj?.f_node || cMeta.f_node || cMeta.end_node || "").trim().toUpperCase();
+
+            const rawLoc = String(idata.scour_location || idata.scour_at_loc || idata.location || "").trim();
+            const locUpper = rawLoc.toUpperCase();
+            const cleanLoc = formatScourAtLoc(rawLoc);
+
+            const isStartLoc = locUpper.includes("START") || locUpper.includes("LEG 1") || locUpper.includes("LEG1") || locUpper.includes("NODE 1") || locUpper.includes("NODE1") ||
+                               Boolean(sLeg && (cleanLoc === sLeg || locUpper.includes(sLeg))) ||
+                               Boolean(sNode && (cleanLoc === sNode || locUpper.includes(sNode)));
+
+            const isEndLoc = locUpper.includes("END") || locUpper.includes("LEG 2") || locUpper.includes("LEG2") || locUpper.includes("NODE 2") || locUpper.includes("NODE2") ||
+                             Boolean(fLeg && (cleanLoc === fLeg || locUpper.includes(fLeg))) ||
+                             Boolean(fNode && (cleanLoc === fNode || locUpper.includes(fNode)));
+
+            const rawExposed = idata.Exposed_pile ?? idata.exposed_pile ?? idata.pile_exposed;
+            const isExpPile = rawExposed === true || rawExposed === "true" || String(rawExposed).trim().toUpperCase() === "YES" || rawExposed === 1 || rawExposed === "1";
+
             baseRow.FRAME_RDG = toNum(merged.frameRdgVal ?? idata.frame_rdg ?? idata.mud_mat_height);
             baseRow.BOTTM_RDG = toNum(merged.bottmRdgVal ?? idata.bottm_rdg ?? idata.bottom_reading);
             baseRow.SCOUR_RDG = toNum(merged.scourRdgVal ?? idata.scour_rdg ?? idata.scour_reading);
             baseRow.SCOUR_SIZE = sanitizeText(merged.scourSizeVal || idata.scour_size || "").substring(0, 20);
-            baseRow.MID_POINT = toNum(merged.midPointVal ?? idata.mid_point ?? (String(idata.scour_location || "").toUpperCase().includes("MID") ? idata.scour_depth : ""));
-            baseRow.LEG1 = sanitizeText(merged.startLegVal || idata.leg1 || idata.start_leg || meta.s_leg || meta.start_leg || comp?.s_leg || "").substring(0, 20);
-            baseRow.LEG2 = sanitizeText(merged.endLegVal || idata.leg2 || idata.end_leg || meta.f_leg || meta.end_leg || comp?.f_leg || "").substring(0, 20);
-            baseRow.EXP_PILE_LEG1 = sanitizeText(merged.expPileLeg1Val || idata.exp_pile_leg1 || (String(idata.scour_location || "").toUpperCase().includes("START") && (idata.exposed_pile || idata.Exposed_pile) ? "YES" : "NO")).substring(0, 3);
-            baseRow.EXP_PILE_LEG2 = sanitizeText(merged.expPileLeg2Val || idata.exp_pile_leg2 || (String(idata.scour_location || "").toUpperCase().includes("END") && (idata.exposed_pile || idata.Exposed_pile) ? "YES" : "NO")).substring(0, 3);
-            baseRow.DEPTH1 = toNum(merged.depth1Val ?? idata.depth1 ?? (String(idata.scour_location || "").toUpperCase().includes("START") ? idata.scour_depth : ""));
-            baseRow.DEPTH2 = toNum(merged.depth2Val ?? idata.depth2 ?? (String(idata.scour_location || "").toUpperCase().includes("END") ? idata.scour_depth : ""));
+            baseRow.MID_POINT = toNum(merged.midPointVal ?? idata.mid_point ?? (locUpper.includes("MID") || cleanLoc === "MIDPOINT" ? idata.scour_depth : ""));
+            baseRow.LEG1 = sanitizeText(merged.startLegVal || sLeg || idata.leg1 || idata.start_leg || "").substring(0, 20);
+            baseRow.LEG2 = sanitizeText(merged.endLegVal || fLeg || idata.leg2 || idata.end_leg || "").substring(0, 20);
+            baseRow.EXP_PILE_LEG1 = sanitizeText(merged.expPileLeg1Val || idata.exp_pile_leg1 || (isStartLoc && isExpPile ? "YES" : "NO")).substring(0, 3);
+            baseRow.EXP_PILE_LEG2 = sanitizeText(merged.expPileLeg2Val || idata.exp_pile_leg2 || (isEndLoc && isExpPile ? "YES" : "NO")).substring(0, 3);
+            baseRow.DEPTH1 = toNum(merged.depth1Val ?? idata.depth1 ?? (isStartLoc ? (idata.scour_depth ?? idata.depth) : ""));
+            baseRow.DEPTH2 = toNum(merged.depth2Val ?? idata.depth2 ?? (isEndLoc ? (idata.scour_depth ?? idata.depth) : ""));
           } else if (code === "DBS") {
             const debrisCandidate = idata.debris ?? idata.debris_item ?? idata.item ?? idata.debris_type ?? idata.debris_name ?? idata.size_of_debris ?? idata.material ?? r.debris ?? r.item ?? r.debris_item;
             const debrisStr = debrisCandidate != null ? String(debrisCandidate).trim().toUpperCase() : "";
@@ -3318,13 +3520,13 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             const isExposed = rawExposed === true || String(rawExposed).trim().toUpperCase() === "YES" || String(rawExposed).trim().toUpperCase() === "TRUE";
             baseRow.PILE_EXPOSED = isExposed ? "YES" : "NO";
 
-            baseRow.SCOUR_AT_LOC = sanitizeText(idata.scour_location || idata.scour_at_loc || "").substring(0, 10);
+            baseRow.SCOUR_AT_LOC = formatScourAtLoc(idata.scour_location || idata.scour_at_loc || "").substring(0, 10);
             baseRow.SCOUR_AT_NODE = sanitizeText(idata.scour_at_node || "").substring(0, 6);
             baseRow.SCOUR_DEPTH = idata.scour_depth != null && idata.scour_depth !== "" ? Number(idata.scour_depth) : "";
             baseRow.SCOUR_DEPTH_U = sanitizeText(idata.scour_depth_unit || (idata.scour_depth != null && idata.scour_depth !== "" ? "mm" : "")).substring(0, 10);
             baseRow.SCOUR_BURIED = idata.Burial_percent != null && idata.Burial_percent !== "" ? Number(idata.Burial_percent) : (idata.burial_percent != null && idata.burial_percent !== "" ? Number(idata.burial_percent) : (idata.scour_buried != null && idata.scour_buried !== "" ? Number(idata.scour_buried) : ""));
-            baseRow.HARD_GROWTH = idata.marine_growth_hard != null && idata.marine_growth_hard !== "" ? Number(idata.marine_growth_hard) : "";
-            baseRow.SOFT_GROWTH = idata.marine_growth_soft != null && idata.marine_growth_soft !== "" ? Number(idata.marine_growth_soft) : "";
+            baseRow.HARD_GROWTH = parseGrowthPercent(idata.marine_growth_hard ?? idata.mgi_hard_growth ?? idata.hard_growth);
+            baseRow.SOFT_GROWTH = parseGrowthPercent(idata.marine_growth_soft ?? idata.mgi_soft_growth ?? idata.soft_growth);
 
             baseRow.HARD_THK12 = idata.mgi_hard_thickness_at_12 != null && idata.mgi_hard_thickness_at_12 !== "" ? Number(idata.mgi_hard_thickness_at_12) : "";
             baseRow.HARD_THK12_U = idata.mgi_hard_thickness_at_12 != null && idata.mgi_hard_thickness_at_12 !== "" ? "mm" : "";
@@ -3335,12 +3537,37 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.HARD_THK9 = idata.mgi_hard_thickness_at_9 != null && idata.mgi_hard_thickness_at_9 !== "" ? Number(idata.mgi_hard_thickness_at_9) : "";
             baseRow.HARD_THK9_U = idata.mgi_hard_thickness_at_9 != null && idata.mgi_hard_thickness_at_9 !== "" ? "mm" : "";
 
-            baseRow.AN_TYPE = sanitizeText(idata.anode_type || idata.an_type || "").substring(0, 10);
-            baseRow.AN_DEPLETION = idata.anode_depletion != null && idata.anode_depletion !== "" ? Number(idata.anode_depletion) : (idata.anode_depletion_percent != null && idata.anode_depletion_percent !== "" ? Number(idata.anode_depletion_percent) : (idata.an_depletion != null && idata.an_depletion !== "" ? Number(idata.an_depletion) : ""));
+            const rawAnType = sanitizeText(idata.anode_type || idata.an_type || comp?.metadata?.anode_type || comp?.metadata?.type || meta?.anode_type || meta?.type || "");
+            const matchedAnTypeId = rawAnType
+              ? (anodTypDescToId.get(rawAnType.toLowerCase()) || rawAnType)
+              : "";
+            baseRow.AN_TYPE = sanitizeText(matchedAnTypeId).substring(0, 10);
+            baseRow.AN_DEPLETION = parseAnodeDepletion(idata.anode_depletion ?? idata.anode_depletion_percent ?? idata.an_depletion ?? comp?.metadata?.anode_depletion ?? comp?.metadata?.anode_depletion_percent ?? meta?.anode_depletion ?? meta?.anode_depletion_percent);
 
             const itypeObj = r.inspection_type_id ? inspTypeMapById.get(Number(r.inspection_type_id)) : null;
             baseRow.INSP_TASK = sanitizeText(itypeObj?.name || r.inspection_type_name || r.inspection_type_code || "").substring(0, 50);
             baseRow.COMMENTS = "";
+          } else if (code === "BTS") {
+            baseRow.INSPECTOR = "";
+            baseRow.PROC = "";
+            baseRow.EQUIP = "";
+            baseRow.EQ_ID = "";
+            baseRow.SPEC = "";
+            baseRow.SURF_COND = "";
+            baseRow.CLEAN_MET = "";
+            baseRow.SCAF = "";
+
+            const toNum = (val: any) => (val != null && val !== "" && !isNaN(Number(val)) ? Number(val) : "");
+
+            baseRow.FACE = sanitizeText(idata.face || idata.platform_face || meta.face || "").substring(0, 20);
+            baseRow.LEG1 = sanitizeText(idata.leg1 || idata.start_leg || meta.s_leg || idata.s_leg || "").substring(0, 20);
+            baseRow.DEPTH1 = toNum(idata.depth1 ?? idata.depth_1);
+            baseRow.LEG2 = sanitizeText(idata.leg2 || idata.end_leg || meta.f_leg || idata.f_leg || "").substring(0, 20);
+            baseRow.DEPTH2 = toNum(idata.depth2 ?? idata.depth_2);
+            baseRow.MID_POINT = toNum(idata.midpoint ?? idata.mid_point);
+            baseRow.DEPTH3 = toNum(idata.depth_midpoint ?? idata["depth_midpoint "] ?? idata.depth3 ?? idata.depth_3);
+            baseRow.DIST_LEG = toNum(idata.dist_leg1 ?? idata.dist_leg ?? idata.dist_legs);
+            baseRow.DIST_MIDPOINT = toNum(idata.dist_midpoint ?? idata.dist_mid_point);
           }
 
           let resolvedJobType = "";
@@ -3478,29 +3705,47 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             itypeCodeForInspType === "RSANI" ||
             itypeCodeForInspType.includes("RSANI");
 
-          baseRow.DEFECT = r.has_anomaly === true || Boolean(linkedAnom) ? "Yes" : "No";
-          baseRow.DFT_CODE_TYPE = sanitizeText(linkedAnom?.defect_type_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.defect_type_code || linkedAnom?.defect_category_code || (linkedAnom ? "AW" : "")))).substring(0, 12);
+          baseRow.DEFECT = r.has_anomaly === true || Boolean(linkedAnom) ? "YES" : "NO";
+          
+          const rawDftCodeType = sanitizeText(linkedAnom?.defect_type_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.defect_type_code || linkedAnom?.defect_category_code || (linkedAnom ? "AW" : ""))));
+          const matchedDftCodeId = rawDftCodeType
+            ? (amlyCodDescToId.get(rawDftCodeType.toLowerCase()) ||
+               (linkedAnom?.defect_category_code && amlyCodDescToId.get(String(linkedAnom.defect_category_code).trim().toLowerCase())) ||
+               (linkedAnom?.defect_code && amlyCodDescToId.get(String(linkedAnom.defect_code).trim().toLowerCase())) ||
+               rawDftCodeType)
+            : "";
+          baseRow.DFT_CODE_TYPE = sanitizeText(matchedDftCodeId).substring(0, 12);
+
           baseRow.DEFECT_CODE = sanitizeText(linkedAnom?.defect_category_code || linkedAnom?.defect_code || "").substring(0, 50);
-          baseRow.DEFECT_TYPE = sanitizeText(linkedAnom?.priority_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.priority_code || linkedAnom?.priority || (linkedAnom ? "P3" : "")))).substring(0, 20);
+
+          const rawDefectType = sanitizeText(linkedAnom?.priority_code || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (linkedAnom?.priority_code || linkedAnom?.priority || (linkedAnom ? "P3" : ""))));
+          const matchedDefectTypeId = rawDefectType
+            ? (amlyTypDescToId.get(rawDefectType.toLowerCase()) ||
+               (linkedAnom?.priority && amlyTypDescToId.get(String(linkedAnom.priority).trim().toLowerCase())) ||
+               (linkedAnom?.severity && amlyTypDescToId.get(String(linkedAnom.severity).trim().toLowerCase())) ||
+               (linkedAnom?.action_priority && amlyTypDescToId.get(String(linkedAnom.action_priority).trim().toLowerCase())) ||
+               rawDefectType)
+            : "";
+          baseRow.DEFECT_TYPE = sanitizeText(matchedDefectTypeId).substring(0, 20);
           baseRow.DEFECT_DESC = sanitizeText(linkedAnom?.defect_description || linkedAnom?.description || "").substring(0, 250);
           baseRow.DFT_REF_NO = sanitizeText(linkedAnom?.anomaly_ref_no || "").substring(0, 30);
-          baseRow.RECTIFID = linkedAnom?.is_rectified === true ? "Yes" : (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "No" : (["DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS"].includes(code) ? (linkedAnom?.is_rectified ? "Yes" : "No") : (linkedAnom?.status === "CLOSED" ? "Yes" : "No")));
-          baseRow.RECTIFID_DESC = sanitizeText(linkedAnom?.rectified_remarks || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (["DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS"].includes(code) ? (linkedAnom?.rectified_remarks || "") : (linkedAnom?.follow_up_notes || "")))).substring(0, 250);
+          baseRow.RECTIFID = linkedAnom?.is_rectified === true ? "YES" : (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "NO" : (["DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS", "BTS"].includes(code) ? (linkedAnom?.is_rectified ? "YES" : "NO") : (linkedAnom?.status === "CLOSED" ? "YES" : "NO")));
+          baseRow.RECTIFID_DESC = sanitizeText(linkedAnom?.rectified_remarks || (["AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (["DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS", "BTS"].includes(code) ? (linkedAnom?.rectified_remarks || "") : (linkedAnom?.follow_up_notes || "")))).substring(0, 250);
           baseRow.RECT_DATE = linkedAnom?.rectified_date ? formatDateStr(linkedAnom.rectified_date) : "";
           baseRow.INSPNO = formatInspNo(r.jobpack_id || jp?.id);
           baseRow.JOBNAME = sanitizeText(jp?.name || `JP-${r.jobpack_id || 1}`).substring(0, 20);
           baseRow.STATUS = sanitizeText(jp?.status || "OPEN").substring(0, 10).toUpperCase();
-          baseRow.INSP_DONE = String(r.status || "").toUpperCase() === "COMPLETED" ? "Yes" : (String(r.status || "").toUpperCase() === "INCOMPLETE" ? "No" : "No");
+          baseRow.INSP_DONE = String(r.status || "").toUpperCase() === "COMPLETED" ? "YES" : "NO";
           baseRow.REC_DATE = formatDateStr(r.md_date || r.inspection_date);
           baseRow.INSP_COND = sanitizeText(r.description || idata.findings || idata.observations || "").substring(0, 1000);
-          baseRow.CMNTS = ["BSS", "SZS", "VDS", "DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS"].includes(code) ? "" : sanitizeText(r.comments || idata.comments || idata.cmnts || "").substring(0, 4000);
-          baseRow.JOB_TYPE = sanitizeText(resolvedJobType).substring(0, 20);
-          baseRow.LAST_MAJOR_INSPNO = ["DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS"].includes(code) ? "" : sanitizeText(jp?.last_insp_no || "").substring(0, 11);
+          baseRow.CMNTS = ["BSS", "SZS", "VDS", "DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS", "BTS"].includes(code) ? "" : sanitizeText(r.comments || idata.comments || idata.cmnts || "").substring(0, 4000);
+          baseRow.JOB_TYPE = sanitizeText(resolvedJobType).substring(0, 20).toUpperCase();
+          baseRow.LAST_MAJOR_INSPNO = ["DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS", "BTS"].includes(code) ? "" : sanitizeText(jp?.last_insp_no || "").substring(0, 11);
           baseRow.INSPTYPE = code === "MPS" ? (isAcfmInsp ? "AFS" : "MPS") : (code === "UTS" ? (isSzoneInsp ? "SZS" : "UTS") : (code === "FDS" ? (isRfmdInsp ? "PGS" : "FDS") : (code === "DBS" ? (isRovDebrisAppend ? "PGS" : "DBS") : (code === "SCS" ? (isRovScourAppend ? "PGS" : "SCS") : (code === "MGS" ? (isRovMarineGrowthAppend ? "PGS" : "MGS") : (code === "GVS" ? (isRovGviAppend ? "PGS" : "GVS") : (code === "CPS" ? (isBsinsInsp ? "BSS" : (isSzoneInsp ? "SZS" : (isRovCpAppend ? "PGS" : "CPS"))) : (code === "ANS" ? (isRovAnodeAppend ? "PGS" : "ANS") : code))))))));
-          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (["ITS", "SZS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (["DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS"].includes(code) ? (linkedAnom?.reviewed_by || "") : (linkedAnom?.evaluated_by || "")))).substring(0, 250);
+          baseRow.EVAL_BY = sanitizeText(linkedAnom?.reviewed_by || (["ITS", "SZS", "AFS", "CVS", "BSS", "RSS", "MPS", "CCS", "PHS", "VDS", "UTS", "FDS"].includes(code) ? "" : (["DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS", "BTS"].includes(code) ? (linkedAnom?.reviewed_by || "") : (linkedAnom?.evaluated_by || "")))).substring(0, 250);
           baseRow.APPROV_BY = sanitizeText(linkedAnom?.approved_by || "").substring(0, 250);
 
-          if (["SZS", "BSS", "VDS", "DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS"].includes(code)) {
+          if (["SZS", "BSS", "VDS", "DBS", "SCS", "MGS", "GVS", "CPS", "ANS", "PGS", "BTS"].includes(code)) {
             baseRow.CMNTS = "";
           }
 

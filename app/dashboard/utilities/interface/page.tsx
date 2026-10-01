@@ -152,13 +152,19 @@ export default function InterfaceModulePage() {
     setIsLoadingData(true);
     try {
       const [strRes, jpRes] = await Promise.all([
-        fetch("/api/structures"),
-        fetch("/api/jobpack?limit=1000"),
+        fetch("/api/structures").catch((e) => {
+          console.warn("[Interface] /api/structures fetch failed:", e);
+          return null;
+        }),
+        fetch("/api/jobpack?limit=1000").catch((e) => {
+          console.warn("[Interface] /api/jobpack fetch failed:", e);
+          return null;
+        }),
       ]);
       let sList: any[] = [];
       let jList: any[] = [];
-      if (strRes.ok) {
-        const strJson = await strRes.json();
+      if (strRes && strRes.ok) {
+        const strJson = await strRes.json().catch(() => ({}));
         sList = strJson.data || [];
         setStructuresList(sList);
         const platIds = sList
@@ -166,8 +172,8 @@ export default function InterfaceModulePage() {
           .map((s: any) => s.str_id || s.id);
         setSelectedStructureIds(platIds.length > 0 ? platIds : sList.map((s: any) => s.str_id || s.id));
       }
-      if (jpRes.ok) {
-        const jpJson = await jpRes.json();
+      if (jpRes && jpRes.ok) {
+        const jpJson = await jpRes.json().catch(() => ({}));
         jList = jpJson.data || [];
         setAllJobpacksMaster(jList);
       }
@@ -242,23 +248,35 @@ export default function InterfaceModulePage() {
       setInspectionFiltersMaster([]);
       return;
     }
+    const abortController = new AbortController();
     let isCurrent = true;
     setIsLoadingSows(true);
-    fetch("/api/reports/inspection-filters")
-      .then((res) => res.json())
-      .then((data) => {
+
+    const fetchFilters = async () => {
+      try {
+        const res = await fetch("/api/reports/inspection-filters", {
+          signal: abortController.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
         if (!isCurrent) return;
-        if (data.success && Array.isArray(data.data)) {
+        if (data && data.success && Array.isArray(data.data)) {
           setInspectionFiltersMaster(data.data);
         }
-      })
-      .catch((err) => console.error("[Interface] Error fetching inspection filters:", err))
-      .finally(() => {
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          console.warn("[Interface] Error fetching inspection filters:", err);
+        }
+      } finally {
         if (isCurrent) setIsLoadingSows(false);
-      });
+      }
+    };
+
+    fetchFilters();
 
     return () => {
       isCurrent = false;
+      abortController.abort();
     };
   }, [selectedStructureIds]);
 
@@ -339,6 +357,29 @@ export default function InterfaceModulePage() {
       prev.includes(sowNo) ? prev.filter((item) => item !== sowNo) : [...prev, sowNo]
     );
   };
+
+  // Resolve Selected Structure Objects with full details (Name, ID, Field, Desc, Type)
+  const selectedStructures = useMemo(() => {
+    const selectedSet = new Set(selectedStructureIds.map(Number));
+    return structuresList.filter((s) => selectedSet.has(Number(s.str_id || s.id)));
+  }, [structuresList, selectedStructureIds]);
+
+  // Resolve Selected Jobpack Objects
+  const selectedJobpackObjects = useMemo(() => {
+    if (jobpackMode === "ALL") {
+      return jobpacksList;
+    }
+    const selectedSet = new Set(selectedJobpackIds.map(Number));
+    return jobpacksList.filter((jp) => selectedSet.has(Number(jp.id)));
+  }, [jobpackMode, selectedJobpackIds, jobpacksList]);
+
+  // Resolve Selected SOW Names
+  const selectedSowNames = useMemo(() => {
+    if (sowReportMode === "ALL") {
+      return scopedSowReports.map((s) => s.sow_report_no);
+    }
+    return selectedSowReportNos;
+  }, [sowReportMode, selectedSowReportNos, scopedSowReports]);
 
   // Active Client & Active Interface
   const activeClient = useMemo(() => {
@@ -750,6 +791,242 @@ export default function InterfaceModulePage() {
               4. Transfer Logs ({exportHistory.length})
             </TabsTrigger>
           </TabsList>
+
+          {/* ─── Active Interface Deliverable Target Scope Banner ─────────────────── */}
+          <div className="rounded-3xl p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-indigo-500/30 shadow-xl shadow-indigo-950/20 backdrop-blur-xl relative overflow-hidden animate-in fade-in duration-300">
+            <div className="absolute top-0 right-0 -mt-8 -mr-8 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-1/3 -mb-8 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col gap-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center font-bold text-xs shadow-inner">
+                    <Database className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">
+                        Active Interface Target
+                      </span>
+                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 font-mono text-[10px] py-0">
+                        {activeClient.code} • {activeInterface.name}
+                      </Badge>
+                    </div>
+                    <h2 className="text-base font-bold text-white flex flex-wrap items-center gap-2">
+                      Creating Interface Files for:{" "}
+                      <span className="text-cyan-300 font-black">
+                        {selectedStructures.length === 1
+                          ? (selectedStructures[0].str_name || selectedStructures[0].title || `Structure ${selectedStructures[0].str_id || selectedStructures[0].id}`)
+                          : selectedStructures.length > 1
+                          ? `${selectedStructures.length} Structures (${selectedStructures.map((s) => s.str_name || s.title || s.str_id || s.id).slice(0, 3).join(", ")}${selectedStructures.length > 3 ? "..." : ""})`
+                          : "No Structure Selected"}
+                      </span>
+                    </h2>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                  {activeTab !== "configure" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab("configure")}
+                      className="h-8 text-xs font-bold rounded-xl bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5 shadow-sm"
+                    >
+                      <Edit3 className="h-3.5 w-3.5 text-cyan-300" />
+                      Change Selection
+                    </Button>
+                  )}
+                  {activeTab !== "preview" && (
+                    <Button
+                      size="sm"
+                      onClick={() => setActiveTab("preview")}
+                      className="h-8 text-xs font-bold rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white gap-1.5 shadow-md"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Generate Deliverables
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Scope Breakdown Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* 1. Structure Details Card */}
+                <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300 uppercase tracking-wider text-[10px]">
+                      <Building2 className="h-3.5 w-3.5 text-cyan-400" />
+                      Target Structure
+                    </span>
+                    <Badge variant="outline" className="text-[10px] font-mono border-white/10 text-cyan-300 bg-cyan-950/40">
+                      {selectedStructures.length} Asset{selectedStructures.length !== 1 ? "s" : ""}
+                    </Badge>
+                  </div>
+
+                  {selectedStructures.length === 0 ? (
+                    <p className="text-xs text-amber-300 flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      No structure selected. Please select in Step 1.
+                    </p>
+                  ) : selectedStructures.length === 1 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-black text-white truncate">
+                          {selectedStructures[0].str_name || selectedStructures[0].title || `Structure ${selectedStructures[0].str_id || selectedStructures[0].id}`}
+                        </p>
+                        <Badge className="text-[10px] font-mono uppercase bg-blue-500/20 text-blue-300 border-blue-500/30">
+                          {selectedStructures[0].str_type || "PLATFORM"}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-300">
+                        <span>
+                          <span className="text-slate-400">ID:</span>{" "}
+                          <strong className="font-mono text-cyan-300">{selectedStructures[0].str_id || selectedStructures[0].plat_id || selectedStructures[0].id}</strong>
+                        </span>
+                        {selectedStructures[0].pfield && (
+                          <span>
+                            <span className="text-slate-400">Field:</span>{" "}
+                            <strong className="text-slate-200">{selectedStructures[0].pfield}</strong>
+                          </span>
+                        )}
+                        {(selectedStructures[0].pdesc || selectedStructures[0].description) && (
+                          <span className="truncate max-w-[200px]" title={selectedStructures[0].pdesc || selectedStructures[0].description}>
+                            <span className="text-slate-400">Desc:</span>{" "}
+                            <span className="text-slate-300">{selectedStructures[0].pdesc || selectedStructures[0].description}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold text-white">
+                        {selectedStructures.length} Offshore Assets Targeted:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto custom-scrollbar pr-1">
+                        {selectedStructures.map((s) => (
+                          <Badge
+                            key={s.str_id || s.id}
+                            variant="outline"
+                            className="text-[10px] font-mono bg-white/10 border-white/20 text-cyan-200"
+                          >
+                            {s.str_name || s.title || `ID ${s.str_id || s.id}`} (ID: {s.str_id || s.plat_id || s.id})
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Jobpack Details Card */}
+                <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300 uppercase tracking-wider text-[10px]">
+                      <Package className="h-3.5 w-3.5 text-indigo-400" />
+                      Target Jobpack
+                    </span>
+                    <Badge variant="outline" className="text-[10px] font-mono border-white/10 text-indigo-300 bg-indigo-950/40">
+                      {jobpackMode === "ALL" ? "Mode: ALL" : `Selected (${selectedJobpackIds.length})`}
+                    </Badge>
+                  </div>
+
+                  {jobpackMode === "ALL" ? (
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-white">
+                        All Scoped Jobpacks ({jobpacksList.length})
+                      </p>
+                      <p className="text-[11px] text-slate-300">
+                        Extracting records across all active jobpacks for selected structure(s).
+                      </p>
+                    </div>
+                  ) : selectedJobpackObjects.length === 1 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-black text-white truncate">
+                          {selectedJobpackObjects[0].name || `Jobpack ${selectedJobpackObjects[0].id}`}
+                        </p>
+                        <Badge className="text-[9px] font-mono uppercase bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+                          {selectedJobpackObjects[0].status || "OPEN"}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        <span className="text-slate-400">Jobpack ID:</span>{" "}
+                        <strong className="font-mono text-indigo-300">{selectedJobpackObjects[0].id}</strong>
+                      </p>
+                    </div>
+                  ) : selectedJobpackObjects.length > 1 ? (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold text-white">
+                        {selectedJobpackObjects.length} Specific Jobpacks Selected:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto custom-scrollbar pr-1">
+                        {selectedJobpackObjects.map((jp) => (
+                          <Badge
+                            key={jp.id}
+                            variant="outline"
+                            className="text-[10px] font-mono bg-white/10 border-white/20 text-indigo-200"
+                          >
+                            {jp.name || `JP-${jp.id}`}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-300 flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      No specific jobpack selected.
+                    </p>
+                  )}
+                </div>
+
+                {/* 3. SOW Report No. Details Card */}
+                <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300 uppercase tracking-wider text-[10px]">
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-teal-400" />
+                      SOW Report Filter
+                    </span>
+                    <Badge variant="outline" className="text-[10px] font-mono border-white/10 text-teal-300 bg-teal-950/40">
+                      {sowReportMode === "ALL" ? "All SOWs" : `Specific (${selectedSowReportNos.length})`}
+                    </Badge>
+                  </div>
+
+                  {sowReportMode === "ALL" ? (
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-white">
+                        All Scoped SOW Reports ({scopedSowReports.length})
+                      </p>
+                      <p className="text-[11px] text-slate-300">
+                        Including all inspection sow reports associated with selected scope.
+                      </p>
+                    </div>
+                  ) : selectedSowReportNos.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold text-white">
+                        Filtered SOW Reports ({selectedSowReportNos.length}):
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto custom-scrollbar pr-1">
+                        {selectedSowReportNos.map((sow) => (
+                          <Badge
+                            key={sow}
+                            variant="outline"
+                            className="text-[10px] font-mono bg-teal-500/20 border-teal-500/30 text-teal-200"
+                          >
+                            {sow}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-300 flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      Specific mode selected but no SOW chosen.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* ═══════════════════════════════════════════════════════════════════════
               TAB 1: SETUP & SCOPE
