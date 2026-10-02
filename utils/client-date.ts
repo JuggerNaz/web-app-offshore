@@ -108,7 +108,7 @@ export function formatClientDateTime(
  */
 export function toDatetimeLocalString(
   dateInput?: string | Date | null,
-  includeSeconds = false
+  includeSeconds = true
 ): string {
   const d = dateInput ? parseClientDate(dateInput) : new Date();
   if (isNaN(d.getTime())) return "";
@@ -148,6 +148,54 @@ export function toUtcIsoTimestamp(dateInput?: string | Date | null): string {
 }
 
 /**
+ * Converts a dateInput to a local date string (YYYY-MM-DD) in the user's browser timezone.
+ */
+export function toLocalDateString(dateInput?: string | Date | null): string {
+  const d = dateInput ? parseClientDate(dateInput) : new Date();
+  if (isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Converts a dateInput to a local time string (HH:mm:ss or HH:mm) in the user's browser timezone.
+ */
+export function toLocalTimeString(
+  dateInput?: string | Date | null,
+  includeSeconds = true
+): string {
+  const d = dateInput ? parseClientDate(dateInput) : new Date();
+  if (isNaN(d.getTime())) return "";
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const seconds = String(d.getSeconds()).padStart(2, "0");
+  return includeSeconds ? `${hours}:${minutes}:${seconds}` : `${hours}:${minutes}`;
+}
+
+/**
+ * Combines separate local date (YYYY-MM-DD) and local time (HH:mm or HH:mm:ss) strings
+ * into a UTC ISO string for PostgreSQL storage.
+ */
+export function combineLocalDateAndTimeToUtcIso(
+  localDate: string,
+  localTime: string
+): string {
+  if (!localDate) return new Date().toISOString();
+  const cleanTime = (localTime || "00:00:00").trim();
+  const formattedTime = cleanTime.length === 5 ? `${cleanTime}:00` : cleanTime;
+  const [y, m, d] = localDate.split("-").map(Number);
+  const [hh, mm, ss] = formattedTime.split(":").map(Number);
+  const localDateObj = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, ss || 0);
+  if (isNaN(localDateObj.getTime())) {
+    return new Date().toISOString();
+  }
+  return localDateObj.toISOString();
+}
+
+/**
  * Alias for parseClientDate for backwards compatibility.
  */
 export const parseDbDate = parseClientDate;
+

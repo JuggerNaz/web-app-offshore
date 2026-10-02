@@ -39,7 +39,14 @@ import {
     Check,
     ArrowRight
 } from "lucide-react";
-import { formatClientDateTime, toDatetimeLocalString, toUtcIsoTimestamp, parseClientDate, parseDbDate } from "@/utils/client-date";
+import { 
+    formatClientDateTime, 
+    toLocalDateString,
+    toLocalTimeString,
+    combineLocalDateAndTimeToUtcIso,
+    parseClientDate, 
+    parseDbDate 
+} from "@/utils/client-date";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -106,7 +113,8 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     const [formChapterNo, setFormChapterNo] = useState<string>("1");
     const [formCustomChapterNo, setFormCustomChapterNo] = useState<string>("");
     const [formAction, setFormAction] = useState<string>("START TAPE");
-    const [formEventTime, setFormEventTime] = useState<string>("");
+    const [formDate, setFormDate] = useState<string>("");
+    const [formTime, setFormTime] = useState<string>("");
     const [formTimecode, setFormTimecode] = useState<string>("00:00:00");
     const [formRemarks, setFormRemarks] = useState<string>("");
     const [formEditingId, setFormEditingId] = useState<{ id: string; realId: number; logType: string } | null>(null);
@@ -343,7 +351,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
     const formatEventTime = (timeStr?: string | null) => {
         if (!timeStr) return "-";
-        return formatClientDateTime(timeStr, "MMM dd, HH:mm:ss");
+        return formatClientDateTime(timeStr, "MMM dd, yyyy • HH:mm:ss");
     };
 
     // Auto compute Date & Time and Timecode based on selected Tape No, Chapter No, and Action
@@ -360,8 +368,8 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         });
 
         const sortedChronological = [...matchingEvents].sort((a, b) => {
-            const tA = a.eventTime ? new Date(a.eventTime).getTime() : 0;
-            const tB = b.eventTime ? new Date(b.eventTime).getTime() : 0;
+            const tA = a.eventTime ? parseClientDate(a.eventTime).getTime() : 0;
+            const tB = b.eventTime ? parseClientDate(b.eventTime).getTime() : 0;
             return tA - tB;
         });
 
@@ -374,74 +382,115 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
         if (targetAction === "START TAPE") {
             if (startEvent && startEvent.eventTime) {
-                suggestedDate = new Date(startEvent.eventTime);
+                suggestedDate = parseClientDate(startEvent.eventTime);
+                suggestedTimecode = startEvent.time || (startEvent.tape_counter_start != null ? formatSecondsToTimecode(Number(startEvent.tape_counter_start)) : "00:00:00");
             } else if (sortedChronological.length > 0 && sortedChronological[0].eventTime) {
-                // If there are other events, suggest 1 minute before first event
-                suggestedDate = new Date(new Date(sortedChronological[0].eventTime).getTime() - 60000);
+                suggestedDate = new Date(parseClientDate(sortedChronological[0].eventTime).getTime() - 60000);
+                suggestedTimecode = "00:00:00";
             } else {
-                // Check if other chapters in this tape exist
-                const tapeEvents = sortedEvents.filter(ev => (ev.tapeNo || "").trim().toUpperCase() === (effectiveTape || "").trim().toUpperCase());
-                if (tapeEvents.length > 0 && tapeEvents[0].eventTime) {
-                    suggestedDate = new Date(new Date(tapeEvents[0].eventTime).getTime() + 10 * 60000);
-                } else {
-                    suggestedDate = new Date();
-                }
+                suggestedDate = new Date();
+                suggestedTimecode = "00:00:00";
             }
-            suggestedTimecode = "00:00:00";
         } else if (targetAction === "STOP TAPE") {
             if (sortedChronological.length > 0) {
                 const latestEv = sortedChronological[sortedChronological.length - 1];
-                if (latestEv.eventTime) {
-                    suggestedDate = new Date(new Date(latestEv.eventTime).getTime() + 5 * 60000); // 5 mins after last event
-                } else {
-                    suggestedDate = new Date();
-                }
+                const latestDate = latestEv.eventTime ? parseClientDate(latestEv.eventTime) : new Date();
+                suggestedDate = new Date(latestDate.getTime() + 5 * 60000); // 5 mins after last event
 
-                if (startEvent && startEvent.eventTime) {
-                    const startAt = new Date(startEvent.eventTime).getTime();
-                    const endAt = suggestedDate.getTime();
-                    const diff = Math.max(0, Math.floor((endAt - startAt) / 1000));
-                    suggestedTimecode = formatSecondsToTimecode(diff);
-                } else if (latestEv.time) {
-                    const lastSecs = timecodeToSeconds(latestEv.time);
-                    suggestedTimecode = formatSecondsToTimecode(lastSecs + 300);
-                } else {
-                    suggestedTimecode = "00:15:00";
-                }
+                const latestCounter = latestEv.tape_counter_start != null 
+                    ? Number(latestEv.tape_counter_start) 
+                    : timecodeToSeconds(latestEv.time || "00:00:00");
+                suggestedTimecode = formatSecondsToTimecode(latestCounter + 300);
             } else {
                 suggestedDate = new Date();
                 suggestedTimecode = "00:15:00";
             }
         } else {
-            // General event, Pause, Resume, Task, Note
+            // General event, Pause, Resume, Task, Note, Pre/Post-Inspection
             if (sortedChronological.length > 0) {
                 const latestEv = sortedChronological[sortedChronological.length - 1];
-                if (latestEv.eventTime) {
-                    suggestedDate = new Date(new Date(latestEv.eventTime).getTime() + 60000);
-                } else {
-                    suggestedDate = new Date();
-                }
+                const latestDate = latestEv.eventTime ? parseClientDate(latestEv.eventTime) : new Date();
+                suggestedDate = new Date(latestDate.getTime() + 60000); // 1 min after last event
 
-                if (startEvent && startEvent.eventTime) {
-                    const startAt = new Date(startEvent.eventTime).getTime();
-                    const currAt = suggestedDate.getTime();
-                    const diff = Math.max(0, Math.floor((currAt - startAt) / 1000));
-                    suggestedTimecode = formatSecondsToTimecode(diff);
-                } else if (latestEv.time) {
-                    const lastSecs = timecodeToSeconds(latestEv.time);
-                    suggestedTimecode = formatSecondsToTimecode(lastSecs + 60);
-                }
+                const latestCounter = latestEv.tape_counter_start != null 
+                    ? Number(latestEv.tape_counter_start) 
+                    : timecodeToSeconds(latestEv.time || "00:00:00");
+                suggestedTimecode = formatSecondsToTimecode(latestCounter + 60);
             } else {
                 suggestedDate = new Date();
                 suggestedTimecode = "00:00:00";
             }
         }
 
-        const localIso = toDatetimeLocalString(suggestedDate.toISOString());
         return {
-            eventTime: localIso,
+            eventDate: toLocalDateString(suggestedDate),
+            eventTime: toLocalTimeString(suggestedDate, true),
             timecode: suggestedTimecode,
         };
+    };
+
+    // Calculate timecode counter based on user-entered Date & Time and preceding chronological events
+    const calculateCounterForDateTime = (
+        targetTape: string, 
+        targetChapter: string, 
+        dateStr: string, 
+        timeStr: string, 
+        action: string,
+        currentEditId?: string
+    ): string => {
+        if (action === "START TAPE") return "00:00:00";
+        if (!dateStr || !timeStr) return "00:00:00";
+
+        const effectiveTape = targetTape === "__NEW__" ? formCustomTapeNo : targetTape;
+        const effectiveChapter = targetChapter === "__NEW__" ? formCustomChapterNo : targetChapter;
+
+        const matchingEvents = sortedEvents.filter(ev => {
+            const tNo = ev.tapeNo && ev.tapeNo !== "N/A" ? ev.tapeNo : "";
+            const chNo = ev.chapterNo != null ? String(ev.chapterNo) : "";
+            return tNo.trim().toUpperCase() === (effectiveTape || "").trim().toUpperCase() &&
+                   chNo.trim() === (effectiveChapter || "").trim();
+        });
+
+        if (matchingEvents.length === 0) return "00:00:00";
+
+        const sortedChronological = [...matchingEvents].sort((a, b) => {
+            const tA = a.eventTime ? parseClientDate(a.eventTime).getTime() : 0;
+            const tB = b.eventTime ? parseClientDate(b.eventTime).getTime() : 0;
+            return tA - tB;
+        });
+
+        const targetIso = combineLocalDateAndTimeToUtcIso(dateStr, timeStr);
+        const targetMillis = parseClientDate(targetIso).getTime();
+
+        // Find the most recent preceding event at or before targetMillis
+        const precedingEvents = sortedChronological.filter(ev => {
+            if (!ev.eventTime) return false;
+            if (currentEditId && ev.id === currentEditId) return false;
+            return parseClientDate(ev.eventTime).getTime() <= targetMillis;
+        });
+
+        if (precedingEvents.length > 0) {
+            const prevEv = precedingEvents[precedingEvents.length - 1];
+            const prevMillis = parseClientDate(prevEv.eventTime).getTime();
+            const prevCounter = prevEv.tape_counter_start != null 
+                ? Number(prevEv.tape_counter_start) 
+                : timecodeToSeconds(prevEv.time || "00:00:00");
+            const diffSecs = Math.max(0, Math.floor((targetMillis - prevMillis) / 1000));
+            return formatSecondsToTimecode(prevCounter + diffSecs);
+        }
+
+        // If target is earlier than all events, reference the first event
+        const firstEv = sortedChronological.find(ev => !currentEditId || ev.id !== currentEditId) || sortedChronological[0];
+        if (firstEv && firstEv.eventTime) {
+            const firstMillis = parseClientDate(firstEv.eventTime).getTime();
+            const firstCounter = firstEv.tape_counter_start != null 
+                ? Number(firstEv.tape_counter_start) 
+                : timecodeToSeconds(firstEv.time || "00:00:00");
+            const diffSecs = Math.floor((targetMillis - firstMillis) / 1000);
+            return formatSecondsToTimecode(Math.max(0, firstCounter + diffSecs));
+        }
+
+        return "00:00:00";
     };
 
     // Open Add Modal with smart defaults
@@ -460,7 +509,8 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         setIsAutoDateCalculated(true);
 
         const computed = computeAutoDateTimeAndCounter(tape, chapter, "START TAPE");
-        setFormEventTime(computed.eventTime);
+        setFormDate(computed.eventDate);
+        setFormTime(computed.eventTime);
         setFormTimecode(computed.timecode);
 
         setIsAddModalOpen(true);
@@ -504,9 +554,13 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         setIsAutoDateCalculated(false);
 
         if (ev.eventTime) {
-            setFormEventTime(toDatetimeLocalString(ev.eventTime));
+            const evDate = parseClientDate(ev.eventTime);
+            setFormDate(toLocalDateString(evDate));
+            setFormTime(toLocalTimeString(evDate, true));
         } else {
-            setFormEventTime(toDatetimeLocalString(new Date().toISOString()));
+            const now = new Date();
+            setFormDate(toLocalDateString(now));
+            setFormTime(toLocalTimeString(now, true));
         }
 
         setIsEditModalOpen(true);
@@ -520,44 +574,35 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
         if (isAutoDateCalculated) {
             const computed = computeAutoDateTimeAndCounter(newTape, newChapter, newAction);
-            setFormEventTime(computed.eventTime);
+            setFormDate(computed.eventDate);
+            setFormTime(computed.eventTime);
             setFormTimecode(computed.timecode);
         }
     };
 
-    // When user manually edits Date & Time, recalculate timecode counter if chapter start exists
-    const handleDateTimeChange = (newLocalVal: string) => {
-        setFormEventTime(newLocalVal);
+    // When user manually edits Date or Time, recalculate timecode counter from preceding event
+    const handleDateOrTimeChange = (newDateVal: string, newTimeVal: string) => {
+        setFormDate(newDateVal);
+        setFormTime(newTimeVal);
         setIsAutoDateCalculated(false);
 
-        if (!newLocalVal) return;
-        const effectiveTape = formTapeNo === "__NEW__" ? formCustomTapeNo : formTapeNo;
-        const effectiveChapter = formChapterNo === "__NEW__" ? formCustomChapterNo : formChapterNo;
-
-        // Find chapter start event
-        const matchingEvents = sortedEvents.filter(ev => {
-            const tNo = ev.tapeNo && ev.tapeNo !== "N/A" ? ev.tapeNo : "";
-            const chNo = ev.chapterNo != null ? String(ev.chapterNo) : "";
-            return tNo.trim().toUpperCase() === (effectiveTape || "").trim().toUpperCase() &&
-                   chNo.trim() === (effectiveChapter || "").trim();
-        });
-
-        const startEvent = matchingEvents.find(ev => 
-            (ev.action || "").toUpperCase().includes("START") && (ev.action || "").toUpperCase().includes("TAPE")
+        if (!newDateVal || !newTimeVal) return;
+        const computedCounter = calculateCounterForDateTime(
+            formTapeNo,
+            formChapterNo,
+            newDateVal,
+            newTimeVal,
+            formAction,
+            formEditingId?.id
         );
-
-        if (startEvent && startEvent.eventTime && formAction !== "START TAPE") {
-            const startDate = parseDbDate(startEvent.eventTime);
-            const userDate = parseClientDate(newLocalVal);
-            const diffSecs = Math.max(0, Math.floor((userDate.getTime() - startDate.getTime()) / 1000));
-            setFormTimecode(formatSecondsToTimecode(diffSecs));
-        }
+        setFormTimecode(computedCounter);
     };
 
     // Recalculate button trigger
     const triggerRecalculate = () => {
         const computed = computeAutoDateTimeAndCounter(formTapeNo, formChapterNo, formAction);
-        setFormEventTime(computed.eventTime);
+        setFormDate(computed.eventDate);
+        setFormTime(computed.eventTime);
         setFormTimecode(computed.timecode);
         setIsAutoDateCalculated(true);
         toast.info("Auto-calculated Date & Time from Chapter timeline");
@@ -573,14 +618,19 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             return;
         }
 
-        if (!formEventTime) {
-            toast.error("Please enter a valid Date & Time");
+        if (!formDate) {
+            toast.error("Please enter a valid Date");
+            return;
+        }
+
+        if (!formTime) {
+            toast.error("Please enter a valid Time");
             return;
         }
 
         setIsSubmitting(true);
         try {
-            const isoEventTime = toUtcIsoTimestamp(formEventTime);
+            const isoEventTime = combineLocalDateAndTimeToUtcIso(formDate, formTime);
             const totalCounterSecs = timecodeToSeconds(formTimecode);
 
             // Map UI action to standard DB event_type code
@@ -1311,8 +1361,8 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                             </div>
                         </div>
 
-                        {/* 3. Wall Clock Date & Time (with Auto-Calculation & manual editing) */}
-                        <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                        {/* 3. Wall Clock Date & Time (Separated Local Date and Local Time) */}
+                        <div className="space-y-2 p-3 rounded-xl bg-slate-900/90 border border-slate-800">
                             <div className="flex items-center justify-between">
                                 <Label className="text-[10px] font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
                                     <Calendar className="w-3.5 h-3.5 text-blue-400" />
@@ -1337,15 +1387,35 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                 </div>
                             </div>
 
-                            <Input
-                                type="datetime-local"
-                                step="1"
-                                value={formEventTime}
-                                onChange={(e) => handleDateTimeChange(e.target.value)}
-                                className="h-9 text-xs font-mono font-bold bg-slate-950 border-slate-700 text-slate-100 focus-visible:ring-blue-500"
-                            />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                                        <Calendar className="w-3 h-3 text-blue-400" />
+                                        Date (Local) *
+                                    </Label>
+                                    <Input
+                                        type="date"
+                                        value={formDate}
+                                        onChange={(e) => handleDateOrTimeChange(e.target.value, formTime)}
+                                        className="h-9 text-xs font-mono font-bold bg-slate-950 border-slate-700 text-slate-100 focus-visible:ring-blue-500"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-cyan-400" />
+                                        Time (Local) *
+                                    </Label>
+                                    <Input
+                                        type="time"
+                                        step="1"
+                                        value={formTime}
+                                        onChange={(e) => handleDateOrTimeChange(formDate, e.target.value)}
+                                        className="h-9 text-xs font-mono font-bold bg-slate-950 border-slate-700 text-slate-100 focus-visible:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
                             <p className="text-[10px] text-slate-400 italic">
-                                Timestamp auto-adapts based on Tape & Chapter timeline; you can freely adjust it anytime.
+                                Timestamp auto-adapts in your local browser timezone; you can freely adjust it anytime.
                             </p>
                         </div>
 

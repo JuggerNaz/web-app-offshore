@@ -107,7 +107,7 @@ function formatCounter(seconds: number | string): string {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { parseClientDate, toUtcIsoTimestamp, toDatetimeLocalString, formatClientTime } from "@/utils/client-date";
+import { parseClientDate, toUtcIsoTimestamp, toDatetimeLocalString, formatClientTime, combineLocalDateAndTimeToUtcIso } from "@/utils/client-date";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
@@ -1998,11 +1998,94 @@ function V10PreviewLayout() {
     }
   }, [platformFacesData]);
 
+  // Helper to auto-calculate elapsed video counter from preceding events / start time (Option 1)
+  const calculateAutoCounter = useCallback((targetDate?: string, targetTime?: string, targetTapeId?: number | null): number | null => {
+    const effectiveTapeId = targetTapeId || tapeId;
+    const dateStr = targetDate || dynamicProps?.inspection_date;
+    const timeStr = targetTime || dynamicProps?.inspection_time;
+
+    if (!dateStr || !timeStr) return null;
+
+    const matchingTapeLogs = (videoEvents || []).filter((ev: any) => {
+      if (effectiveTapeId) {
+        return ev.tapeId === effectiveTapeId || ev.tape_id === effectiveTapeId;
+      }
+      return ev.tapeNo && tapeNo && ev.tapeNo === tapeNo;
+    });
+
+    if (matchingTapeLogs.length === 0) return null;
+
+    try {
+      const formattedTime = timeStr.length === 5 ? `${timeStr}:00` : timeStr;
+      const targetIso = combineLocalDateAndTimeToUtcIso(dateStr, formattedTime);
+      const targetMillis = parseClientDate(targetIso).getTime();
+
+      // Sort matching logs chronologically
+      const sortedLogs = [...matchingTapeLogs].sort((a: any, b: any) => {
+        const tA = a.eventTime ? parseClientDate(a.eventTime).getTime() : 0;
+        const tB = b.eventTime ? parseClientDate(b.eventTime).getTime() : 0;
+        return tA - tB;
+      });
+
+      // Find closest preceding event at or before targetMillis
+      const preceding = sortedLogs.filter((ev: any) => {
+        if (!ev.eventTime) return false;
+        return parseClientDate(ev.eventTime).getTime() <= targetMillis;
+      });
+
+      if (preceding.length > 0) {
+        const lastEv = preceding[preceding.length - 1];
+        const lastMillis = parseClientDate(lastEv.eventTime).getTime();
+        const baseCounter = lastEv.tape_counter_start != null
+          ? Number(lastEv.tape_counter_start)
+          : (lastEv.time ? lastEv.time.split(":").reduce((acc: number, t: string) => 60 * acc + (+t || 0), 0) : 0);
+        const diffSeconds = Math.max(0, Math.floor((targetMillis - lastMillis) / 1000));
+        return baseCounter + diffSeconds;
+      }
+
+      // Fallback to first event or start event
+      const startEvent = sortedLogs.find((ev: any) => 
+        (ev.action || "").toUpperCase().includes("START")
+      ) || sortedLogs[0];
+
+      if (startEvent && startEvent.eventTime) {
+        const startMillis = parseClientDate(startEvent.eventTime).getTime();
+        const baseCounter = startEvent.tape_counter_start != null
+          ? Number(startEvent.tape_counter_start)
+          : (startEvent.time ? startEvent.time.split(":").reduce((acc: number, t: string) => 60 * acc + (+t || 0), 0) : 0);
+        const diffSeconds = Math.floor((targetMillis - startMillis) / 1000);
+        return Math.max(0, baseCounter + diffSeconds);
+      }
+    } catch (err) {
+      console.warn("[calculateAutoCounter] Date parsing failed:", err);
+    }
+    return null;
+  }, [tapeId, tapeNo, dynamicProps?.inspection_date, dynamicProps?.inspection_time, videoEvents]);
+
   // Helper to handle prop changes and track user interaction
   const handleDynamicPropChange = (name: string, value: any) => {
     setIsFormModified(true);
     setDynamicProps((prev) => {
       const updated = { ...prev, [name]: value };
+
+      // Option 1: Auto-calculate Counter if user enters/changes inspection_date or inspection_time
+      if (name === "inspection_time" || name === "inspection_date") {
+        const d = name === "inspection_date" ? value : (updated.inspection_date || format(new Date(), "yyyy-MM-dd"));
+        const t = name === "inspection_time" ? value : (updated.inspection_time || format(new Date(), "HH:mm:ss"));
+        const autoSecs = calculateAutoCounter(d, t, tapeId);
+        if (autoSecs !== null && autoSecs >= 0) {
+          const formatted = formatTime(autoSecs);
+          updated.tape_count_no = formatted;
+          updated.counter = formatted;
+          updated._meta_timecode = formatted;
+        }
+      }
+
+      // Option 2: If user types into tape_count_no directly, format and keep it
+      if (name === "tape_count_no") {
+        updated.counter = value;
+        updated._meta_timecode = value;
+      }
 
       if (activeSpec?.toUpperCase() === "RSEAB") {
         if (name === "northing" || name === "easting") {
@@ -5018,10 +5101,11 @@ function V10PreviewLayout() {
               logType: "insp",
               eventTime: (() => {
                 if (r.inspection_date && r.inspection_time) {
-                  return `${r.inspection_date}T${r.inspection_time}`;
+                  return combineLocalDateAndTimeToUtcIso(r.inspection_date, r.inspection_time);
                 }
                 return r.cr_date || new Date().toISOString();
               })(),
+              tape_counter_start: r.tape_count_no != null ? Number(r.tape_count_no) : (r.inspection_data?._meta_timecode ? parseTimecode(r.inspection_data._meta_timecode) : 0),
               tape_id: r.tape_id,
               tapeNo,
               chapterNo,
@@ -7541,12 +7625,19 @@ function V10PreviewLayout() {
         await supabase.from("insp_anomalies").delete().eq("inspection_id", opData.insp_id);
       }
 
+      const finalInspDate = payload.inspection_date || format(new Date(), "yyyy-MM-dd");
+      const finalInspTime = payload.inspection_time || format(new Date(), "HH:mm:ss");
+      const finalEventTimeUtc = combineLocalDateAndTimeToUtcIso(finalInspDate, finalInspTime);
+      const finalCounterSecs = payload.tape_count_no != null ? Number(payload.tape_count_no) : vidTimer;
+      const finalTimecodeStr = formatTime(finalCounterSecs);
+
       if (editingRecordId) {
         await supabase
           .from("insp_video_logs")
           .update({
-            timecode_start: formatTime(vidTimer),
-            tape_counter_start: vidTimer,
+            timecode_start: finalTimecodeStr,
+            tape_counter_start: finalCounterSecs,
+            event_time: finalEventTimeUtc,
             tape_id: tId,
           })
           .eq("inspection_id", editingRecordId);
@@ -7554,9 +7645,9 @@ function V10PreviewLayout() {
         await supabase.from("insp_video_logs").insert({
           inspection_id: opData.insp_id,
           event_type: `${it?.name || activeSpec} - ${selectedComp.q_id || selectedComp.name}`,
-          event_time: new Date().toISOString(),
-          timecode_start: formatTime(vidTimer),
-          tape_counter_start: vidTimer,
+          event_time: finalEventTimeUtc,
+          timecode_start: finalTimecodeStr,
+          tape_counter_start: finalCounterSecs,
           tape_id: tId,
         });
       }
@@ -8659,6 +8750,10 @@ function V10PreviewLayout() {
                 handleOpenEditTape={handleOpenEditTape}
                 formatTime={formatTime}
                 onOpenHistory={() => setVideoLogExpanded(true)}
+                onSetVidTimer={(secs) => {
+                  setVidTimer(secs);
+                  saveUserSession({ vidTimer: secs });
+                }}
               />
             ) : (
               <TapeManagementCard
@@ -8676,6 +8771,10 @@ function V10PreviewLayout() {
                 handleOpenEditTape={handleOpenEditTape}
                 formatTime={formatTime}
                 onOpenHistory={() => setVideoLogExpanded(true)}
+                onSetVidTimer={(secs) => {
+                  setVidTimer(secs);
+                  saveUserSession({ vidTimer: secs });
+                }}
               />
             )}
             <Dialog open={videoLogExpanded} onOpenChange={setVideoLogExpanded}>
@@ -8853,6 +8952,7 @@ function V10PreviewLayout() {
                 }
               }
             }}
+            calculateAutoCounter={calculateAutoCounter}
           />
         );
         break;
@@ -9034,7 +9134,7 @@ function V10PreviewLayout() {
     dataAcqConnected, unitSystem, inspectionDirection, inspectionLocation, structureId, jobPackId,
     setActiveSpec, componentsSow, setSelectedComp, activeCompanyId, syncDeploymentState, queryClient,
     compView, setCompView, compSearchTerm, setCompSearchTerm, componentsNonSow, currentCompRecords,
-    historicalRecords, historyLoading, handleEditRecord, handlePipelineEventSelect,
+    historicalRecords, historyLoading, handleEditRecord, handlePipelineEventSelect, calculateAutoCounter,
   ]);
 
   // --- AUTO-EDIT FROM URL PARAMETERS ---

@@ -67,6 +67,7 @@ interface InspectionFormPanelProps {
   setPrevRefNo: (val: string) => void;
   criteriaRules?: any[];
   onVoiceActionCommand?: (actionIntent: any) => void;
+  calculateAutoCounter?: (targetDate?: string, targetTime?: string) => number | null;
 }
 
 export function InspectionFormPanel({
@@ -128,6 +129,7 @@ export function InspectionFormPanel({
   setPrevRefNo,
   criteriaRules = [],
   onVoiceActionCommand,
+  calculateAutoCounter,
 }: InspectionFormPanelProps) {
   return (
     <Card className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 border-none rounded-none shadow-none overflow-hidden">
@@ -296,6 +298,7 @@ export function InspectionFormPanel({
                 setPrevRefNo={setPrevRefNo}
                 criteriaRules={criteriaRules}
                 onVoiceActionCommand={onVoiceActionCommand}
+                calculateAutoCounter={calculateAutoCounter}
               />
             )}
           </div>

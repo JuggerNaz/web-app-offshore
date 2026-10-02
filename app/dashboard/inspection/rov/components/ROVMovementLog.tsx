@@ -12,7 +12,7 @@ import { Clock, Plus, ListChecks, Trash2, Edit, Save, X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 
-import { parseClientDate, formatClientTime, formatClientDate, toDatetimeLocalString, toUtcIsoTimestamp } from "@/utils/client-date";
+import { parseClientDate, formatClientTime, formatClientDate, toLocalDateString, toLocalTimeString, combineLocalDateAndTimeToUtcIso } from "@/utils/client-date";
 
 const ROV_ACTIONS = [
     { label: "Rov On Hire" },
@@ -40,16 +40,18 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
     const supabase = createClient();
 
     const [movements, setMovements] = useState<Movement[]>([]);
-    const [newMovement, setNewMovement] = useState({
-        movement_type: "",
-        remarks: "",
-        movement_time: toDatetimeLocalString(),
-    });
+    const [newDate, setNewDate] = useState<string>(() => toLocalDateString(new Date()));
+    const [newTime, setNewTime] = useState<string>(() => toLocalTimeString(new Date(), true));
+    const [newAction, setNewAction] = useState<string>("");
+    const [newRemarks, setNewRemarks] = useState<string>("");
     const [loading, setLoading] = useState(false);
 
     // Edit state
     const [editingId, setEditingId] = useState<number | null>(null);
-    const [editForm, setEditForm] = useState<Movement | null>(null);
+    const [editDate, setEditDate] = useState<string>("");
+    const [editTime, setEditTime] = useState<string>("");
+    const [editAction, setEditAction] = useState<string>("");
+    const [editRemarks, setEditRemarks] = useState<string>("");
 
     useEffect(() => {
         if (diveJob) {
@@ -92,7 +94,17 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
             return;
         }
 
-        if (!newMovement.movement_type) {
+        if (!newDate) {
+            toast.error("Date is required");
+            return;
+        }
+
+        if (!newTime) {
+            toast.error("Time is required");
+            return;
+        }
+
+        if (!newAction) {
             toast.error("Action is required");
             return;
         }
@@ -101,19 +113,19 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
 
         try {
             const depId = Number(diveJob.id || diveJob.rov_job_id);
-            const finalTime = toUtcIsoTimestamp(newMovement.movement_time);
+            const finalTime = combineLocalDateAndTimeToUtcIso(newDate, newTime);
 
             const { error } = await supabase.from("insp_rov_movements").insert({
                 rov_job_id: depId,
                 movement_time: finalTime,
-                movement_type: newMovement.movement_type,
-                remarks: newMovement.remarks,
+                movement_type: newAction,
+                remarks: newRemarks,
             });
 
             if (error) throw error;
 
             // Auto-stop active video log if ROV recovered / back to surface / TMS
-            const mTypeLower = (newMovement.movement_type || "").toLowerCase();
+            const mTypeLower = (newAction || "").toLowerCase();
             const isRecovery =
                 mTypeLower.includes("surface") ||
                 mTypeLower.includes("recovered") ||
@@ -157,7 +169,10 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
             }
 
             toast.success("Movement logged");
-            setNewMovement({ movement_type: "", remarks: "", movement_time: toDatetimeLocalString() });
+            setNewAction("");
+            setNewRemarks("");
+            setNewDate(toLocalDateString(new Date()));
+            setNewTime(toLocalTimeString(new Date(), true));
             await loadMovements();
             onRefresh?.();
         } catch (error: any) {
@@ -183,13 +198,14 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
     }
 
     async function handleUpdateMovement() {
-        if (!editForm || !editForm.movement_id) return;
+        if (!editingId) return;
         try {
+            const updatedUtc = combineLocalDateAndTimeToUtcIso(editDate, editTime);
             const { error } = await supabase.from("insp_rov_movements").update({
-                movement_time: toUtcIsoTimestamp(editForm.movement_time),
-                movement_type: editForm.movement_type,
-                remarks: editForm.remarks
-            }).eq("movement_id", editForm.movement_id);
+                movement_time: updatedUtc,
+                movement_type: editAction,
+                remarks: editRemarks
+            }).eq("movement_id", editingId);
             if (error) throw error;
             toast.success("Movement updated");
             setEditingId(null);
@@ -206,7 +222,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
     }
 
     function formatDate(timestamp: string): string {
-        return formatClientDate(timestamp);
+        return formatClientDate(timestamp, "MMM dd, yyyy");
     }
 
     return (
@@ -219,24 +235,35 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                 </div>
 
                 <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="movement_time">Time *</Label>
-                        <Input
-                            id="movement_time"
-                            type="datetime-local"
-                            value={newMovement.movement_time}
-                            onChange={(e) =>
-                                setNewMovement({ ...newMovement, movement_time: e.target.value })
-                            }
-                            className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
-                        />
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="movement_date" className="text-xs font-bold text-slate-700 dark:text-slate-300">Date *</Label>
+                            <Input
+                                id="movement_date"
+                                type="date"
+                                value={newDate}
+                                onChange={(e) => setNewDate(e.target.value)}
+                                className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-xs h-9 font-medium"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="movement_time" className="text-xs font-bold text-slate-700 dark:text-slate-300">Time (Local) *</Label>
+                            <Input
+                                id="movement_time"
+                                type="time"
+                                step="1"
+                                value={newTime}
+                                onChange={(e) => setNewTime(e.target.value)}
+                                className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono text-xs h-9 font-semibold"
+                            />
+                        </div>
                     </div>
 
                     <div className="space-y-2">
                         <Label htmlFor="activity">Action *</Label>
                         <Select
-                            value={newMovement.movement_type}
-                            onValueChange={(val) => setNewMovement({ ...newMovement, movement_type: val })}
+                            value={newAction}
+                            onValueChange={(val) => setNewAction(val)}
                         >
                             <SelectTrigger id="activity" className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
                                 <SelectValue placeholder="Select an action..." />
@@ -253,10 +280,8 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                         <Label htmlFor="notes">Notes/Remarks</Label>
                         <Textarea
                             id="notes"
-                            value={newMovement.remarks}
-                            onChange={(e) =>
-                                setNewMovement({ ...newMovement, remarks: e.target.value })
-                            }
+                            value={newRemarks}
+                            onChange={(e) => setNewRemarks(e.target.value)}
                             placeholder="Additional details..."
                             rows={3}
                             className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
@@ -323,12 +348,18 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs font-bold text-slate-400 mr-1 uppercase">
+                                            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mr-1 uppercase bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
                                                 {formatDate(movement.movement_time || new Date().toISOString())}
                                             </span>
                                             {editingId !== movement.movement_id && (
                                                 <>
-                                                    <button onClick={() => { setEditingId(movement.movement_id as number); setEditForm(movement); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-600 transition" title="Modify Event"><Edit className="w-3.5 h-3.5" /></button>
+                                                    <button onClick={() => {
+                                                        setEditingId(movement.movement_id as number);
+                                                        setEditDate(toLocalDateString(movement.movement_time));
+                                                        setEditTime(toLocalTimeString(movement.movement_time, true));
+                                                        setEditAction(movement.movement_type);
+                                                        setEditRemarks(movement.remarks || "");
+                                                    }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-600 transition" title="Modify Event"><Edit className="w-3.5 h-3.5" /></button>
                                                     <button onClick={() => handleDeleteMovement(movement.movement_id as number)} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded text-slate-400 hover:text-red-500 transition" title="Delete Event"><Trash2 className="w-3.5 h-3.5" /></button>
                                                 </>
                                             )}
@@ -336,25 +367,56 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                                     </div>
 
                                     {editingId === movement.movement_id ? (
-                                        <div className="space-y-2 mt-4 pb-2 border-t border-slate-100 dark:border-slate-800 pt-3">
-                                            <Input type="datetime-local" value={editForm?.movement_time ? toDatetimeLocalString(editForm.movement_time) : ""} onChange={(e) => setEditForm({ ...editForm!, movement_time: e.target.value })} className="h-9 font-bold bg-white dark:bg-slate-900" />
-                                            <Select
-                                                value={editForm?.movement_type || ""}
-                                                onValueChange={(val) => setEditForm(editForm ? { ...editForm, movement_type: val } : null)}
-                                            >
-                                                <SelectTrigger className="h-9 font-bold bg-white dark:bg-slate-900">
-                                                    <SelectValue placeholder="Action..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {ROV_ACTIONS.map(action => (
-                                                        <SelectItem key={`edit-${action.label}`} value={action.label}>{action.label}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                            <Textarea value={editForm?.remarks || ""} onChange={(e) => setEditForm({ ...editForm!, remarks: e.target.value })} className="min-h-[60px] text-sm font-medium bg-white dark:bg-slate-900" placeholder="Notes..." />
-                                            <div className="flex justify-end gap-2 pt-2">
-                                                <Button variant="ghost" size="sm" onClick={() => setEditingId(null)} className="h-8 font-bold"><X className="w-3.5 h-3.5 mr-1" /> Cancel</Button>
-                                                <Button variant="default" size="sm" onClick={handleUpdateMovement} className="h-8 font-bold bg-cyan-600 hover:bg-cyan-700 text-white shadow-md"><Save className="w-3.5 h-3.5 mr-1" /> Save Update</Button>
+                                        <div className="space-y-2.5 mt-4 pb-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Date *</Label>
+                                                    <Input
+                                                        type="date"
+                                                        value={editDate}
+                                                        onChange={(e) => setEditDate(e.target.value)}
+                                                        className="h-8 font-medium text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Time (Local) *</Label>
+                                                    <Input
+                                                        type="time"
+                                                        step="1"
+                                                        value={editTime}
+                                                        onChange={(e) => setEditTime(e.target.value)}
+                                                        className="h-8 font-mono font-bold text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Action *</Label>
+                                                <Select
+                                                    value={editAction}
+                                                    onValueChange={(val) => setEditAction(val)}
+                                                >
+                                                    <SelectTrigger className="h-8 font-bold text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                                                        <SelectValue placeholder="Action..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {ROV_ACTIONS.map(action => (
+                                                            <SelectItem key={`edit-${action.label}`} value={action.label}>{action.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Notes/Remarks</Label>
+                                                <Textarea
+                                                    value={editRemarks}
+                                                    onChange={(e) => setEditRemarks(e.target.value)}
+                                                    className="min-h-[55px] text-xs font-medium bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                                                    placeholder="Notes..."
+                                                />
+                                            </div>
+                                            <div className="flex justify-end gap-2 pt-1">
+                                                <Button variant="ghost" size="sm" onClick={() => setEditingId(null)} className="h-7 text-xs font-bold"><X className="w-3 h-3 mr-1" /> Cancel</Button>
+                                                <Button variant="default" size="sm" onClick={handleUpdateMovement} className="h-7 text-xs font-bold bg-cyan-600 hover:bg-cyan-700 text-white shadow-md"><Save className="w-3 h-3 mr-1" /> Save Update</Button>
                                             </div>
                                         </div>
                                     ) : (

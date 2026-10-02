@@ -91,6 +91,7 @@ interface InspectionFormProps {
     setPrevRefNo: (val: string) => void;
     criteriaRules?: any[];
     onVoiceActionCommand?: (actionIntent: any) => void;
+    calculateAutoCounter?: (targetDate?: string, targetTime?: string) => number | null;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -148,7 +149,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     validateAnomalyRef,
     setPrevRefNo,
     criteriaRules = [],
-    onVoiceActionCommand
+    onVoiceActionCommand,
+    calculateAutoCounter
 }) => {
     const [activeCriteriaRules, setActiveCriteriaRules] = React.useState<any[]>(criteriaRules || []);
 
@@ -1364,8 +1366,32 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Time</span>
                                             {renderInspectionField({ name: 'inspection_time', label: 'Time', type: 'text' }, 'primary')}
                                         </div>
-                                        <div className="space-y-0.5 flex-grow min-w-[75px] max-w-[105px]">
-                                            <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Counter</span>
+                                        <div className="space-y-0.5 flex-grow min-w-[85px] max-w-[120px]">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Counter</span>
+                                                {calculateAutoCounter && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const d = dynamicProps?.inspection_date;
+                                                            const t = dynamicProps?.inspection_time;
+                                                            const secs = calculateAutoCounter(d, t);
+                                                            if (secs !== null && secs !== undefined && secs >= 0) {
+                                                                const fmt = formatTime(secs);
+                                                                handleDynamicPropChange?.('tape_count_no', fmt);
+                                                                handleDynamicPropChange?.('counter', fmt);
+                                                                toast.success(`Counter auto-calculated: ${fmt}`);
+                                                            } else {
+                                                                toast.info("No recorded tape start time found to calculate duration.");
+                                                            }
+                                                        }}
+                                                        className="text-[7.5px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-0.5"
+                                                        title="Auto-calculate counter from tape start time & event time"
+                                                    >
+                                                        <Sparkles className="w-2.5 h-2.5" /> Auto
+                                                    </button>
+                                                )}
+                                            </div>
                                             {renderInspectionField({ name: 'tape_count_no', label: `Live: ${formatTime(vidTimer)}`, type: 'text' }, 'primary')}
                                         </div>
                                     </div>
