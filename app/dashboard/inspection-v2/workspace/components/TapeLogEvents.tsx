@@ -50,6 +50,7 @@ import {
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 interface TapeLogEventsProps {
     videoEvents: any[];
@@ -86,6 +87,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     inline = false,
     onRefresh,
 }) => {
+    const { activeCompanyId } = useUserProfile();
     const supabase = useMemo(() => createClient(), []);
 
     // Local events list synchronized with initial prop
@@ -736,6 +738,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                             tape_type: "DIGITAL - PRIMARY",
                             status: "ACTIVE",
                             cr_user: user?.id || "system",
+                            company_id: activeCompanyId || null,
                         })
                         .select("tape_id")
                         .single();
@@ -754,6 +757,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                     timecode_start: formTimecode,
                     tape_counter_start: totalCounterSecs,
                     remarks: formRemarks,
+                    company_id: activeCompanyId || null,
                 };
                 if (targetTapeId) insertPayload.tape_id = targetTapeId;
 

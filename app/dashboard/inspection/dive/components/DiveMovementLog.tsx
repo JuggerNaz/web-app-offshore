@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Clock, Plus, ListChecks, Trash2, Edit, Save, X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
+import { useUserProfile } from "@/components/user-profile-provider";
 import { parseClientDate, formatClientTime, formatClientDate, toLocalDateString, toLocalTimeString, combineLocalDateAndTimeToUtcIso } from "@/utils/client-date";
 
 // DIVE ACTIONS
@@ -48,6 +49,7 @@ interface Movement {
 
 export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogProps) {
     const supabase = createClient();
+    const { activeCompanyId } = useUserProfile();
 
     const diveActionsList = ((diveJob?.dive_type?.toUpperCase() || "AIR")).includes("BELL") || ((diveJob?.dive_type?.toUpperCase() || "AIR")).includes("SAT") ? BELL_DIVE_ACTIONS : AIR_DIVE_ACTIONS;
 
@@ -158,10 +160,13 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
 
         try {
             const depId = Number(diveJob.id || diveJob.dive_job_id);
+            const compId = diveJob.company_id || activeCompanyId || null;
             const finalTime = combineLocalDateAndTimeToUtcIso(newDate, newTime);
             const selectedAction = diveActionsList.find(a => a.label === newActivity || a.value === newActivity);
 
-            let insertPayload: Record<string, any> = {};
+            let insertPayload: Record<string, any> = {
+                company_id: compId,
+            };
             if (activeSchema === "corrected") {
                 insertPayload.dive_job_id = depId;
                 insertPayload.movement_time = finalTime;
@@ -217,6 +222,7 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
                                 timecode_start: latestVideoLog.timecode_start || "00:00:00",
                                 tape_counter_start: latestVideoLog.tape_counter_start || 0,
                                 remarks: "Auto-stopped: Diver returned to surface/chamber/recovered",
+                                company_id: compId,
                             });
                             console.log("[AutoStop] Video log automatically stopped on diver recovery.");
                         }

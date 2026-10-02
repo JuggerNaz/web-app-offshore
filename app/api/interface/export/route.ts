@@ -82,7 +82,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     };
 
     const needsAttachments = templatesToProcess.some((t) => t.queryStrategy === "ATTACHMENTS" || t.identifierCode === "ATS");
-    const needsVideo = templatesToProcess.some((t) => t.identifierCode === "VDS");
+    const needsVideo = templatesToProcess.some((t) => ["VDS", "PGS"].includes(t.identifierCode) || t.id === "sics-pgs");
     const needsPipeGeo = templatesToProcess.some((t) => t.identifierCode === "PRS" || t.identifierCode === "PL_DB");
     const needsMgiProfiles = templatesToProcess.some((t) => t.identifierCode === "MGS");
 
@@ -420,9 +420,16 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     const videoTapeMapByDiveJobId = new Map<number, any>();
     const videoTapeMapByRovJobId = new Map<number, any>();
     const videoTapeMapById = new Map<number, any>();
+    const videoTapeMapByRovJobAndTapeId = new Map<string, any>();
     (videoTapesData || []).forEach((vt: any) => {
       if (vt.tape_id != null) videoTapeMapById.set(Number(vt.tape_id), vt);
       if (vt.id != null) videoTapeMapById.set(Number(vt.id), vt);
+      if (vt.rov_job_id != null && vt.tape_id != null) {
+        videoTapeMapByRovJobAndTapeId.set(`${vt.rov_job_id}_${vt.tape_id}`, vt);
+      }
+      if (vt.rov_job_id != null && vt.id != null) {
+        videoTapeMapByRovJobAndTapeId.set(`${vt.rov_job_id}_${vt.id}`, vt);
+      }
       if (vt.dive_job_id != null && !videoTapeMapByDiveJobId.has(Number(vt.dive_job_id))) {
         videoTapeMapByDiveJobId.set(Number(vt.dive_job_id), vt);
       }
@@ -690,6 +697,42 @@ export const POST = withTenant(async (request, { companyId, user }) => {
       (byDeployRjs || []).forEach(indexRovJob);
       (byJobNoRjs || []).forEach(indexRovJob);
       (byRovJobNoRjs || []).forEach(indexRovJob);
+    }
+
+    // Collect any missing video tapes referenced in allRecords
+    const missingTapeIdSet = new Set<number>();
+    if (needsVideo) {
+      allRecords.forEach((r: any) => {
+        const idata = r.inspection_data || {};
+        const tid = Number(r.tape_id ?? idata.tape_id);
+        if (!isNaN(tid) && tid > 0 && !videoTapeMapById.has(tid)) {
+          missingTapeIdSet.add(tid);
+        }
+      });
+      if (missingTapeIdSet.size > 0) {
+        const missingTids = Array.from(missingTapeIdSet);
+        const [{ data: byIdTapes }, { data: byTapeIdTapes }] = await Promise.all([
+          (supabase as any).from("insp_video_tapes").select("*").in("id", missingTids),
+          (supabase as any).from("insp_video_tapes").select("*").in("tape_id", missingTids),
+        ]);
+        const combinedTapes = [...(byIdTapes || []), ...(byTapeIdTapes || [])];
+        combinedTapes.forEach((vt: any) => {
+          if (vt.tape_id != null) videoTapeMapById.set(Number(vt.tape_id), vt);
+          if (vt.id != null) videoTapeMapById.set(Number(vt.id), vt);
+          if (vt.rov_job_id != null && vt.tape_id != null) {
+            videoTapeMapByRovJobAndTapeId.set(`${vt.rov_job_id}_${vt.tape_id}`, vt);
+          }
+          if (vt.rov_job_id != null && vt.id != null) {
+            videoTapeMapByRovJobAndTapeId.set(`${vt.rov_job_id}_${vt.id}`, vt);
+          }
+          if (vt.dive_job_id != null && !videoTapeMapByDiveJobId.has(Number(vt.dive_job_id))) {
+            videoTapeMapByDiveJobId.set(Number(vt.dive_job_id), vt);
+          }
+          if (vt.rov_job_id != null && !videoTapeMapByRovJobId.has(Number(vt.rov_job_id))) {
+            videoTapeMapByRovJobId.set(Number(vt.rov_job_id), vt);
+          }
+        });
+      }
     }
 
     // 5. Fetch Anomalies (insp_anomalies where inspection_id = insp_records.insp_id)
@@ -1401,7 +1444,10 @@ export const POST = withTenant(async (request, { companyId, user }) => {
               rovCodes.includes(recType) ||
               rovCodes.includes(itypeCode) ||
               rovCodes.some((c) => recType.includes(c) || itypeCode.includes(c)) ||
-              itypeName.includes("ROV")
+              itypeName.includes("ROV") ||
+              recType.startsWith("R") ||
+              itypeCode.startsWith("R") ||
+              Boolean(r.rov_job_id)
             ) {
               return true;
             }
@@ -3468,12 +3514,54 @@ export const POST = withTenant(async (request, { companyId, user }) => {
             baseRow.TAPE_FOOTAGE = sanitizeText(videoLog?.timecode_start ? formatTimeStr(videoLog.timecode_start) : (idata.tape_footage || "")).substring(0, 30);
             baseRow.TAPE_PERMIT_ISSUE_DATE = "";
           } else if (code === "PGS") {
-            const tape = (r.rov_job_id ? videoTapeMapByRovJobId.get(Number(r.rov_job_id)) : null)
-              || (r.dive_job_id ? videoTapeMapByDiveJobId.get(Number(r.dive_job_id)) : null);
+            const rRovJobId = r.rov_job_id != null ? Number(r.rov_job_id) : (idata.rov_job_id != null ? Number(idata.rov_job_id) : null);
+            const rTapeId = r.tape_id != null ? Number(r.tape_id) : (idata.tape_id != null ? Number(idata.tape_id) : null);
+
+            let tape: any = null;
+            if (rRovJobId != null && rTapeId != null) {
+              tape = videoTapeMapByRovJobAndTapeId.get(`${rRovJobId}_${rTapeId}`);
+            }
+            if (!tape && rTapeId != null) {
+              tape = videoTapeMapById.get(Number(rTapeId));
+            }
+            if (!tape && rRovJobId != null) {
+              tape = videoTapeMapByRovJobId.get(Number(rRovJobId));
+            }
+            if (!tape && r.dive_job_id) {
+              tape = videoTapeMapByDiveJobId.get(Number(r.dive_job_id));
+            }
+
             baseRow.INSP_ID = r.insp_id;
             baseRow.SUPV = sanitizeText(resolvedSupervisor).substring(0, 20);
-            baseRow.TAPE_NO = sanitizeText(idata.tape_no || tape?.tape_no || "").substring(0, 50);
-            baseRow.COUNTER_NO = idata.counter_no != null && idata.counter_no !== "" ? toRoundNum(idata.counter_no) : "";
+            baseRow.TAPE_NO = sanitizeText(tape?.tape_no || idata.tape_no || r.tape_no || "").substring(0, 50);
+
+            const rawCounter = r.tape_count_no != null && r.tape_count_no !== ""
+              ? r.tape_count_no
+              : (idata.tape_count_no != null && idata.tape_count_no !== ""
+                ? idata.tape_count_no
+                : (idata.counter_no != null && idata.counter_no !== "" ? idata.counter_no : ""));
+
+            const parseCounterVal = (val: any): number | string => {
+              if (val == null || val === "") return "";
+              if (typeof val === "number" && !isNaN(val)) return Math.round(val);
+              const strVal = String(val).trim();
+              if (!strVal) return "";
+              if (/^\d+$/.test(strVal)) return parseInt(strVal, 10);
+              if (!isNaN(Number(strVal))) return Math.round(Number(strVal));
+              if (strVal.includes(":")) {
+                const parts = strVal.split(":").map(Number);
+                if (parts.length === 3 && !parts.some(isNaN)) {
+                  return parts[0] * 3600 + parts[1] * 60 + parts[2];
+                }
+                if (parts.length === 2 && !parts.some(isNaN)) {
+                  return parts[0] * 60 + parts[1];
+                }
+              }
+              const numOnly = parseFloat(strVal);
+              return !isNaN(numOnly) ? Math.round(numOnly) : "";
+            };
+
+            baseRow.COUNTER_NO = parseCounterVal(rawCounter);
             baseRow.I_DATE = formatDateStr(r.inspection_date);
             baseRow.I_TIME = sanitizeText(r.inspection_time || idata.insp_time || idata.time || "").substring(0, 8);
             baseRow.DIVER = sanitizeText(resolvedDiver).substring(0, 20);

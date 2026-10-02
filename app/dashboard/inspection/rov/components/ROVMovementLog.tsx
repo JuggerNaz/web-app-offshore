@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Clock, Plus, ListChecks, Trash2, Edit, Save, X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 import { parseClientDate, formatClientTime, formatClientDate, toLocalDateString, toLocalTimeString, combineLocalDateAndTimeToUtcIso } from "@/utils/client-date";
 
@@ -38,6 +39,7 @@ interface Movement {
 
 export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogProps) {
     const supabase = createClient();
+    const { activeCompanyId } = useUserProfile();
 
     const [movements, setMovements] = useState<Movement[]>([]);
     const [newDate, setNewDate] = useState<string>(() => toLocalDateString(new Date()));
@@ -113,6 +115,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
 
         try {
             const depId = Number(diveJob.id || diveJob.rov_job_id);
+            const compId = diveJob.company_id || activeCompanyId || null;
             const finalTime = combineLocalDateAndTimeToUtcIso(newDate, newTime);
 
             const { error } = await supabase.from("insp_rov_movements").insert({
@@ -120,6 +123,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                 movement_time: finalTime,
                 movement_type: newAction,
                 remarks: newRemarks,
+                company_id: compId,
             });
 
             if (error) throw error;
@@ -159,6 +163,7 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                                 timecode_start: latestVideoLog.timecode_start || "00:00:00",
                                 tape_counter_start: latestVideoLog.tape_counter_start || 0,
                                 remarks: "Auto-stopped: ROV returned to surface/TMS/recovered",
+                                company_id: compId,
                             });
                             console.log("[AutoStop] Video log automatically stopped on ROV recovery.");
                         }

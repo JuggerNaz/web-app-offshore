@@ -5437,6 +5437,7 @@ function V10PreviewLayout() {
               status: "ACTIVE",
               [jobCol]: jobVal,
               cr_user: user?.id || "system",
+              company_id: activeCompanyId || null,
             })
             .select()
             .single();
@@ -5491,6 +5492,7 @@ function V10PreviewLayout() {
             timecode_start: tcode,
             tape_counter_start: currentTimer,
             remarks: "",
+            company_id: activeCompanyId || null,
           })
           .select("video_log_id")
           .single();
@@ -7070,6 +7072,7 @@ function V10PreviewLayout() {
               status: "ACTIVE",
               [jobCol]: jobVal,
               cr_user: user?.id || "system",
+              company_id: activeCompanyId || null,
             })
             .select("tape_id")
             .single();
@@ -7649,6 +7652,7 @@ function V10PreviewLayout() {
           timecode_start: finalTimecodeStr,
           tape_counter_start: finalCounterSecs,
           tape_id: tId,
+          company_id: activeCompanyId || null,
         });
       }
 
