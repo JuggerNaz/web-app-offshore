@@ -14,7 +14,7 @@ export function getAttachmentUrl(attachment: any, supabase?: any): string {
         return `/api/attachment/download?path=${encodeURIComponent(str)}`;
     }
 
-    const rawPath = attachment.path || attachment.file_path || attachment.url || attachment.file_url || attachment.storage_path;
+    const rawPath = attachment.path || attachment.file_path || attachment.url || attachment.file_url || attachment.storage_path || attachment.meta?.file_url || attachment.meta?.file_path;
 
     // If it's already a full URL or blob URL or data URL
     if (typeof rawPath === 'string') {

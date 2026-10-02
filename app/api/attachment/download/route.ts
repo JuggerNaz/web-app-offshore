@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
 
@@ -19,6 +18,23 @@ export async function GET(request: NextRequest) {
     let storagePath = decodeURIComponent(path.trim());
 
     if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
+        // Direct remote or public Supabase URL: attempt direct fetch
+        try {
+            const directResp = await fetch(storagePath);
+            if (directResp.ok) {
+                const buffer = await directResp.arrayBuffer();
+                return new NextResponse(buffer, {
+                    headers: {
+                        "Content-Type": directResp.headers.get("Content-Type") || "image/jpeg",
+                        "Content-Length": buffer.byteLength.toString(),
+                        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                    },
+                });
+            }
+        } catch {}
+
         const parts = storagePath.split("/");
         const bucketIndex = parts.indexOf(bucket);
         if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
@@ -28,6 +44,12 @@ export async function GET(request: NextRequest) {
             if (attIndex !== -1 && attIndex < parts.length - 1) {
                 storagePath = parts.slice(attIndex + 1).join("/");
                 bucket = "attachments";
+            } else {
+                const inspIndex = parts.indexOf("inspection-media");
+                if (inspIndex !== -1 && inspIndex < parts.length - 1) {
+                    storagePath = parts.slice(inspIndex + 1).join("/");
+                    bucket = "inspection-media";
+                }
             }
         }
     }
@@ -36,42 +58,70 @@ export async function GET(request: NextRequest) {
         storagePath = storagePath.slice(bucket.length + 1);
     } else if (storagePath.startsWith("attachments/")) {
         storagePath = storagePath.replace(/^attachments\//, "");
+    } else if (storagePath.startsWith("inspection-media/")) {
+        storagePath = storagePath.replace(/^inspection-media\//, "");
     }
     storagePath = storagePath.replace(/^\/+/, "");
 
-    let { data, error } = await supabase.storage.from(bucket).download(storagePath);
+    const pathVariations = [
+        storagePath,
+        storagePath.startsWith("uploads/") ? storagePath.replace(/^uploads\//, "") : `uploads/${storagePath}`,
+    ].filter(Boolean);
 
-    // If download fails, try alternative bucket or path variations
-    if (error || !data) {
-        const altBuckets = ["attachments", "inspection-media", "company-assets", "public"].filter(b => b !== bucket);
-        for (const altBucket of altBuckets) {
-            const { data: altData, error: altErr } = await supabase.storage.from(altBucket).download(storagePath);
-            if (!altErr && altData) {
-                data = altData;
-                error = null;
-                break;
+    const bucketVariations = Array.from(new Set([bucket, "attachments", "inspection-media", "company-assets", "public"]));
+
+    let downloadedBuffer: ArrayBuffer | null = null;
+    let contentType = "image/jpeg";
+
+    for (const b of bucketVariations) {
+        for (const p of pathVariations) {
+            try {
+                const { data, error } = await supabase.storage.from(b).download(p);
+                if (!error && data) {
+                    downloadedBuffer = await data.arrayBuffer();
+                    contentType = data.type || "image/jpeg";
+                    break;
+                }
+            } catch {}
+        }
+        if (downloadedBuffer) break;
+    }
+
+    if (downloadedBuffer) {
+        return new NextResponse(downloadedBuffer, {
+            headers: {
+                "Content-Type": contentType,
+                "Content-Length": downloadedBuffer.byteLength.toString(),
+                "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            },
+        });
+    }
+
+    // Try signed URL or public URL via Supabase Storage
+    try {
+        const { data: signedData } = await supabase.storage.from(bucket).createSignedUrl(storagePath, 3600);
+        const urlToFetch = signedData?.signedUrl || supabase.storage.from(bucket).getPublicUrl(storagePath)?.data?.publicUrl;
+        if (urlToFetch) {
+            const fetchResp = await fetch(urlToFetch);
+            if (fetchResp.ok) {
+                const buffer = await fetchResp.arrayBuffer();
+                return new NextResponse(buffer, {
+                    headers: {
+                        "Content-Type": fetchResp.headers.get("Content-Type") || "image/jpeg",
+                        "Content-Length": buffer.byteLength.toString(),
+                        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                    },
+                });
             }
         }
-    }
+    } catch {}
 
-    if (error || !data) {
-        console.error(`[Download] Error fetching ${storagePath} from bucket ${bucket}:`, error);
-        return NextResponse.json({ error: error?.message || "Attachment not found" }, { status: 404 });
-    }
-
-    const buffer = await data.arrayBuffer();
-
-    return new NextResponse(buffer, {
-        headers: {
-            "Content-Type": data.type || "image/jpeg",
-            "Content-Length": data.size.toString(),
-            "Cache-Control": "private, no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-        },
-    });
+    console.error(`[Download] Error fetching ${storagePath} from buckets`);
+    return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
 }
 
 export async function OPTIONS() {

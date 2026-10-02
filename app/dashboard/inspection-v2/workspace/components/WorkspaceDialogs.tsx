@@ -1549,68 +1549,120 @@ export function WorkspaceDialogs({
                 onOpenChange={(open) => !open && setEditingAttachment(null)}
                 attachment={editingAttachment}
                 onSave={async (updated) => {
-                    if (updated.isEdited || updated.title !== editingAttachment.title || updated.description !== editingAttachment.description) {
-                        // 1. Handle Pending Attachments (local state - unsaved items)
-                        if (pendingAttachments.some(a => a.id === updated.id)) {
-                            setPendingAttachments(prev => prev.map(a => a.id === updated.id ? updated : a));
-                        } 
-                        // 2. Handle Saved Attachments (database records)
-                        else {
-                            try {
-                                if (updated.isEdited && updated.file) {
-                                    // Use the centralized API to handle multi-provider upload
-                                    const formData = new FormData();
-                                    formData.append("id", String(updated.id));
-                                    formData.append("file", updated.file);
-                                    formData.append("filePath", updated.path || ""); // Old path for deletion
+                    if (!updated) return;
+                    const updatedTitle = updated.title || updated.name || '';
+                    const updatedDesc = updated.description || '';
 
-                                    const response = await fetch("/api/attachment", {
-                                        method: "PUT",
-                                        body: formData
-                                    });
-
-                                    if (!response.ok) {
-                                        const errData = await response.json();
-                                        throw new Error(errData.error || "Failed to upload edited image");
+                    // 1. ALWAYS update pendingAttachments immediately so the inspection screen updates instantly
+                    setPendingAttachments((prev: any[]) => {
+                        return prev.map(a => {
+                            if (String(a.id) === String(updated.id) || (a.name && a.name === updated.name && a.created_at === updated.created_at)) {
+                                return {
+                                    ...a,
+                                    ...updated,
+                                    title: updatedTitle,
+                                    name: updatedTitle || a.name,
+                                    description: updatedDesc,
+                                    path: updated.path || a.path,
+                                    previewUrl: updated.previewUrl || a.previewUrl,
+                                    meta: {
+                                        ...(a.meta || {}),
+                                        ...(updated.meta || {}),
+                                        title: updatedTitle,
+                                        description: updatedDesc,
                                     }
+                                };
+                            }
+                            return a;
+                        });
+                    });
 
-                                    const result = await response.json();
-                                    updated.path = result.url; // Update path with the new cloud storage URL
+                    // 2. Also update viewingRecordAttachments if present
+                    if (viewingRecordAttachments) {
+                        const updateViewing = (prev: any[] | null) =>
+                            prev ? prev.map(a => String(a.id) === String(updated.id) ? {
+                                ...a,
+                                ...updated,
+                                title: updatedTitle,
+                                name: updatedTitle || a.name,
+                                description: updatedDesc,
+                                path: updated.path || a.path,
+                                previewUrl: updated.previewUrl || a.previewUrl,
+                                meta: {
+                                    ...(a.meta || {}),
+                                    ...(updated.meta || {}),
+                                    title: updatedTitle,
+                                    description: updatedDesc,
                                 }
+                            } : a) : null;
+                        if (typeof setViewingRecordAttachments === 'function') {
+                            setViewingRecordAttachments(updateViewing);
+                        } else if (setters && typeof setters.setViewingRecordAttachments === 'function') {
+                            setters.setViewingRecordAttachments(updateViewing);
+                        }
+                    }
 
-                                // Update title, description, and path in the database
-                                const { error } = await supabase
+                    // 3. Persist to DB if existing record
+                    const isExistingRecord = updated.isExisting || (!isNaN(Number(updated.id)) && !String(updated.id).startsWith('temp-') && !String(updated.id).startsWith('rand-'));
+                    if (isExistingRecord) {
+                        try {
+                            let finalPath = updated.path;
+                            if (updated.isEdited && updated.file) {
+                                const formData = new FormData();
+                                formData.append("id", String(updated.id));
+                                formData.append("file", updated.file);
+                                formData.append("filePath", updated.path || "");
+                                const response = await fetch("/api/attachment", {
+                                    method: "PUT",
+                                    body: formData
+                                });
+                                if (response.ok) {
+                                    const result = await response.json();
+                                    if (result.url) {
+                                        finalPath = result.url;
+                                        updated.path = result.url;
+                                    }
+                                }
+                            }
+
+                            const isMediaPrefix = String(updated.id).startsWith("media-");
+                            if (isMediaPrefix) {
+                                const cleanId = Number(String(updated.id).replace("media-", ""));
+                                if (!isNaN(cleanId)) {
+                                    await (supabase as any)
+                                        .from('insp_media')
+                                        .update({
+                                            name: updatedTitle,
+                                            meta: {
+                                                ...(updated.meta || {}),
+                                                title: updatedTitle,
+                                                description: updatedDesc,
+                                            }
+                                        })
+                                        .eq('media_id', cleanId);
+                                }
+                            } else if (!isNaN(Number(updated.id))) {
+                                await (supabase as any)
                                     .from('attachment')
                                     .update({
-                                        name: updated.title,
-                                        path: updated.path,
+                                        name: updatedTitle,
+                                        path: finalPath,
                                         meta: {
-                                            ...updated.meta,
-                                            description: updated.description,
+                                            ...(updated.meta || {}),
+                                            title: updatedTitle,
+                                            description: updatedDesc,
                                             type: updated.type || 'PHOTO'
                                         }
                                     })
-                                    .eq('id', updated.id);
-                                
-                                if (error) throw error;
-                                toast.success("Attachment updated successfully");
-                                
-                                // Refresh local state to reflect changes
-                                if (viewingRecordAttachments) {
-                                    setViewingRecordAttachments((prev: any[] | null) => 
-                                        prev ? prev.map(a => a.id === updated.id ? { 
-                                            ...a, 
-                                            name: updated.title, 
-                                            path: updated.path,
-                                            meta: { ...a.meta, description: updated.description } 
-                                        } : a) : null
-                                    );
-                                }
-                            } catch (err: any) {
-                                console.error("Error updating attachment:", err);
-                                toast.error("Failed to update: " + err.message);
+                                    .eq('id', Number(updated.id));
                             }
+                            toast.success("Attachment updated successfully");
+                        } catch (err: any) {
+                            console.error("Error saving attachment to DB:", err);
+                            toast.error("Failed to save attachment to server: " + (err.message || "Unknown error"));
                         }
+                    } else {
+                        toast.success("Attachment updated locally");
                     }
                     setEditingAttachment(null);
                 }}
@@ -2825,74 +2877,121 @@ export function WorkspaceDialogs({
                 attachment={editingAttachment}
                 onSave={async (updated) => {
                     if (!updated) return;
+                    const updatedTitle = updated.title || updated.name || '';
+                    const updatedDesc = updated.description || '';
 
-                    // Handle Pending (local) Update
-                    if (!updated.isExisting) {
-                        setPendingAttachments((prev: any[]) => {
-                            const newAtts = prev.map(a => {
-                                if (String(a.id) === String(updated.id)) {
-                                    return {
-                                        ...a,
-                                        ...updated,
-                                        isEdited: updated.isEdited || a.isEdited,
-                                        // Ensure meta description stays in sync if used by certain templates
-                                        meta: {
-                                            ...(a.meta || {}),
-                                            description: updated.description,
-                                            title: updated.title
-                                        }
-                                    };
-                                }
-                                return a;
-                            });
-                            return [...newAtts]; // Force new array reference
-                        });
-                        setEditingAttachment(null);
-                        toast.success("Attachment updated locally");
-                    } else {
-                        // Handle Existing (Supabase) Update
-                        try {
-                            // 1. If file has changed (markup applied), upload to storage
-                            let newPath = updated.path;
-                            if (updated.file && updated.file instanceof Blob) {
-                                const fileExt = updated.name.split('.').pop();
-                                const filePath = `${updated.source_id || 'edited'}/${updated.id}_${Date.now()}.${fileExt}`;
-                                
-                                const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, updated.file);
-                                if (uploadError) throw uploadError;
-                                newPath = filePath;
-                            }
-
-                            // 2. Update DB
-                            const { error } = await supabase
-                                .from('attachment')
-                                .update({
-                                    name: updated.title,
-                                    path: newPath,
+                    // 1. ALWAYS update pendingAttachments immediately so the inspection screen updates instantly
+                    setPendingAttachments((prev: any[]) => {
+                        return prev.map(a => {
+                            if (String(a.id) === String(updated.id) || (a.name && a.name === updated.name && a.created_at === updated.created_at)) {
+                                return {
+                                    ...a,
+                                    ...updated,
+                                    title: updatedTitle,
+                                    name: updatedTitle || a.name,
+                                    description: updatedDesc,
+                                    path: updated.path || a.path,
+                                    previewUrl: updated.previewUrl || a.previewUrl,
                                     meta: {
-                                        ...updated.meta,
-                                        description: updated.description,
-                                        type: updated.type || 'PHOTO'
+                                        ...(a.meta || {}),
+                                        ...(updated.meta || {}),
+                                        title: updatedTitle,
+                                        description: updatedDesc,
                                     }
-                                })
-                                .eq('id', updated.id);
-
-                            if (error) throw error;
-
-                            // 3. Update local state for viewingRecordAttachments
-                            if (viewingRecordAttachments) {
-                                setters.setViewingRecordAttachments(prev => 
-                                    prev ? prev.map(a => a.id === updated.id ? { ...a, ...updated, path: newPath } : a) : null
-                                );
+                                };
                             }
+                            return a;
+                        });
+                    });
 
-                            setEditingAttachment(null);
-                            toast.success("Attachment saved to server");
-                        } catch (err: any) {
-                            console.error("Failed to save attachment:", err);
-                            toast.error("Failed to save attachment: " + err.message);
+                    // 2. Also update viewingRecordAttachments if present
+                    if (viewingRecordAttachments) {
+                        const updateViewing = (prev: any[] | null) => 
+                            prev ? prev.map(a => String(a.id) === String(updated.id) ? {
+                                ...a,
+                                ...updated,
+                                title: updatedTitle,
+                                name: updatedTitle || a.name,
+                                description: updatedDesc,
+                                path: updated.path || a.path,
+                                previewUrl: updated.previewUrl || a.previewUrl,
+                                meta: {
+                                    ...(a.meta || {}),
+                                    ...(updated.meta || {}),
+                                    title: updatedTitle,
+                                    description: updatedDesc,
+                                }
+                            } : a) : null;
+                        if (setters && typeof setters.setViewingRecordAttachments === 'function') {
+                            setters.setViewingRecordAttachments(updateViewing);
+                        } else if (typeof setViewingRecordAttachments === 'function') {
+                            setViewingRecordAttachments(updateViewing);
                         }
                     }
+
+                    // 3. Persist to DB if existing record
+                    const isExistingRecord = updated.isExisting || (!isNaN(Number(updated.id)) && !String(updated.id).startsWith('temp-') && !String(updated.id).startsWith('rand-'));
+                    if (isExistingRecord) {
+                        try {
+                            let finalPath = updated.path;
+                            if (updated.isEdited && updated.file) {
+                                const formData = new FormData();
+                                formData.append("id", String(updated.id));
+                                formData.append("file", updated.file);
+                                formData.append("filePath", updated.path || "");
+                                const response = await fetch("/api/attachment", {
+                                    method: "PUT",
+                                    body: formData
+                                });
+                                if (response.ok) {
+                                    const result = await response.json();
+                                    if (result.url) {
+                                        finalPath = result.url;
+                                        updated.path = result.url;
+                                    }
+                                }
+                            }
+
+                            const isMediaPrefix = String(updated.id).startsWith("media-");
+                            if (isMediaPrefix) {
+                                const cleanId = Number(String(updated.id).replace("media-", ""));
+                                if (!isNaN(cleanId)) {
+                                    await (supabase as any)
+                                        .from('insp_media')
+                                        .update({
+                                            name: updatedTitle,
+                                            meta: {
+                                                ...(updated.meta || {}),
+                                                title: updatedTitle,
+                                                description: updatedDesc,
+                                            }
+                                        })
+                                        .eq('media_id', cleanId);
+                                }
+                            } else if (!isNaN(Number(updated.id))) {
+                                await (supabase as any)
+                                    .from('attachment')
+                                    .update({
+                                        name: updatedTitle,
+                                        path: finalPath,
+                                        meta: {
+                                            ...(updated.meta || {}),
+                                            title: updatedTitle,
+                                            description: updatedDesc,
+                                            type: updated.type || 'PHOTO'
+                                        }
+                                    })
+                                    .eq('id', Number(updated.id));
+                            }
+                            toast.success("Attachment updated successfully");
+                        } catch (err: any) {
+                            console.error("Failed to save attachment:", err);
+                            toast.error("Failed to save attachment: " + (err.message || "Unknown error"));
+                        }
+                    } else {
+                        toast.success("Attachment updated locally");
+                    }
+                    setEditingAttachment(null);
                 }}
             />
             <ReportWizardDialog

@@ -329,9 +329,25 @@ class AWSS3StorageHandler implements StorageHandler {
   }
 
   async getSignedUrl(filePath: string, expiresIn: number = 3600) {
+    let key = (filePath || "").trim();
+    if (key.startsWith("http://") || key.startsWith("https://")) {
+      try {
+        const url = new URL(key);
+        const pathParts = url.pathname.split("/").filter(Boolean);
+        if (pathParts[0] === this.bucket) {
+          key = pathParts.slice(1).join("/");
+        } else {
+          key = pathParts.join("/");
+        }
+      } catch (e) {
+        console.warn(`[AWSS3StorageHandler] Failed to parse URL ${filePath}, using as-is`);
+      }
+    }
+    key = key.replace(/^\/+/, "");
+
     const command = new GetObjectCommand({
       Bucket: this.bucket,
-      Key: filePath,
+      Key: key,
     });
     return await getSignedUrl(this.client, command, { expiresIn });
   }

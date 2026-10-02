@@ -2206,16 +2206,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             </div>
                             {pendingAttachments.length > 0 && (
                                 <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
-                                    {pendingAttachments.map(att => {
+                                    {pendingAttachments.map((att, attIdx) => {
+                                        const isPhoto = !att.type || String(att.type).toUpperCase() === 'PHOTO' || String(att.type).toLowerCase().includes('image') || String(att.meta?.type).toUpperCase() === 'PHOTO';
+                                        const isVideo = String(att.type).toUpperCase() === 'VIDEO' || String(att.meta?.type).toUpperCase() === 'VIDEO';
                                         const resolvedPreview = att.previewUrl || (att.id ? `/api/attachment/url?id=${encodeURIComponent(att.id)}${att.path ? `&path=${encodeURIComponent(att.path)}` : ''}` : (att.path ? `/api/attachment/download?path=${encodeURIComponent(att.path)}` : ''));
                                         return (
-                                            <div key={att.id} className="relative group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                                            <div key={att.id || `att-${attIdx}`} className="relative group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 dark:hover:border-blue-700 transition-all">
                                                 <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all flex items-center justify-center" onClick={() => setEditingAttachment(att)}>
-                                                    {att.type === 'PHOTO' && resolvedPreview ? (
+                                                    {isPhoto && resolvedPreview ? (
                                                         <>
                                                             <img 
+                                                                key={`${att.id || attIdx}-${resolvedPreview}`}
                                                                 src={resolvedPreview} 
-                                                                alt="" 
+                                                                alt={att.title || att.name || "Attachment"} 
                                                                 className="w-full h-full object-cover" 
                                                                 onError={(e) => {
                                                                     const target = e.currentTarget;
@@ -2234,14 +2237,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                 <FileText className="w-5 h-5 opacity-50" />
                                                             </div>
                                                         </>
-                                                    ) : att.type === 'VIDEO' && resolvedPreview ? (
+                                                    ) : isVideo && resolvedPreview ? (
                                                         <div className="w-full h-full relative">
                                                             <video src={resolvedPreview} className="w-full h-full object-cover" />
                                                             <div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video className="w-5 h-5 text-white opacity-80" /></div>
                                                         </div>
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center bg-slate-200 dark:bg-slate-800">
-                                                            {att.type === 'VIDEO' ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
+                                                            {isVideo ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
                                                         </div>
                                                     )}
                                                 </div>

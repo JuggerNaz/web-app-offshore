@@ -574,10 +574,40 @@ function V10PreviewLayout() {
             parsed.borders = parsed.borders.map(stripPipelinePanelsFromLayout).filter(Boolean);
           }
         }
-        if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
+
+        const getComponentsInNode = (node: any): string[] => {
+          if (!node) return [];
+          const comps: string[] = [];
+          if (node.component) comps.push(node.component);
+          if (Array.isArray(node.children)) {
+            for (const child of node.children) {
+              comps.push(...getComponentsInNode(child));
+            }
+          }
+          return comps;
+        };
+
+        const existingComps = [
+          ...getComponentsInNode(parsed?.layout),
+          ...(Array.isArray(parsed?.borders) ? parsed.borders.flatMap(getComponentsInNode) : []),
+        ];
+
+        // Ensure all core inspection panels exist in the restored layout
+        const requiredComps = ["form", "events", "components", "opsLog"];
+        const hasAllRequired = requiredComps.every((c) => existingComps.includes(c));
+
+        if (!hasAllRequired) {
+          console.warn("[Workspace] Stored layout is missing essential panels, resetting to default layout.", {
+            existingComps,
+            requiredComps,
+          });
+          localStorage.removeItem(storageKey);
+          localStorage.removeItem("inspection-workspace-layout-v2");
+          localStorage.removeItem("pipeline-workspace-layout-v2");
+        } else if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
           console.log("[DEBUG] Restoring layout from storage", parsed);
           if (!parsed.global) parsed.global = {};
-          parsed.global.tabEnableClose = true;
+          parsed.global.tabEnableClose = false;
           parsed.global.tabSetEnableMaximize = true;
           parsed.global.enableEdgeDock = true;
           if (!parsed.borders) {
@@ -598,7 +628,7 @@ function V10PreviewLayout() {
     console.log("[DEBUG] Using default layout model");
     const defaultModel: IJsonModel = {
       global: { 
-        tabEnableClose: true, 
+        tabEnableClose: false, 
         tabSetEnableMaximize: true,
         tabSetEnableDivide: true,
         tabSetEnableDrop: true,
@@ -710,6 +740,7 @@ function V10PreviewLayout() {
       const storageKey = isPipe ? "pipeline-workspace-layout-v2" : "inspection-workspace-layout-v2";
       localStorage.removeItem(storageKey);
       localStorage.removeItem("inspection-workspace-layout-v2");
+      localStorage.removeItem("pipeline-workspace-layout-v2");
       window.location.reload();
     }
   }, [isPipe]);
@@ -7819,28 +7850,7 @@ function V10PreviewLayout() {
     let fullRecord = record;
     const recordId = record.insp_id || record.id;
 
-    // Fetch full record if missing essential data or if joined anomalies might be missing
-    // Especially important if has_anomaly is TRUE but anomalies didn't load in history/list
-    if (
-      !record.inspection_data ||
-      !record.component_id ||
-      !record.inspection_type ||
-      (record.has_anomaly && (!record.insp_anomalies || record.insp_anomalies.length === 0))
-    ) {
-      const { data, error } = await supabase
-        .from("insp_records")
-        .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*)")
-        .eq("insp_id", recordId)
-        .maybeSingle();
-
-      if (data) {
-        fullRecord = data;
-      } else if (error) {
-        console.error("Error fetching record for edit:", error);
-        toast.error("Could not load full record details");
-      }
-    }
-
+    // 1. Immediately determine and set component & active spec synchronously
     const isPipeMode = isPipeline || headerData?.structureType === "pipeline";
     if (isPipeMode) {
       const pipelineComp = (componentsSow && componentsSow.length > 0)
@@ -7867,7 +7877,6 @@ function V10PreviewLayout() {
       if (comp) {
         setSelectedComp(comp);
       } else {
-        // Use joined component data if available
         const jc = fullRecord.structure_components;
         const md = (typeof jc?.metadata === "string" ? JSON.parse(jc.metadata) : jc?.metadata) || {};
 
@@ -7897,49 +7906,45 @@ function V10PreviewLayout() {
         });
       }
 
-      // Map data from DB to UI state - USE CODE FIRST to avoid name ambiguity (e.g. GVI vs RGVI)
       setActiveSpec(
         fullRecord.inspection_type?.code ||
           fullRecord.inspection_type_code ||
           fullRecord.inspection_type?.name
       );
     }
+
     setShowTaskSelector(false);
     setShowCompSelector(false);
     setEditingRecordId(fullRecord.insp_id || fullRecord.id);
-    setRecordNotes(fullRecord.description || fullRecord.observation || ""); // Handles inconsistency in column names
+    setRecordNotes(fullRecord.description || fullRecord.observation || "");
 
+    // 2. Parse inspection_data immediately
     let parsedData: Record<string, any> = {};
     if (fullRecord.inspection_data) {
-        try {
-            let raw = typeof fullRecord.inspection_data === 'string' 
-                ? JSON.parse(fullRecord.inspection_data) 
-                : fullRecord.inspection_data;
-            
-            // Handle case where inspection_data was incorrectly saved as an array
-            // (e.g., field definitions array instead of data object)
-            if (Array.isArray(raw)) {
-                console.warn('[handleEditRecord] inspection_data is an array — extracting data from last element');
-                // The last element might be the actual data object if field defs were saved as array
-                const lastItem = raw[raw.length - 1];
-                if (lastItem && typeof lastItem === 'object' && !Array.isArray(lastItem) && (lastItem.inspno || lastItem.insp_id || lastItem.scan_type || lastItem.ut_3_o_clock)) {
-                    raw = lastItem;
-                } else {
-                    raw = {};
-                }
-            }
-            
-            // Filter out numeric-index garbage keys (from array spread contamination)
-            Object.keys(raw).forEach(key => {
-                if (/^\d+$/.test(key)) {
-                    delete raw[key];
-                }
-            });
-            
-            parsedData = raw;
-        } catch (e) {
-            console.error('[handleEditRecord] Failed to parse inspection_data:', e);
+      try {
+        let raw = typeof fullRecord.inspection_data === 'string' 
+          ? JSON.parse(fullRecord.inspection_data) 
+          : fullRecord.inspection_data;
+        
+        if (Array.isArray(raw)) {
+          const lastItem = raw[raw.length - 1];
+          if (lastItem && typeof lastItem === 'object' && !Array.isArray(lastItem) && (lastItem.inspno || lastItem.insp_id || lastItem.scan_type || lastItem.ut_3_o_clock)) {
+            raw = lastItem;
+          } else {
+            raw = {};
+          }
         }
+        
+        Object.keys(raw).forEach(key => {
+          if (/^\d+$/.test(key)) {
+            delete raw[key];
+          }
+        });
+        
+        parsedData = raw;
+      } catch (e) {
+        console.error('[handleEditRecord] Failed to parse inspection_data:', e);
+      }
     }
     
     const initialProps: Record<string, any> = { ...parsedData };
@@ -7949,14 +7954,12 @@ function V10PreviewLayout() {
     if (fullRecord.inspection_date) initialProps.inspection_date = fullRecord.inspection_date;
     if (fullRecord.inspection_time) initialProps.inspection_time = fullRecord.inspection_time;
 
-    // Sync debris_desc from description on load if it's a Debris record
     if (activeSpec === 'RSEAB' && initialProps.category === 'Debris') {
-       if (!initialProps.debris_desc || initialProps.debris_desc === '') {
-          initialProps.debris_desc = fullRecord.description || fullRecord.observation || "";
-       }
+      if (!initialProps.debris_desc || initialProps.debris_desc === '') {
+        initialProps.debris_desc = fullRecord.description || fullRecord.observation || "";
+      }
     }
 
-    // Save Context for Re-classification feature
     setOriginalRecordContext({
       component_id: fullRecord.component_id,
       inspection_type_id: fullRecord.inspection_type_id,
@@ -7966,25 +7969,20 @@ function V10PreviewLayout() {
     
     let parsedArchive: Record<string, any> = {};
     try {
-        if (fullRecord.archived_data) {
-            parsedArchive = typeof fullRecord.archived_data === 'string'
-                ? JSON.parse(fullRecord.archived_data)
-                : fullRecord.archived_data;
-            // Filter out numeric keys from archive too
-            Object.keys(parsedArchive).forEach(key => {
-                if (/^\d+$/.test(key)) delete parsedArchive[key];
-            });
-        }
+      if (fullRecord.archived_data) {
+        parsedArchive = typeof fullRecord.archived_data === 'string'
+          ? JSON.parse(fullRecord.archived_data)
+          : fullRecord.archived_data;
+        Object.keys(parsedArchive).forEach(key => {
+          if (/^\d+$/.test(key)) delete parsedArchive[key];
+        });
+      }
     } catch (e) {
-        console.error('[handleEditRecord] Failed to parse archived_data:', e);
+      console.error('[handleEditRecord] Failed to parse archived_data:', e);
     }
     setArchivedData(parsedArchive);
     
-    // Auto-restore any fields that were accidentally archived (due to earlier $ref unresolved bug)
-    // If they are valid fields now, they will naturally be saved to inspection_data on next commit.
     const mergedProps: Record<string, any> = { ...parsedArchive, ...initialProps };
-    
-    // Explicitly load elevation if missing in inspection_data but present in column
     if (
       fullRecord.elevation !== undefined &&
       fullRecord.elevation !== null &&
@@ -7993,7 +7991,6 @@ function V10PreviewLayout() {
       mergedProps.verification_depth = String(fullRecord.elevation);
     }
 
-    // Do not set debounced props immediately to avoid triggering validation without user interaction
     setDynamicProps(mergedProps);
     setDebouncedProps(mergedProps);
     hasUserInteracted.current = false;
@@ -8003,95 +8000,15 @@ function V10PreviewLayout() {
     setShowCriteriaConfirm(false);
     setShowRemovalConfirm(false);
 
-    // Fetch existing attachments (Both inspection-level and anomaly-level attachments & media)
-    let combinedList: any[] = [];
-    try {
-      const res = await fetch(`/api/attachment/inspection/${recordId}`);
-      if (res.ok) {
-        const jsonAtts = await res.json();
-        if (Array.isArray(jsonAtts) && jsonAtts.length > 0) {
-          combinedList = jsonAtts;
-        }
-      }
-    } catch {}
-
-    if (combinedList.length === 0) {
-      const sourceIds = [recordId];
-      const anomId = fullRecord.insp_anomalies?.[0]?.anomaly_id || fullRecord.anomaly_details?.anomaly_id || fullRecord.anomaly_id;
-      if (anomId && !sourceIds.includes(anomId)) sourceIds.push(anomId);
-
-      const { data: atts } = await supabase
-          .from("attachment")
-          .select("*")
-          .in("source_id", sourceIds)
-          .in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "defect", "DEFECT", "insp_record", "INSP_RECORD"]);
-
-      const { data: media } = await supabase
-          .from("insp_media" as any)
-          .select("*")
-          .in("inspection_id", [recordId]);
-
-      combinedList = [...(atts || [])];
-      if (media && media.length > 0) {
-        for (const m of media) {
-          if (!combinedList.some(a => a.path === m.file_path || String(a.id) === `media-${m.media_id}`)) {
-            combinedList.push({
-              id: `media-${m.media_id}`,
-              name: m.name || `Photo ${m.media_id}`,
-              path: m.file_path,
-              source_type: "INSPECTION",
-              source_id: m.inspection_id,
-              meta: {
-                ...m.meta,
-                bucket: "inspection-media",
-                is_insp_media: true,
-              },
-              created_at: m.captured_at,
-            });
-          }
-        }
-      }
-    }
-
-    if (combinedList.length > 0) {
-      const mapped = combinedList.map((a: any) => {
-        const publicUrl = getAttachmentUrl(a, supabase);
-        return {
-          id: a.id,
-          name: a.name,
-          title: a.name,
-          description: a.meta?.description || "",
-          type:
-            a.meta?.type ||
-            (a.meta?.file_type?.startsWith("video/")
-              ? "VIDEO"
-              : a.meta?.file_type?.startsWith("image/")
-                ? "PHOTO"
-                : a.meta?.file_type?.includes("pdf") || a.meta?.file_type?.includes("document")
-                  ? "DOCUMENT"
-                  : "PHOTO"),
-          source: a.source_type,
-          previewUrl: publicUrl,
-          path: a.path,
-          meta: a.meta || {},
-          isExisting: true,
-        };
-      });
-      setPendingAttachments(mapped);
-    } else {
-      setPendingAttachments([]);
-    }
-
-    // Resolve anomaly details from join or fallback
-    const anomalyObj = fullRecord.insp_anomalies?.[0] || fullRecord.anomaly_details;
-
-    // Determine finding type (Handling both record flags and anomaly categories)
-    const isFinding =
-      anomalyObj?.record_category === "FINDING" ||
+    // 3. Immediately set finding/anomaly status from initial record object
+    const initialAnomalyObj = fullRecord.insp_anomalies?.[0] || fullRecord.anomaly_details;
+    const initialIsFinding =
+      initialAnomalyObj?.record_category === "FINDING" ||
       fullRecord.inspection_data?._meta_status === "Finding";
+
     setFindingType(
       fullRecord.has_anomaly
-        ? isFinding
+        ? initialIsFinding
           ? "Finding"
           : "Anomaly"
         : fullRecord.status === "INCOMPLETE"
@@ -8101,27 +8018,134 @@ function V10PreviewLayout() {
 
     setIncompleteReason(fullRecord.inspection_data?.incomplete_reason || "");
 
-    if (fullRecord.has_anomaly && anomalyObj) {
+    if (fullRecord.has_anomaly && initialAnomalyObj) {
       setAnomalyData({
-        defectCode: anomalyObj.defect_type_code || anomalyObj.defect_code || "",
-        priority: anomalyObj.priority_code || anomalyObj.priority || "",
-        defectType: anomalyObj.defect_category_code || anomalyObj.defect_type || "",
-        description: anomalyObj.defect_description || anomalyObj.description || "",
-        recommendedAction: anomalyObj.recommended_action || "",
-        rectify: anomalyObj.status === "CLOSED" || anomalyObj.rectified || false,
-        rectifiedDate: anomalyObj.rectified_date ? anomalyObj.rectified_date.substring(0, 10) : "",
-        rectifiedRemarks: anomalyObj.rectified_remarks || "",
-        severity: (anomalyObj.severity || "MINOR").toUpperCase(),
-        referenceNo: anomalyObj.anomaly_ref_no || "",
+        defectCode: initialAnomalyObj.defect_type_code || initialAnomalyObj.defect_code || "",
+        priority: initialAnomalyObj.priority_code || initialAnomalyObj.priority || "",
+        defectType: initialAnomalyObj.defect_category_code || initialAnomalyObj.defect_type || "",
+        description: initialAnomalyObj.defect_description || initialAnomalyObj.description || "",
+        recommendedAction: initialAnomalyObj.recommended_action || "",
+        rectify: initialAnomalyObj.status === "CLOSED" || initialAnomalyObj.rectified || false,
+        rectifiedDate: initialAnomalyObj.rectified_date ? initialAnomalyObj.rectified_date.substring(0, 10) : "",
+        rectifiedRemarks: initialAnomalyObj.rectified_remarks || "",
+        severity: (initialAnomalyObj.severity || "MINOR").toUpperCase(),
+        referenceNo: initialAnomalyObj.anomaly_ref_no || "",
       });
     }
 
     setIsFormModified(false);
 
+    // Scroll form into view immediately
     setTimeout(() => {
       const formArea = document.getElementById(FORM_AREA_ID);
       if (formArea) formArea.scrollIntoView({ behavior: "smooth" });
-    }, 100);
+    }, 50);
+
+    // 4. Concurrently fetch full details, anomalies, and attachments in parallel
+    (async () => {
+      try {
+        const needsFullRecord =
+          !record.inspection_data ||
+          !record.component_id ||
+          !record.inspection_type ||
+          (record.has_anomaly && (!record.insp_anomalies || record.insp_anomalies.length === 0));
+
+        const sourceIds = [recordId];
+        const initialAnomId = initialAnomalyObj?.anomaly_id || fullRecord.anomaly_id;
+        if (initialAnomId && !sourceIds.includes(initialAnomId)) sourceIds.push(initialAnomId);
+
+        const [fullRecRes, attsRes, mediaRes] = await Promise.all([
+          needsFullRecord
+            ? supabase
+                .from("insp_records")
+                .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*)")
+                .eq("insp_id", recordId)
+                .maybeSingle()
+            : Promise.resolve({ data: fullRecord, error: null }),
+          supabase
+            .from("attachment")
+            .select("*")
+            .in("source_id", sourceIds)
+            .in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "defect", "DEFECT", "insp_record", "INSP_RECORD"]),
+          supabase
+            .from("insp_media" as any)
+            .select("*")
+            .in("inspection_id", [recordId]),
+        ]);
+
+        // If extra anomaly data was returned by fullRecRes
+        if (fullRecRes.data) {
+          const freshRecord = fullRecRes.data;
+          const freshAnomalyObj = freshRecord.insp_anomalies?.[0] || freshRecord.anomaly_details;
+          if (freshRecord.has_anomaly && freshAnomalyObj) {
+            const isFinding =
+              freshAnomalyObj?.record_category === "FINDING" ||
+              freshRecord.inspection_data?._meta_status === "Finding";
+            setFindingType(isFinding ? "Finding" : "Anomaly");
+            setAnomalyData({
+              defectCode: freshAnomalyObj.defect_type_code || freshAnomalyObj.defect_code || "",
+              priority: freshAnomalyObj.priority_code || freshAnomalyObj.priority || "",
+              defectType: freshAnomalyObj.defect_category_code || freshAnomalyObj.defect_type || "",
+              description: freshAnomalyObj.defect_description || freshAnomalyObj.description || "",
+              recommendedAction: freshAnomalyObj.recommended_action || "",
+              rectify: freshAnomalyObj.status === "CLOSED" || freshAnomalyObj.rectified || false,
+              rectifiedDate: freshAnomalyObj.rectified_date ? freshAnomalyObj.rectified_date.substring(0, 10) : "",
+              rectifiedRemarks: freshAnomalyObj.rectified_remarks || "",
+              severity: (freshAnomalyObj.severity || "MINOR").toUpperCase(),
+              referenceNo: freshAnomalyObj.anomaly_ref_no || "",
+            });
+          }
+        }
+
+        // Combine and map attachments
+        const combinedList: any[] = [...(attsRes.data || [])];
+        if (mediaRes.data && mediaRes.data.length > 0) {
+          for (const m of mediaRes.data as any[]) {
+            if (!combinedList.some((a) => a.path === m.file_path || String(a.id) === `media-${m.media_id}`)) {
+              combinedList.push({
+                id: `media-${m.media_id}`,
+                name: m.name || `Photo ${m.media_id}`,
+                path: m.file_path,
+                source_type: "INSPECTION",
+                source_id: m.inspection_id,
+                meta: {
+                  ...m.meta,
+                  bucket: "inspection-media",
+                  is_insp_media: true,
+                },
+                created_at: m.captured_at,
+              });
+            }
+          }
+        }
+
+        if (combinedList.length > 0) {
+          const mapped = combinedList.map((a: any) => {
+            const publicUrl = getAttachmentUrl(a, supabase);
+            const fileType = a.meta?.file_type || "";
+            const isVideo = fileType.startsWith("video/") || a.meta?.type === "VIDEO" || a.type === "video";
+            const isDoc = fileType.includes("pdf") || fileType.includes("document") || a.meta?.type === "DOCUMENT";
+            return {
+              id: String(a.id),
+              name: a.name,
+              title: a.meta?.title || a.name,
+              description: a.meta?.description || "",
+              type: (isVideo ? "VIDEO" : isDoc ? "DOCUMENT" : "PHOTO") as "PHOTO" | "VIDEO" | "DOCUMENT",
+              source: a.source_type,
+              previewUrl: publicUrl,
+              path: a.path,
+              meta: a.meta || {},
+              isExisting: true,
+            };
+          });
+          setPendingAttachments(mapped);
+        } else {
+          setPendingAttachments([]);
+        }
+      } catch (err) {
+        console.error("[handleEditRecord] Parallel load error:", err);
+      }
+    })();
   };
 
   const handleCompSpecSuccess = (updatedRaw: any) => {
