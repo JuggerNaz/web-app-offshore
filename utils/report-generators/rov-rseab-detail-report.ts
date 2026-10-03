@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -221,7 +221,7 @@ export const generateROVRSEABDetailReport = async (
 
         // Map records to autoTable RowInput[]
         const tableRows = sortedRecords.map((r, rIdx) => {
-            const comp = r.structure_components || {};
+            const qid = r.structure_components?.q_id || r.component?.q_id || r.q_id || "—";
             const d = r.inspection_data || r.inspection_dat || {};
             const anoms = r.insp_anomalies || [];
             const isAnom = anoms.length > 0;
@@ -231,18 +231,13 @@ export const generateROVRSEABDetailReport = async (
             const tapeNo = r.insp_video_tapes?.tape_no || r.tape_no || d.tape_no || r.tape_id || "—";
 
             // Format Findings
-            let findings = r.description || d.findings || d.description || d.debris_desc || "No significant findings";
-            
-            if (anoms.length > 0) {
-                findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || a.anomaly_ref_no || "N/A"}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ""})` : ""}`).join("\n");
-            }
-
+            const findings = formatReportFindingText(r, r.description || d.findings || d.description || d.debris_desc);
             return [
-                { content: String(rIdx + 1), styles: { halign: "center" as const } },
-                { content: comp.q_id || r.qid || r.q_id || "—" },
-                { content: String(diveNo), styles: { halign: "center" as const } },
-                { content: String(tapeNo), styles: { halign: "center" as const } },
-                { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
+                { content: String(rIdx + 1) },
+                { content: qid },
+                { content: String(diveNo) },
+                { content: String(tapeNo) },
+                { content: findings }
             ];
         });
 
@@ -274,6 +269,11 @@ export const generateROVRSEABDetailReport = async (
                 2: { cellWidth: 18 }, // Dive No.
                 3: { cellWidth: 38 }, // Tape No.
                 4: { cellWidth: "auto" } // Findings
+            },
+            didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);

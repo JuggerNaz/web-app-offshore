@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -492,20 +492,10 @@ export const generateDivingRRISIDetailReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || r.rectified_remarks || '';
 
-                const findingsParts: string[] = [];
-                if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
-                    findingsParts.push(String(r.description).trim());
-                } else if (data.remarks && String(data.remarks).trim() !== '') {
-                    findingsParts.push(String(data.remarks).trim());
-                }
-
-                if (cpInfo.detailPostfix) findingsParts.push(cpInfo.detailPostfix);
-                if (utInfo.detailPostfix) findingsParts.push(utInfo.detailPostfix);
-
-                if (isAnomaly && anomRef) findingsParts.push(`[Ref: ${anomRef}]`);
-                if (isRectified) findingsParts.push(`[Rectified: ${rectRem || 'Completed'}]`);
-
-                const findingsStr = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
+                const baseParts: string[] = [];
+                if (r.description && String(r.description).trim()) baseParts.push(String(r.description).trim());
+                if (data.remarks && String(data.remarks).trim()) baseParts.push(String(data.remarks).trim());
+                const findingsStr = formatReportFindingText(r, baseParts.join('\n'));
 
                 bodyRows.push({
                     rowCells: [
@@ -517,6 +507,7 @@ export const generateDivingRRISIDetailReport = async (
                         utInfo.display,
                         findingsStr
                     ],
+                    record: r,
                     isAnomaly,
                     isRectified
                 });
@@ -554,14 +545,8 @@ export const generateDivingRRISIDetailReport = async (
             didParseCell: (data) => {
                 if (data.section === 'body') {
                     const rowObj = bodyRows[data.row.index];
-                    if (rowObj && !Array.isArray(rowObj)) {
-                        if (rowObj.isAnomaly) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (rowObj.isRectified) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
-                        }
+                    if (rowObj && !Array.isArray(rowObj) && rowObj.record) {
+                        applyRecordCellStyling(data.cell, rowObj.record, isPF);
                     }
                 }
             },

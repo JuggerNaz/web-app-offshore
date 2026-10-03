@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -629,9 +629,7 @@ export const generateROVRSCORV2Report = async (
                         const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                         const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
 
-                        let findings = r.description || '';
-                        if (isAnomaly && anomRef) findings += ` [Ref: ${anomRef}]`;
-                        if (isRectified) findings += ` [Rect: ${rectRem || 'N/A'}]`;
+                        const findings = formatReportFindingText(r);
 
                         return [
                             qid,
@@ -639,13 +637,7 @@ export const generateROVRSCORV2Report = async (
                             rd.scour_depth ? `${rd.scour_depth} mm` : '-',
                             rd.Burial_percent ? `${rd.Burial_percent}%` : '-',
                             rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true ? 'Yes' : 'No',
-                            { 
-                                content: findings || 'No significant findings',
-                                styles: {
-                                    textColor: isAnomaly ? colors.anomaly : (isRectified ? colors.rectified : colors.text),
-                                    fontStyle: (isAnomaly || isRectified) ? 'bold' : 'normal'
-                                }
-                            }
+                            findings
                         ];
                     }),
                     theme: 'grid',
@@ -660,18 +652,8 @@ export const generateROVRSCORV2Report = async (
                     },
                     didParseCell: (data) => {
                         if (data.section === 'body') {
-                            const r = compRecords[data.row.index];
-                            const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                            const isAnom = r.has_anomaly || !!linkedAnom;
-                            const isRect = linkedAnom ? linkedAnom.is_rectified : r.rectified;
-
-                            if (isAnom) {
-                                data.cell.styles.textColor = colors.anomaly;
-                                data.cell.styles.fontStyle = 'bold';
-                            } else if (isRect) {
-                                data.cell.styles.textColor = colors.rectified;
-                                data.cell.styles.fontStyle = 'bold';
-                            }
+                            const r = sortedCompRecords[data.row.index];
+                            applyRecordCellStyling(data.cell, r, isPF);
                         }
                     }
                 });

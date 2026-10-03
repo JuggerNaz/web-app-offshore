@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -54,7 +54,7 @@ export const generateDivingCPCLBReport = async (
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
@@ -136,11 +136,7 @@ export const generateDivingCPCLBReport = async (
             const inWater3 = d.in_water3 ?? d.in_water_3 ?? "—";
             const postDive = d.post_dive_cp_rdg ?? d.post_dive ?? "—";
 
-            const parts: string[] = [];
-            if (d.calib_equipment_type) parts.push(`Equipment: ${d.calib_equipment_type}`);
-            if (d.serial_number) parts.push(`S/N: ${d.serial_number}`);
-            if (r.description?.trim()) parts.push(r.description.trim());
-
+            const findings = formatReportFindingText(r, r.description);
             return [
                 String(idx + 1),
                 String(diveNo),
@@ -150,7 +146,7 @@ export const generateDivingCPCLBReport = async (
                 String(inWater2),
                 String(inWater3),
                 String(postDive),
-                parts.length > 0 ? parts.join("\n") : "—",
+                findings,
             ];
         };
 

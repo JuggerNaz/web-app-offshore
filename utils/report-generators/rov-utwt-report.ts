@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -149,25 +149,7 @@ export const generateROVUTWTReport = async (
             const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
 
             // Construct findings
-            let findingsParts: string[] = [];
-            if (r.description) findingsParts.push(r.description);
-            
-            // Add Additional UT
-            const addUT = d.ut_readings_additional || d.ut_additional || [];
-            if (Array.isArray(addUT)) {
-                addUT.forEach((item: any) => {
-                    if (item.reading) findingsParts.push(`Add. UT: ${item.reading}mm${item.location ? ` (${item.location})` : ''}`);
-                });
-            }
-
-            if (isAnomaly && anomRef) {
-                findingsParts.push(`[Reference: ${anomRef}]`);
-            }
-            if (isRectified) {
-                findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
-            }
-
-            const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
+            const findings = formatReportFindingText(r);
             
             return [
                 idx + 1,
@@ -210,22 +192,9 @@ export const generateROVUTWTReport = async (
             headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
             didParseCell: (data) => {
-                if (data.section === 'body' && sortedRecords.length > 0) {
-                    const r = sortedRecords[data.row.index];
-                    if (r) {
-                        const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                        const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                        const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-
-                        if (isAnom) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (isRect) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
-                        }
-                    }
-                }
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             columnStyles: {
                 0: { cellWidth: 15, halign: 'center' },

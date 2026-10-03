@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -56,7 +56,7 @@ export const generateROVConductorGuardReport = async (
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         if (!config.isBlankReport && (!records || records.length === 0)) {
@@ -239,36 +239,15 @@ export const generateROVConductorGuardReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            const findingsParts: string[] = [];
-
-            // 1. Findings / Description
-            if (r.description && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            } else if (d.findings && d.findings.trim()) {
-                findingsParts.push(d.findings.trim());
-            }
-
-            // 2. CP Additional
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3. Anomaly Reference
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
-
-            // Rectification
-            const isRectified = linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED';
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                findingsParts.push(`Rectified: ${rectRem}`);
-            }
+            const baseFinding = [
+                r.description?.trim(),
+                d.findings?.trim(),
+                (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) ? `Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}` : '',
+                (d.component_condition || d.general_condition) ? `Component Condition: ${d.component_condition || d.general_condition}` : '',
+                d.coating_condition ? `Coating Condition: ${d.coating_condition}` : '',
+                d.debris ? `Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}` : ''
+            ].filter(Boolean).join('\n');
+            const findings = formatReportFindingText(r, baseFinding);
 
             return [
                 String(idx + 1),
@@ -277,7 +256,7 @@ export const generateROVConductorGuardReport = async (
                 String(diveNo),
                 String(tapeNo),
                 cpDisplay,
-                findingsParts.length > 0 ? findingsParts.join("\n") : "—",
+                findings,
             ];
         };
 
@@ -351,23 +330,10 @@ export const generateROVConductorGuardReport = async (
                     6: { cellWidth: "auto" },
                 },
                 didParseCell: (data) => {
-                    if (data.section !== "body") return;
-                    const r = groupRecords[data.row.index];
-                    if (!r) return;
-                    const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                    
-                    if (metaStatus === "finding") {
-                        data.cell.styles.textColor = colors.finding;
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (r.has_anomaly && metaStatus !== "finding") {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED') {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = "bold";
-                    }
-                },
+                if (data.section !== "body") return;
+                const r = groupRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
+            },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawPageHeader(doc);
 

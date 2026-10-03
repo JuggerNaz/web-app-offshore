@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -141,7 +141,6 @@ export const generateROVFMDReport = async (
                 ['Component QID', 'Elevation (m)', 'Dive No.', 'Tape No.', 'Status', 'Density Value', 'Findings']
             ],
             body: sortedRecords.map(r => {
-                const depth = parseFloat(r.elevation);
                 const qid = r.structure_components?.q_id || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
@@ -214,47 +213,31 @@ export const generateROVFMDReport = async (
 
                 const densityColValue = densityColumnList.length > 0 ? densityColumnList.join('\n') : '-';
 
-                // Construct findings from record description and density location details
-                let findingsParts: string[] = [];
-                if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
-                    findingsParts.push(String(r.description).trim());
-                }
+                const depth = parseFloat(r.elevation);
+                const elevStr = isNaN(depth) ? (r.elevation || '-') : `${depth.toFixed(2)} m`;
+                const statusText = data.member_status || (data.flooded ? 'Flooded' : 'Not Flooded') || '-';
 
-                if (locationDetailList.length > 0) {
-                    findingsParts.push(`Location & Density Details:\n${locationDetailList.join('\n')}`);
-                }
-
-                if (isAnomaly && anomRef) findingsParts.push(`[Reference: ${anomRef}]`);
-                if (isRectified) findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
-
+                const baseParts: string[] = [];
+                if (r.description && String(r.description).trim()) baseParts.push(String(r.description).trim());
+                if (locationDetailList.length > 0) baseParts.push(`Location & Density Details:\n${locationDetailList.join('\n')}`);
+                const findings = formatReportFindingText(r, baseParts.join('\n'));
                 return [
                     qid,
-                    isNaN(depth) ? r.elevation : depth.toFixed(2),
+                    elevStr,
                     diveNo,
                     tapeNo,
-                    data.member_status || 'N/A',
+                    statusText,
                     densityColValue,
-                    findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A'
+                    findings
                 ];
             }),
             theme: 'grid',
             headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
             styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
             didParseCell: (data) => {
-                if (data.section === 'body') {
-                    const r = sortedRecords[data.row.index];
-                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                    const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-
-                    if (isAnom) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = 'bold';
-                    } else if (isRect) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = 'bold';
-                    }
-                }
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
             },
             columnStyles: {
                 0: { cellWidth: 26, fontStyle: 'bold', halign: 'left' },

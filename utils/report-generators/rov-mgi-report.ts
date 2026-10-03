@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, getRecordStatusInfo, REPORT_COLORS } from "./shared-logo";
 import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
@@ -221,16 +221,7 @@ export const generateROVMGIGraphReport = async (
                 const hCov = cleanCov(d.marine_growth_hard) ?? d.mgi_hard_coverage ?? mgData.h;
                 const sCov = cleanCov(d.marine_growth_soft) ?? d.mgi_soft_coverage ?? mgData.s;
 
-                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                const isAnomRecord = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
-
-                let findingsParts: string[] = [];
-                if (r.description) findingsParts.push(r.description);
-                if (isAnomRecord && anomRef) findingsParts.push(`[Reference: ${anomRef}]`);
-                if (isRectified) findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
+                const findings = formatReportFindingText(r);
 
                 return {
                     depth: elev, limit, 
@@ -238,9 +229,8 @@ export const generateROVMGIGraphReport = async (
                     maxHard: Math.max(...hVals),
                     hCov, sCov,
                     h: hVals.map(v => v || '-'), s: sVals.map(v => v || '-'),
-                    findings: findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A',
-                    isAnomRecord,
-                    isRectified
+                    findings,
+                    record: r
                 };
             });
 
@@ -321,13 +311,7 @@ export const generateROVMGIGraphReport = async (
                             }
                             // Other Columns: Depth (0), Coverage (2), Findings (12)
                             else {
-                                if (row.isAnomRecord || (row.maxInRow > row.limit && row.limit > 0)) {
-                                    data.cell.styles.textColor = colors.anomaly;
-                                    data.cell.styles.fontStyle = 'bold';
-                                } else if (row.isRectified) {
-                                    data.cell.styles.textColor = colors.rectified;
-                                    data.cell.styles.fontStyle = 'bold';
-                                }
+                                applyRecordCellStyling(data.cell, row.record, isPF);
                             }
                         }
                     }

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -53,7 +53,7 @@ export const generateDivingBSINSReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const HEADER_H = 26;
@@ -182,21 +182,7 @@ export const generateDivingBSINSReport = async (
                     const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
                     const inspDate = r.inspection_date ? format(new Date(r.inspection_date), 'dd MMM yyyy') : "—";
                     
-                    // Anomalies handling
-                    const parts: string[] = [];
-                    if (r.description?.trim()) parts.push(r.description.trim());
-
-                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                    const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-                    if (anomRef) parts.push(`Ref: ${anomRef}`);
-
-                    const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-                    if (isRectified) {
-                        const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                        parts.push(`Rectified: ${rectComments}`);
-                    }
-
-                    const findingsText = parts.length > 0 ? parts.join("\n") : "—";
+                    const findingsText = formatReportFindingText(r, r.description);
 
                     // Record Header info
                     autoTable(doc, {
@@ -327,11 +313,8 @@ export const generateDivingBSINSReport = async (
                             valign: "top"
                         },
                         didParseCell: (data) => {
-                            if (data.section === "body" && parts.length > 0) {
-                                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                                if (metaStatus === "finding") data.cell.styles.textColor = colors.finding;
-                                else if (r.has_anomaly) data.cell.styles.textColor = colors.anomaly;
-                                else if (isRectified) data.cell.styles.textColor = colors.rectified;
+                            if (data.section === "body") {
+                                applyRecordCellStyling(data.cell, r, isPF);
                             }
                         }
                     });

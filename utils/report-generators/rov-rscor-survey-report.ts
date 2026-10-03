@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -291,8 +291,6 @@ export const generateROVRSCORSurveyReport = async (
 
             const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || r.tape_no || "—";
 
-            const findingsParts: string[] = [];
-
             // 1. Scour primary fields
             const scourDetails: string[] = [];
             if (d.scour_location && String(d.scour_location).trim()) {
@@ -313,90 +311,13 @@ export const generateROVRSCORSurveyReport = async (
                 scourDetails.push(`Burial: ${d.Burial_percent}%`);
             }
 
-            if (scourDetails.length > 0) {
-                findingsParts.push(scourDetails.join(", "));
-            }
-
-            // 2. Observations / Remarks / Description
             const mainDesc = (r.description || d.comments || d.remarks || d.findings || d.observation || "").trim();
-            if (mainDesc) {
-                findingsParts.push(mainDesc);
-            }
-
-            // 3. Additional CP readings postfix
-            const cpReadingsList: string[] = [];
-            if (d.cp_rdg !== undefined && d.cp_rdg !== null && String(d.cp_rdg).trim() !== "") {
-                cpReadingsList.push(`Primary CP: ${d.cp_rdg} mV`);
-            } else if (d.cp !== undefined && d.cp !== null && String(d.cp).trim() !== "") {
-                cpReadingsList.push(`CP: ${d.cp} mV`);
-            }
-
-            const rawAddCP = d.cp_rdg_additional || d.cp_additional || d.cp_readings || d.additional_cp || [];
-            if (Array.isArray(rawAddCP) && rawAddCP.length > 0) {
-                const extraCps = rawAddCP.map((c: any) => {
-                    if (typeof c === "object" && c !== null) {
-                        const lbl = c.location || c.label || c.pos || "";
-                        const val = c.value ?? c.val ?? c.reading ?? "";
-                        return lbl ? `${lbl}: ${val} mV` : `${val} mV`;
-                    }
-                    return `${c} mV`;
-                }).filter(Boolean);
-                if (extraCps.length > 0) {
-                    cpReadingsList.push(`Additional CP: [${extraCps.join(", ")}]`);
-                }
-            } else if (typeof rawAddCP === "string" && rawAddCP.trim().length > 0) {
-                cpReadingsList.push(`Additional CP: ${rawAddCP.trim()}`);
-            }
-
-            if (cpReadingsList.length > 0) {
-                findingsParts.push(cpReadingsList.join(" | "));
-            }
-
-            // 4. Additional UT readings postfix
-            const utReadingsList: string[] = [];
-            const primaryUT = d.ut_rdg ?? d.ut_wall_thickness ?? d.ut_thickness ?? d.ut ?? null;
-            if (primaryUT !== null && primaryUT !== undefined && String(primaryUT).trim() !== "") {
-                utReadingsList.push(`Primary UT: ${primaryUT} mm`);
-            }
-
-            const rawAddUT = d.ut_readings_additional || d.ut_additional || d.ut_readings || d.additional_ut || [];
-            if (Array.isArray(rawAddUT) && rawAddUT.length > 0) {
-                const extraUts = rawAddUT.map((u: any) => {
-                    if (typeof u === "object" && u !== null) {
-                        const lbl = u.location || u.label || u.pos || "";
-                        const val = u.value ?? u.val ?? u.reading ?? "";
-                        return lbl ? `${lbl}: ${val} mm` : `${val} mm`;
-                    }
-                    return `${u} mm`;
-                }).filter(Boolean);
-                if (extraUts.length > 0) {
-                    utReadingsList.push(`Additional UT: [${extraUts.join(", ")}]`);
-                }
-            } else if (typeof rawAddUT === "string" && rawAddUT.trim().length > 0) {
-                utReadingsList.push(`Additional UT: ${rawAddUT.trim()}`);
-            }
-
-            if (utReadingsList.length > 0) {
-                findingsParts.push(utReadingsList.join(" | "));
-            }
-
-            // 5. Anomaly or Finding Reference No.
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || d.anomaly_ref_no || "";
-            const findingRef = linkedAnom?.finding_ref_no || r.finding_ref_no || d.finding_ref_no || "";
-
-            if (anomRef) {
-                findingsParts.push(`Anomaly Ref: ${anomRef}`);
-            } else if (findingRef) {
-                findingsParts.push(`Finding Ref: ${findingRef}`);
-            }
-
-            // 6. Rectified comments if rectified
-            const isRectified = linkedAnom?.is_rectified || r.rectified || d.is_rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || d.rectified_remarks || "Rectified";
-                findingsParts.push(`Rectified Comments: ${rectRem}`);
-            }
+            const baseParts = [
+                scourDetails.length > 0 ? scourDetails.join(", ") : "",
+                mainDesc
+            ].filter(Boolean);
+            const baseFinding = baseParts.join("\n");
+            const findings = formatReportFindingText(r, baseFinding);
 
             return [
                 String(idx),
@@ -404,7 +325,7 @@ export const generateROVRSCORSurveyReport = async (
                 elevationStr,
                 String(diveNo),
                 String(tapeNo),
-                findingsParts.length > 0 ? findingsParts.join("\n") : "—",
+                findings,
             ];
         };
 
@@ -528,25 +449,7 @@ export const generateROVRSCORSurveyReport = async (
                 if (rawRow && rawRow._isHeader) return;
                 const r = rawRow?._record;
                 if (!r) return;
-
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding" || !!r.finding_ref_no;
-                const isAnom     = (r.has_anomaly || !!linkedAnom || !!r.anomaly_ref_no) && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (data.column.index === 5) {
-                    if (isFinding) {
-                        data.cell.styles.textColor = colors.finding;
-                        data.cell.styles.fontStyle  = "bold";
-                    } else if (isAnom) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle  = "bold";
-                    } else if (isRect) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle  = "bold";
-                    }
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);

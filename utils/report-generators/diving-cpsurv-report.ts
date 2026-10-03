@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -97,7 +97,7 @@ export const generateDivingCPSURVReport = async (
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         // ── Fetch CPCLB Calibration Map for matching Dive No ───────────────────
@@ -282,38 +282,7 @@ export const generateDivingCPSURVReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            // Findings Column: Description + Additional CP postfix details + Anomaly/Finding ref + Rectification
-            const findingsParts: string[] = [];
-
-            // 1. Description / Findings text
-            if (r.description && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            }
-
-            // 2. Postfix with full additional CP details
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? a.value ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3. Anomaly / Finding Reference
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) {
-                const isFindingRef = anomRef.toUpperCase().includes("F") && !anomRef.toUpperCase().includes("A");
-                findingsParts.push(`${isFindingRef ? "Finding Ref" : "Anomaly Ref"}: ${anomRef}`);
-            }
-
-            // 4. Rectification Comments
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                findingsParts.push(`Rectified Comments: ${rectRem}`);
-            }
+            const findings = formatReportFindingText(r, r.description);
 
             return [
                 String(idx + 1),
@@ -324,7 +293,7 @@ export const generateDivingCPSURVReport = async (
                 preDive,
                 postDive,
                 cpDisplay,
-                findingsParts.length > 0 ? findingsParts.join("\n") : "—",
+                findings
             ];
         };
 
@@ -388,24 +357,7 @@ export const generateDivingCPSURVReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                if (!r) return;
-
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding";
-                const isAnom     = (r.has_anomaly === true || r.is_anomaly === true || !!linkedAnom) && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle  = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);

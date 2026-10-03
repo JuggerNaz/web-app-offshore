@@ -1,4 +1,4 @@
-import { normalizeReportRecords } from "./shared-logo";
+import { normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
 import { format } from "date-fns";
 import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";

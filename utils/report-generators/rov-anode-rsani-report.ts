@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -55,7 +55,7 @@ export const generateROVAnodeRSANIReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number]
+            finding:   [217, 119, 6] as [number, number, number]
         };
 
         // --- 1. Preparation ---
@@ -192,31 +192,7 @@ export const generateROVAnodeRSANIReport = async (
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
                                r.rov_job_id || r.dive_job_id || 'N/A';
 
-                const findingsLines: string[] = [];
-
-                // 1. Description / Findings
-                if (r.description && r.description.trim()) findingsLines.push(r.description.trim());
-                
-                // 2. Additional CP details BEFORE Anomaly details
-                if (Array.isArray(rawAddCPs) && rawAddCPs.length > 0) {
-                    rawAddCPs.forEach((cr: any) => {
-                        const val = cr.reading ?? cr.cp_rdg ?? '';
-                        if ((val !== '' && val !== null && val !== undefined) || cr.location) {
-                            const unit = String(val).toLowerCase().includes('mv') || !val ? '' : ' mV';
-                            findingsLines.push(`Add. CP${cr.location ? ` @ ${cr.location}` : ''}: ${val}${unit}`);
-                        }
-                    });
-                }
-
-                // 3. Anomaly Reference & Rectified comments
-                if ((isAnomaly || isDefect) && anomalyRef) {
-                    findingsLines.push(`[Reference: ${anomalyRef}]`);
-                }
-                if (isRectified) {
-                    findingsLines.push(`Rectified: ${rectifiedComments || 'N/A'}`);
-                }
-
-                const findings = findingsLines.length > 0 ? findingsLines.join('\n') : 'No significant findings';
+                const findings = formatReportFindingText(r, r.description);
 
                 return [
                     idx + 1,
@@ -249,24 +225,7 @@ export const generateROVAnodeRSANIReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sortedRecords[data.row.index];
-                if (!r) return;
-                const d = r.inspection_data || r.inspection_dat || {};
-                const linkedAnomaly = (r.insp_anomalies && r.insp_anomalies.length > 0) ? r.insp_anomalies[0] : null;
-                const metaStatus = (d._meta_status || r._meta_status || "").toLowerCase();
-                const isFinding = metaStatus === "finding";
-                const isAnom = (r.has_anomaly || !!linkedAnomaly || r.is_defect || d.is_defect) && !isFinding;
-                const isRect = linkedAnomaly?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawHeader(doc);

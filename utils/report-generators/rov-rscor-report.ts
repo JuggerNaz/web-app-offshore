@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -711,15 +711,11 @@ export const generateROVRSCORReport = async (
                         else locationStr = 'N/A';
                     }
 
-                    const findingsParts: string[] = [];
-                    if (r.description?.trim()) findingsParts.push(r.description.trim());
-                    if (rd.comments?.trim() && !findingsParts.includes(rd.comments.trim())) findingsParts.push(rd.comments.trim());
-
-                    if (rd.cp_rdg) findingsParts.push(`CP: ${rd.cp_rdg} mV`);
-                    if (rd.ut_rdg) findingsParts.push(`UT: ${rd.ut_rdg} mm`);
-
-                    if (isAnomaly && anomRef) findingsParts.push(`[Anomaly Ref: ${anomRef}]`);
-                    if (isRectified) findingsParts.push(`[Rectified: ${rectRem || 'Yes'}]`);
+                    const baseFinding = [
+                        r.description?.trim(),
+                        rd.comments?.trim()
+                    ].filter(Boolean).join('\n');
+                    const findings = formatReportFindingText(r, baseFinding);
 
                     return [
                         qid,
@@ -727,13 +723,7 @@ export const generateROVRSCORReport = async (
                         rd.scour_depth !== undefined && rd.scour_depth !== null && String(rd.scour_depth).trim() !== '' ? `${rd.scour_depth} mm` : '—',
                         rd.Burial_percent !== undefined && rd.Burial_percent !== null && String(rd.Burial_percent).trim() !== '' ? `${rd.Burial_percent}%` : '—',
                         rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true || rd.Exposed_pile === 1 ? 'Yes' : 'No',
-                        { 
-                            content: findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings',
-                            styles: {
-                                textColor: isAnomaly ? colors.anomaly : (isRectified ? colors.rectified : colors.text),
-                                fontStyle: (isAnomaly || isRectified) ? 'bold' : 'normal'
-                            }
-                        }
+                        findings
                     ];
                 }) : [
                     ["-", "-", "-", "-", "-", "No scour survey observations recorded for this scope."]
@@ -762,17 +752,7 @@ export const generateROVRSCORReport = async (
                     if (data.section === 'body') {
                         const r = sortedTableRecords[data.row.index];
                         if (!r) return;
-                        const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                        const isAnom = r.has_anomaly || !!linkedAnom;
-                        const isRect = linkedAnom ? linkedAnom.is_rectified : r.rectified;
-
-                        if (isAnom) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (isRect) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
-                        }
+                        applyRecordCellStyling(data.cell, r, isPF);
                     }
                 }
             });

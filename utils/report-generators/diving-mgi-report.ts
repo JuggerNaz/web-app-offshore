@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { calculateInterpolatedMgiThreshold, getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
@@ -242,9 +242,7 @@ export const generateDivingMGIReport = async (
             const anomRef = linkedAnomaly?.anomaly_ref_no || r.anomaly_ref_no || '';
             const rectRem = linkedAnomaly?.rectified_remarks || r.rectified_comments || '';
 
-            let findings = r.description || "";
-            if (isAnomaly && anomRef) findings += `\n[Ref: ${anomRef}]`;
-            if (isRectified) findings += `\nRectified: ${rectRem || "N/A"}`;
+            const findings = formatReportFindingText(r, r.description);
 
             return {
                 itemNo: idx + 1,
@@ -261,6 +259,7 @@ export const generateDivingMGIReport = async (
                 limit,
                 nominalDia,
                 findings,
+                record: r,
                 isAnomaly,
                 isRectified
             };
@@ -367,12 +366,8 @@ export const generateDivingMGIReport = async (
 
                         // For other columns, apply anomaly/rectified colors but EXCLUDE Average (index 8)
                         if (data.column.index !== 8 && data.column.index !== 9 && data.column.index !== 10 && data.column.index !== 11) {
-                            if (row.isAnomaly) {
-                                data.cell.styles.textColor = colors.anomaly;
-                                data.cell.styles.fontStyle = "bold";
-                            } else if (row.isRectified) {
-                                data.cell.styles.textColor = colors.rectified;
-                                data.cell.styles.fontStyle = "bold";
+                            if (row.record) {
+                                applyRecordCellStyling(data.cell, row.record, isPF);
                             }
                         }
                     }

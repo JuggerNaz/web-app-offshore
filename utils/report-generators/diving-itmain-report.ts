@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -62,7 +62,7 @@ export const generateDivingITMAINReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const targetRecords = filteredRecords.length > 0 ? filteredRecords : (records || []);
@@ -191,47 +191,7 @@ export const generateDivingITMAINReport = async (
                 (typeof r.notes === 'string' && r.notes.trim()) ? r.notes.trim() :
                 "";
 
-            if (mainFinding) {
-                findingsParts.push(mainFinding);
-            } else if (r.description && typeof r.description === 'string' && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            }
-
-            // 2) CP Postfix handling if present
-            const primaryCP = d.cp_rdg ?? d.cp_reading ?? d.cp_reading_mv ?? d.cp ?? "";
-            const additionals = Array.isArray(d.cp_rdg_additional) 
-                ? d.cp_rdg_additional 
-                : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
-
-            if (primaryCP !== "" && primaryCP !== null && primaryCP !== undefined) {
-                const unit = String(primaryCP).toLowerCase().includes("mv") ? "" : " mV";
-                findingsParts.push(`CP: ${primaryCP}${unit}`);
-            }
-
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3) Append Anomaly / Finding Reference No. if present
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || linkedAnom?.ref_no || r.anomaly_ref_no || "";
-            if (anomRef) {
-                findingsParts.push(`[Anom Ref: ${anomRef}]`);
-            }
-
-            // 4) Append Rectified comments if rectified
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                findingsParts.push(`(Rectified: ${rectComments})`);
-            }
-
-            const findingsDisplay = findingsParts.length > 0 ? findingsParts.join("\n") : "No significant findings";
+            const findingsDisplay = formatReportFindingText(r, mainFinding || r.description);
 
             return [
                 String(idx + 1),
@@ -296,23 +256,7 @@ export const generateDivingITMAINReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                if (!r) return;
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding = metaStatus === "finding";
-                const isAnom = r.has_anomaly && !isFinding;
-                const isRect = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);

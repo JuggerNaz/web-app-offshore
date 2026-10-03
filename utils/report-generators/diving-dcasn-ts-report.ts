@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -56,7 +56,7 @@ export const generateDivingDCASNTSReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         // Filter records
@@ -215,34 +215,7 @@ export const generateDivingDCASNTSReport = async (
         }
 
         const formatFindings = (r: any) => {
-            const d = r.inspection_data || {};
-            const parts: string[] = [];
-            if (r.description?.trim()) {
-                parts.push(r.description.trim());
-            } else if (d.findings?.trim()) {
-                parts.push(d.findings.trim());
-            }
-
-            // CP Additional
-            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    parts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) parts.push(`Ref: ${anomRef}`);
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                parts.push(`Rectified: ${rectRem}`);
-            }
-            return parts.length > 0 ? parts.join("\n") : "—";
+            return formatReportFindingText(r, r.description || r.inspection_data?.findings);
         };
 
         const parseMetaStatus = (r: any) => {
@@ -256,17 +229,7 @@ export const generateDivingDCASNTSReport = async (
 
         const applyCellColoring = (data: any, r: any) => {
             if (data.section !== "body") return;
-            const { isFinding, isAnom, isRect } = parseMetaStatus(r);
-            if (isFinding) {
-                data.cell.styles.textColor = colors.finding;
-                data.cell.styles.fontStyle = "bold";
-            } else if (isAnom) {
-                data.cell.styles.textColor = colors.anomaly;
-                data.cell.styles.fontStyle = "bold";
-            } else if (isRect) {
-                data.cell.styles.textColor = colors.rectified;
-                data.cell.styles.fontStyle = "bold";
-            }
+            applyRecordCellStyling(data.cell, r, config.printFriendly);
         };
 
         // Generate Pages

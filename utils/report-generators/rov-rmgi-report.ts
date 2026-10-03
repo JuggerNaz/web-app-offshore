@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -171,15 +171,8 @@ export const generateROVRMGIReport = async (
 
             if (r.description?.trim()) parts.push(r.description.trim());
 
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef    = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) parts.push(`Anomaly Ref: ${anomRef}`);
-
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                parts.push(`Rectified Comments: ${rectRem}`);
-            }
+            const baseFinding = parts.join("\n");
+            const findings = formatReportFindingText(r, baseFinding);
 
             return [
                 String(idx + 1),
@@ -187,7 +180,7 @@ export const generateROVRMGIReport = async (
                 String(elevationStr),
                 String(diveNo),
                 String(tapeNo),
-                parts.length > 0 ? parts.join("\n") : "—",
+                findings,
             ];
         };
 
@@ -236,22 +229,7 @@ export const generateROVRMGIReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding";
-                const isAnom     = r.has_anomaly && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle  = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);

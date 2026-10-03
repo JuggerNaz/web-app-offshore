@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -254,22 +254,9 @@ export const generateDivingMEASUReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || r.rectified_remarks || '';
 
-                if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
-                    const desc = String(r.description).trim();
-                    if (!groupFindingsList.includes(desc)) groupFindingsList.push(desc);
-                } else if (data.remarks && String(data.remarks).trim() !== '') {
-                    const rem = String(data.remarks).trim();
-                    if (!groupFindingsList.includes(rem)) groupFindingsList.push(rem);
-                }
-
-                if (isAnomaly && anomRef) {
-                    const refStr = `[Ref: ${anomRef}]`;
-                    if (!groupFindingsList.includes(refStr)) groupFindingsList.push(refStr);
-                }
-
-                if (isRectified) {
-                    const rectStr = `[Rectified: ${rectRem || 'Completed'}]`;
-                    if (!groupFindingsList.includes(rectStr)) groupFindingsList.push(rectStr);
+                const fText = formatReportFindingText(r, r.description || data.remarks);
+                if (fText && fText !== "No significant findings" && !groupFindingsList.includes(fText)) {
+                    groupFindingsList.push(fText);
                 }
 
                 // Extract measurement items
@@ -300,6 +287,7 @@ export const generateDivingMEASUReport = async (
                             mUnit,
                             mResult
                         ],
+                        record: r,
                         isAnomaly,
                         isRectified
                     });
@@ -308,12 +296,12 @@ export const generateDivingMEASUReport = async (
 
             // Group Findings Footer Row (Placed cleanly at the end of each QID group)
             const groupFindingsText = groupFindingsList.length > 0 
-                ? groupFindingsList.join('; ') 
+                ? groupFindingsList.join('\n') 
                 : 'No specific findings reported.';
 
             bodyRows.push([
                 {
-                    content: `Findings: ${groupFindingsText}`,
+                    content: `Findings:\n${groupFindingsText}`,
                     colSpan: 4,
                     styles: {
                         fillColor: isPF ? [250, 250, 250] : [248, 250, 252],
@@ -361,14 +349,8 @@ export const generateDivingMEASUReport = async (
             didParseCell: (data) => {
                 if (data.section === 'body') {
                     const rowObj = bodyRows[data.row.index];
-                    if (rowObj && !Array.isArray(rowObj)) {
-                        if (rowObj.isAnomaly) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (rowObj.isRectified) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
-                        }
+                    if (rowObj && !Array.isArray(rowObj) && rowObj.record) {
+                        applyRecordCellStyling(data.cell, rowObj.record, isPF);
                     }
                 }
             },

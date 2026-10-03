@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -52,7 +52,7 @@ export const generateDivingCLEANReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const HEADER_H = 26;
@@ -161,21 +161,7 @@ export const generateDivingCLEANReport = async (
                 const cleaningMethod = d.cleaning_method || "—";
                 const cleaningPressure = d.cleaning_pressure !== undefined && d.cleaning_pressure !== null ? `${d.cleaning_pressure} ${d.cleaning_pressure_unit || 'psi'}` : "—";
 
-                // Findings
-                const parts: string[] = [];
-                if (r.description?.trim()) parts.push(r.description.trim());
-
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-                if (anomRef) parts.push(`Ref: ${anomRef}`);
-
-                const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-                if (isRectified) {
-                    const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                    parts.push(`Rectified: ${rectComments}`);
-                }
-
-                const findingsText = parts.length > 0 ? parts.join("\n") : "—";
+                const findingsText = formatReportFindingText(r, r.description);
 
                 return [
                     index + 1,
@@ -226,18 +212,10 @@ export const generateDivingCLEANReport = async (
                     7: { halign: "left" }
                 },
                 didParseCell: (data) => {
-                    if (data.section === "body" && data.column.index === 7) {
-                        const rowIndex = data.row.index;
-                        const r = records[rowIndex];
-                        const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                        const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-                        const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                        
-                        if (metaStatus === "finding") data.cell.styles.textColor = colors.finding;
-                        else if (r.has_anomaly) data.cell.styles.textColor = colors.anomaly;
-                        else if (isRectified) data.cell.styles.textColor = colors.rectified;
-                    }
-                },
+                if (data.section !== "body") return;
+                const r = (typeof records !== 'undefined' ? records : [])[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
+            },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) {
                         pageNum = data.pageNumber;

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -49,7 +49,7 @@ export const generateDivingGVINSReport = async (
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
@@ -139,19 +139,7 @@ export const generateDivingGVINSReport = async (
                 d.marine_growth_soft ? `Soft: ${d.marine_growth_soft}` : ''
             ].filter(Boolean).join(', ')) || "—";
 
-            const parts: string[] = [];
-            if (r.description?.trim()) parts.push(r.description.trim());
-
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef    = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) parts.push(`Anomaly Ref: ${anomRef}`);
-
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                parts.push(`Rectified Comments: ${rectComments}`);
-            }
-
+            const findings = formatReportFindingText(r, r.description);
             return [
                 String(idx + 1),
                 qid,
@@ -160,7 +148,7 @@ export const generateDivingGVINSReport = async (
                 String(coatingCond),
                 String(componentCond),
                 String(mgPercent),
-                parts.length > 0 ? parts.join("\n") : "—",
+                findings,
             ];
         };
 
@@ -212,22 +200,7 @@ export const generateDivingGVINSReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding";
-                const isAnom     = r.has_anomaly && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle  = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);

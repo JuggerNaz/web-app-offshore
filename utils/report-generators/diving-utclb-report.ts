@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -55,7 +55,7 @@ export const generateDivingUTCLBReport = async (
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
@@ -234,26 +234,14 @@ export const generateDivingUTCLBReport = async (
             head: [headerRow],
             body: (records || []).map(buildRow),
             theme: "grid",
-            headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
-                fontSize: 6.5,
-                fontStyle: "bold",
-                halign: "center",
-                valign: "middle",
-                minCellHeight: 10,
-                lineColor: colors.border,
-                lineWidth: 0.1,
+            headStyles: { fillColor: isPF ? [255, 255, 255] : colors.navy, textColor: isPF ? colors.navy : [255, 255, 255], fontSize: 8, fontStyle: "bold", halign: "center", valign: "middle" },
+            styles: { fontSize: 7, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
+            columnStyles: { 0: { cellWidth: 15, halign: "center" }, 1: { cellWidth: 35 }, 2: { cellWidth: 35, halign: "center" }, 3: { cellWidth: 35, halign: "center" }, 4: { cellWidth: 35, halign: "center" }, 5: { cellWidth: "auto" } },
+            didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = (records || [])[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
             },
-            styles: {
-                fontSize: 6.5,
-                cellPadding: 2,
-                textColor: colors.text,
-                lineColor: colors.border,
-                lineWidth: 0.1,
-                overflow: "linebreak",
-            },
-            columnStyles,
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);
 

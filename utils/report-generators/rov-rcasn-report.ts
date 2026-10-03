@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -56,7 +56,7 @@ export const generateROVCasnReport = async (
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         // ── Filter Records ──────────────────────────────────────────────────────
@@ -229,6 +229,7 @@ export const generateROVCasnReport = async (
                 r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.name  ||
                 r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
                 r.rov_job_id || r.dive_job_id || "—";
+            const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
             const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
@@ -244,46 +245,23 @@ export const generateROVCasnReport = async (
             const compCond = d.component_condition || r.component_condition || "—";
             const coatCond = d.coating_condition || r.coating_condition || "—";
 
-            const findingsParts: string[] = [];
-
-            // 1. Description / Findings
-            if (r.description && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            } else if (d.findings && d.findings.trim()) {
-                findingsParts.push(d.findings.trim());
-            }
-
-            // 2. CP Additionals
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3. Anomaly Reference
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
-
-            // 4. Rectification
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                findingsParts.push(`Rectified: ${rectRem}`);
-            }
+            const baseFinding = [
+                r.description?.trim(),
+                (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) ? `Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}` : '',
+                (d.component_condition || d.general_condition) ? `Component Condition: ${d.component_condition || d.general_condition}` : '',
+                d.coating_condition ? `Coating Condition: ${d.coating_condition}` : '',
+                d.debris ? `Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}` : ''
+            ].filter(Boolean).join('\n');
+            const findings = formatReportFindingText(r, baseFinding);
 
             return [
                 String(idx + 1),
                 qid,
                 String(elevation),
                 String(diveNo),
+                String(tapeNo),
                 cpDisplay,
-                String(compCond),
-                String(coatCond),
-                findingsParts.length > 0 ? findingsParts.join("\n") : "—",
+                findings,
             ];
         };
 
@@ -360,26 +338,10 @@ export const generateROVCasnReport = async (
                     7: { cellWidth: "auto" },
                 },
                 didParseCell: (data) => {
-                    if (data.section !== "body") return;
-                    const r = groupRecords[data.row.index];
-                    if (!r) return;
-                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                    const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                    const isFinding  = metaStatus === "finding";
-                    const isAnom     = r.has_anomaly && !isFinding;
-                    const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                    if (isFinding) {
-                        data.cell.styles.textColor = colors.finding;
-                        data.cell.styles.fontStyle  = "bold";
-                    } else if (isAnom) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle  = "bold";
-                    } else if (isRect) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle  = "bold";
-                    }
-                },
+                if (data.section !== "body") return;
+                const r = (typeof records !== 'undefined' ? records : [])[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
+            },
                 didDrawCell: (data) => {
                 },
                 didDrawPage: (data) => {

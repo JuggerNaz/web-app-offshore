@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -494,29 +494,7 @@ export const generateROVCasnSketchReport = async (
                     const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
                     const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
 
-                    let findingsParts: string[] = [];
-                    if (r.description && r.description.trim()) {
-                        findingsParts.push(r.description.trim());
-                    } else if (rd.findings && rd.findings.trim()) {
-                        findingsParts.push(rd.findings.trim());
-                    }
-
-                    additionals.forEach((a: any) => {
-                        const val = a.reading ?? a.cp_rdg ?? "";
-                        if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                            const loc = a.location ? ` @ ${a.location}` : "";
-                            const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                            findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                        }
-                    });
-
-                    if (isAnom && anoms.length > 0) {
-                        anoms.forEach((a: any) => {
-                            findingsParts.push(`[Anom Ref: ${a.anomaly_ref_no || a.ref_no || 'N/A'}]${a.is_rectified ? ` (Rectified: ${a.rectified_remarks || a.rect_comments || ''})` : ''}`);
-                        });
-                    }
-
-                    const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
+                    const findings = formatReportFindingText(r);
 
                     return [
                         { content: String(itemNo), styles: { halign: 'center' } },

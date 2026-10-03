@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -52,7 +52,7 @@ export const generateDivingANMAINReport = async (
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         // ── Date range ──────────────────────────────────────────────────────────
@@ -178,16 +178,7 @@ export const generateDivingANMAINReport = async (
             const anomalyRef = linkedAnomaly?.anomaly_ref_no || r.anomaly_ref_no || r.ref_no || r.anomaly_no || d._meta_ref_no || "";
             const rectifiedComments = linkedAnomaly?.rectified_remarks || r.rectified_comments || "";
 
-            const findingsLines: string[] = [];
-            if (r.description) findingsLines.push(r.description);
-            if ((isAnomaly || isDefect) && anomalyRef) {
-                findingsLines.push(`[Ref: ${anomalyRef}]`);
-            }
-            if (isRectified) {
-                findingsLines.push(`Rectified: ${rectifiedComments || "N/A"}`);
-            }
-
-            const findings = findingsLines.length > 0 ? findingsLines.join("\n") : "—";
+            const findings = formatReportFindingText(r, r.description);
 
             return [
                 String(idx + 1),
@@ -262,21 +253,9 @@ export const generateDivingANMAINReport = async (
                 10: { cellWidth: "auto", halign: "left" as const } // Findings
             },
             didParseCell: (data) => {
-                if (data.section === "body") {
-                    const r = sortedRecords[data.row.index];
-                    const linkedAnomaly = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    const isAnomaly = r.has_anomaly === true || r.is_anomaly === true || r.component_condition === "Anomalous" || (r.description && r.description.toLowerCase().includes("anomaly")) || !!linkedAnomaly;
-                    const isDefect = r.has_defect === true || r.is_defect === true || (r.description && r.description.toLowerCase().includes("defect"));
-                    const isRectified = linkedAnomaly ? linkedAnomaly.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes("rectified")));
-                    
-                    if (isAnomaly || isDefect) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (isRectified) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = "bold";
-                    }
-                }
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);

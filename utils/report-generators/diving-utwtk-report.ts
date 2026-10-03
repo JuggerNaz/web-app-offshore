@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -53,7 +53,7 @@ export const generateDivingUTWTKReport = async (
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const HEADER_H = 26;
@@ -212,7 +212,7 @@ export const generateDivingUTWTKReport = async (
                 parts.push(`Rectified: ${rectComments}`);
             }
 
-            const findingsText = parts.length > 0 ? parts.join("\n") : "—";
+            const findingsText = formatReportFindingText(r, parts.join('\n'));
 
             return [
                 index + 1,
@@ -272,21 +272,9 @@ export const generateDivingUTWTKReport = async (
                 9: { halign: "left" }
             },
             didParseCell: (data) => {
-                if (data.section === "body" && data.column.index === 9) {
-                    const rowIndex = data.row.index;
-                    const r = records[rowIndex];
-                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                    const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-                    let metaData = r.inspection_data || {};
-                    if (Array.isArray(metaData)) {
-                        metaData = metaData.find((item: any) => item.inspno || item._meta_status !== undefined) || metaData[metaData.length - 1] || {};
-                    }
-                    const metaStatus = (metaData._meta_status || "").toLowerCase();
-                    
-                    if (metaStatus === "finding") data.cell.styles.textColor = colors.finding;
-                    else if (r.has_anomaly) data.cell.styles.textColor = colors.anomaly;
-                    else if (isRectified) data.cell.styles.textColor = colors.rectified;
-                }
+                if (data.section !== "body") return;
+                const r = (typeof records !== 'undefined' ? records : [])[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) {

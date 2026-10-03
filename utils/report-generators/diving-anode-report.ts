@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -54,7 +54,7 @@ export const generateDivingAnodeReport = async (
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
@@ -184,28 +184,7 @@ export const generateDivingAnodeReport = async (
             const anomalyRef = linkedAnomaly?.anomaly_ref_no || r.anomaly_ref_no || r.ref_no || r.anomaly_no || d._meta_ref_no || "";
             const rectifiedComments = linkedAnomaly?.rectified_remarks || r.rectified_comments || "";
 
-            const rawAddCPs = d.cp_rdg_additional || d.cp_readings || [];
-            const findingsLines: string[] = [];
-            if (r.description && r.description.trim()) findingsLines.push(r.description.trim());
-
-            if (Array.isArray(rawAddCPs) && rawAddCPs.length > 0) {
-                rawAddCPs.forEach((cr: any) => {
-                    const val = cr.reading ?? cr.cp_rdg ?? '';
-                    if ((val !== '' && val !== null && val !== undefined) || cr.location) {
-                        const unit = String(val).toLowerCase().includes('mv') || !val ? '' : ' mV';
-                        findingsLines.push(`Add. CP${cr.location ? ` @ ${cr.location}` : ''}: ${val}${unit}`);
-                    }
-                });
-            }
-
-            if ((isAnomaly || isDefect) && anomalyRef) {
-                findingsLines.push(`[Ref: ${anomalyRef}]`);
-            }
-            if (isRectified) {
-                findingsLines.push(`Rectified: ${rectifiedComments || "N/A"}`);
-            }
-
-            const findings = findingsLines.length > 0 ? findingsLines.join("\n") : "—";
+            const findings = formatReportFindingText(r, r.description);
 
             return [
                 String(idx + 1),
@@ -306,22 +285,7 @@ export const generateDivingAnodeReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sortedRecords[data.row.index];
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding";
-                const isAnom     = r.has_anomaly && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle  = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawCell: (data) => {
             },

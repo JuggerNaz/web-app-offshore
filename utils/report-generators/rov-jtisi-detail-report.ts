@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -371,28 +371,7 @@ export const generateROVRRISIJTubeDetailReport = async (
                     ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                     : "—";
 
-                // Format Findings
-                let findingsParts: string[] = [];
-                if (r.description && r.description.trim()) {
-                    findingsParts.push(r.description.trim());
-                } else if (d.findings && d.findings.trim()) {
-                    findingsParts.push(d.findings.trim());
-                }
-
-                additionals.forEach((a: any) => {
-                    const val = a.reading ?? a.cp_rdg ?? "";
-                    if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                        const loc = a.location ? ` @ ${a.location}` : "";
-                        const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                        findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                    }
-                });
-
-                if (anoms.length > 0) {
-                    findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || a.anomaly_ref_no || "N/A"}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ""})` : ""}`));
-                }
-
-                const findings = findingsParts.length > 0 ? findingsParts.join("\n") : "No significant findings";
+                const findings = formatReportFindingText(r);
 
                 return [
                     { content: String(rIdx + 1), styles: { halign: "center" as const } },
@@ -401,7 +380,7 @@ export const generateROVRRISIJTubeDetailReport = async (
                     { content: String(diveNo), styles: { halign: "center" as const } },
                     { content: String(tapeNo), styles: { halign: "center" as const } },
                     { content: cpDisplay, styles: { halign: "center" as const } },
-                    { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
+                    { content: findings }
                 ];
             }) : [[
                 { content: "-", styles: { halign: "center" as const } },
@@ -440,7 +419,12 @@ export const generateROVRRISIJTubeDetailReport = async (
                     5: { cellWidth: 26 }, // CP
                     6: { cellWidth: "auto" } // Findings
                 },
-                didDrawPage: (data) => {
+                didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
+            },
+            didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawPageHeader(doc);
                 }
             });

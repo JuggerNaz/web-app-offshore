@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -607,31 +607,15 @@ export const generateROVRRISIReport = async (
                     const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
                     const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
 
-                    let findingsParts: string[] = [];
-                    if (isClamp) findingsParts.push(`Clamp: ${c.q_id || 'N/A'}`);
-                    if (r.description && r.description.trim()) findingsParts.push(r.description.trim());
-
-                    additionals.forEach((a: any) => {
-                        const val = a.reading ?? a.cp_rdg ?? "";
-                        if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                            const loc = a.location ? ` @ ${a.location}` : "";
-                            const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                            findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                        }
-                    });
-
-                    if (isAnom && anoms.length > 0) {
-                        findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || 'N/A'}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ''})` : ''}`));
-                    }
-
-                    const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
+                    const baseFinding = isClamp ? `Clamp: ${c.q_id || 'N/A'}\n${r.description || ''}` : (r.description || '');
+                    const findings = formatReportFindingText(r, baseFinding);
 
                     return [
                         { content: String(itemNo), styles: { halign: 'center' } },
                         { content: r.elevation ? `${r.elevation}m` : (rd.riser_item || 'N/A'), styles: { fontStyle: 'bold', halign: 'center' } },
                         { content: String(diveNo), styles: { halign: 'center' } },
                         { content: cpDisplay, styles: { halign: 'center' } },
-                        { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
+                        { content: findings }
                     ];
                 }) : [[
                     { content: "-", styles: { halign: 'center' } },
@@ -644,7 +628,12 @@ export const generateROVRRISIReport = async (
                 headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, halign: 'center' },
                 styles: { fontSize: 7, cellPadding: 2 },
                 columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 16 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 }, 4: { cellWidth: 'auto' } },
-                didDrawPage: (data) => {
+                didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = sortedR[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
+            },
+            didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);
                 }
             });

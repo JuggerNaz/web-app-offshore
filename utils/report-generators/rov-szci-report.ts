@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -186,13 +186,6 @@ export const generateROVSZCIReport = async (
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
                                r.rov_job_id || r.dive_job_id || 'N/A';
                 
-                const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-                const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
-
-                // Construct CP Display (Primary + Additional CP)
                 const primaryCP = d.cp_rdg || d.cp || '';
                 const addCP = d.cp_rdg_additional || d.cp_additional || d.cp_readings || [];
                 const additionalCPs = Array.isArray(addCP)
@@ -204,36 +197,7 @@ export const generateROVSZCIReport = async (
                 const compCond = d.component_condition || d.comp_condition || d.comp_cond || r.component_condition || '-';
                 const coatCond = d.coating_condition || d.coat_condition || d.coat_cond || r.coating_condition || '-';
 
-                // Construct findings
-                let findingsParts: string[] = [];
-                if (r.description && r.description.trim()) findingsParts.push(r.description.trim());
-                
-                // Add Additional CP details
-                if (Array.isArray(addCP)) {
-                    addCP.forEach((item: any) => {
-                        const val = item.reading ?? item.cp_rdg ?? '';
-                        if (val !== '' || item.location) {
-                            findingsParts.push(`Add. CP${item.location ? ` @ ${item.location}` : ''}: ${val} mV`);
-                        }
-                    });
-                }
-
-                // Add Additional UT details
-                const addUT = d.ut_readings_additional || d.ut_additional || [];
-                if (Array.isArray(addUT)) {
-                    addUT.forEach((item: any) => {
-                        if (item.reading) findingsParts.push(`Add. UT${item.location ? ` @ ${item.location}` : ''}: ${item.reading} mm`);
-                    });
-                }
-
-                if (isAnomaly && anomRef) {
-                    findingsParts.push(`[Reference: ${anomRef}]`);
-                }
-                if (isRectified) {
-                    findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
-                }
-
-                const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A';
+                const findings = formatReportFindingText(r);
                 
                 return [
                     idx + 1,
@@ -258,17 +222,7 @@ export const generateROVSZCIReport = async (
             didParseCell: (data) => {
                 if (data.section === 'body') {
                     const r = sortedRecords[data.row.index];
-                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                    const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-
-                    if (isAnom) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = 'bold';
-                    } else if (isRect) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = 'bold';
-                    }
+                    applyRecordCellStyling(data.cell, r, isPF);
                 }
             },
             columnStyles: {

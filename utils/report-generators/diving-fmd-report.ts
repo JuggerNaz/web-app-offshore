@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -174,21 +174,8 @@ export const generateDivingFMDReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || r.rectified_remarks || '';
 
-                // Construct Findings Column
-                const findingsParts: string[] = [];
-                if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
-                    findingsParts.push(String(r.description).trim());
-                } else if (data.remarks && String(data.remarks).trim() !== '') {
-                    findingsParts.push(String(data.remarks).trim());
-                }
-
-                if (isAnomaly && anomRef) {
-                    findingsParts.push(`[Ref: ${anomRef}]`);
-                }
-
-                if (isRectified) {
-                    findingsParts.push(`[Rectified: ${rectRem || 'Completed'}]`);
-                }
+                const baseFinding = (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') ? String(r.description).trim() : (data.remarks && String(data.remarks).trim() !== '' ? String(data.remarks).trim() : "");
+                const findings = formatReportFindingText(r, baseFinding);
 
                 return [
                     String(itemNo),
@@ -197,7 +184,7 @@ export const generateDivingFMDReport = async (
                     diveNo,
                     floodedStr,
                     groutedStr,
-                    findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A'
+                    findings
                 ];
             }),
             theme: 'grid',
@@ -220,22 +207,9 @@ export const generateDivingFMDReport = async (
             tableLineWidth: 0.3,
             tableLineColor: colors.darkBorder,
             didParseCell: (data) => {
-                if (data.section === 'body') {
-                    const r = sortedRecords[data.row.index];
-                    if (r) {
-                        const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                        const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                        const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-
-                        if (isAnom) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (isRect) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
-                        }
-                    }
-                }
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             columnStyles: {
                 0: { cellWidth: 16, halign: 'center' },
