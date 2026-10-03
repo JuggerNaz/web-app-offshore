@@ -168,6 +168,7 @@ interface WorkspaceDialogsProps {
         blPreviewOpen: boolean;
         photographyPreviewOpen: boolean;
         photographyLogPreviewOpen: boolean;
+        videoLogPreviewOpen?: boolean;
         seabedPreviewOpen: boolean;
         seabedDetailPreviewOpen: boolean;
         seabedGasDetailPreviewOpen: boolean;
@@ -277,6 +278,7 @@ interface WorkspaceDialogsProps {
         setBlPreviewOpen: (open: boolean) => void;
         setPhotographyPreviewOpen: (open: boolean) => void;
         setPhotographyLogPreviewOpen: (open: boolean) => void;
+        setVideoLogPreviewOpen?: (open: boolean) => void;
         setSeabedPreviewOpen: (open: boolean) => void;
         setSeabedDetailPreviewOpen: (open: boolean) => void;
         setSeabedGasDetailPreviewOpen: (open: boolean) => void;
@@ -392,6 +394,8 @@ interface WorkspaceDialogsProps {
         generateSeabedCraterDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateVideoLogReport?: () => void;
+        generateVideoLogReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateGVINSReport: () => void;
         generateGVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateBSINSReport: () => void;
@@ -546,6 +550,7 @@ export function WorkspaceDialogs({
         blPreviewOpen,
         photographyPreviewOpen,
         photographyLogPreviewOpen,
+        videoLogPreviewOpen,
         seabedPreviewOpen,
         seabedDetailPreviewOpen,
         seabedGasDetailPreviewOpen,
@@ -644,6 +649,7 @@ export function WorkspaceDialogs({
         setBlPreviewOpen,
         setPhotographyPreviewOpen,
         setPhotographyLogPreviewOpen,
+        setVideoLogPreviewOpen,
         setSeabedPreviewOpen,
         setSeabedDetailPreviewOpen,
         setSeabedGasDetailPreviewOpen,
@@ -737,6 +743,7 @@ export function WorkspaceDialogs({
         generateSeabedCraterDetailReportBlob,
         generatePhotographyReportBlob,
         generatePhotographyLogReportBlob,
+        generateVideoLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
         generateBSINSReport,
@@ -2580,6 +2587,17 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Photography_Log_Report_${headerData.sowReportNo}`} 
                 generateReport={generatePhotographyLogReportBlob} 
             />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={videoLogPreviewOpen || false} 
+                onOpenChange={setVideoLogPreviewOpen || (() => {})} 
+                title="ROV Video Log Report Preview" 
+                fileName={`ROV_Video_Log_Report_${headerData.sowReportNo}`} 
+                generateReport={generateVideoLogReportBlob || (async () => {})} 
+            />
 
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -3033,6 +3051,7 @@ export function WorkspaceDialogs({
                     generateROVRWDIReport: () => setters.setRovRwdiPreviewOpen(true),
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
+                    generateVideoLogReport: () => setters.setVideoLogPreviewOpen ? setters.setVideoLogPreviewOpen(true) : handlers.generateVideoLogReport?.(),
                     generateFMDReport: () => setters.setFmdPreviewOpen(true),
                     generateDivingFMDReport: () => setters.setDivingFmdPreviewOpen ? setters.setDivingFmdPreviewOpen(true) : setters.setFmdPreviewOpen(true),
                     generateDivingMEASUReport: () => setters.setDivingMeasuPreviewOpen ? setters.setDivingMeasuPreviewOpen(true) : setters.setFmdPreviewOpen(true),

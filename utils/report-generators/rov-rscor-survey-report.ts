@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -60,21 +60,7 @@ export const generateROVRSCORSurveyReport = async (
             finding:   [124, 58,  237] as [number, number, number],
         };
 
-        // ── Date range ──────────────────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate:   Date | null = null;
-        if (!isBlank && records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at || r.inspection_date))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate   = max(dates);
-            }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : (isBlank ? "" : "N/A");
+        const dateRangeStr = isBlank ? "" : getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 
@@ -457,16 +443,8 @@ export const generateROVRSCORSurveyReport = async (
             let globalItemIndex = 1;
             sortedFaces.forEach(faceName => {
                 const groupRecords = faceGroups.get(faceName) || [];
-                // Sort records within group by QID, then Elevation Ascending
-                const sortedGroupRecords = [...groupRecords].sort((a, b) => {
-                    const qidA = (a.structure_components?.q_id || a.component?.q_id || a.qid || "").toUpperCase();
-                    const qidB = (b.structure_components?.q_id || b.component?.q_id || b.qid || "").toUpperCase();
-                    if (qidA !== qidB) return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: "base" });
-
-                    const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
-                    const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
-                    return elA - elB;
-                });
+                // Sort records within group by spatial order: Pile Leg 1 -> Member Leg 1 -> Member Midpoint -> Member Leg 2 -> Pile Leg 2
+                const sortedGroupRecords = sortScourFaceRecords(groupRecords, faceName);
 
                 // Add Face group header row
                 const groupHeaderRow: any = [

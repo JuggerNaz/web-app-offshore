@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -144,9 +144,9 @@ export const generateDivingCVINSReport = async (
             doc.text(headerData.jobpackName || "N/A", margin + 25, currentY + 12);
 
             doc.setFont("helvetica", "bold");
-            doc.text("Date:", margin + contentWidth / 2 + 2, currentY + 12);
+            doc.text("Insp. Date Range:", margin + contentWidth / 2 + 2, currentY + 12);
             doc.setFont("helvetica", "normal");
-            doc.text(format(new Date(), 'dd MMM yyyy'), margin + contentWidth / 2 + 25, currentY + 12);
+            doc.text(getInspectionDateRange(records, headerData, config), margin + contentWidth / 2 + 27, currentY + 12);
 
             currentY += 18;
 

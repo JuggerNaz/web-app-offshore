@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -91,17 +91,7 @@ export const generateROVRSCORV2Report = async (
             d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
         };
 
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = new Date(Math.min(...dates.map(d => d.getTime()))); endDate = new Date(Math.max(...dates.map(d => d.getTime()))); }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
-            : (headerData.date || "N/A");
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const drawContext = (d: jsPDF, y: number) => {
             const rowH = 5;
@@ -605,12 +595,12 @@ export const generateROVRSCORV2Report = async (
             for (let c = 0; c < pageFaces.length; c++) {
                 const faceName = pageFaces[c];
                 const compRecords = faceGroups.get(faceName) || [];
-                const compData = compRecords[0]?.structure_components || compRecords[0]?.component || {};
+                const sortedCompRecords = sortScourFaceRecords(compRecords, faceName);
 
                 // Draw Face Header Bar
                 doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 4.5, 'F');
                 doc.setTextColor(255); doc.setFontSize(7); doc.setFont("helvetica", "bold");
-                const qids = Array.from(new Set(compRecords.map(r => r.structure_components?.q_id || r.qid).filter(Boolean)));
+                const qids = Array.from(new Set(sortedCompRecords.map(r => r.structure_components?.q_id || r.qid).filter(Boolean)));
                 const qidDisplay = qids.length > 0 ? ` (${qids.join(', ')})` : '';
                 doc.text(`FACE: ${faceName.toUpperCase()}${qidDisplay}`, margin + 3, currentY + 3.2);
                 currentY += 5.5;
@@ -624,19 +614,6 @@ export const generateROVRSCORV2Report = async (
                 // 2. Draw Table on the Right
                 const tableX = margin + contentWidth / 2 + 2;
                 const tableW = contentWidth / 2 - 4;
-
-                const sortGroupRecords = (recs: any[]) => {
-                    return [...recs].sort((a, b) => {
-                        const qidA = (a.structure_components?.q_id || a.component?.q_id || a.qid || "").toUpperCase();
-                        const qidB = (b.structure_components?.q_id || b.component?.q_id || b.qid || "").toUpperCase();
-                        const isPlA = qidA.startsWith("PL");
-                        const isPlB = qidB.startsWith("PL");
-                        if (isPlA !== isPlB) return isPlA ? 1 : -1;
-                        return qidA.localeCompare(qidB);
-                    });
-                };
-
-                const sortedCompRecords = sortGroupRecords(compRecords);
 
                 autoTable(doc, {
                     startY: currentY,

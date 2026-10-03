@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 export interface CompanySettings {
@@ -388,7 +388,7 @@ export const generateROVNavigReport = async (
         const jobPackName = jobPack?.name || hData.jobpackName || "N/A";
         const vessel = hData.vessel || "N/A";
         const reportNo = sowReportNo || hData.sowReportNo || `${config.reportNoPrefix || "REP"}-NAVIG-01`;
-        const inspDate = hData.date || format(new Date(), "dd/MM/yyyy");
+        const inspDate = getInspectionDateRange(rawRecords, hData, config);
 
         const fieldsRow1 = [
             { label: "PIPELINE / STRUCTURE:", value: structName },
@@ -398,7 +398,7 @@ export const generateROVNavigReport = async (
 
         const fieldsRow2 = [
             { label: "VESSEL / SPREAD:", value: vessel },
-            { label: "INSPECTION DATE:", value: inspDate },
+            { label: "INSP. DATE RANGE:", value: inspDate },
             { label: "INSPECTION TYPE:", value: "NAVIG (Pipeline ROV Survey)" }
         ];
 

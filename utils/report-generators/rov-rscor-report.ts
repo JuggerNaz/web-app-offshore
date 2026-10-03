@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -91,17 +91,7 @@ export const generateROVRSCORReport = async (
             d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 19.5, { align: 'center' });
         };
 
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = new Date(Math.min(...dates.map(d => d.getTime()))); endDate = new Date(Math.max(...dates.map(d => d.getTime()))); }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
-            : (headerData.date || "N/A");
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const drawContext = (d: jsPDF, y: number) => {
             const rowH = 6;
@@ -272,9 +262,10 @@ export const generateROVRSCORReport = async (
 
         for (let pageIdx = 0; pageIdx < renderFaces.length; pageIdx++) {
             const faceName = renderFaces[pageIdx];
-            const faceRecords = faceGroups.get(faceName) || [];
+            const rawFaceRecords = faceGroups.get(faceName) || [];
+            const faceRecords = sortScourFaceRecords(rawFaceRecords, faceName);
 
-            // Extract all unique components in this face
+            // Extract all unique components in this face (in sorted order)
             const qidSet = new Set<string>();
             faceRecords.forEach(r => {
                 const q = r.structure_components?.q_id || r.component?.q_id || r.qid;
@@ -687,26 +678,13 @@ export const generateROVRSCORReport = async (
             drawGraphics(doc, currentY);
             currentY += panelH + 4;
 
-            // Sort face records by location:
-            // 1. Start Leg (Left Leg) + respective Piles
-            // 2. Midpoint (always in the middle)
-            // 3. End Leg (Right Leg) + respective Piles
-            const sortGroupRecords = (recs: any[]) => {
-                return [...recs].sort((a, b) => {
-                    const qidA = (a.structure_components?.q_id || a.component?.q_id || a.qid || "").toUpperCase();
-                    const qidB = (b.structure_components?.q_id || b.component?.q_id || b.qid || "").toUpperCase();
-                    const isPlA = qidA.startsWith("PL");
-                    const isPlB = qidB.startsWith("PL");
-                    if (isPlA !== isPlB) return isPlA ? 1 : -1;
-                    return qidA.localeCompare(qidB);
-                });
-            };
-
-            const sortedTableRecords = [
-                ...sortGroupRecords(leftRecords),
-                ...sortGroupRecords(midRecords),
-                ...sortGroupRecords(rightRecords)
-            ];
+            // Sort face records by spatial order:
+            // 1. Start Leg Pile (at first)
+            // 2. Start Leg Member
+            // 3. Midpoint Member (always at the centre)
+            // 4. End Leg Member
+            // 5. End Leg Pile (at last)
+            const sortedTableRecords = sortScourFaceRecords(faceRecords, faceName);
 
             autoTable(doc, {
                 startY: currentY,

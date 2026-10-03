@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -36,7 +36,7 @@ export const generateROVAnodeReport = async (
 ): Promise<Blob | void | null> => {
     try {
         records = normalizeReportRecords(records);
-        if (!config.isBlankReport && (!records || records.length === 0)) {
+        if (!config.isBlankReport && (!records || records.length === 0) && !config.returnBlob) {
             return null;
         }
 
@@ -68,19 +68,7 @@ export const generateROVAnodeReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records.map(r => new Date(r.cr_date)).filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate = max(dates);
-            }
-        }
-
-        const dateRangeStr = startDate && endDate 
-            ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
-            : 'N/A';
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const headerH = 26;
         const drawHeader = (d: jsPDF) => {

@@ -380,6 +380,7 @@ interface ReportWizardDialogProps {
         generatePhotographyReport: () => void;
         generateROVRWDIReport: () => void;
         generatePhotographyLogReport: () => void;
+        generateVideoLogReport?: () => void;
         generateFMDReport: () => void;
         generateDivingFMDReport?: () => void;
         generateDivingMEASUReport?: () => void;
@@ -558,7 +559,7 @@ export function ReportWizardDialog({
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                 return typeCode === 'RSANI' || (compCode === 'AN' && typeCode === 'RSANI');
             }) },
-            { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report (ROV)', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: currentRecords.some(r => (r.tape_logs && r.tape_logs.length > 0) || r.tape_no || r.video_no || r.dive_no || (r.dive_logs && r.dive_logs.length > 0) || currentRecords.length > 0) },
+            { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report (ROV)', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generateVideoLogReport || handlers.generatePhotographyLogReport, available: currentRecords.some(r => (r.tape_logs && r.tape_logs.length > 0) || r.tape_no || r.video_no || r.dive_no || (r.dive_logs && r.dive_logs.length > 0) || currentRecords.length > 0) },
             { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey Report (ROV)', description: 'Flooded Member Detection summary report with QID, Elevation, Dive and Tape details', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
             { id: 'utwt_rov', code: 'RUTWT', name: 'UT Thickness Report (ROV)', description: 'Detailed ROV UT wall thickness report with 4 clock positions and elevation reference', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT', 'UTWT', 'UTWTK']) },
             { id: 'seabed_rov', code: 'RSEAB-SKETCH', name: 'Seabed Survey Inspection Sketch Report (ROV)', description: 'General unfiltered Seabed GUI maps showing all debris, craters, and gas seepages.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('rov-seabed-report'), available: hasRecords(['RSEAB', 'SEABED']) },

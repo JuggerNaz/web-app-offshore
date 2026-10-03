@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -58,18 +58,7 @@ export const generateDivingUTCLBReport = async (
             finding:   [124, 58,  237] as [number, number, number],
         };
 
-        // ── Date range ──────────────────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate:   Date | null = null;
-        if (records && records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = min(dates); endDate = max(dates); }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : "N/A";
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 

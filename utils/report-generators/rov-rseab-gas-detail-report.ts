@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -143,21 +143,7 @@ export const generateROVRSEABGasDetailReport = async (
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
 
-            // Date range for this group
-            let startDate: Date | null = null;
-            let endDate: Date | null = null;
-            if (groupRecords.length > 0) {
-                const dates = groupRecords
-                    .map(r => new Date(r.cr_date || r.created_at))
-                    .filter(d => !isNaN(d.getTime()));
-                if (dates.length > 0) {
-                    startDate = min(dates);
-                    endDate = max(dates);
-                }
-            }
-            const dateStr = startDate && endDate
-                ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
-                : "N/A";
+            const dateStr = getInspectionDateRange(records, headerData, config);
 
             const drawBox = (label: string, value: string, x: number, y: number, w: number) => {
                 d.setDrawColor(...colors.border);

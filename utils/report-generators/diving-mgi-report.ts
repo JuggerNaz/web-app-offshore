@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange } from "./shared-logo";
 import { calculateInterpolatedMgiThreshold, getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
@@ -102,6 +102,7 @@ export const generateDivingMGIReport = async (
         const drawContextBox = (d: jsPDF, y: number) => {
             const rowH = 7;
             const half = contentWidth / 2;
+            const dateRangeStr = getInspectionDateRange(records, headerData, config);
             
             const drawCell = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1);
@@ -116,7 +117,7 @@ export const generateDivingMGIReport = async (
             drawCell('Structure:', headerData.platformName || "N/A", margin, half, y);
             drawCell('Vessel:', headerData.vessel || 'N/A', margin + half, half, y);
             drawCell('Job Pack:', headerData.jobpackName || "N/A", margin, half, y + rowH);
-            drawCell('Date:', format(new Date(), 'dd/MM/yyyy'), margin + half, half, y + rowH);
+            drawCell('Insp. Date Range:', dateRangeStr, margin + half, half, y + rowH);
             
             return y + (rowH * 2) + 5;
         };

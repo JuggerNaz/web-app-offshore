@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { jsPDF } from "jspdf";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -62,14 +62,17 @@ import { generateDivingDCONDReport as generateDivingDCONDReportTemplate } from "
 import { generatePipelineEventSketchReport } from "@/utils/report-generators/pipeline-event-sketch-report";
 import { generateROVNavigReport } from "@/utils/report-generators/rov-navig-report";
 import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
+import { generateVideoLogReport as generateVideoLogReportTemplate } from "@/utils/report-generators/video-log-report";
 
 import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
+
+import { getInspectionDateRange } from "@/utils/report-generators/date-range-utils";
 
 export function useWorkspaceReports(
     supabase: any,
     jobPackId: string | null,
     structureId: string | null,
-    headerData: any,
+    rawHeaderData: any,
     currentRecords: any[],
     pendingAttachments: any[],
     allInspectionTypes: any[]
@@ -81,6 +84,19 @@ export function useWorkspaceReports(
         watermark: { enabled: false, text: "DRAFT", transparency: 0.15, color: "gray" },
         showSignatures: true
     });
+
+    const inspDateRange = useMemo(() => {
+        return getInspectionDateRange(currentRecords, rawHeaderData, reportConfig);
+    }, [currentRecords, rawHeaderData, reportConfig]);
+
+    const headerData = useMemo(() => ({
+        ...rawHeaderData,
+        inspDateRange,
+        dateRange: inspDateRange,
+        date_range: inspDateRange,
+        allWorkspaceRecords: currentRecords,
+        allRecords: currentRecords,
+    }), [rawHeaderData, inspDateRange, currentRecords]);
 
     useEffect(() => {
         if (typeof window !== "undefined") {
@@ -123,6 +139,7 @@ export function useWorkspaceReports(
     const [seabedCraterDetailPreviewOpen, setSeabedCraterDetailPreviewOpen] = useState(false);
     const [photographyPreviewOpen, setPhotographyPreviewOpen] = useState(false);
     const [photographyLogPreviewOpen, setPhotographyLogPreviewOpen] = useState(false);
+    const [videoLogPreviewOpen, setVideoLogPreviewOpen] = useState(false);
     const [gvinsPreviewOpen, setGvinsPreviewOpen] = useState(false);
     const [bsinsPreviewOpen, setBsinsPreviewOpen] = useState(false);
     const [cvinsPreviewOpen, setCvinsPreviewOpen] = useState(false);
@@ -1923,6 +1940,23 @@ export function useWorkspaceReports(
         setPhotographyLogPreviewOpen(true);
     };
 
+    const generateVideoLogReport = async () => {
+        setVideoLogPreviewOpen(true);
+    };
+
+    const generateVideoLogReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('*, metadata').eq('id', Number(jobPackId)).maybeSingle();
+        const { data: structure } = await supabase.from('structures').select('*').eq('id', Number(structureId)).maybeSingle();
+        return await generateVideoLogReportTemplate(
+            jobPack || { id: Number(jobPackId), name: headerData.jobpackName, metadata: { vessel: headerData.vessel } },
+            structure || { id: Number(structureId), str_name: headerData.platformName },
+            headerData.sowReportNo,
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, showContractorLogo: true, sowReportNo: headerData.sowReportNo, reportNoPrefix: headerData.sowReportNo } as any
+        ) as Blob;
+    };
+
     const generateDivingItemReportAction = async () => {
         setDivingItemReportPreviewOpen(true);
     };
@@ -2288,6 +2322,10 @@ export function useWorkspaceReports(
         generatePhotographyReportBlob,
         generatePhotographyLogReport,
         generatePhotographyLogReportBlob,
+        generateVideoLogReport,
+        generateVideoLogReportBlob,
+        videoLogPreviewOpen,
+        setVideoLogPreviewOpen,
         generateGVINSReport,
         generateGVINSReportBlob,
         generateDivingDCASNUWReport: async () => {
