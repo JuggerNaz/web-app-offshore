@@ -68,6 +68,25 @@ export const isROVRecord = (r: any): boolean => {
 };
 
 /**
+ * Filter helper to check if a record has a valid CP reading value.
+ */
+export const hasCPReading = (r: any): boolean => {
+    if (!r) return false;
+    const d = r.inspection_data || r.inspection_dat || {};
+    const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp;
+    if (primaryCP !== undefined && primaryCP !== null && String(primaryCP).trim() !== "") {
+        return true;
+    }
+    const additionals: any[] = Array.isArray(d.cp_rdg_additional)
+        ? d.cp_rdg_additional
+        : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+    return additionals.some((a: any) => {
+        const val = a?.reading ?? a?.cp_rdg ?? a?.cp;
+        return val !== undefined && val !== null && String(val).trim() !== "";
+    });
+};
+
+/**
  * ROV CP Survey Report (Portrait)
  * Columns: Item No. | Component QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
  */
@@ -79,7 +98,7 @@ export const generateROVCPReport = async (
 ): Promise<Blob | void | null> => {
     try {
         records = normalizeReportRecords(records);
-        const filteredRecords = (records || []).filter(isROVRecord);
+        const filteredRecords = (records || []).filter(r => isROVRecord(r) && (config.isBlankReport ? true : hasCPReading(r)));
 
         if (!config.isBlankReport && filteredRecords.length === 0) {
             return null;

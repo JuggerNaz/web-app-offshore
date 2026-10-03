@@ -53,8 +53,9 @@ export const generateROVAnodeRSANIReport = async (
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
-            anomaly: [239, 68, 68] as [number, number, number],
-            rectified: [34, 197, 94] as [number, number, number]
+            anomaly: [220, 38, 38] as [number, number, number],
+            rectified: [22, 163, 74] as [number, number, number],
+            finding: [124, 58, 237] as [number, number, number]
         };
 
         // --- 1. Preparation ---
@@ -256,6 +257,28 @@ export const generateROVAnodeRSANIReport = async (
                 6: { cellWidth: 18, halign: 'center' },
                 7: { cellWidth: 25, halign: 'center' },
                 8: { cellWidth: 'auto' }
+            },
+            didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                if (!r) return;
+                const d = r.inspection_data || r.inspection_dat || {};
+                const linkedAnomaly = (r.insp_anomalies && r.insp_anomalies.length > 0) ? r.insp_anomalies[0] : null;
+                const metaStatus = (d._meta_status || r._meta_status || "").toLowerCase();
+                const isFinding = metaStatus === "finding";
+                const isAnom = (r.has_anomaly || !!linkedAnomaly || r.is_defect || d.is_defect) && !isFinding;
+                const isRect = linkedAnomaly?.is_rectified || r.rectified || false;
+
+                if (isFinding) {
+                    data.cell.styles.textColor = colors.finding;
+                    data.cell.styles.fontStyle = "bold";
+                } else if (isAnom) {
+                    data.cell.styles.textColor = colors.anomaly;
+                    data.cell.styles.fontStyle = "bold";
+                } else if (isRect) {
+                    data.cell.styles.textColor = colors.rectified;
+                    data.cell.styles.fontStyle = "bold";
+                }
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawHeader(doc);

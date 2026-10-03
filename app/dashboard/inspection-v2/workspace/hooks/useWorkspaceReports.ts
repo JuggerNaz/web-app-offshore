@@ -20,7 +20,7 @@ import { generateROVRRISIJTubeDetailReport } from "@/utils/report-generators/rov
 import { generateROVRRISIITubeDetailReport } from "@/utils/report-generators/rov-itisi-detail-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
 import { generateROVAnodeRSANIReport } from "@/utils/report-generators/rov-anode-rsani-report";
-import { generateROVCPReport, isROVRecord } from "@/utils/report-generators/rov-cp-report";
+import { generateROVCPReport, isROVRecord, hasCPReading } from "@/utils/report-generators/rov-cp-report";
 import { generateROVRICMIReport } from "@/utils/report-generators/rov-ricmi-report";
 import { generateROVSelectedNodeReport } from "@/utils/report-generators/rov-selected-node-report";
 import { generateROVRGVIReport } from "@/utils/report-generators/rov-rgvi-report";
@@ -998,11 +998,7 @@ export function useWorkspaceReports(
     };
 
     const generateCPReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
-        const records = currentRecords.filter(r => {
-            const d = r.inspection_data || {};
-            const hasCP = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
-            return hasCP && isROVRecord(r);
-        });
+        const records = currentRecords.filter(r => isROVRecord(r) && hasCPReading(r));
         const settings = await getReportHeaderData();
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
         let contractorLogoUrl = '';
