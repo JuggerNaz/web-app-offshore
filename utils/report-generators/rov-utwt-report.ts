@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -34,6 +34,7 @@ export const generateROVUTWTReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -190,7 +191,7 @@ export const generateROVUTWTReport = async (
                 d.ut_3_o_clock || '-',
                 d.ut_6_o_clock || '-',
                 d.ut_9_o_clock || '-',
-                d.nominal_thickness || '-',
+                getRecordNominalThickness(r),
                 findings
             ];
         }) : [

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -38,6 +38,7 @@ export const generateDivingItemReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         // ── Filter to PL_IC records strictly if mixed ───────────────────────────
         const filteredRecords = (records || []).filter(r => {
             const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords } from "./shared-logo";
 import { calculateInterpolatedMgiThreshold, getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {

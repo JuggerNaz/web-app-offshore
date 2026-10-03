@@ -209,7 +209,10 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                 const remarksMatch = (ev.remarks || "").toLowerCase().includes(q);
                 const diveMatch = (ev.diveNo || "").toLowerCase().includes(q);
                 const structMatch = (ev.structure || "").toLowerCase().includes(q);
-                return actionMatch || tapeMatch || chMatch || timeMatch || remarksMatch || diveMatch || structMatch;
+                const compMatch = (ev.componentQid || "").toLowerCase().includes(q) || (ev.compCode || "").toLowerCase().includes(q);
+                const inspTypeMatch = (ev.inspTypeName || "").toLowerCase().includes(q) || (ev.inspTypeCode || "").toLowerCase().includes(q);
+                const anomMatch = (ev.anomalyRef || "").toLowerCase().includes(q) || (ev.defectCode || "").toLowerCase().includes(q) || (ev.defectDesc || "").toLowerCase().includes(q);
+                return actionMatch || tapeMatch || chMatch || timeMatch || remarksMatch || diveMatch || structMatch || compMatch || inspTypeMatch || anomMatch;
             });
         }
 
@@ -1135,44 +1138,89 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                             <div className="space-y-1.5 ml-2 sm:ml-3 pl-2 sm:pl-3 border-l-2 border-slate-800/50">
                                                                 {chapterEvents.map((ev, idx) => {
                                                                     const style = getActionStyle(ev.action);
+                                                                    const isInsp = ev.logType === "insp" || ev.action === "INSPECTION" || ev.action === "ANOMALY" || ev.action === "DEFECT";
 
                                                                     return (
                                                                         <div
                                                                             key={ev.id || idx}
-                                                                            className="group/ev relative flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 bg-slate-900/80 hover:bg-slate-850 rounded-lg border border-slate-800/90 hover:border-slate-700 shadow-sm transition-all animate-in fade-in slide-in-from-top-1"
+                                                                            className={`group/ev relative flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 rounded-lg border transition-all animate-in fade-in slide-in-from-top-1 ${
+                                                                                isInsp
+                                                                                    ? (ev.action === "ANOMALY"
+                                                                                        ? "bg-red-950/25 hover:bg-red-950/40 border-red-800/40 hover:border-red-700/60 shadow-sm"
+                                                                                        : "bg-blue-950/20 hover:bg-blue-950/35 border-blue-800/30 hover:border-blue-700/50 shadow-sm")
+                                                                                    : "bg-slate-900/80 hover:bg-slate-850 rounded-lg border border-slate-800/90 hover:border-slate-700 shadow-sm"
+                                                                            }`}
                                                                         >
-                                                                            {/* Left: Timecode + Action Badge + Description */}
+                                                                            {/* Left: Timecode + Action Badge + Component / Inspection Metadata */}
                                                                             <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
                                                                                 {/* Timecode Pill */}
-                                                                                <div className="px-2 py-1 rounded bg-slate-950 border border-slate-800 text-cyan-400 font-mono text-[11px] font-black shrink-0 tracking-wider shadow-inner">
+                                                                                <div className={`px-2 py-1 rounded font-mono text-[11px] font-black shrink-0 tracking-wider shadow-inner border ${
+                                                                                    isInsp
+                                                                                        ? "bg-slate-950 border-blue-900/60 text-cyan-300"
+                                                                                        : "bg-slate-950 border-slate-800 text-cyan-400"
+                                                                                }`}>
                                                                                     {ev.time || "00:00:00"}
                                                                                 </div>
 
                                                                                 <div className="flex flex-col min-w-0 flex-1">
-                                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                                    <div className="flex items-center gap-1.5 flex-wrap">
                                                                                         {/* Action Pill */}
                                                                                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${style.badge}`}>
                                                                                             <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                                                                                             {ev.action}
                                                                                         </span>
 
-                                                                                        {/* Component / Structure Tag if available */}
-                                                                                        {ev.structure && ev.structure !== "N/A" && (
+                                                                                        {/* Inspection Specific Badges: Component QID, Inspection Type, Anomaly Ref */}
+                                                                                        {isInsp && ev.componentQid && ev.componentQid !== "-" && (
+                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-600/40 font-mono" title="Component QID">
+                                                                                                <Bookmark className="w-2.5 h-2.5 text-sky-400" />
+                                                                                                {ev.componentQid}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {isInsp && (ev.inspTypeName || ev.inspTypeCode) && (
+                                                                                            <span className="text-[9px] font-bold text-indigo-300 bg-indigo-950/80 px-1.5 py-0.5 rounded border border-indigo-600/40 uppercase">
+                                                                                                {ev.inspTypeName || ev.inspTypeCode}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {isInsp && ev.anomalyRef && (
+                                                                                            <span className="text-[9px] font-black text-red-200 bg-red-950/90 px-2 py-0.5 rounded border border-red-500/60 uppercase flex items-center gap-1 shadow-sm">
+                                                                                                <AlertCircle className="w-3 h-3 text-red-400" />
+                                                                                                {ev.anomalyRef}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {isInsp && ev.defectCode && (
+                                                                                            <span className="text-[9px] font-bold text-orange-300 bg-orange-950/80 px-1.5 py-0.5 rounded border border-orange-600/40 uppercase">
+                                                                                                {ev.defectCode}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {/* Component Type Code if available */}
+                                                                                        {ev.compCode && (
+                                                                                            <span className="text-[8px] font-bold text-slate-400 uppercase bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60">
+                                                                                                {ev.compCode}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {/* Structure Tag if available and not redundant */}
+                                                                                        {!isInsp && ev.structure && ev.structure !== "N/A" && (
                                                                                             <span className="text-[8px] font-bold text-slate-400 uppercase bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60">
                                                                                                 {ev.structure}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
 
-                                                                                    {/* Timestamp & Remarks */}
+                                                                                    {/* Timestamp & Remarks / Findings */}
                                                                                     <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium mt-1 flex-wrap">
-                                                                                        <div className="flex items-center gap-1 text-slate-500">
+                                                                                        <div className="flex items-center gap-1 text-slate-500 shrink-0">
                                                                                             <Clock className="w-3 h-3" />
                                                                                             <span>{formatEventTime(ev.eventTime)}</span>
                                                                                         </div>
 
                                                                                         {ev.remarks && ev.remarks !== "-" && (
-                                                                                            <span className="text-slate-300 font-normal italic truncate max-w-md">
+                                                                                            <span className="text-slate-200 font-normal truncate max-w-xl">
                                                                                                 • {ev.remarks}
                                                                                             </span>
                                                                                         )}

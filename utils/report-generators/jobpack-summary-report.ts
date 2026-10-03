@@ -40,7 +40,7 @@ interface CompanySettings {
     logo_url?: string;
 }
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
 
 const fetchContractorDetails = async (id: string): Promise<{ name: string; address: string; logoUrl?: string }> => {
     try {

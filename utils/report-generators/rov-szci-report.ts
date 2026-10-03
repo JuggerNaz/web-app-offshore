@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -34,6 +34,7 @@ export const generateROVSZCIReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -110,28 +111,51 @@ export const generateROVSZCIReport = async (
         };
 
         const drawContext = (d: jsPDF, y: number) => {
-            const rowH = 7;
+            const rowH = 6.5;
             const tableY = y;
             const colW = contentWidth / 2;
             const isPF = config.printFriendly;
             
-            const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
-                d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
-                if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
-                if (!isPF) d.rect(x, ty, w, rowH, 'S');
+            const drawFieldBox = (label: string, value: string, x: number, labelW: number, totalW: number, ty: number) => {
+                const valW = totalW - labelW;
                 
-                d.setTextColor(...colors.text); d.setFontSize(8); d.setFont("helvetica", "bold");
-                d.text(label, x + 2, ty + 4.5); d.setFont("helvetica", "normal");
-                d.text(String(value), x + 40, ty + 4.5);
+                // 1. Label Box
+                d.setDrawColor(...colors.border);
+                d.setLineWidth(0.15);
+                if (!isPF) {
+                    d.setFillColor(241, 245, 249); // slate-100
+                    d.rect(x, ty, labelW, rowH, 'FD');
+                } else {
+                    d.rect(x, ty, labelW, rowH, 'S');
+                }
+                d.setTextColor(...colors.navy);
+                d.setFontSize(7.5);
+                d.setFont("helvetica", "bold");
+                d.text(label, x + 2.5, ty + 4.4);
+                
+                // 2. Value Box
+                const valX = x + labelW;
+                if (!isPF) {
+                    d.setFillColor(255, 255, 255);
+                    d.rect(valX, ty, valW, rowH, 'FD');
+                } else {
+                    d.rect(valX, ty, valW, rowH, 'S');
+                }
+                d.setTextColor(...colors.text);
+                d.setFontSize(7.5);
+                d.setFont("helvetica", "normal");
+                d.text(String(value || 'N/A'), valX + 2.5, ty + 4.4);
             };
 
-            drawBox('Structure:', headerData.platformName, margin, colW, tableY);
-            drawBox('Vessel:', headerData.vessel || 'N/A', margin + colW, colW, tableY);
-            drawBox('Job Pack:', headerData.jobpackName, margin, colW, tableY + rowH);
-            drawBox('Insp. Date Range:', dateRangeStr, margin + colW, colW, tableY + rowH);
+            const labelWLeft = 32;
+            const labelWRight = 36;
+
+            drawFieldBox('Structure:', headerData.platformName || 'N/A', margin, labelWLeft, colW, tableY);
+            drawFieldBox('Vessel:', headerData.vessel || 'N/A', margin + colW, labelWRight, colW, tableY);
+            drawFieldBox('Job Pack:', headerData.jobpackName || 'N/A', margin, labelWLeft, colW, tableY + rowH);
+            drawFieldBox('Insp. Date Range:', dateRangeStr, margin + colW, labelWRight, colW, tableY + rowH);
             
-            return tableY + (rowH * 2) + 5;
+            return tableY + (rowH * 2) + 4;
         };
 
         drawHeader(doc);
@@ -156,6 +180,8 @@ export const generateROVSZCIReport = async (
                     { content: 'CP (mV)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
                     { content: 'Wall Thickness (mm)', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [230,230,230] : [20, 184, 166], textColor: isPF ? colors.text : 255 } },
                     { content: 'Nominal (mm)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Component Condition', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
+                    { content: 'Coating Condition', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
                     { content: 'Dive No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
                     { content: 'Findings', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } }
                 ],
@@ -187,6 +213,9 @@ export const generateROVSZCIReport = async (
                     : [];
                 const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
                 const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
+
+                const compCond = d.component_condition || d.comp_condition || d.comp_cond || r.component_condition || '-';
+                const coatCond = d.coating_condition || d.coat_condition || d.coat_cond || r.coating_condition || '-';
 
                 // Construct findings
                 let findingsParts: string[] = [];
@@ -227,12 +256,14 @@ export const generateROVSZCIReport = async (
                     d.ut_3_o_clock || '-',
                     d.ut_6_o_clock || '-',
                     d.ut_9_o_clock || '-',
-                    d.nominal_thickness || '-',
+                    getRecordNominalThickness(r),
+                    compCond,
+                    coatCond,
                     diveNo,
                     findings
                 ];
             }) : [
-                ["-", "-", "-", "-", "-", "-", "-", "-", "-", "No splash zone observations recorded for this scope."]
+                ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No splash zone observations recorded for this scope."]
             ],
             theme: 'grid',
             headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
@@ -254,16 +285,18 @@ export const generateROVSZCIReport = async (
                 }
             },
             columnStyles: {
-                0: { cellWidth: 15, halign: 'center' },
-                1: { cellWidth: 35 },
-                2: { cellWidth: 20, halign: 'center' },
-                3: { cellWidth: 20, halign: 'center' },
-                4: { cellWidth: 20, halign: 'center' },
-                5: { cellWidth: 20, halign: 'center' },
-                6: { cellWidth: 20, halign: 'center' },
-                7: { cellWidth: 20, halign: 'center' },
-                8: { cellWidth: 30, halign: 'center' },
-                9: { cellWidth: 'auto' }
+                0: { cellWidth: 12, halign: 'center' }, // Item No.
+                1: { cellWidth: 30 },                   // Component QID
+                2: { cellWidth: 16, halign: 'center' }, // CP (mV)
+                3: { cellWidth: 15, halign: 'center' }, // 12 o'clock
+                4: { cellWidth: 15, halign: 'center' }, // 3 o'clock
+                5: { cellWidth: 15, halign: 'center' }, // 6 o'clock
+                6: { cellWidth: 15, halign: 'center' }, // 9 o'clock
+                7: { cellWidth: 16, halign: 'center' }, // Nominal (mm)
+                8: { cellWidth: 24, halign: 'center' }, // Component Condition
+                9: { cellWidth: 24, halign: 'center' }, // Coating Condition
+                10: { cellWidth: 20, halign: 'center' },// Dive No.
+                11: { cellWidth: 'auto' }               // Findings
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawHeader(doc);

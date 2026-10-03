@@ -1094,30 +1094,19 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.logo_url || '';
         }
 
-        const isRG = records.some(r => {
-            const qid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
-            const code = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-            return qid.startsWith("RG") || qid.startsWith("RISG") || code === "RG";
-        });
-
-        if (isRG) {
-            return await generateROVRiserGuardReport(
-                records.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
-                { ...headerData, contractorLogoUrl, vessel: headerData.vessel },
-                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                {
-                    jobPackId: Number(jobPackId),
-                    structureId: Number(structureId),
-                    sowReportNo: headerData.sowReportNo,
-                    preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
-                    returnBlob: true,
-                    printFriendly: printFriendly || false,
-                    showSignatures: showSignatures ?? reportConfig.showSignatures
-                }
-            ) as Blob;
-        }
-
-        return await generateROVRGVIReport(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
+        return await generateROVRGVIReport(
+            records.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { 
+                jobPackId: Number(jobPackId),
+                structureId: Number(structureId),
+                sowReportNo: headerData.sowReportNo,
+                returnBlob: true, 
+                printFriendly, 
+                showSignatures: showSignatures ?? reportConfig.showSignatures 
+            }
+        ) as Blob;
     };
 
     const generateGVINSReport = async () => {

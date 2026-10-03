@@ -6,7 +6,7 @@ import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 // Helper to load image for PDF
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;

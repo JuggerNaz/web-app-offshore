@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -77,6 +77,7 @@ export const generateDivingCPSURVReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void | null> => {
+    records = normalizeReportRecords(records);
     if (!config.isBlankReport && (!records || records.length === 0)) {
         return null;
     }

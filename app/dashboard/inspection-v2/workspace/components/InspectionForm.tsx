@@ -729,7 +729,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     // Synchronize nominal wall thickness from selected component spec if not set
     React.useEffect(() => {
-        if (!isEditing && (isThicknessTask || compNomThickness) && handleDynamicPropChange) {
+        if ((isThicknessTask || compNomThickness) && handleDynamicPropChange) {
             if (compNomThickness && compNomThickness > 0) {
                 const curNt = parseFloat(dynamicProps?.nominal_thickness || dynamicProps?.nominal_wall_thickness || dynamicProps?.wall_thickness || dynamicProps?.nom_wt || '');
                 if (isNaN(curNt) || curNt === 0) {

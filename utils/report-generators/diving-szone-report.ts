@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getRecordNominalThickness } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -37,6 +37,7 @@ export const generateDivingSZONEReport = async (
     supabase?: any
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config?.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -165,15 +166,12 @@ export const generateDivingSZONEReport = async (
             const ut12 = d.ut_12_o_clock ?? "—";
             
             // Robust nominal thickness and unit
-            const ntVal = d.nominal_thickness || 
-                          r.structure_components?.metadata?.nominal_thickness || 
-                          r.structure_components?.metadata?.nom_thick || 
-                          "—";
+            const ntVal = getRecordNominalThickness(r);
             const utUnit = d.ut_unit || 
                            r.structure_components?.metadata?.ut_unit || 
                            "mm";
             
-            const nt = ntVal !== "—" ? `${ntVal} ${utUnit}` : "—";
+            const nt = ntVal !== "-" ? `${ntVal} ${utUnit}` : "—";
 
             const diveNo =
                 r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||

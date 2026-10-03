@@ -4700,18 +4700,59 @@ function V10PreviewLayout() {
         .from("insp_anomalies")
         .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id");
 
-      let [movsRes, tapesRes, inspsRes] = await Promise.all([
+      let [movsRes, tapesRes, inspsRes, allInspsRes] = await Promise.all([
         movementsPromise,
         tapesPromise,
         inspsQuery,
+        allInspsQuery,
       ]);
 
       const movs = movsRes.data;
-      let rawTapes = tapesRes.data || [];
+      let rawTapes: any[] = (tapesRes.data || []) as any[];
+      const allInspsData: any[] = (allInspsRes?.data || []) as any[];
+
+      // Expand tape discovery: Fetch all sibling chapters (e.g. chapters 11, 12) for all discovered tape numbers
+      // and any tapes referenced by inspection records
+      const discoveredTapeNos = Array.from(new Set(
+        rawTapes.map((t: any) => (t.tape_no || "").trim()).filter(Boolean)
+      ));
+      const inspTapeIds = Array.from(new Set(
+        allInspsData.map((r: any) => r.tape_id).filter(Boolean)
+      ));
+
+      if (discoveredTapeNos.length > 0 || inspTapeIds.length > 0) {
+        try {
+          const extraPromises: Promise<any>[] = [];
+          if (discoveredTapeNos.length > 0) {
+            extraPromises.push(
+              supabase
+                .from("insp_video_tapes")
+                .select("*")
+                .in("tape_no", discoveredTapeNos)
+            );
+          }
+          if (inspTapeIds.length > 0) {
+            extraPromises.push(
+              supabase
+                .from("insp_video_tapes")
+                .select("*")
+                .in("tape_id", inspTapeIds)
+            );
+          }
+          const extraResults = await Promise.all(extraPromises);
+          extraResults.forEach(res => {
+            if (res.data && res.data.length > 0) {
+              rawTapes.push(...res.data);
+            }
+          });
+        } catch (extraTapeErr) {
+          console.warn("[Sync] Error fetching sibling tape chapters:", extraTapeErr);
+        }
+      }
 
       // Deduplicate tapes having identical (tape_no, chapter_no)
       const uniqueTapeMap = new Map<string, any>();
-      (rawTapes as any[]).forEach((t: any) => {
+      rawTapes.forEach((t: any) => {
         const key = `${(t.tape_no || "").trim().toUpperCase()}__${t.chapter_no || 1}`;
         if (!uniqueTapeMap.has(key)) {
           uniqueTapeMap.set(key, t);
@@ -5112,22 +5153,46 @@ function V10PreviewLayout() {
         // PERFORMANCE FIX: Use a Set for O(1) lookup during synchronization to avoid O(N*M) lag
         const logInspectionIds = new Set((allEv as any[]).map((ev: any) => ev.inspectionId).filter(Boolean));
 
-        (inspsWithCounts as any[]).forEach((r: any) => {
+        // Use allInspsData (all records for this jobpack/structure/deployment) for complete video timeline events
+        const recordsForTimeline = (allInspsData && allInspsData.length > 0) ? allInspsData : (inspsWithCounts || []);
+
+        (recordsForTimeline as any[]).forEach((r: any) => {
           if (!logInspectionIds.has(r.insp_id)) {
-            const status =
-              r.has_anomaly || r.status === "Anomaly" || r.status === "Defect"
-                ? "ANOMALY"
-                : "INSPECTION";
+            const matchedAnoms = anomMap.get(r.insp_id) || r.insp_anomalies || [];
+            const hasAnom = matchedAnoms.length > 0 || r.has_anomaly || r.status === "Anomaly" || r.status === "Defect";
+            const status = hasAnom ? "ANOMALY" : "INSPECTION";
+
             const matchedTape = tapes?.find((t: any) => String(t.tape_id) === String(r.tape_id));
             const tapeNo = matchedTape?.tape_no || r.insp_video_tapes?.tape_no || "N/A";
-            const chapterNo = matchedTape?.chapter_no != null ? String(matchedTape.chapter_no) : "N/A";
+            const chapterNo = matchedTape?.chapter_no != null 
+              ? String(matchedTape.chapter_no) 
+              : (r.insp_video_tapes?.chapter_no != null ? String(r.insp_video_tapes.chapter_no) : "N/A");
             const diveNo = r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || activeDep?.jobNo || "N/A";
             const structure = headerData.platformName || "N/A";
+
+            // Extract component info
+            const compObj = r.structure_components || allComps?.find((c: any) => c.id === r.component_id || c.raw?.id === r.component_id);
+            const compQid = r.structure_components?.q_id || r.structure_components?.name || compObj?.q_id || compObj?.name || r.component_qid || r.component_name || r.inspection_data?.component_qid || r.inspection_data?.component || r.inspection_data?.q_id || "-";
+            const compCode = r.component_type || r.structure_components?.code || compObj?.raw?.code || compObj?.code || r.inspection_data?.component_type || "";
+
+            // Extract inspection type info
+            const inspTypeName = r.inspection_type?.name ? formatInspectionTypeName(r.inspection_type.name) : (r.inspection_type_name || "");
+            const inspTypeCode = r.inspection_type_code || r.inspection_type?.code || "";
+
+            // Extract anomaly details
+            const firstAnom = matchedAnoms.length > 0 ? matchedAnoms[0] : null;
+            const anomalyRef = firstAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
+            const defectCode = firstAnom?.defect_type_code || firstAnom?.defect_category_code || "";
+            const defectDesc = firstAnom?.defect_description || "";
+
+            // Findings / Remarks summary
+            const findings = r.findings || r.inspection_data?.finding || r.inspection_data?.findings || r.inspection_data?.remarks || r.remarks || defectDesc || "";
+            const timecode = r.inspection_data?._meta_timecode ? r.inspection_data._meta_timecode : (r.tape_count_no ? formatCounter(r.tape_count_no) : "00:00:00");
 
             allEv.push({
               id: `insp_${r.insp_id}`,
               realId: r.insp_id,
-              time: r.inspection_data?._meta_timecode ? r.inspection_data._meta_timecode : (r.tape_count_no ? formatCounter(r.tape_count_no) : "00:00:00"),
+              time: timecode,
               action: status,
               logType: "insp",
               eventTime: (() => {
@@ -5142,6 +5207,15 @@ function V10PreviewLayout() {
               chapterNo,
               diveNo,
               structure,
+              componentQid: compQid,
+              compCode,
+              inspTypeName,
+              inspTypeCode,
+              anomalyRef,
+              defectCode,
+              defectDesc,
+              remarks: findings || (anomalyRef ? `Anomaly: ${anomalyRef}` : (compQid !== "-" ? `${compQid} (${inspTypeName || inspTypeCode || 'Inspection'})` : "")),
+              rawRecord: r,
             });
           }
         });
@@ -7170,7 +7244,16 @@ function V10PreviewLayout() {
             if (isNaN(min)) min = 0;
         }
 
-        const ntRaw = activeProps.nominal_thickness || activeProps.nominal_wall_thickness || activeProps.wall_thickness || activeProps.nom_wt;
+        let ntRaw = activeProps.nominal_thickness || activeProps.nominal_wall_thickness || activeProps.wall_thickness || activeProps.nom_wt;
+        if (!ntRaw && selectedComp) {
+            const compNom = selectedComp.nominalThk || selectedComp.nominal_thickness || selectedComp.nominal_wall_thickness || selectedComp.metadata?.wall_thk || selectedComp.metadata?.nominal_thickness || selectedComp.raw?.metadata?.wall_thk || selectedComp.raw?.metadata?.nominal_thickness;
+            if (compNom && compNom !== "-") {
+                ntRaw = compNom;
+                activeProps.nominal_thickness = compNom;
+                activeProps.nominal_wall_thickness = compNom;
+                activeProps.wall_thickness = compNom;
+            }
+        }
         const nt = (ntRaw === undefined || ntRaw === null || ntRaw === "") ? 0 : parseFloat(ntRaw);
         const safeNt = isNaN(nt) ? 0 : nt;
 

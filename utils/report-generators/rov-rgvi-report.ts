@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -26,7 +26,9 @@ interface ReportConfig {
 }
 
 const EXCLUDED_RGVI_COMP_CODES = new Set([
-    "AN", "FD", "BL", "CS", "SG", "CD", "CG", "CU", "RS", "RG"
+    "AN", "FD", "BL", "CS", "SG", "CD", "CG", "CU", "RS", "RG",
+    "ANODE", "ANOD", "RISG", "RGRD", "RISER GUARD", "SEAG", "SEA GUARD", 
+    "CAIS", "CAISSON GUARD", "COND", "CONDUCTOR GUARD", "BOATLANDING"
 ]);
 
 export const isExcludedFromRGVI = (r: any): boolean => {
@@ -35,16 +37,22 @@ export const isExcludedFromRGVI = (r: any): boolean => {
         r.structure_components?.code,
         r.structure_components?.comp_type,
         r.structure_components?.component_type_code,
+        r.structure_components?.component_type,
         r.component?.code,
         r.component?.comp_type,
         r.component?.component_type_code,
+        r.component?.component_type,
         r.component_code,
         r.component_type_code,
+        r.component_type,
         r.comp_code,
         r.comp_type,
         r.inspection_data?.component_code,
         r.inspection_data?.comp_type,
         r.inspection_data?.component_type,
+        r.inspection_data?.comp_code,
+        r.inspection_data?.component_type_code,
+        r.inspection_data?.type,
     ];
 
     for (const c of candidates) {
@@ -54,20 +62,34 @@ export const isExcludedFromRGVI = (r: any): boolean => {
         }
     }
 
-    // 2. Check component QID prefix (e.g. "AN-01", "RS/02", "CD_01", "BL 01", "SG-01")
+    // 2. Check component QID prefix (e.g. "RG-01", "CU-01", "SG-01", "AN-01", "RS/02", "CD_01", "BL 01", "SG-01")
     const qid = (
         r.structure_components?.q_id ||
+        r.structure_components?.name ||
         r.component?.q_id ||
+        r.component?.name ||
         r.component_qid ||
+        r.component_name ||
         r.inspection_data?.component_qid ||
+        r.inspection_data?.component ||
+        r.inspection_data?.q_id ||
         ""
     ).toString().trim().toUpperCase();
 
     if (qid) {
-        const prefixMatch = qid.match(/^([A-Z]{2})([-_/\s\d]|$)/);
-        if (prefixMatch && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch[1])) {
+        // Match 2-letter codes: RG, CU, SG, AN, FD, BL, CS, CD, CG, RS
+        const prefixMatch2 = qid.match(/^([A-Z]{2})([-_/\s\d]|$)/);
+        if (prefixMatch2 && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch2[1])) {
             return true;
         }
+        // Match 3-6 letter codes or longer prefixes: RISG, RGRD, SEAG, CAIS, COND, ANOD, FLOT
+        const prefixMatch3 = qid.match(/^([A-Z]{3,6})([-_/\s\d]|$)/);
+        if (prefixMatch3 && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch3[1])) {
+            return true;
+        }
+        if (qid.startsWith("RG-") || qid.startsWith("RG_") || qid.startsWith("RG/") || qid.startsWith("RG ") || qid.startsWith("RISG") || qid.startsWith("RGRD")) return true;
+        if (qid.startsWith("CU-") || qid.startsWith("CU_") || qid.startsWith("CU/") || qid.startsWith("CU ") || qid.startsWith("CG-") || qid.startsWith("CG_") || qid.startsWith("CG/") || qid.startsWith("CG ")) return true;
+        if (qid.startsWith("SG-") || qid.startsWith("SG_") || qid.startsWith("SG/") || qid.startsWith("SG ") || qid.startsWith("SEAG")) return true;
     }
 
     return false;
@@ -84,6 +106,7 @@ export const generateROVRGVIReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         // Exclude components that have dedicated report templates ('AN','FD','BL','CS','SG','CD','CG','CU','RS','RG')
         const validRecords = (records || []).filter((r: any) => !isExcludedFromRGVI(r));
 

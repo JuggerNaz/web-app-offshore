@@ -40,7 +40,7 @@ interface ReportConfig {
 }
 
 // Helpers
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords } from "./shared-logo";
 
 const fetchInspectionTypes = async (): Promise<any[]> => {
     try {

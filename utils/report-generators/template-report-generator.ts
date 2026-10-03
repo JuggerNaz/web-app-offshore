@@ -1,3 +1,4 @@
+import { normalizeReportRecords } from "./shared-logo";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 // @ts-ignore

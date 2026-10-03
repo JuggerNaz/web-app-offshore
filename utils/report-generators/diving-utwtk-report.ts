@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getRecordNominalThickness } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -34,6 +34,7 @@ export const generateDivingUTWTKReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config?.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -192,8 +193,9 @@ export const generateDivingUTWTKReport = async (
             const rd6 = getRd(d.ut_6_o_clock, d.ut_6_o_clock_unit);
             const rd9 = getRd(d.ut_9_o_clock, d.ut_9_o_clock_unit);
 
-            const nominalThk = d.nominal_thickness !== undefined && d.nominal_thickness !== null && d.nominal_thickness !== "" 
-                ? `${d.nominal_thickness} ${d.nominal_thickness_unit || 'mm'}` 
+            const nomVal = getRecordNominalThickness(r);
+            const nominalThk = nomVal !== "-"
+                ? `${nomVal} ${d.nominal_thickness_unit || 'mm'}` 
                 : "—";
 
             // Findings

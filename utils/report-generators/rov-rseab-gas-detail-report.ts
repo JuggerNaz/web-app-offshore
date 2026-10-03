@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -37,6 +37,7 @@ export const generateROVRSEABGasDetailReport = async (
     companySettingsOrConfig: any = {},
     maybeConfig?: ReportConfig
 ): Promise<Blob | void | null> => {
+    records = normalizeReportRecords(records);
     let companySettings: CompanySettings = {};
     let config: ReportConfig = {};
     if (maybeConfig !== undefined) {

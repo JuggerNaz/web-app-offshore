@@ -293,7 +293,203 @@ if (typeof window !== "undefined") {
         console.log("shared-logo.ts: jsPDF prototype successfully patched");
     };
     
-    // Run the patch
+// Run the patch
     patchJsPdfPrototypeGlobal();
 }
+
+/**
+ * Resolves the effective description/findings for an inspection record.
+ * Where the record status is 'INCOMPLETE' (case-insensitive) and the description/findings is null, blank, or empty,
+ * it returns the incomplete_reason column value in place of the Findings or description.
+ */
+export const getEffectiveFindings = (r: any, explicitFindings?: string | null): string => {
+    if (!r) return "";
+
+    const d = r.inspection_data || r.inspection_dat || {};
+
+    const rawDesc = explicitFindings !== undefined && explicitFindings !== null 
+        ? explicitFindings 
+        : (r.findings ?? r.description ?? r.remarks ?? d.findings ?? d.finding ?? d.description ?? d.remarks ?? "");
+    
+    const cleanDesc = typeof rawDesc === "string" ? rawDesc.trim() : (rawDesc ? String(rawDesc).trim() : "");
+
+    const isStatusIncomplete = 
+        String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
+        String(d.status || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(d.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(r.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(r.findingType || "").trim().toUpperCase() === "INCOMPLETE";
+
+    const incReason = (
+        r.incomplete_reason || 
+        r.incompleteReason || 
+        d.incomplete_reason || 
+        d.incompleteReason || 
+        ""
+    ).toString().trim();
+
+    if (isStatusIncomplete) {
+        if (!cleanDesc || cleanDesc === "No significant findings" || cleanDesc === "N/A" || cleanDesc === "—" || cleanDesc === "-") {
+            return incReason;
+        }
+    }
+
+    return cleanDesc;
+};
+
+const safeParseJson = (val: any): any => {
+    if (!val) return {};
+    if (typeof val === "object") return val;
+    if (typeof val === "string") {
+        try {
+            const parsed = JSON.parse(val);
+            return typeof parsed === "object" && parsed !== null ? parsed : {};
+        } catch (_) {
+            return {};
+        }
+    }
+    return {};
+};
+
+/**
+ * Resolves the nominal thickness from inspection record data or component metadata.
+ */
+export const getRecordNominalThickness = (r: any): string => {
+    if (!r) return "-";
+
+    const d = safeParseJson(r.inspection_data || r.inspection_dat);
+    
+    // Resolve component object which could be object, array, or nested
+    let rawComp = r.structure_components || r.structure_component || r.component || r.comp || {};
+    if (Array.isArray(rawComp)) {
+        rawComp = rawComp[0] || {};
+    }
+    const comp = safeParseJson(rawComp);
+    const compRaw = safeParseJson(comp.raw);
+    const compMeta = safeParseJson(comp.metadata || compRaw.metadata || comp.component_metadata || comp.additionalInfo || comp.props);
+    const compSpec = safeParseJson(comp.spec || compRaw.spec || compMeta.spec || compMeta.specs || compMeta.details || compMeta.additional_details);
+    const compData = safeParseJson(comp.data || compRaw.data);
+
+    const sources = [
+        d,
+        r,
+        compMeta,
+        compSpec,
+        compData,
+        comp,
+        compRaw,
+        safeParseJson(r.component_metadata),
+        safeParseJson(r.component_spec),
+        safeParseJson(r.metadata),
+        safeParseJson(r.spec)
+    ];
+
+    const keys = [
+        'nominal_thickness',
+        'nominal_wall_thickness',
+        'nominalThickness',
+        'nominal_thk',
+        'nominalThk',
+        'wall_thk',
+        'wall_thickness',
+        'nom_wt',
+        'nom_thickness',
+        'nom_thick',
+        'nominal_wt',
+        'wt_nom',
+        'wt',
+        'design_wt',
+        'pipe_wt',
+        'thickness',
+        'nc_wall_thk',
+        'memb_wall_thk',
+        'member_wall_thickness'
+    ];
+
+    for (const src of sources) {
+        if (!src || typeof src !== 'object') continue;
+        for (const k of keys) {
+            const val = src[k];
+            if (val !== undefined && val !== null && val !== '' && val !== '-') {
+                const str = String(val).trim();
+                if (str && str !== 'null' && str !== 'undefined' && str !== 'NaN' && str !== '-') {
+                    return str;
+                }
+            }
+        }
+    }
+
+    return "-";
+};
+
+/**
+ * Normalizes a single inspection record so that:
+ * 1. If status = 'INCOMPLETE' and description/findings is null, blank, or empty,
+ *    it replaces description, findings, and inspection_data.findings/description with incomplete_reason.
+ * 2. If nominal_thickness is missing in inspection_data, it populates it from alternative fields or component metadata.
+ */
+export const normalizeRecordFindings = (r: any): any => {
+    if (!r) return r;
+    let modified = false;
+    const inspData = { ...(r.inspection_data || r.inspection_dat || {}) };
+    const recordCopy = { ...r };
+
+    // 1. Nominal Thickness Normalization
+    const resolvedNomThk = getRecordNominalThickness(r);
+    if (resolvedNomThk !== "-") {
+        const curNom = inspData.nominal_thickness;
+        if (curNom === undefined || curNom === null || curNom === "" || curNom === "-") {
+            inspData.nominal_thickness = resolvedNomThk;
+            recordCopy.nominal_thickness = resolvedNomThk;
+            modified = true;
+        }
+    }
+
+    // 2. Incomplete Reason for blank findings/description
+    const isStatusIncomplete = 
+        String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
+        String(inspData.status || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(inspData.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(r.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(r.findingType || "").trim().toUpperCase() === "INCOMPLETE";
+
+    const incReason = (
+        r.incomplete_reason || 
+        r.incompleteReason || 
+        inspData.incomplete_reason || 
+        inspData.incompleteReason || 
+        r.inspection_dat?.incomplete_reason ||
+        ""
+    ).toString().trim();
+
+    if (isStatusIncomplete && incReason) {
+        const desc = (r.description ?? r.findings ?? r.remarks ?? inspData.findings ?? inspData.description ?? "").toString().trim();
+        if (!desc || desc === "No significant findings" || desc === "N/A" || desc === "—" || desc === "-") {
+            inspData.description = incReason;
+            inspData.findings = incReason;
+            inspData.remarks = incReason;
+            inspData.finding = incReason;
+            recordCopy.description = incReason;
+            recordCopy.findings = incReason;
+            recordCopy.remarks = incReason;
+            modified = true;
+        }
+    }
+
+    if (modified) {
+        recordCopy.inspection_data = inspData;
+        recordCopy.inspection_dat = inspData;
+        return recordCopy;
+    }
+    return r;
+};
+
+/**
+ * Normalizes an array of inspection records for all report templates.
+ */
+export const normalizeReportRecords = (records: any[]): any[] => {
+    if (!Array.isArray(records)) return [];
+    return records.map(normalizeRecordFindings);
+};
+
 

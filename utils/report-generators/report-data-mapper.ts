@@ -1,3 +1,4 @@
+import { normalizeReportRecords } from "./shared-logo";
 import { format } from "date-fns";
 import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
@@ -96,6 +97,7 @@ export const mapInspectionDataForDocx = async (
     sowReportNo?: string,
     companySettings?: any
 ) => {
+    records = normalizeReportRecords(records);
     const safeAliases = Array.isArray(aliases) ? aliases : [];
     const aliasMap = new Map(safeAliases.map(a => [a.template_id, (a.alias || "").trim()]));
 
@@ -681,6 +683,7 @@ export const generateMgiProfileImage = async (records: any[]): Promise<string | 
     if (typeof window === 'undefined') return null;
 
     try {
+        records = normalizeReportRecords(records);
         const canvas = document.createElement('canvas');
         canvas.width = 800;
         canvas.height = 400;
@@ -727,6 +730,7 @@ export const generateSeabedMapImage = async (records: any[]): Promise<string | n
     if (typeof window === 'undefined') return null;
 
     try {
+        records = normalizeReportRecords(records);
         const canvas = document.createElement('canvas');
         canvas.width = 600;
         canvas.height = 600;
