@@ -1100,8 +1100,8 @@ export function WorkspaceDialogs({
                                 <Label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest ml-1">Video Tape Number / Name</Label>
                                 <Input 
                                     value={editTapeNo} 
-                                    onChange={(e) => setEditTapeNo(e.target.value.toUpperCase())}
-                                    placeholder="Enter tape reference..."
+                                    onChange={(e) => setEditTapeNo(e.target.value.replace(/\s+/g, "").toUpperCase())}
+                                    placeholder="Enter tape reference (no spaces)..."
                                     className="h-11 text-sm font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-blue-500/5 transition-all"
                                 />
                             </div>
@@ -1253,7 +1253,7 @@ export function WorkspaceDialogs({
                             <Input
                                 id="ws_new_tape_no"
                                 value={newTapeNo}
-                                onChange={(e) => setNewTapeNo(e.target.value)}
+                                onChange={(e) => setNewTapeNo(e.target.value.replace(/\s+/g, "").toUpperCase())}
                                 className="col-span-3 font-mono bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200"
                                 placeholder="e.g. RPT-001/PLAT-C/V001D"
                             />
@@ -1283,13 +1283,14 @@ export function WorkspaceDialogs({
                         <Button variant="outline" onClick={() => setIsNewTapeOpen(false)} className="dark:border-slate-800 dark:hover:bg-slate-800 dark:text-slate-300">Cancel</Button>
                         <Button
                             onClick={async () => {
-                                if (!newTapeNo) { toast.error("Tape number is required"); return; }
+                                const cleanTapeNo = (newTapeNo || "").replace(/\s+/g, "").toUpperCase();
+                                if (!cleanTapeNo) { toast.error("Tape number is required"); return; }
                                 if (!activeDep?.id) { toast.error("No active deployment selected"); return; }
                                 try {
                                     const { data: { user } } = await supabase.auth.getUser();
                                     const depCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
                                     const payload: any = {
-                                        tape_no: newTapeNo,
+                                        tape_no: cleanTapeNo,
                                         status: 'ACTIVE',
                                         tape_type: 'DIGITAL - PRIMARY',
                                         cr_user: user?.id || 'system',
@@ -1303,7 +1304,7 @@ export function WorkspaceDialogs({
                                         .select('*')
                                         .single();
                                     if (error) throw error;
-                                    toast.success(`Tape "${newTapeNo}" created successfully`);
+                                    toast.success(`Tape "${cleanTapeNo}" created successfully`);
                                     setIsNewTapeOpen(false);
                                     window.location.reload(); // Hard refresh to update parent state safely
                                 } catch (err: any) {

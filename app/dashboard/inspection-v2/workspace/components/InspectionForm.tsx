@@ -76,6 +76,11 @@ interface InspectionFormProps {
     activeDep: any;
     currentMovement: string;
     tapeId: any;
+    jobTapes?: any[];
+    originalRecordContext?: any;
+    tapeNo?: string;
+    activeChapter?: number;
+    deployments?: any[];
     vidState: string;
     onChangeTaskClick?: () => void;
     onChangeComponentClick?: () => void;
@@ -135,6 +140,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     activeDep,
     currentMovement,
     tapeId,
+    jobTapes = [],
+    originalRecordContext,
+    tapeNo,
+    activeChapter = 1,
+    deployments = [],
     vidState,
     onChangeTaskClick,
     onChangeComponentClick,
@@ -152,6 +162,53 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     onVoiceActionCommand,
     calculateAutoCounter
 }) => {
+    const displayDiveNo = (() => {
+        if (isEditing && originalRecordContext) {
+            return (
+                originalRecordContext.dive_no ||
+                originalRecordContext.deployment_no ||
+                originalRecordContext.raw?.insp_dive_jobs?.job_no ||
+                originalRecordContext.raw?.insp_dive_jobs?.dive_no ||
+                originalRecordContext.raw?.insp_rov_jobs?.job_no ||
+                originalRecordContext.raw?.insp_rov_jobs?.deployment_no ||
+                deployments?.find((d: any) => String(d.id) === String(originalRecordContext.dive_job_id || originalRecordContext.rov_job_id))?.deployment_no ||
+                deployments?.find((d: any) => String(d.id) === String(originalRecordContext.dive_job_id || originalRecordContext.rov_job_id))?.dive_no ||
+                activeDep?.deployment_no ||
+                activeDep?.dive_no ||
+                activeDep?.job_no ||
+                "-"
+            );
+        }
+        return activeDep?.deployment_no || activeDep?.dive_no || activeDep?.job_no || "-";
+    })();
+
+    const displayTapeNo = (() => {
+        if (isEditing && originalRecordContext) {
+            return (
+                originalRecordContext.tape_no ||
+                originalRecordContext.raw?.insp_video_tapes?.tape_no ||
+                jobTapes?.find((t: any) => t.tape_id === originalRecordContext.tape_id)?.tape_no ||
+                tapeNo ||
+                "-"
+            );
+        }
+        return tapeNo || jobTapes?.find((t: any) => t.tape_id === tapeId)?.tape_no || "-";
+    })();
+
+    const displayChapter = (() => {
+        if (isEditing && originalRecordContext) {
+            const ch = (
+                originalRecordContext.chapter_no ??
+                originalRecordContext.raw?.insp_video_tapes?.chapter_no ??
+                originalRecordContext.raw?.chapter_no ??
+                originalRecordContext.raw?.inspection_data?.chapter_no ??
+                originalRecordContext.raw?.inspection_data?.chapter ??
+                jobTapes?.find((t: any) => t.tape_id === originalRecordContext.tape_id)?.chapter_no
+            );
+            return ch !== undefined && ch !== null ? String(ch) : "1";
+        }
+        return activeChapter !== undefined && activeChapter !== null ? String(activeChapter) : "1";
+    })();
     const [activeCriteriaRules, setActiveCriteriaRules] = React.useState<any[]>(criteriaRules || []);
 
     // Sync from prop
@@ -1197,7 +1254,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">
-            <div className="px-3 py-1.5 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800">
+            <div className="px-3 py-1.5 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800 flex-wrap gap-1.5">
                 <span className="font-black tracking-tight text-xs flex items-center gap-1.5 overflow-hidden">
                     <FileText className="w-3.5 h-3.5 text-blue-200 shrink-0" />
                     <span className="text-blue-50 opacity-90 font-bold truncate">{selectedComp.name}</span>
@@ -1205,7 +1262,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         <button onClick={onChangeComponentClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">Change</button>
                     )}
                     <span className="text-blue-100/40 shrink-0">/</span>
-                    <span className="truncate max-w-[340px] sm:max-w-md opacity-90">{(() => {
+                    <span className="truncate max-w-[260px] sm:max-w-xs opacity-90">{(() => {
                         const codeClean = (activeSpec || '').toUpperCase().trim();
                         const jsonSpec = (inspectionSpecs?.inspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
                         let rawName = jsonSpec?.name;
@@ -1219,7 +1276,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         <button onClick={onChangeTaskClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">Change</button>
                     )}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Non-editable location badge (Dive/Dep, Tape, Chapter) */}
+                    <div className="flex items-center gap-1.5 bg-black/25 px-2 py-0.5 rounded border border-white/15 text-[10px] font-mono text-blue-100 shrink-0 select-none" title={`Recorded under ${inspMethod === 'ROV' ? 'ROV Deployment' : 'Dive'}: ${displayDiveNo}, Tape: ${displayTapeNo}, Chapter: ${displayChapter}`}>
+                        <span className="text-blue-200 font-bold text-[9px] uppercase">{inspMethod === 'ROV' ? 'DEP' : 'DIVE'}:</span>
+                        <span className="font-bold text-white text-[10px]">{displayDiveNo}</span>
+                        <span className="text-blue-300/40">|</span>
+                        <span className="text-blue-200 font-bold text-[9px] uppercase">TAPE:</span>
+                        <span className="font-bold text-white text-[10px] max-w-[120px] truncate" title={displayTapeNo}>{displayTapeNo}</span>
+                        <span className="text-blue-300/40">|</span>
+                        <span className="text-blue-200 font-bold text-[9px] uppercase">CH:</span>
+                        <span className="font-bold text-white text-[10px]">{displayChapter}</span>
+                    </div>
+
                     <div className="flex items-center gap-1.5 bg-black/20 px-1.5 py-0.5 rounded border border-white/10 shrink-0">
                         <Video className="w-3 h-3 text-blue-200" />
                         <div className="flex flex-col">

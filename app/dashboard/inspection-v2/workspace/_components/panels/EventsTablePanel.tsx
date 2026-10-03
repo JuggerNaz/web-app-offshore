@@ -905,10 +905,30 @@ export function EventsTablePanel({
                       return <td key={col.id} style={cellStyle} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200 overflow-hidden"><span className="text-xs font-medium truncate block">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300 dark:text-slate-600">-</span>}</span></td>;
                     case "tape_no": {
                       const counterDisplay = r.inspection_data?._meta_timecode || r.inspection_data?.counter_no || r.inspection_data?.counter || r.inspection_data?.timecode || r.tape_count_no;
+                      const chapterNo = r.insp_video_tapes?.chapter_no 
+                        ?? r.chapter_no 
+                        ?? r.inspection_data?.chapter_no 
+                        ?? r.inspection_data?.chapter 
+                        ?? (jobTapes?.find((t: any) => t.tape_id === r.tape_id || (t.tape_no && r.insp_video_tapes?.tape_no && t.tape_no === r.insp_video_tapes.tape_no))?.chapter_no);
+                      const hasChapter = chapterNo !== undefined && chapterNo !== null && String(chapterNo).trim() !== "";
                       return (
                         <td key={col.id} style={cellStyle} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200 overflow-hidden">
                           <span className="text-xs font-medium truncate block">{r.insp_video_tapes?.tape_no || <span className="text-slate-300 dark:text-slate-600">-</span>}</span>
-                          {counterDisplay && <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1 truncate"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />{formatCounter(counterDisplay)}</div>}
+                          {(hasChapter || counterDisplay) && (
+                            <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1 truncate">
+                              {hasChapter && (
+                                <span className="font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-[10px] shrink-0">
+                                  Ch: {chapterNo}
+                                </span>
+                              )}
+                              {counterDisplay && (
+                                <span className="inline-flex items-center gap-1.5 shrink-0">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                                  {formatCounter(counterDisplay)}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </td>
                       );
                     }

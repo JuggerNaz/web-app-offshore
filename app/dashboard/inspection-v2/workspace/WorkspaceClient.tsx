@@ -1392,7 +1392,7 @@ function V10PreviewLayout() {
         structure_components:component_id!left(id, q_id, code, metadata),
         insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-        insp_video_tapes:tape_id!left(tape_no)
+        insp_video_tapes:tape_id!left(tape_no, chapter_no)
       `;
 
       const activeReportNo = (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report")
@@ -3855,6 +3855,7 @@ function V10PreviewLayout() {
     setFindingType("Complete");
     setIncompleteReason("");
     setEditingRecordId(null);
+    setOriginalRecordContext(null);
     setRequiredRecordId(null);
     setRequiredProps({});
     setRequiredSpec(null);
@@ -4618,7 +4619,7 @@ function V10PreviewLayout() {
         structure_components:component_id!left(id, q_id, code, metadata),
         insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-        insp_video_tapes:tape_id!left(tape_no)
+        insp_video_tapes:tape_id!left(tape_no, chapter_no)
       `;
 
       let inspsQuery = supabase
@@ -4754,9 +4755,12 @@ function V10PreviewLayout() {
         }
       }
 
-      // Deduplicate tapes having identical (tape_no, chapter_no)
+      // Deduplicate and sanitize tapes having identical (tape_no, chapter_no)
       const uniqueTapeMap = new Map<string, any>();
       rawTapes.forEach((t: any) => {
+        if (t.tape_no) {
+          t.tape_no = String(t.tape_no).replace(/\s+/g, "");
+        }
         const key = `${(t.tape_no || "").trim().toUpperCase()}__${t.chapter_no || 1}`;
         if (!uniqueTapeMap.has(key)) {
           uniqueTapeMap.set(key, t);
@@ -5332,7 +5336,7 @@ function V10PreviewLayout() {
           ? supabase.from("insp_rov_jobs").select("rov_job_id, deployment_no").in("rov_job_id", rovJobIds)
           : Promise.resolve({ data: null }),
         tapeIds.length > 0
-          ? supabase.from("insp_video_tapes").select("tape_id, tape_no").in("tape_id", tapeIds)
+          ? supabase.from("insp_video_tapes").select("tape_id, tape_no, chapter_no").in("tape_id", tapeIds)
           : Promise.resolve({ data: null }),
         inspTypeIds.length > 0
           ? supabase.from("inspection_type").select("id, name, code").in("id", inspTypeIds)
@@ -5520,21 +5524,21 @@ function V10PreviewLayout() {
         } else {
           // 2. If it is not registered, create a new record in insp_video_tapes
           const user = (await supabase.auth.getUser()).data.user;
-          let uniqueTapeNo = tapeNo;
+          let uniqueTapeNo = (tapeNo || "").replace(/\s+/g, "");
           if (!uniqueTapeNo) {
-            const base = headerData.sowReportNo || "SOW_REPORT";
-            const platform = headerData.platformName || "STRUCTURE";
+            const base = String(headerData.sowReportNo || "SOW_REPORT").replace(/\s+/g, "");
+            const platform = String(headerData.platformName || "STRUCTURE").replace(/\s+/g, "");
             const postfix = inspMethod === "DIVING" ? "D" : "R";
             let maxSeq = 0;
             jobTapes.forEach((t) => {
-              const match = t.tape_no.match(/V(\d{3})[DR]$/);
+              const match = t.tape_no?.match(/V(\d{3})[DR]$/);
               if (match) {
                 const seq = parseInt(match[1], 10);
                 if (seq > maxSeq) maxSeq = seq;
               }
             });
             const nextSeq = String(maxSeq + 1).padStart(3, "0");
-            uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
+            uniqueTapeNo = `${base}/${platform}/V${nextSeq}${postfix}`.replace(/\s+/g, "");
           }
 
           const { data: newTape, error: insErr } = await supabase
@@ -5767,8 +5771,9 @@ function V10PreviewLayout() {
       const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
       const targetDepId = editTapeDeploymentId ? Number(editTapeDeploymentId) : (activeDep?.id ? Number(activeDep.id) : null);
 
+      const cleanTapeNo = String(editTapeNo || "").replace(/\s+/g, "").toUpperCase();
       const updateTapePayload: any = {
-        tape_no: editTapeNo,
+        tape_no: cleanTapeNo,
         chapter_no: parseInt(editTapeChapter) || 1,
         remarks: editTapeRemarks,
         status: editTapeStatus,
@@ -5819,7 +5824,7 @@ function V10PreviewLayout() {
           t.tape_id === tapeId
             ? {
                 ...t,
-                tape_no: editTapeNo,
+                tape_no: cleanTapeNo,
                 chapter_no: parseInt(editTapeChapter) || 1,
                 remarks: editTapeRemarks,
                 status: editTapeStatus,
@@ -5829,7 +5834,7 @@ function V10PreviewLayout() {
         )
       );
 
-      setTapeNo(editTapeNo);
+      setTapeNo(cleanTapeNo);
       setActiveChapter(parseInt(editTapeChapter) || 1);
 
       setIsEditTapeOpen(false);
@@ -7134,9 +7139,17 @@ function V10PreviewLayout() {
 
     try {
       setIsCommitting(true);
+      const isEditing = Boolean(editingRecordId);
       let tId = tapeId;
       let autoRefNo = "";
-      if (!tId && activeDep?.id) {
+
+      if (isEditing) {
+        // When editing/modifying historical record: NEVER overwrite tape_id with active panel tape
+        tId = originalRecordContext?.tape_id !== undefined 
+          ? originalRecordContext.tape_id 
+          : (originalRecordContext?.raw?.tape_id ?? null);
+      } else if (!tId && activeDep?.id) {
+        // When creating new inspection record: find or register current active tape
         const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
         const jobVal = Number(activeDep.id);
 
@@ -7156,21 +7169,21 @@ function V10PreviewLayout() {
           // Create one if none exists
           const userRes = await supabase.auth.getUser();
           const user = userRes.data.user;
-          let uniqueTapeNo = tapeNo;
+          let uniqueTapeNo = (tapeNo || "").replace(/\s+/g, "");
           if (!uniqueTapeNo) {
-            const base = headerData.sowReportNo || "SOW_REPORT";
-            const platform = headerData.platformName || "STRUCTURE";
+            const base = String(headerData.sowReportNo || "SOW_REPORT").replace(/\s+/g, "");
+            const platform = String(headerData.platformName || "STRUCTURE").replace(/\s+/g, "");
             const postfix = inspMethod === "DIVING" ? "D" : "R";
             let maxSeq = 0;
             jobTapes.forEach((t) => {
-              const match = t.tape_no.match(/V(\d{3})[DR]$/);
+              const match = t.tape_no?.match(/V(\d{3})[DR]$/);
               if (match) {
                 const seq = parseInt(match[1], 10);
                 if (seq > maxSeq) maxSeq = seq;
               }
             });
             const nextSeq = String(maxSeq + 1).padStart(3, "0");
-            uniqueTapeNo = `${base} / ${platform} / V${nextSeq}${postfix}`;
+            uniqueTapeNo = `${base}/${platform}/V${nextSeq}${postfix}`.replace(/\s+/g, "");
           }
           const { data: newTape } = await supabase
             .from("insp_video_tapes")
@@ -7395,7 +7408,6 @@ function V10PreviewLayout() {
 
       const payload: any = {
         company_id: activeCompanyId,
-        [inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"]: activeDep.id,
         structure_id: parseInt(structureId || "0"),
         component_id: (isPipeline || headerData.structureType === "pipeline")
           ? ((selectedComp?.id && selectedComp.id !== 999999) ? selectedComp.id : parseInt(structureId || "0"))
@@ -7427,7 +7439,9 @@ function V10PreviewLayout() {
         description: recordNotes,
         status: findingType === "Incomplete" ? "INCOMPLETE" : "COMPLETED",
         has_anomaly: findingType === "Anomaly" || findingType === "Finding",
-        tape_id: tId,
+        tape_id: isEditing
+          ? (originalRecordContext?.tape_id !== undefined ? originalRecordContext.tape_id : (originalRecordContext?.raw?.tape_id ?? tId))
+          : tId,
         tape_count_no: (() => {
           const typedVal =
             activeProps.tape_count_no !== undefined &&
@@ -7485,12 +7499,37 @@ function V10PreviewLayout() {
           _meta_status: findingType,
           _mgi_profile_id: activeMGIProfile?.id || null,
           incomplete_reason: findingType === "Incomplete" ? incompleteReason : null,
+          // Preserve original chapter_no when editing; save activeChapter when inserting new
+          ...(isEditing 
+            ? (originalRecordContext?.chapter_no !== undefined 
+                ? { chapter_no: originalRecordContext.chapter_no } 
+                : (originalRecordContext?.raw?.inspection_data?.chapter_no 
+                    ? { chapter_no: originalRecordContext.raw.inspection_data.chapter_no } 
+                    : (originalRecordContext?.raw?.inspection_data?.chapter 
+                        ? { chapter: originalRecordContext.raw.inspection_data.chapter } 
+                        : {})))
+            : (activeChapter ? { chapter_no: activeChapter } : {})),
         },
         archived_data: newArchivedData,
       };
 
-      // Tape Counter Validation logic
-      if (tId && payload.tape_count_no !== undefined && !manualOverride) {
+      // Set job assignment: preserve original dive_job_id / rov_job_id if editing; assign active deployment if creating new
+      if (isEditing) {
+        if (originalRecordContext?.dive_job_id !== undefined || originalRecordContext?.raw?.dive_job_id !== undefined) {
+          payload.dive_job_id = originalRecordContext?.dive_job_id ?? originalRecordContext?.raw?.dive_job_id;
+        }
+        if (originalRecordContext?.rov_job_id !== undefined || originalRecordContext?.raw?.rov_job_id !== undefined) {
+          payload.rov_job_id = originalRecordContext?.rov_job_id ?? originalRecordContext?.raw?.rov_job_id;
+        }
+        if (!payload.dive_job_id && !payload.rov_job_id && activeDep?.id) {
+          payload[inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"] = activeDep.id;
+        }
+      } else {
+        payload[inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id"] = activeDep.id;
+      }
+
+      // Tape Counter Validation logic (Live Create Mode only)
+      if (!isEditing && tId && payload.tape_count_no !== undefined && !manualOverride) {
         const count = Number(payload.tape_count_no);
 
         // Fetch ALL events for this tape to find valid recording segments
@@ -8048,10 +8087,19 @@ function V10PreviewLayout() {
     }
 
     setOriginalRecordContext({
+      insp_id: fullRecord.insp_id || fullRecord.id,
       component_id: fullRecord.component_id,
       inspection_type_id: fullRecord.inspection_type_id,
       inspection_type_code: fullRecord.inspection_type?.code || fullRecord.inspection_type_code,
       sow_report_no: fullRecord.sow_report_no,
+      dive_job_id: fullRecord.dive_job_id,
+      rov_job_id: fullRecord.rov_job_id,
+      tape_id: fullRecord.tape_id,
+      dive_no: fullRecord.insp_dive_jobs?.job_no || fullRecord.insp_dive_jobs?.dive_no || fullRecord.dive_no,
+      deployment_no: fullRecord.insp_rov_jobs?.job_no || fullRecord.insp_rov_jobs?.deployment_no || fullRecord.deployment_no,
+      tape_no: fullRecord.insp_video_tapes?.tape_no || fullRecord.tape_no,
+      chapter_no: fullRecord.insp_video_tapes?.chapter_no ?? fullRecord.chapter_no ?? fullRecord.inspection_data?.chapter_no ?? fullRecord.inspection_data?.chapter,
+      raw: fullRecord,
     });
     
     let parsedArchive: Record<string, any> = {};
@@ -8145,7 +8193,7 @@ function V10PreviewLayout() {
           needsFullRecord
             ? supabase
                 .from("insp_records")
-                .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*)")
+                .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*), insp_video_tapes:tape_id!left(tape_no, chapter_no), insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name), insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator)")
                 .eq("insp_id", recordId)
                 .maybeSingle()
             : Promise.resolve({ data: fullRecord, error: null }),
@@ -8163,6 +8211,17 @@ function V10PreviewLayout() {
         // If extra anomaly data was returned by fullRecRes
         if (fullRecRes.data) {
           const freshRecord = fullRecRes.data;
+          setOriginalRecordContext((prev: any) => ({
+            ...prev,
+            dive_job_id: freshRecord.dive_job_id ?? prev?.dive_job_id,
+            rov_job_id: freshRecord.rov_job_id ?? prev?.rov_job_id,
+            tape_id: freshRecord.tape_id ?? prev?.tape_id,
+            dive_no: freshRecord.insp_dive_jobs?.job_no || freshRecord.insp_dive_jobs?.dive_no || freshRecord.dive_no || prev?.dive_no,
+            deployment_no: freshRecord.insp_rov_jobs?.job_no || freshRecord.insp_rov_jobs?.deployment_no || freshRecord.deployment_no || prev?.deployment_no,
+            tape_no: freshRecord.insp_video_tapes?.tape_no || freshRecord.tape_no || prev?.tape_no,
+            chapter_no: freshRecord.insp_video_tapes?.chapter_no ?? freshRecord.chapter_no ?? freshRecord.inspection_data?.chapter_no ?? freshRecord.inspection_data?.chapter ?? prev?.chapter_no,
+            raw: freshRecord,
+          }));
           const freshAnomalyObj = freshRecord.insp_anomalies?.[0] || freshRecord.anomaly_details;
           if (freshRecord.has_anomaly && freshAnomalyObj) {
             const isFinding =
@@ -9001,6 +9060,11 @@ function V10PreviewLayout() {
             activeDep={activeDep}
             currentMovement={currentMovement}
             tapeId={tapeId}
+            jobTapes={jobTapes}
+            originalRecordContext={originalRecordContext}
+            tapeNo={tapeNo}
+            activeChapter={activeChapter}
+            deployments={deployments}
             vidState={vidState}
             setShowTaskSelector={setShowTaskSelector}
             setShowCompSelector={setShowCompSelector}
