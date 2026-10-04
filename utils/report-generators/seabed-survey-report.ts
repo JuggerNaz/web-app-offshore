@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 export interface SeabedSurveyReportOptions extends Partial<ReportConfig> {
     contractorLogoUrl?: string;
@@ -30,7 +30,7 @@ export const generateSeabedSurveyReport = async (
     const contentWidth = pageWidth - margin * 2;
 
     const colors = {
-        navy: [31, 55, 93] as [number, number, number],
+        navy: [7, 78, 136] as [number, number, number],
         lightGray: [245, 247, 250] as [number, number, number],
         border: [209, 213, 219] as [number, number, number],
         text: [30, 41, 59] as [number, number, number],
@@ -458,7 +458,7 @@ export const generateSeabedSurveyReport = async (
             body: tableBody,
             theme: "grid",
             headStyles: {
-                fillColor: isPrintFriendly ? [229, 231, 235] : [31, 55, 93],
+                fillColor: isPrintFriendly ? [229, 231, 235] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                 fontStyle: "bold",
                 fontSize: 7.5,
@@ -552,6 +552,10 @@ export const generateSeabedSurveyReport = async (
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.3);
         doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+
+        doc.setTextColor(100, 100, 100);
+        doc.setFontSize(7);
+        doc.text(REPORT_FOOTER_APP_TEXT, margin, footerLineY + 4);
 
         if (config.showPageNumbers !== false) {
             doc.setTextColor(100, 100, 100);

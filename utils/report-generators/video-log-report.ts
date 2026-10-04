@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 // Friendly labels for video log event types
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -104,7 +104,7 @@ export const generateVideoLogReport = async (
             d.setLineWidth(0.3);
             d.rect(sx, sy, contentWidth, headerH);
         } else {
-            d.setFillColor(31, 55, 93);
+            d.setFillColor(7, 78, 136);
             d.rect(sx, sy, contentWidth, headerH, "F");
         }
 
@@ -116,7 +116,7 @@ export const generateVideoLogReport = async (
             drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + 3, 'right', 'center');
         }
 
-        d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
+        d.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
         d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 6, { align: "center" });
@@ -317,10 +317,13 @@ export const generateVideoLogReport = async (
 
         if (isPrintFriendly) {
             doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(margin, currentY, contentWidth, 7, "FD");
         } else {
-            doc.setFillColor(52, 86, 139);
+            doc.setFillColor(7, 78, 136);
+            doc.rect(margin, currentY, contentWidth, 7, "F");
         }
-        doc.rect(margin, currentY, contentWidth, 7, "F");
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
@@ -332,7 +335,7 @@ export const generateVideoLogReport = async (
         const tableBody: any[][] = [];
 
         if (logs.length === 0) {
-            tableBody.push([{ content: "No log entries for this tape.", colSpan: 4, styles: { halign: "center", textColor: [100, 100, 100] } }]);
+            tableBody.push([{ content: "No log entries for this tape.", colSpan: 4, styles: {halign: "center", textColor: [100, 100, 100], lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
         } else {
             logs.forEach((log: any, idx: number) => {
                 const eventDateTime = log.event_time
@@ -386,7 +389,7 @@ export const generateVideoLogReport = async (
             body: tableBody,
             theme: "grid",
             headStyles: {
-                fillColor: isPrintFriendly ? [229, 231, 235] : [31, 55, 93],
+                fillColor: isPrintFriendly ? [229, 231, 235] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                 fontStyle: "bold",
                 fontSize: 8,
@@ -427,6 +430,9 @@ export const generateVideoLogReport = async (
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.3);
         doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+
+        doc.setTextColor(100, 100, 100);
+        doc.text(REPORT_FOOTER_APP_TEXT, margin, footerLineY + 4);
 
         if (config.showPageNumbers) {
             doc.setTextColor(100, 100, 100);

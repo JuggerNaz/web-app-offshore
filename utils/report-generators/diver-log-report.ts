@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 function formatTimecode(val: any): string {
     if (!val && val !== 0) return "";
@@ -93,7 +93,7 @@ export const generateDiverLogReport = async (
             d.setLineWidth(0.3);
             d.rect(sx, sy, contentWidth, headerH);
         } else {
-            d.setFillColor(31, 55, 93);
+            d.setFillColor(7, 78, 136);
             d.rect(sx, sy, contentWidth, headerH, "F");
         }
 
@@ -109,7 +109,7 @@ export const generateDiverLogReport = async (
         }
 
         // Center text
-        d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
+        d.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
         d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 6, { align: "center" });
@@ -247,10 +247,13 @@ export const generateDiverLogReport = async (
         // Draw a filled section title bar
         if (isPrintFriendly) {
             doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(margin, currentY, contentWidth, 7, "FD");
         } else {
-            doc.setFillColor(52, 86, 139);
+            doc.setFillColor(7, 78, 136);
+            doc.rect(margin, currentY, contentWidth, 7, "F");
         }
-        doc.rect(margin, currentY, contentWidth, 7, "F");
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
@@ -267,7 +270,7 @@ export const generateDiverLogReport = async (
         const tableBody: any[][] = [];
 
         if (movements.length === 0) {
-            tableBody.push([{ content: "No movement records found for this deployment.", colSpan: 4, styles: { halign: "center", textColor: [100, 100, 100] } }]);
+            tableBody.push([{ content: "No movement records found for this deployment.", colSpan: 4, styles: {halign: "center", textColor: [100, 100, 100], lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
         } else {
             movements.forEach((mov: any, idx: number) => {
                 const movDateTime = mov.movement_time
@@ -303,7 +306,7 @@ export const generateDiverLogReport = async (
             body: tableBody,
             theme: "grid",
             headStyles: {
-                fillColor: isPrintFriendly ? [229, 231, 235] : [31, 55, 93],
+                fillColor: isPrintFriendly ? [229, 231, 235] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                 fontStyle: "bold",
                 fontSize: 8,
@@ -343,6 +346,10 @@ export const generateDiverLogReport = async (
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.3);
         doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+        doc.setTextColor(100, 100, 100);
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.text(REPORT_FOOTER_APP_TEXT, margin, footerLineY + 4);
 
         if (config.showPageNumbers) {
             doc.setTextColor(100, 100, 100);

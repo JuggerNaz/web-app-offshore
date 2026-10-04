@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -47,7 +47,7 @@ export const generateDivingAnodeReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -212,25 +212,25 @@ export const generateDivingAnodeReport = async (
 
         // ── Header definitions (2-tier) ─────────────────────────────────────────
         const topHeader = [
-            { content: "Item\nNo.", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
-            { content: "Comp QID", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
-            { content: "Elev\n(m)", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
-            { content: "Dive No.", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
-            { content: "Secured", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
-            { content: "Anode Type", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
-            { content: "Length\n(mm)", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
-            { content: "Circumference (mm)", colSpan: 3, styles: { halign: "center" as const } },
-            { content: "Depletion\n(%)", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
-            { content: "Anode Pitting (mm)", colSpan: 4, styles: { halign: "center" as const } },
-            { content: "CP Values (mV)", colSpan: 4, styles: { halign: "center" as const } },
-            { content: "Findings", rowSpan: 2, styles: { halign: "center" as const, valign: "middle" as const } },
+            { content: "Item\nNo.", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Comp QID", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Elev\n(m)", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Dive No.", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Secured", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Anode Type", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Length\n(mm)", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Circumference (mm)", colSpan: 3, styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Depletion\n(%)", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Anode Pitting (mm)", colSpan: 4, styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "CP Values (mV)", colSpan: 4, styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Findings", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
         ];
 
         const bottomHeader = [
             "C1", "C2", "C3",
             "Depth\n(Avg)", "Depth\n(Max)", "Diam\n(Avg)", "Diam\n(Max)",
             "Anode", "Member\nStub", "Top\nStub", "Bottom\nStub"
-        ].map(text => ({ content: text, styles: { halign: "center" as const, valign: "middle" as const } }));
+        ].map(text => ({ content: text, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} }));
 
         const isPF = config.printFriendly;
 
@@ -245,21 +245,17 @@ export const generateDivingAnodeReport = async (
             head: [topHeader, bottomHeader],
             body: sortedRecords.map(buildRow),
             theme: "grid",
-            headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 6.5,
                 fontStyle: "bold",
                 halign: "center",
-                valign: "middle",
-            },
-            styles: {
-                fontSize: 6.5,
+                valign: "middle", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
+            styles: {fontSize: 6.5,
                 cellPadding: 1.5,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak",
-            },
+                overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
                 0:  { cellWidth: 8,   halign: "center" }, // Item No
                 1:  { cellWidth: 16 },                    // Comp QID
@@ -299,7 +295,7 @@ export const generateDivingAnodeReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Selected Anode Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

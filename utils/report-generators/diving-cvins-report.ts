@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -45,7 +45,7 @@ export const generateDivingCVINSReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -98,7 +98,7 @@ export const generateDivingCVINSReport = async (
             d.setDrawColor(...colors.border); d.setLineWidth(0.2);
             d.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
             d.text(
-                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Close Visual Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                REPORT_FOOTER_APP_TEXT,
                 margin, pageHeight - 6
             );
             if (config.showPageNumbers !== false) {
@@ -177,34 +177,32 @@ export const generateDivingCVINSReport = async (
                 startY: currentY,
                 margin: { left: margin, right: margin, bottom: margin + 25 },
                 head: [[
-                    { content: "Item No.", styles: { cellWidth: 15 } },
-                    { content: "QID", styles: { cellWidth: 25 } },
-                    { content: "Elevation", styles: { cellWidth: 20 } },
-                    { content: "Length", styles: { cellWidth: 20 } },
-                    { content: "Width", styles: { cellWidth: 20 } },
-                    { content: "Lighting Method", styles: { cellWidth: 25 } },
-                    { content: "Findings", styles: { cellWidth: 'auto' } }
+                    { content: "Item No.", styles: {cellWidth: 15, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "QID", styles: {cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Elevation", styles: {cellWidth: 20, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Length", styles: {cellWidth: 20, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Width", styles: {cellWidth: 20, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Lighting Method", styles: {cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Findings", styles: {cellWidth: 'auto', lineWidth: 0.1, lineColor: colors.border} }
                 ]],
                 body: tableBody,
                 theme: "grid",
                 headStyles: {
-                    fillColor: isPF ? [255, 255, 255] : colors.navy,
-                    textColor: isPF ? colors.navy : [255, 255, 255],
-                    lineColor: isPF ? colors.border : [255, 255, 255],
+                    fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                    textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
+                    lineColor: config?.printFriendly ? colors.border : [255, 255, 255],
                     lineWidth: 0.1,
                     fontSize: 6.5,
                     fontStyle: "bold",
                     halign: "center",
                     valign: "middle"
                 },
-                styles: {
-                    fontSize: 7,
+                styles: {fontSize: 7,
                     cellPadding: 2,
                     textColor: colors.text,
                     lineColor: colors.border,
                     valign: "middle",
-                    halign: "center"
-                },
+                    halign: "center", lineWidth: 0.1},
                 columnStyles: {
                     6: { halign: "left" }
                 },

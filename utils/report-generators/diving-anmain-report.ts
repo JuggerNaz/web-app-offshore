@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -45,7 +45,7 @@ export const generateDivingANMAINReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -205,23 +205,23 @@ export const generateDivingANMAINReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
-                { content: "Item No.",       styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Component QID",  styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Elevation",      styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Dive No.",       styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Anode Type",     styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Installed Date", styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Replaced/Installed", styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Position",       styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Life",           styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Installed Type", styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Findings",       styles: { halign: "center" as const, valign: "middle" as const } }
+                { content: "Item No.",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Component QID",  styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Elevation",      styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dive No.",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Anode Type",     styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Installed Date", styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Replaced/Installed", styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Position",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Life",           styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Installed Type", styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Findings",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} }
             ]],
             body: sortedRecords.map(buildRow),
             theme: "grid",
             headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 8,
                 fontStyle: "bold",
                 halign: "center" as const,
@@ -265,7 +265,7 @@ export const generateDivingANMAINReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Anode Maintenance Inspection Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

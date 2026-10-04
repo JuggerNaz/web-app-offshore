@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -52,7 +52,7 @@ export const generateDivingRRISIDetailReport = async (
         }[rType];
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -340,7 +340,7 @@ export const generateDivingRRISIDetailReport = async (
                 d.setDrawColor(...colors.border);
                 d.setLineWidth(0.2); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'FD'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'FD'); 
                 
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
                 d.text(label, x + 3, ty + 4.8); d.setFont("helvetica", "normal");
@@ -452,14 +452,12 @@ export const generateDivingRRISIDetailReport = async (
                 {
                     content: `${typeConfig.componentLabel}: ${parentQid}`,
                     colSpan: 7,
-                    styles: {
-                        fillColor: isPF ? [240, 240, 240] : [241, 245, 249],
+                    styles: {fillColor: config?.printFriendly ? [240, 240, 240] : [241, 245, 249],
                         textColor: colors.navy,
                         fontStyle: 'bold',
                         fontSize: 8,
                         cellPadding: 3.5,
-                        halign: 'left'
-                    }
+                        halign: 'left', lineWidth: 0.1, lineColor: colors.border}
                 }
             ]);
 
@@ -525,8 +523,8 @@ export const generateDivingRRISIDetailReport = async (
             body: bodyForAutoTable,
             theme: 'grid',
             headStyles: { 
-                fillColor: isPF ? [255, 255, 255] : colors.navy, 
-                textColor: isPF ? colors.navy : 255, 
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy, 
+                textColor: config?.printFriendly ? colors.navy : 255, 
                 fontSize: 8, 
                 fontStyle: 'bold', 
                 halign: 'center',
@@ -568,7 +566,7 @@ export const generateDivingRRISIDetailReport = async (
                 doc.setDrawColor(...colors.darkBorder); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ${typeConfig.title}  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -50,7 +50,7 @@ export const generateROVRRISIITubeDetailReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -287,7 +287,7 @@ export const generateROVRRISIITubeDetailReport = async (
                 d.setDrawColor(...colors.border);
                 d.setLineWidth(0.1);
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, y, w, ROW_H, isPF ? "S" : "F");
+                d.rect(x, y, w, ROW_H, config?.printFriendly ? "S" : "F");
                 d.rect(x, y, w, ROW_H, "S");
 
                 d.setTextColor(...colors.text);
@@ -314,7 +314,7 @@ export const generateROVRRISIITubeDetailReport = async (
 
             d.setFontSize(7);
             d.setFont("helvetica", "normal");
-            d.text(`Report ID: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin, footerY);
+            d.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
             d.text(`Printed: ${format(new Date(), "dd MMM yyyy HH:mm")}`, margin + contentWidth / 2, footerY, { align: "center" });
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: "right" });
         };
@@ -374,21 +374,21 @@ export const generateROVRRISIITubeDetailReport = async (
                 const findings = formatReportFindingText(r);
 
                 return [
-                    { content: String(rIdx + 1), styles: { halign: "center" as const } },
+                    { content: String(rIdx + 1), styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: comp.q_id || "—" },
-                    { content: elevDisplay, styles: { halign: "center" as const } },
-                    { content: String(diveNo), styles: { halign: "center" as const } },
-                    { content: String(tapeNo), styles: { halign: "center" as const } },
-                    { content: cpDisplay, styles: { halign: "center" as const } },
+                    { content: elevDisplay, styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: String(diveNo), styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: String(tapeNo), styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: cpDisplay, styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: findings }
                 ];
             }) : [[
-                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "-" },
-                { content: "-", styles: { halign: "center" as const } },
-                { content: "-", styles: { halign: "center" as const } },
-                { content: "-", styles: { halign: "center" as const } },
-                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "No observations recorded for this scope." }
             ]];
 
@@ -397,19 +397,19 @@ export const generateROVRRISIITubeDetailReport = async (
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 6 },
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center" as const } },
+                        { content: "Item No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                         { content: "QID" },
-                        { content: "Elevation", styles: { halign: "center" as const } },
-                        { content: "Dive No.", styles: { halign: "center" as const } },
-                        { content: "Tape No.", styles: { halign: "center" as const } },
-                        { content: "CP", styles: { halign: "center" as const } },
+                        { content: "Elevation", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: "Dive No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: "Tape No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: "CP", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                         { content: "Findings" }
                     ]
                 ],
                 body: tableRows,
                 theme: "grid",
-                headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
-                styles: { fontSize: 7.5, cellPadding: 2.5 },
+                headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                styles: {fontSize: 7.5, cellPadding: 2.5, lineWidth: 0.1, lineColor: colors.border},
                 columnStyles: {
                     0: { cellWidth: 12 }, // Item No.
                     1: { cellWidth: 16 }, // QID

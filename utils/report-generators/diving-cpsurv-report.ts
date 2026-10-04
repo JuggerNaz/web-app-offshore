@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -90,7 +90,7 @@ export const generateDivingCPSURVReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -306,25 +306,25 @@ export const generateDivingCPSURVReport = async (
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [
                 [
-                    { content: "Item\nNo.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Component\nQID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Elevation\n(m)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Dive No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Equipment /\nSerial No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Cathodic Potential (mV)", colSpan: 3, styles: { halign: "center", valign: "middle" } },
-                    { content: "Findings", rowSpan: 2, styles: { halign: "center", valign: "middle" } }
+                    { content: "Item\nNo.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Component\nQID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Elevation\n(m)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dive No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Equipment /\nSerial No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Cathodic Potential (mV)", colSpan: 3, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Findings", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} }
                 ],
                 [
-                    { content: "Pre Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
-                    { content: "Post Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
-                    { content: "CP Value\n(mV)", styles: { halign: "center", valign: "middle" } }
+                    { content: "Pre Dive\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Post Dive\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "CP Value\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} }
                 ]
             ],
             body: sorted.map(buildRow),
             theme: "grid",
             headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 7.5,
                 fontStyle: "bold",
                 halign: "center",
@@ -367,7 +367,7 @@ export const generateDivingCPSURVReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  CP Survey Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -42,7 +42,7 @@ export const generateROVCondSketchReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -192,7 +192,7 @@ export const generateROVCondSketchReport = async (
             d.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
             d.setFontSize(7); d.setTextColor(150, 150, 150);
             d.setFont("helvetica", "normal");
-            d.text(`Report ID: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin, footerY);
+            d.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
             d.text(`Printed: ${format(new Date(), 'dd MMM yyyy HH:mm')}`, margin + contentWidth/2, footerY, { align: 'center' });
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
         };
@@ -202,7 +202,7 @@ export const generateROVCondSketchReport = async (
             const dr = getInspectionDateRange(records, headerData, config);
             const drawBox = (l: string, v: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rH, isPF ? 'S' : 'F'); d.rect(x, ty, w, rH, 'S');
+                d.rect(x, ty, w, rH, config?.printFriendly ? 'S' : 'F'); d.rect(x, ty, w, rH, 'S');
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold"); d.text(l, x + 2, ty + 4.8);
                 d.setFont("helvetica", "normal"); d.text(String(v), x + 36, ty + 4.8);
             };
@@ -262,7 +262,7 @@ export const generateROVCondSketchReport = async (
 
             // Sketch Card Panel (Border box matching Riser sketch)
             doc.setDrawColor(...colors.border); doc.setLineWidth(0.3);
-            doc.setFillColor(isPF ? 255 : 252, isPF ? 255 : 253, isPF ? 255 : 254);
+            doc.setFillColor(config?.printFriendly ? 255 : 252, config?.printFriendly ? 255 : 253, config?.printFriendly ? 255 : 254);
             doc.rect(gX, currentY, gW, sketchH, 'FD');
 
             doc.setFontSize(7.5); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.navy);
@@ -417,27 +417,25 @@ export const generateROVCondSketchReport = async (
                     const findings = formatReportFindingText(r);
 
                     return [
-                        { content: String(itemNo), styles: { halign: 'center' } },
-                        { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold', halign: 'center' } },
-                        { content: String(diveNo), styles: { halign: 'center' } },
-                        { content: cpDisplay, styles: { halign: 'center' } },
-                        { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
+                        { content: String(itemNo), styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: {fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: String(diveNo), styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: cpDisplay, styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: findings, styles: {textColor: isAnom ? colors.anomaly : colors.text, lineWidth: 0.1, lineColor: colors.border} }
                     ];
                 }) : [[
-                    { content: "-", styles: { halign: 'center' } },
-                    { content: "-", styles: { halign: 'center' } },
-                    { content: "-", styles: { halign: 'center' } },
-                    { content: "-", styles: { halign: 'center' } },
-                    { content: "No observations recorded for this scope.", styles: { textColor: colors.text } }
+                    { content: "-", styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "-", styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "-", styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "-", styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No observations recorded for this scope.", styles: {textColor: colors.text, lineWidth: 0.1, lineColor: colors.border} }
                 ]],
                 theme: 'grid',
-                headStyles: { 
-                    fillColor: config.printFriendly ? [255, 255, 255] : colors.navy, 
+                headStyles: {fillColor: config.printFriendly ? [255, 255, 255] : colors.navy, 
                     textColor: config.printFriendly ? colors.navy : [255, 255, 255], 
                     fontSize: 8,
-                    halign: 'center'
-                },
-                styles: { fontSize: 7, cellPadding: 2 },
+                    halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                styles: {fontSize: 7, cellPadding: 2, lineWidth: 0.1, lineColor: colors.border},
                 columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 16 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 }, 4: { cellWidth: 'auto' } },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -49,7 +49,7 @@ export const generateROVConductorGuardReport = async (
         const supabase = createClient();
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -294,32 +294,28 @@ export const generateROVConductorGuardReport = async (
                 startY: (doc as any)._tableStartY,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: 35 },
                 head: [[
-                    { content: "Item No.",       styles: { halign: "center" } },
-                    { content: "QID",             styles: { halign: "center" } },
-                    { content: "Elevation\n(m)",  styles: { halign: "center" } },
-                    { content: "Dive No.",        styles: { halign: "center" } },
-                    { content: "Tape No.",        styles: { halign: "center" } },
-                    { content: "CP (mV)",         styles: { halign: "center" } },
-                    { content: "Findings",        styles: { halign: "center" } }
+                    { content: "Item No.",       styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "QID",             styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Elevation\n(m)",  styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dive No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Tape No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "CP (mV)",         styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Findings",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                 ]],
                 body: groupRecords.length > 0
                     ? groupRecords.map(buildRow)
                     : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
-                headStyles: {
-                    fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
+                headStyles: {fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
                     textColor: config.printFriendly ? colors.navy : [255, 255, 255],
                     fontSize: 8,
                     fontStyle: "bold",
                     minCellHeight: 10,
-                    valign: "middle"
-                },
-                styles: {
-                    fontSize: 7.5,
+                    valign: "middle", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                styles: {fontSize: 7.5,
                     cellPadding: 2.5,
                     textColor: colors.text,
-                    lineColor: colors.border,
-                },
+                    lineColor: colors.border, lineWidth: 0.1,},
                 columnStyles: {
                     0: { cellWidth: 12,   halign: "center" },
                     1: { cellWidth: 25 },
@@ -343,7 +339,7 @@ export const generateROVConductorGuardReport = async (
                     doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                     doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                     doc.text(
-                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Conductor Guard Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                        REPORT_FOOTER_APP_TEXT,
                         margin, pageHeight - 6
                     );
                     if (config.showPageNumbers !== false) {

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -46,7 +46,7 @@ export const generateDivingUTWTKReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -99,7 +99,7 @@ export const generateDivingUTWTKReport = async (
             d.setDrawColor(...colors.border); d.setLineWidth(0.2);
             d.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
             d.text(
-                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  UT Wall Thickness Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                REPORT_FOOTER_APP_TEXT,
                 margin, pageHeight - 6
             );
             if (config.showPageNumbers !== false) {
@@ -233,41 +233,39 @@ export const generateDivingUTWTKReport = async (
             margin: { left: margin, right: margin, bottom: margin + 25 },
             head: [
                 [
-                    { content: "Item No.", rowSpan: 2, styles: { cellWidth: 12 } },
-                    { content: "QID", rowSpan: 2, styles: { cellWidth: 25 } },
-                    { content: "Elevation", rowSpan: 2, styles: { cellWidth: 16 } },
-                    { content: "Dive No.", rowSpan: 2, styles: { cellWidth: 16 } },
-                    { content: "Thickness Readings (o'clock)", colSpan: 4, styles: { halign: 'center' } },
-                    { content: "Nominal\nThickness", rowSpan: 2, styles: { cellWidth: 16 } },
-                    { content: "Findings", rowSpan: 2, styles: { cellWidth: 'auto' } }
+                    { content: "Item No.", rowSpan: 2, styles: {cellWidth: 12, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "QID", rowSpan: 2, styles: {cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Elevation", rowSpan: 2, styles: {cellWidth: 16, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dive No.", rowSpan: 2, styles: {cellWidth: 16, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Thickness Readings (o'clock)", colSpan: 4, styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Nominal\nThickness", rowSpan: 2, styles: {cellWidth: 16, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Findings", rowSpan: 2, styles: {cellWidth: 'auto', lineWidth: 0.1, lineColor: colors.border} }
                 ],
                 [
-                    { content: "12", styles: { cellWidth: 14 } },
-                    { content: "3", styles: { cellWidth: 14 } },
-                    { content: "6", styles: { cellWidth: 14 } },
-                    { content: "9", styles: { cellWidth: 14 } }
+                    { content: "12", styles: {cellWidth: 14, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "3", styles: {cellWidth: 14, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "6", styles: {cellWidth: 14, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "9", styles: {cellWidth: 14, lineWidth: 0.1, lineColor: colors.border} }
                 ]
             ],
             body: tableBody,
             theme: "grid",
             headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
-                lineColor: isPF ? colors.border : [255, 255, 255],
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
+                lineColor: config?.printFriendly ? colors.border : [255, 255, 255],
                 lineWidth: 0.1,
                 fontSize: 6.5,
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle"
             },
-            styles: {
-                fontSize: 6.5,
+            styles: {fontSize: 6.5,
                 cellPadding: 2,
                 textColor: colors.text,
                 lineColor: colors.border,
                 valign: "middle",
-                halign: "center"
-            },
+                halign: "center", lineWidth: 0.1},
             columnStyles: {
                 9: { halign: "left" }
             },

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -49,7 +49,7 @@ export const generateDivingSZONEReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -189,38 +189,34 @@ export const generateDivingSZONEReport = async (
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [
                 [
-                    { content: "Item No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "QID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "CP Reading\n(mV)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Wall Thickness (mm) (o'clock)", colSpan: 4, styles: { halign: "center", valign: "middle" } },
-                    { content: "Nominal\nThk (mm)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Dive No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Findings", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                    { content: "Item No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "QID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "CP Reading\n(mV)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Wall Thickness (mm) (o'clock)", colSpan: 4, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Nominal\nThk (mm)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dive No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Findings", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 ],
                 [
-                    { content: "3", styles: { halign: "center" } },
-                    { content: "6", styles: { halign: "center" } },
-                    { content: "9", styles: { halign: "center" } },
-                    { content: "12", styles: { halign: "center" } },
+                    { content: "3", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "6", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "9", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "12", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                 ]
             ],
             body: sorted.map(buildRow),
             theme: "grid",
-            headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 7.5,
                 fontStyle: "bold",
                 halign: "center",
-                valign: "middle",
-            },
-            styles: {
-                fontSize: 7,
+                valign: "middle", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
+            styles: {fontSize: 7,
                 cellPadding: 2,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak",
-            },
+                overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
                 0: { cellWidth: 10, halign: "center" },
                 1: { cellWidth: 28 },
@@ -250,7 +246,7 @@ export const generateDivingSZONEReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Splash Zone Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

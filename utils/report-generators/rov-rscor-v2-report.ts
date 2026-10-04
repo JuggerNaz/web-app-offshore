@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -46,7 +46,7 @@ export const generateROVRSCORV2Report = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
@@ -99,7 +99,7 @@ export const generateROVRSCORV2Report = async (
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F'); 
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 d.setTextColor(...colors.text); d.setFontSize(7); d.setFont("helvetica", "bold");
                 d.text(label, x + 2, ty + 3.5); d.setFont("helvetica", "normal");
@@ -641,8 +641,8 @@ export const generateROVRSCORV2Report = async (
                         ];
                     }),
                     theme: 'grid',
-                    headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 5.5, cellPadding: 0.8, halign: 'center' },
-                    styles: { fontSize: 5.5, cellPadding: 0.8 },
+                    headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, fontSize: 5.5, cellPadding: 0.8, halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                    styles: {fontSize: 5.5, cellPadding: 0.8, lineWidth: 0.1, lineColor: colors.border},
                     columnStyles: {
                         0: { cellWidth: 20 },
                         1: { cellWidth: 15, halign: 'center' },
@@ -699,7 +699,7 @@ export const generateROVRSCORV2Report = async (
             doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
             doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
             doc.setFont("helvetica", "normal");
-            doc.text(`${companySettings.company_name || 'NasQuest Resources Sdn Bhd'}  |  Scour Survey Sketch Report v2 (ROV)  |  SOW: ${sowReportNo}`, margin, footerY);
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
             if (config.showPageNumbers !== false) {
                 doc.text(`Page ${j} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
             }

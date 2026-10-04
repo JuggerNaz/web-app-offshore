@@ -6,7 +6,7 @@ import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 // Helper to load image for PDF
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -139,13 +139,13 @@ export const generateInspectionReport = async (
         const margin = 12;
         const contentWidth = pageWidth - (margin * 2);
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number]
         };
-        const sectionBlue: [number, number, number] = [44, 82, 130];
+        const sectionBlue: [number, number, number] = [7, 78, 136];
         const isPrintFriendly = config?.printFriendly === true;
 
         // --- HEADER ---
@@ -233,7 +233,7 @@ export const generateInspectionReport = async (
                 details.slice(3).map(d => `${d[0]}: ${d[1]}`)
             ],
             theme: 'plain',
-            styles: { fontSize: 9, cellPadding: 2 },
+            styles: {fontSize: 9, cellPadding: 2, lineWidth: 0.1, lineColor: [203, 213, 225]},
             columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 60 }, 2: { cellWidth: 60 } },
             margin: { left: 10 }
         });
@@ -258,8 +258,8 @@ export const generateInspectionReport = async (
                 startY: yPos,
                 body: anomalyData,
                 theme: 'striped',
-                headStyles: { fillColor: [200, 200, 200], textColor: 0 },
-                styles: { fontSize: 9, cellPadding: 2 },
+                headStyles: {fillColor: [200, 200, 200], textColor: 0, lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
+                styles: {fontSize: 9, cellPadding: 2, lineWidth: 0.1, lineColor: [203, 213, 225]},
                 columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } },
                 margin: { left: 10 }
             });
@@ -330,7 +330,7 @@ export const generateInspectionReport = async (
                     // Draw Title above (Centered in Column)
                     doc.setFontSize(8);
                     doc.setFont("helvetica", "bold");
-                    doc.setTextColor(31, 55, 93);
+                    doc.setTextColor(7, 78, 136);
                     doc.text(title.toUpperCase(), colCenterX, yPos + 4, { align: "center", maxWidth: imgWidth });
 
                     const imgData = await loadLogoWithTransparency(url);
@@ -366,6 +366,22 @@ export const generateInspectionReport = async (
                 }
             }
         }
+
+        
+        const totalPages = doc.getNumberOfPages();
+        for (let j = 1; j <= totalPages; j++) {
+            doc.setPage(j);
+            const footerY = pageHeight - 5;
+            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+            doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
+            doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
+            doc.setFont("helvetica", "normal");
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
+            if (config?.showPageNumbers !== false) {
+                doc.text(`Page ${j} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+            }
+        }
+        (doc as any)._footerApplied = true;
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config?.returnBlob) return doc.output("blob");

@@ -1,5 +1,9 @@
 import { jsPDF } from "jspdf";
 
+export const APP_NAME = "OFFSHOREPRO";
+export const APP_VERSION = "1.0";
+export const REPORT_FOOTER_APP_TEXT = `${APP_NAME} Version ${APP_VERSION}`;
+
 export const loadLogoWithTransparency = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
     if (!url || typeof url !== 'string' || !url.trim()) {
         return null;
@@ -51,74 +55,9 @@ export const loadLogoWithTransparency = async (url: string): Promise<{ data: str
                     return;
                 }
 
+                // Draw original image onto canvas and return standard PNG data URL without altering colors/background
                 ctx.drawImage(img, 0, 0);
-
-                try {
-                    const imageData = ctx.getImageData(0, 0, w, h);
-                    const data = imageData.data;
-
-                    const isWhite = (i: number) => data[i] > 230 && data[i + 1] > 230 && data[i + 2] > 230 && data[i + 3] > 0;
-
-                    const stack: { x: number, y: number }[] = [];
-                    const visited = new Uint8Array(w * h);
-
-                    const pushIfWhite = (x: number, y: number) => {
-                        if (x < 0 || x >= w || y < 0 || y >= h) return;
-                        const idx = y * w + x;
-                        if (!visited[idx]) {
-                            const p = idx * 4;
-                            if (isWhite(p)) {
-                                visited[idx] = 1;
-                                stack.push({ x, y });
-                            }
-                        }
-                    };
-
-                    for (let x = 0; x < w; x++) { pushIfWhite(x, 0); pushIfWhite(x, h - 1); }
-                    for (let y = 0; y < h; y++) { pushIfWhite(0, y); pushIfWhite(w - 1, y); }
-
-                    while (stack.length > 0) {
-                        const pt = stack.pop();
-                        if (!pt) continue;
-                        const { x, y } = pt;
-                        const p = (y * w + x) * 4;
-                        data[p + 3] = 0; // make transparent
-
-                        pushIfWhite(x + 1, y);
-                        pushIfWhite(x - 1, y);
-                        pushIfWhite(x, y + 1);
-                        pushIfWhite(x, y - 1);
-                    }
-
-                    // Edge smoothing
-                    for (let y = 1; y < h - 1; y++) {
-                        for (let x = 1; x < w - 1; x++) {
-                            const p = (y * w + x) * 4;
-                            if (data[p + 3] !== 0) {
-                                const hasTransparentNeighbor =
-                                    data[((y) * w + x - 1) * 4 + 3] === 0 ||
-                                    data[((y) * w + x + 1) * 4 + 3] === 0 ||
-                                    data[((y - 1) * w + x) * 4 + 3] === 0 ||
-                                    data[((y + 1) * w + x) * 4 + 3] === 0;
-                                if (hasTransparentNeighbor) {
-                                    const avgColor = (data[p] + data[p + 1] + data[p + 2]) / 3;
-                                    if (avgColor > 200) {
-                                        data[p + 3] = Math.max(0, 255 - (avgColor - 180) * 3);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    ctx.putImageData(imageData, 0, 0);
-                    resolve({ data: canvas.toDataURL("image/png"), width: w, height: h });
-                } catch {
-                    // If canvas security or getImageData throws, return data URL or original source
-                    try {
-                        resolve({ data: canvas.toDataURL("image/png"), width: w, height: h });
-                    } catch {
-                        resolve({ data: finalSrc, width: w, height: h });
-                    }
-                }
+                resolve({ data: canvas.toDataURL("image/png"), width: w, height: h });
             } catch {
                 resolve({ data: finalSrc, width: w, height: h });
             }
@@ -134,18 +73,54 @@ export const loadLogoWithTransparency = async (url: string): Promise<{ data: str
     });
 };
 
+export const loadLogo = loadLogoWithTransparency;
 
-export const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
-    if (!logo || !logo.data) return;
-    const ratio = Math.min(maxW / logo.width, maxH / logo.height);
+
+export const drawLogo = (
+    doc: any,
+    logo: any,
+    maxW: number,
+    maxH: number,
+    x: number,
+    y: number,
+    alignX: string = 'left',
+    alignY: string = 'center'
+) => {
+    if (!logo || !logo.data || !logo.width || !logo.height) return;
+
+    // Aspect ratio of the image (width / height)
+    const aspectRatio = logo.width / logo.height;
+
+    // Determine effective max width:
+    // If it's a single logo (roughly square or portrait, aspect ratio <= 1.25), keep current maxW.
+    // If it contains multiple logos or is a wide rectangle (aspect ratio > 1.25),
+    // scale the allowed width proportionally (e.g. current size x no. of logos in image)
+    // so that the height stays at maxH and logos inside are not shrunk down.
+    // Capped at 50mm to prevent overlapping header title text.
+    let effectiveMaxW = maxW;
+    if (aspectRatio > 1.25) {
+        effectiveMaxW = Math.min(50, Math.max(maxW, maxH * aspectRatio));
+    }
+
+    const ratio = Math.min(effectiveMaxW / logo.width, maxH / logo.height);
     const w = logo.width * ratio;
     const h = logo.height * ratio;
+
     let dx = x;
     let dy = y;
-    if (alignX === 'right') dx = x + maxW - w;
-    if (alignX === 'center') dx = x + (maxW - w) / 2;
-    if (alignY === 'center') dy = y + (maxH - h) / 2;
-    if (alignY === 'bottom') dy = y + maxH - h;
+
+    if (alignX === 'right') {
+        dx = x + maxW - w;
+    } else if (alignX === 'center') {
+        dx = x + (maxW - w) / 2;
+    }
+
+    if (alignY === 'center' || alignY === 'middle') {
+        dy = y + (maxH - h) / 2;
+    } else if (alignY === 'bottom') {
+        dy = y + maxH - h;
+    }
+
     doc.addImage(logo.data, 'PNG', dx, dy, w, h);
 };
 

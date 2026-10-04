@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -50,7 +50,7 @@ export const generateROVRSCORSurveyReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -372,15 +372,14 @@ export const generateROVRSCORSurveyReport = async (
                     {
                         content: `${faceName.toUpperCase()}`,
                         colSpan: 6,
-                        styles: {
-                            fillColor: isPF ? [240, 244, 248] : [225, 235, 245],
+                        styles: {fillColor: config?.printFriendly ? [240, 244, 248] : [225, 235, 245],
                             textColor: colors.navy,
                             fontStyle: "bold",
                             fontSize: 8,
                             halign: "left",
                             valign: "middle",
                             minCellHeight: 6.5,
-                            cellPadding: { top: 2, bottom: 2, left: 4, right: 4 },
+                            cellPadding: { top: 2, bottom: 2, left: 4, right: 4, lineWidth: 0.1, lineColor: colors.border},
                             lineColor: colors.border,
                             lineWidth: 0.1,
                         },
@@ -401,18 +400,18 @@ export const generateROVRSCORSurveyReport = async (
         autoTable(doc, {
             startY,
             head: [[
-                { content: "Item No.",        styles: { halign: "center", valign: "middle" } },
-                { content: "Component QID",   styles: { halign: "center", valign: "middle" } },
-                { content: "Elevation (m)",   styles: { halign: "center", valign: "middle" } },
-                { content: "Dive No.",        styles: { halign: "center", valign: "middle" } },
-                { content: "Tape No.",        styles: { halign: "center", valign: "middle" } },
-                { content: "Findings",        styles: { halign: "center", valign: "middle" } },
+                { content: "Item No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Component QID",   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Elevation (m)",   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dive No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Tape No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Findings",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             ]],
             body: tableBody,
             theme: "grid",
             headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 8,
                 fontStyle: "bold",
                 halign: "center",
@@ -421,14 +420,12 @@ export const generateROVRSCORSurveyReport = async (
                 lineColor: colors.border,
                 lineWidth: 0.1,
             },
-            styles: {
-                fontSize: 7.5,
+            styles: {fontSize: 7.5,
                 cellPadding: 2.5,
                 textColor: colors.text,
                 lineColor: colors.border,
                 overflow: "linebreak",
-                minCellHeight: isBlank ? 8 : 6,
-            },
+                minCellHeight: isBlank ? 8 : 6, lineWidth: 0.1,},
             margin: { 
                 top: margin + HEADER_H + 4, 
                 left: margin, 
@@ -500,7 +497,7 @@ export const generateROVRSCORSurveyReport = async (
             doc.setLineWidth(0.2);
             doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
             doc.text(
-                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Scour Survey Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                REPORT_FOOTER_APP_TEXT,
                 margin, pageHeight - 6
             );
             if (config.showPageNumbers !== false) {

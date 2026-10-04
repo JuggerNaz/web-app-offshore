@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, getRecordStatusInfo, REPORT_COLORS } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, getRecordStatusInfo, REPORT_COLORS , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
@@ -71,7 +71,7 @@ export const generateROVMGIGraphReport = async (
         const thresholdList = mgiProfile?.thresholds || [];
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -138,7 +138,7 @@ export const generateROVMGIGraphReport = async (
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F'); 
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
@@ -242,26 +242,26 @@ export const generateROVMGIGraphReport = async (
                 rowPageBreak: 'avoid',
                 head: [
                     [
-                        { content: 'Depth (m)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                        { content: 'Integrated Profile (mm)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                        { content: 'Coverage % (H/S)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                        { content: 'MGI READINGS (mm) - CLOCK POSITIONS', colSpan: 8, styles: { halign: 'center', fillColor: isPF ? [240,240,240] : colors.teal, textColor: isPF ? colors.text : 255, cellPadding: 1 } },
-                        { content: 'Max Allowable (mm)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                        { content: 'Inspection Findings', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } }
+                        { content: 'Depth (m)', rowSpan: 3, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: 'Integrated Profile (mm)', rowSpan: 3, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: 'Coverage % (H/S)', rowSpan: 3, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: 'MGI READINGS (mm) - CLOCK POSITIONS', colSpan: 8, styles: {halign: 'center', fillColor: config?.printFriendly ? [240,240,240] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: 'Max Allowable (mm)', rowSpan: 3, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: 'Inspection Findings', rowSpan: 3, styles: {halign: 'center', valign: 'middle', lineWidth: 0.1, lineColor: colors.border} }
                     ],
                     [
-                        { content: 'HARD', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold' } },
-                        { content: 'SOFT', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold' } }
+                        { content: 'HARD', colSpan: 4, styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: 'SOFT', colSpan: 4, styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold', lineWidth: 0.1, lineColor: colors.border} }
                     ],
                     [
-                        { content: '12H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                        { content: '3H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                        { content: '6H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                        { content: '9H', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                        { content: '12S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                        { content: '3S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                        { content: '6S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } },
-                        { content: '9S', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 6, cellPadding: 1 } }
+                        { content: '12H', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: '3H', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: '6H', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: '9H', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: '12S', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: '3S', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: '6S', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: '9S', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} }
                     ]
                 ],
                 body: tableData.length > 0 ? tableData.map(row => {
@@ -279,8 +279,8 @@ export const generateROVMGIGraphReport = async (
                     ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No marine growth profile observations recorded."]
                 ],
                 theme: 'grid',
-                styles: { fontSize: 6.5, cellPadding: 1.5, textColor: [0, 0, 0], lineColor: colors.border },
-                headStyles: { fillColor: isPF ? [255,255,255] : colors.teal, textColor: isPF ? colors.navy : 255, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+                styles: {fontSize: 6.5, cellPadding: 1.5, textColor: [0, 0, 0], lineColor: colors.border, lineWidth: 0.1},
+                headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.teal, textColor: config?.printFriendly ? colors.navy : 255, fontStyle: 'bold', halign: 'center', valign: 'middle', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                 didParseCell: (data) => {
                     if (data.section === 'body') {
                         const row = tableData[data.row.index];
@@ -356,7 +356,7 @@ export const generateROVMGIGraphReport = async (
                         for (let g = 0; g <= GRAPH_MAX_MM; g += 50) {
                             const gx = x + (g * xRatio);
                             const isMajor = g % 100 === 0;
-                            doc.setDrawColor(isPF ? 100 : 255);
+                            doc.setDrawColor(config?.printFriendly ? 100 : 255);
                             doc.setLineWidth(isMajor ? 0.2 : 0.1);
                             doc.line(gx, y + height - (isMajor ? 2.5 : 1.5), gx, y + height);
                             doc.text(`${g}`, gx, y + height - (isMajor ? 3 : 2), { align: 'center' });
@@ -450,6 +450,22 @@ export const generateROVMGIGraphReport = async (
             drawSig("REVIEWED BY", margin + sigW, config?.reviewedBy); 
             drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
         }
+
+        
+        const totalPages = doc.getNumberOfPages();
+        for (let j = 1; j <= totalPages; j++) {
+            doc.setPage(j);
+            const footerY = pageHeight - 5;
+            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+            doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
+            doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
+            doc.setFont("helvetica", "normal");
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
+            if ((config as any)?.showPageNumbers !== false) {
+                doc.text(`Page ${j} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+            }
+        }
+        (doc as any)._footerApplied = true;
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");

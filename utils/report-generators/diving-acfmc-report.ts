@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -47,7 +47,7 @@ export const generateDivingACFMCReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -166,22 +166,22 @@ export const generateDivingACFMCReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
-                { content: "Item\nNo.",             styles: { halign: "center", valign: "middle" } },
-                { content: "QID",                   styles: { halign: "center", valign: "middle" } },
-                { content: "Elevation\n(m)",        styles: { halign: "center", valign: "middle" } },
-                { content: "Dive No.",              styles: { halign: "center", valign: "middle" } },
-                { content: "Chord / Weld / Brace",  styles: { halign: "center", valign: "middle" } },
-                { content: "Direction of Travel",   styles: { halign: "center", valign: "middle" } },
-                { content: "Clock Position",        styles: { halign: "center", valign: "middle" } },
-                { content: "Page",                  styles: { halign: "center", valign: "middle" } },
-                { content: "Probe No.",             styles: { halign: "center", valign: "middle" } },
-                { content: "Findings",              styles: { halign: "center", valign: "middle" } },
+                { content: "Item\nNo.",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "QID",                   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Elevation\n(m)",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dive No.",              styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Chord / Weld / Brace",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Direction of Travel",   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Clock Position",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Page",                  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Probe No.",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Findings",              styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             ]],
             body: sorted.map(buildRow),
             theme: "grid",
             headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 7.5,
                 fontStyle: "bold",
                 halign: "center",
@@ -225,7 +225,7 @@ export const generateDivingACFMCReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  ACFM Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

@@ -18,7 +18,7 @@ export interface RecordStatusInfo {
 }
 
 export const REPORT_COLORS = {
-    navy: [31, 55, 93] as [number, number, number],
+    navy: [7, 78, 136] as [number, number, number],
     teal: [20, 184, 166] as [number, number, number],
     lightGray: [248, 250, 252] as [number, number, number],
     border: [203, 213, 225] as [number, number, number],

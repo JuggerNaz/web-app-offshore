@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -46,7 +46,7 @@ export const generateROVSZCIReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -162,21 +162,21 @@ export const generateROVSZCIReport = async (
             margin: { left: margin, right: margin, top: margin + headerH + 6 },
             head: [
                 [
-                    { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Component QID', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'CP (mV)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Wall Thickness (mm)', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [230,230,230] : [20, 184, 166], textColor: isPF ? colors.text : 255 } },
-                    { content: 'Nominal (mm)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Component Condition', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Coating Condition', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Dive No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Findings', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } }
+                    { content: 'Item No.', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Component QID', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'CP (mV)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Wall Thickness (mm)', colSpan: 4, styles: {halign: 'center', fillColor: config?.printFriendly ? [230,230,230] : [20, 184, 166], textColor: config?.printFriendly ? colors.text : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Nominal (mm)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Component Condition', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Coating Condition', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Dive No.', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Findings', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} }
                 ],
                 [
-                    { content: '12 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
-                    { content: '3 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
-                    { content: '6 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
-                    { content: '9 o\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
+                    { content: '12 o\'clock', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 7, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: '3 o\'clock', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 7, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: '6 o\'clock', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 7, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: '9 o\'clock', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 7, lineWidth: 0.1, lineColor: colors.border} }
                 ]
             ],
             body: sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
@@ -217,8 +217,8 @@ export const generateROVSZCIReport = async (
                 ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No splash zone observations recorded for this scope."]
             ],
             theme: 'grid',
-            headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
-            styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
+            headStyles: {fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+            styles: {fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1},
             didParseCell: (data) => {
                 if (data.section === 'body') {
                     const r = sortedRecords[data.row.index];
@@ -248,7 +248,7 @@ export const generateROVSZCIReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Splash Zone Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

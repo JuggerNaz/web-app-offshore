@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -46,7 +46,7 @@ export const generateROVUTWTReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -106,7 +106,7 @@ export const generateROVUTWTReport = async (
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F'); 
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 
                 d.setTextColor(...colors.text); d.setFontSize(8); d.setFont("helvetica", "bold");
@@ -172,25 +172,25 @@ export const generateROVUTWTReport = async (
             margin: { left: margin, right: margin, top: margin + headerH + 6 },
             head: [
                 [
-                    { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Component QID', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Elevation (m)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Dive No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Wall Thickness Readings (mm)', colSpan: 4, styles: { halign: 'center', fillColor: isPF ? [240,240,240] : colors.teal, textColor: isPF ? colors.text : 255 } },
-                    { content: 'Nominal (mm)', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } },
-                    { content: 'Findings', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255 } }
+                    { content: 'Item No.', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Component QID', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Elevation (m)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Dive No.', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Wall Thickness Readings (mm)', colSpan: 4, styles: {halign: 'center', fillColor: config?.printFriendly ? [240,240,240] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Nominal (mm)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Findings', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} }
                 ],
                 [
-                    { content: '12 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
-                    { content: '3 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
-                    { content: '6 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } },
-                    { content: '9 O\'clock', styles: { halign: 'center', fillColor: isPF ? [248,248,248] : colors.teal, textColor: isPF ? colors.text : 255, fontSize: 7 } }
+                    { content: '12 O\'clock', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 7, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: '3 O\'clock', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 7, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: '6 O\'clock', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 7, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: '9 O\'clock', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 7, lineWidth: 0.1, lineColor: colors.border} }
                 ]
             ],
             body: bodyRows,
             theme: 'grid',
-            headStyles: { fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
-            styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
+            headStyles: {fillColor: colors.navy, textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+            styles: {fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1},
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sortedRecords[data.row.index];
@@ -217,7 +217,7 @@ export const generateROVUTWTReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  UT Wall Thickness Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

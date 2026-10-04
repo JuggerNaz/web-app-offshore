@@ -3,7 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface JobPackData {
     id: number;
@@ -111,8 +111,8 @@ export const generateWorkScopeReport = async (
     });
 
     // Header Colors
-    const headerBlue: [number, number, number] = [26, 54, 93];
-    const sectionBlue: [number, number, number] = [44, 82, 130];
+    const headerBlue: [number, number, number] = [7, 78, 136];
+    const sectionBlue: [number, number, number] = [7, 78, 136];
     const subHeaderGrey: [number, number, number] = [240, 240, 240];
     const isPrintFriendly = config?.printFriendly === true;
 
@@ -181,6 +181,20 @@ export const generateWorkScopeReport = async (
             doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
             doc.text(`Report: ${config.reportNoPrefix}-${config.reportYear}`, pageWidth / 2, 22.5, { align: "center" });
         }
+
+        // Footer & Page No
+        const footerY = pageHeight - 10;
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.1);
+        doc.line(10, footerY - 5, pageWidth - 10, footerY - 5);
+        doc.setFontSize(6.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100, 100, 100);
+        doc.text(REPORT_FOOTER_APP_TEXT, 10, footerY);
+        if (config?.showPageNumbers !== false) {
+            doc.text(`Page ${doc.getNumberOfPages()}`, pageWidth - 10, footerY, { align: "right" });
+        }
+        (doc as any)._footerApplied = true;
     };
 
     // We should pre-fetch contractor for the header usage
@@ -226,8 +240,17 @@ export const generateWorkScopeReport = async (
 
         // Custom Report Ref Sub-Header (Moved from Header)
         if (reportNum !== "Pending Assignment") {
-            doc.setFillColor(240, 240, 240); // Light Grey
-            doc.rect(10, yPos, pageWidth - 20, 8, "F");
+            if (isPrintFriendly) {
+            doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(10, yPos, pageWidth - 20, 8, "FD");
+        } else {
+            doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.1);
+            doc.rect(10, yPos, pageWidth - 20, 8, "FD");
+        }
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(10);
             doc.setFont("helvetica", "bold");
@@ -396,7 +419,7 @@ export const generateWorkScopeReport = async (
                 doc.rect(10, yPos, pageWidth - 20, 8, "FD");
                 doc.setTextColor(0, 0, 0);
             } else {
-                doc.setFillColor(30, 41, 59); // Dark Slate Blue
+                doc.setFillColor(7, 78, 136); // Header Blue
                 doc.rect(10, yPos, pageWidth - 20, 8, "F");
                 doc.setTextColor(255, 255, 255);
             }
@@ -442,8 +465,17 @@ export const generateWorkScopeReport = async (
                     yPos = 35;
                 }
 
-                doc.setFillColor(240, 240, 240); // Grey header
-                doc.rect(10, yPos, pageWidth - 20, 8, "F");
+                if (isPrintFriendly) {
+            doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(10, yPos, pageWidth - 20, 8, "FD");
+        } else {
+            doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.1);
+            doc.rect(10, yPos, pageWidth - 20, 8, "FD");
+        }
                 doc.setFont("helvetica", "bold");
                 doc.setFontSize(10);
                 doc.setTextColor(0, 0, 0);
@@ -479,7 +511,7 @@ export const generateWorkScopeReport = async (
                     allInspectionTypes.forEach(type => {
                         const info = c.inspections[type];
                         if (info && info.selected) {
-                            row.push({ content: 'X', styles: { halign: 'center' }, _status: info.status } as any);
+                            row.push({ content: 'X', styles: {halign: 'center', lineWidth: 0.1, lineColor: [203, 213, 225]}, _status: info.status } as any);
                         } else {
                             row.push("");
                         }
@@ -497,14 +529,12 @@ export const generateWorkScopeReport = async (
                     head: [tableHead],
                     body: tableBody,
                     theme: 'grid',
-                    headStyles: {
-                        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+                    headStyles: {fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
                         textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                         fontStyle: 'bold',
                         fontSize: 8,
                         halign: 'center',
-                        valign: 'middle'
-                    },
+                        valign: 'middle', lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
                     styles: {
                         fontSize: 8,
                         cellPadding: 2,

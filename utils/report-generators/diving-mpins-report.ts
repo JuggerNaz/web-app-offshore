@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -47,7 +47,7 @@ export const generateDivingMPINSReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -100,7 +100,7 @@ export const generateDivingMPINSReport = async (
             d.setDrawColor(...colors.border); d.setLineWidth(0.2);
             d.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
             d.text(
-                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Magnetic Particle Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                REPORT_FOOTER_APP_TEXT,
                 margin, pageHeight - 6
             );
             if (config.showPageNumbers !== false) {
@@ -194,22 +194,20 @@ export const generateDivingMPINSReport = async (
                         margin: { left: margin, right: margin },
                         body: [
                             [
-                                { content: "Elevation:", styles: { fontStyle: "bold", cellWidth: 25 } },
-                                { content: String(elevation) + " m", styles: { cellWidth: 'auto' } },
-                                { content: "Dive No:", styles: { fontStyle: "bold", cellWidth: 25 } },
-                                { content: String(diveNo), styles: { cellWidth: 'auto' } },
-                                { content: "Date:", styles: { fontStyle: "bold", cellWidth: 25 } },
-                                { content: String(inspDate), styles: { cellWidth: 'auto' } }
+                                { content: "Elevation:", styles: {fontStyle: "bold", cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(elevation) + " m", styles: {cellWidth: 'auto', lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "Dive No:", styles: {fontStyle: "bold", cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(diveNo), styles: {cellWidth: 'auto', lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "Date:", styles: {fontStyle: "bold", cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(inspDate), styles: {cellWidth: 'auto', lineWidth: 0.1, lineColor: colors.border} }
                             ]
                         ],
                         theme: "grid",
-                        styles: {
-                            fontSize: 7,
+                        styles: {fontSize: 7,
                             cellPadding: 2,
                             textColor: colors.text,
                             lineColor: colors.border,
-                            valign: "middle"
-                        }
+                            valign: "middle", lineWidth: 0.1}
                     });
 
                     currentY = (doc as any).lastAutoTable.finalY + 3;
@@ -245,9 +243,9 @@ export const generateDivingMPINSReport = async (
                         const f1 = paramFields[j];
                         const f2 = paramFields[j + 1] || { label: "", value: "" };
                         paramBody.push([
-                            { content: f1.label, styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
+                            { content: f1.label, styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
                             { content: f1.value },
-                            { content: f2.label, styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
+                            { content: f2.label, styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
                             { content: f2.value }
                         ]);
                     }
@@ -255,10 +253,10 @@ export const generateDivingMPINSReport = async (
                     autoTable(doc, {
                         startY: currentY,
                         margin: { left: margin, right: margin },
-                        head: [[{ content: "INSPECTION PARAMETERS", colSpan: 4, styles: { halign: "left", fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold" } }]],
+                        head: [[{ content: "INSPECTION PARAMETERS", colSpan: 4, styles: {halign: "left", fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border} }]],
                         body: paramBody as any,
                         theme: "grid",
-                        styles: { fontSize: 6.5, cellPadding: 1.5, textColor: colors.text, lineColor: colors.border },
+                        styles: {fontSize: 6.5, cellPadding: 1.5, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1},
                         columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 40 }, 3: { cellWidth: 'auto' } }
                     });
                     currentY = (doc as any).lastAutoTable.finalY + 3;
@@ -266,43 +264,43 @@ export const generateDivingMPINSReport = async (
                     autoTable(doc, {
                         startY: currentY,
                         margin: { left: margin, right: margin },
-                        head: [[{ content: "CLOCK READINGS", colSpan: 6, styles: { halign: "left", fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255], lineColor: isPF ? colors.border : [255, 255, 255], lineWidth: 0.1, fontSize: 7, fontStyle: "bold" } }]],
+                        head: [[{ content: "CLOCK READINGS", colSpan: 6, styles: { halign: "left", fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : [255,255,255], lineColor: config?.printFriendly ? colors.border : [255, 255, 255], lineWidth: 0.1, fontSize: 7, fontStyle: "bold" } }]],
                         body: [
                             [
-                                { content: "", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "3 O'Clk", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "6 O'Clk", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "9 O'Clk", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "12 O'Clk", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "Nominal", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } }
+                                { content: "", styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "3 O'Clk", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "6 O'Clk", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "9 O'Clk", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "12 O'Clk", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "Nominal", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} }
                             ],
                             [
-                                { content: "Brace (mm)", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: String(d.brace_thick_3clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.brace_thick_6clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.brace_thick_9clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.brace_thick_12clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.brace_nominal_thickness ?? "—"), styles: { halign: "center" } }
+                                { content: "Brace (mm)", styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.brace_thick_3clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.brace_thick_6clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.brace_thick_9clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.brace_thick_12clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.brace_nominal_thickness ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                             ],
                             [
-                                { content: "Chord (mm)", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: String(d.chord_thick_3clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.chord_thick_6clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.chord_thick_9clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.chord_thick_12clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.chord_nominal_thickness ?? "—"), styles: { halign: "center" } }
+                                { content: "Chord (mm)", styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.chord_thick_3clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.chord_thick_6clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.chord_thick_9clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.chord_thick_12clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.chord_nominal_thickness ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                             ],
                             [
-                                { content: "CP (mV)", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: String(d.cp_at_3clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.cp_at_6clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.cp_at_9clk ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.cp_at_12clk ?? "—"), styles: { halign: "center" } },
-                                { content: "", styles: { halign: "center" } }
+                                { content: "CP (mV)", styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.cp_at_3clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.cp_at_6clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.cp_at_9clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.cp_at_12clk ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                             ]
                         ] as any,
                         theme: "grid",
-                        styles: { fontSize: 6.5, cellPadding: 1.5, textColor: colors.text, lineColor: colors.border }
+                        styles: {fontSize: 6.5, cellPadding: 1.5, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1}
                     });
                     currentY = (doc as any).lastAutoTable.finalY + 3;
 
@@ -310,39 +308,39 @@ export const generateDivingMPINSReport = async (
                     autoTable(doc, {
                         startY: currentY,
                         margin: { left: margin, right: margin },
-                        head: [[{ content: "SEGMENT READINGS", colSpan: 5, styles: { halign: "left", fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold" } }]],
+                        head: [[{ content: "SEGMENT READINGS", colSpan: 5, styles: {halign: "left", fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border} }]],
                         body: [
                             [
-                                { content: "", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "6 - 9", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "9 - 12", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "12 - 3", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: "3 - 6", styles: { fontStyle: "bold", halign: "center", fillColor: isPF ? [255,255,255] : colors.lightGray } }
+                                { content: "", styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "6 - 9", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "9 - 12", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "12 - 3", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "3 - 6", styles: {fontStyle: "bold", halign: "center", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} }
                             ],
                             [
-                                { content: "Toe Chord", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: String(d.toe_chord_6_9 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.toe_chord_9_12 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.toe_chord_12_3 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.toe_chord_3_6 ?? "—"), styles: { halign: "center" } }
+                                { content: "Toe Chord", styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.toe_chord_6_9 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.toe_chord_9_12 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.toe_chord_12_3 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.toe_chord_3_6 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                             ],
                             [
-                                { content: "Weld", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: String(d.weld_6_9 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.weld_9_12 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.weld_12_3 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.weld_3_6 ?? "—"), styles: { halign: "center" } }
+                                { content: "Weld", styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.weld_6_9 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.weld_9_12 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.weld_12_3 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.weld_3_6 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                             ],
                             [
-                                { content: "Toe Brace", styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
-                                { content: String(d.toe_brace_6_9 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.toe_brace_9_12 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.toe_brace_12_3 ?? "—"), styles: { halign: "center" } },
-                                { content: String(d.toe_brace_3_6 ?? "—"), styles: { halign: "center" } }
+                                { content: "Toe Brace", styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.toe_brace_6_9 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.toe_brace_9_12 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.toe_brace_12_3 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(d.toe_brace_3_6 ?? "—"), styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                             ]
                         ] as any,
                         theme: "grid",
-                        styles: { fontSize: 6.5, cellPadding: 1.5, textColor: colors.text, lineColor: colors.border }
+                        styles: {fontSize: 6.5, cellPadding: 1.5, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1}
                     });
                     currentY = (doc as any).lastAutoTable.finalY + 3;
 
@@ -351,20 +349,18 @@ export const generateDivingMPINSReport = async (
                     autoTable(doc, {
                         startY: currentY,
                         margin: { left: margin, right: margin },
-                        head: [[{ content: "FINDINGS & REMARKS", colSpan: 1, styles: { halign: "left", fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold" } }]],
+                        head: [[{ content: "FINDINGS & REMARKS", colSpan: 1, styles: {halign: "left", fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border} }]],
                         body: [
                             [
                                 { content: findingsText }
                             ]
                         ],
                         theme: "grid",
-                        styles: {
-                            fontSize: 7,
+                        styles: {fontSize: 7,
                             cellPadding: 3,
                             textColor: colors.text,
                             lineColor: colors.border,
-                            valign: "top"
-                        },
+                            valign: "top", lineWidth: 0.1},
                         didParseCell: (data) => {
                             if (data.section === "body") {
                                 applyRecordCellStyling(data.cell, r, isPF);

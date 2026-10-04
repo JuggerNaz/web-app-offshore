@@ -40,7 +40,7 @@ interface CompanySettings {
     logo_url?: string;
 }
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 const fetchContractorDetails = async (id: string): Promise<{ name: string; address: string; logoUrl?: string }> => {
     try {
@@ -73,8 +73,8 @@ export const generateJobPackSummaryReport = async (
     const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
 
     // Colors
-    const headerBlue: [number, number, number] = [26, 54, 93];
-    const sectionBlue: [number, number, number] = [44, 82, 130];
+    const headerBlue: [number, number, number] = [7, 78, 136];
+    const sectionBlue: [number, number, number] = [7, 78, 136];
     const isPrintFriendly = config?.printFriendly === true;
 
     // ===== HEADER =====
@@ -357,7 +357,7 @@ export const generateJobPackSummaryReport = async (
         head: [['Structure', 'Type', 'Job Type', 'Inspection Scope']],
         body: tableBody,
         theme: 'grid',
-        headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 8, halign: 'left', fontStyle: 'bold' },
+        headStyles: {fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 8, halign: 'left', fontStyle: 'bold', lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
         bodyStyles: { fontSize: 8, halign: 'left' },
         columnStyles: {
             0: { cellWidth: 40 },
@@ -430,7 +430,8 @@ export const generateJobPackSummaryReport = async (
 
     doc.setFontSize(6);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 10, footerY);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, footerY);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, footerY, { align: "center" });
     doc.text("CONFIDENTIAL", pageWidth - 10, footerY, { align: "right" });
 
     // ===== CONFIGURATION (Watermark / Signatures) =====
