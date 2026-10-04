@@ -297,6 +297,9 @@ export function formatReportFindingText(r: any, baseFinding?: string): string {
         if (info.defectDescription) {
             const prefix = info.isFinding ? "Finding Description:" : "Anomaly Description:";
             if (!baseText.includes(info.defectDescription)) {
+                if (lines.length > 0 && lines[lines.length - 1] !== "") {
+                    lines.push("");
+                }
                 lines.push(`${prefix} ${info.defectDescription}`);
             }
         }
@@ -311,12 +314,18 @@ export function formatReportFindingText(r: any, baseFinding?: string): string {
                 rectText += ` (${dateStr})`;
             }
         }
+        if (lines.length > 0 && lines[lines.length - 1] !== "") {
+            lines.push("");
+        }
         lines.push(`Rectified Description: ${rectText}`);
     }
 
     // 6. Append Reference No.
     if (info.anomalyRefNo) {
         const refLabel = info.isFinding ? "Please refer to Finding No.:" : "Please refer to Anomaly No.:";
+        if (lines.length > 0 && lines[lines.length - 1] !== "") {
+            lines.push("");
+        }
         lines.push(`${refLabel} ${info.anomalyRefNo}`);
     }
 
