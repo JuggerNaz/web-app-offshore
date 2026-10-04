@@ -175,7 +175,109 @@ export function toLocalTimeString(
 }
 
 /**
- * Combines separate local date (YYYY-MM-DD) and local time (HH:mm or HH:mm:ss) strings
+ * Parses any flexible time string (12-hour with AM/PM like "2:30 PM", "2:30pm", "230p", 
+ * or 24-hour military like "14:30", "1430", "14:30:45", "930") into a standardized 24-hour time "HH:mm:ss".
+ * Returns empty string if invalid.
+ */
+export function parseFlexibleTimeTo24Hour(input?: string | null): string {
+  if (!input || typeof input !== "string") return "";
+  let s = input.trim().toUpperCase();
+  if (!s) return "";
+
+  // Check for AM / PM indicator
+  let isPM = false;
+  let isAM = false;
+  if (s.endsWith("PM") || s.endsWith("P.M.") || s.endsWith("P")) {
+    isPM = true;
+    s = s.replace(/P\.?M?\.?$/i, "").trim();
+  } else if (s.endsWith("AM") || s.endsWith("A.M.") || s.endsWith("A")) {
+    isAM = true;
+    s = s.replace(/A\.?M?\.?$/i, "").trim();
+  }
+
+  let hours = 0;
+  let minutes = 0;
+  let seconds = 0;
+
+  if (s.includes(":")) {
+    const parts = s.split(":").map(p => parseInt(p, 10));
+    hours = isNaN(parts[0]) ? 0 : parts[0];
+    minutes = isNaN(parts[1]) ? 0 : parts[1];
+    seconds = isNaN(parts[2]) ? 0 : parts[2];
+  } else if (/^\d{3,6}$/.test(s)) {
+    // Digits only: e.g. "930" (9:30), "1430" (14:30), "143025" (14:30:25), "0930"
+    if (s.length === 3) {
+      hours = parseInt(s.slice(0, 1), 10);
+      minutes = parseInt(s.slice(1, 3), 10);
+    } else if (s.length === 4) {
+      hours = parseInt(s.slice(0, 2), 10);
+      minutes = parseInt(s.slice(2, 4), 10);
+    } else if (s.length === 5) {
+      hours = parseInt(s.slice(0, 1), 10);
+      minutes = parseInt(s.slice(1, 3), 10);
+      seconds = parseInt(s.slice(3, 5), 10);
+    } else if (s.length === 6) {
+      hours = parseInt(s.slice(0, 2), 10);
+      minutes = parseInt(s.slice(2, 4), 10);
+      seconds = parseInt(s.slice(4, 6), 10);
+    }
+  } else if (/^\d{1,2}$/.test(s)) {
+    // Single or two digits: "9" -> 09:00, "14" -> 14:00
+    hours = parseInt(s, 10);
+    minutes = 0;
+    seconds = 0;
+  } else {
+    return "";
+  }
+
+  // Adjust for 12-hour AM/PM
+  if (isPM) {
+    if (hours < 12) hours += 12;
+  } else if (isAM) {
+    if (hours === 12) hours = 0;
+  }
+
+  // Bound check
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+    return "";
+  }
+
+  const hh = String(hours).padStart(2, "0");
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+
+  return `${hh}:${mm}:${ss}`;
+}
+
+/**
+ * Converts a 24-hour time or flexible string to 12-hour display format (e.g. "02:30:00 PM" or "02:30 PM").
+ */
+export function to12HourTime(timeInput?: string | null, includeSeconds = true): string {
+  const time24 = parseFlexibleTimeTo24Hour(timeInput);
+  if (!time24) return timeInput || "";
+  const [hh, mm, ss] = time24.split(":").map(Number);
+  const period = hh >= 12 ? "PM" : "AM";
+  const displayHours = hh % 12 || 12;
+  const hhStr = String(displayHours).padStart(2, "0");
+  const mmStr = String(mm).padStart(2, "0");
+  const ssStr = String(ss).padStart(2, "0");
+  return includeSeconds ? `${hhStr}:${mmStr}:${ssStr} ${period}` : `${hhStr}:${mmStr} ${period}`;
+}
+
+/**
+ * Formats time input to 24-hour string (e.g. "14:30:00" or "14:30").
+ */
+export function to24HourTime(timeInput?: string | null, includeSeconds = true): string {
+  const time24 = parseFlexibleTimeTo24Hour(timeInput);
+  if (!time24) return timeInput || "";
+  if (!includeSeconds && time24.length >= 5) {
+    return time24.substring(0, 5);
+  }
+  return time24;
+}
+
+/**
+ * Combines separate local date (YYYY-MM-DD) and local time (which can be 12h or 24h) strings
  * into a UTC ISO string for PostgreSQL storage.
  */
 export function combineLocalDateAndTimeToUtcIso(
@@ -183,10 +285,9 @@ export function combineLocalDateAndTimeToUtcIso(
   localTime: string
 ): string {
   if (!localDate) return new Date().toISOString();
-  const cleanTime = (localTime || "00:00:00").trim();
-  const formattedTime = cleanTime.length === 5 ? `${cleanTime}:00` : cleanTime;
+  const parsed24 = parseFlexibleTimeTo24Hour(localTime) || "00:00:00";
   const [y, m, d] = localDate.split("-").map(Number);
-  const [hh, mm, ss] = formattedTime.split(":").map(Number);
+  const [hh, mm, ss] = parsed24.split(":").map(Number);
   const localDateObj = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, ss || 0);
   if (isNaN(localDateObj.getTime())) {
     return new Date().toISOString();
@@ -198,4 +299,5 @@ export function combineLocalDateAndTimeToUtcIso(
  * Alias for parseClientDate for backwards compatibility.
  */
 export const parseDbDate = parseClientDate;
+
 

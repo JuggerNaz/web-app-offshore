@@ -1,18 +1,20 @@
 import { formatPdfDate } from "./shared-logo";
 
-export type RecordStatusType = 'NORMAL' | 'ANOMALY' | 'FINDING' | 'RECTIFIED';
+export type RecordStatusType = 'NORMAL' | 'ANOMALY' | 'FINDING' | 'RECTIFIED' | 'INCOMPLETE';
 
 export interface RecordStatusInfo {
     type: RecordStatusType;
     isAnomaly: boolean;
     isFinding: boolean;
     isRectified: boolean;
+    isIncomplete: boolean;
     textColor: [number, number, number];
     hexColor: string;
     anomalyRefNo: string;
     defectDescription: string;
     rectifiedDescription: string;
     rectifiedDate: string | Date | null;
+    incompleteReason: string;
     additionalCpEntries: string[];
     additionalUtEntries: string[];
 }
@@ -26,6 +28,7 @@ export const REPORT_COLORS = {
     anomaly: [220, 38, 38] as [number, number, number],      // Red
     rectified: [22, 163, 74] as [number, number, number],    // Green
     finding: [217, 119, 6] as [number, number, number],      // Orange
+    incomplete: [245, 158, 11] as [number, number, number],  // Amber (#f59e0b - Incomplete Status Button)
 };
 
 /**
@@ -38,12 +41,14 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
             isAnomaly: false,
             isFinding: false,
             isRectified: false,
+            isIncomplete: false,
             textColor: REPORT_COLORS.text,
             hexColor: '#1E293B',
             anomalyRefNo: '',
             defectDescription: '',
             rectifiedDescription: '',
             rectifiedDate: null,
+            incompleteReason: '',
             additionalCpEntries: [],
             additionalUtEntries: []
         };
@@ -123,6 +128,23 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
         !!r.rectified_remarks ||
         !!d.rectified_remarks
     );
+
+    // 4. Incomplete detection
+    const isIncomplete = Boolean(
+        String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
+        String(d.status || "").trim().toUpperCase() === "INCOMPLETE" ||
+        findingType === "INCOMPLETE" ||
+        metaStatus === "incomplete"
+    );
+
+    const incompleteReason = (
+        r.incomplete_reason || 
+        r.incompleteReason || 
+        d.incomplete_reason || 
+        d.incompleteReason || 
+        r.inspection_dat?.incomplete_reason ||
+        ""
+    ).toString().trim();
 
     // Defect / Anomaly description extraction
     const defectDescription = (
@@ -225,18 +247,22 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
     let textColor = REPORT_COLORS.text;
     let hexColor = '#1E293B';
 
-    if (isRectified && (hasAnomaly || isFinding)) {
+    if (isIncomplete) {
+        type = 'INCOMPLETE';
+        textColor = REPORT_COLORS.incomplete;
+        hexColor = '#F59E0B';
+    } else if (isRectified && (hasAnomaly || isFinding)) {
         type = 'RECTIFIED';
         textColor = REPORT_COLORS.rectified;
         hexColor = '#16A34A';
-    } else if (isFinding) {
-        type = 'FINDING';
-        textColor = REPORT_COLORS.finding;
-        hexColor = '#D97706';
     } else if (hasAnomaly) {
         type = 'ANOMALY';
         textColor = REPORT_COLORS.anomaly;
         hexColor = '#DC2626';
+    } else if (isFinding) {
+        type = 'FINDING';
+        textColor = REPORT_COLORS.finding;
+        hexColor = '#D97706';
     }
 
     return {
@@ -244,12 +270,14 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
         isAnomaly: hasAnomaly,
         isFinding,
         isRectified,
+        isIncomplete,
         textColor,
         hexColor,
         anomalyRefNo: refNo,
         defectDescription,
         rectifiedDescription,
         rectifiedDate,
+        incompleteReason,
         additionalCpEntries,
         additionalUtEntries
     };
@@ -257,15 +285,30 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
 
 /**
  * Formats the complete Finding / Description / Observation cell text according to requirements:
- * 1. Base Finding / Description
- * 2. Additional CP (if Got data)
- * 3. Additional UT (if Got data)
- * 4. 'Anomaly Description:' or 'Finding Description:' (if got data)
- * 5. If rectified: 'Rectified Description: {desc}'
- * 6. 'Please refer to Anomaly No.:' / 'Please refer to Finding No.:' {reference no.}
+ * - If status is INCOMPLETE: priority is for Reason for Incomplete Task value. If blank/null, fallback to inspection finding value.
+ * - Otherwise:
+ *   1. Base Finding / Description
+ *   2. Additional CP (if Got data)
+ *   3. Additional UT (if Got data)
+ *   4. 'Anomaly Description:' or 'Finding Description:' (if got data)
+ *   5. If rectified: 'Rectified Description: {desc}'
+ *   6. 'Please refer to Anomaly No.:' / 'Please refer to Finding No.:' {reference no.}
  */
 export function formatReportFindingText(r: any, baseFinding?: string): string {
     const info = getRecordStatusInfo(r);
+
+    // If status is INCOMPLETE:
+    if (info.isIncomplete) {
+        const cleanInc = info.incompleteReason ? info.incompleteReason.trim() : "";
+        let initialFinding = (baseFinding !== undefined ? baseFinding : (r.description || r.findings || r.inspection_data?.findings || r.inspection_data?.description || r.remarks || r.inspection_data?.remarks || "")).toString().trim();
+        if (initialFinding === "No significant findings" || initialFinding === "N/A" || initialFinding === "-" || initialFinding === "—" || initialFinding === "None") {
+            initialFinding = "";
+        }
+
+        const chosenText = cleanInc || initialFinding;
+        return chosenText || "Incomplete";
+    }
+
     const lines: string[] = [];
 
     // 1. Base Finding / Description
@@ -338,14 +381,18 @@ export function formatReportFindingText(r: any, baseFinding?: string): string {
 
 /**
  * Applies text color and bold styling to autoTable cells based on record status.
- * - Rectified -> Green
- * - Finding -> Orange
- * - Anomaly -> Red
+ * - Incomplete -> Amber (#F59E0B)
+ * - Rectified -> Green (#16A34A)
+ * - Finding -> Orange (#D97706)
+ * - Anomaly -> Red (#DC2626)
  */
 export function applyRecordCellStyling(cell: any, r: any, _isPrintFriendly?: boolean) {
     if (!cell || !cell.styles || !r) return;
     const status = getRecordStatusInfo(r);
-    if (status.type === 'RECTIFIED') {
+    if (status.type === 'INCOMPLETE') {
+        cell.styles.textColor = REPORT_COLORS.incomplete;
+        cell.styles.fontStyle = 'bold';
+    } else if (status.type === 'RECTIFIED') {
         cell.styles.textColor = REPORT_COLORS.rectified;
         cell.styles.fontStyle = 'bold';
     } else if (status.type === 'FINDING') {

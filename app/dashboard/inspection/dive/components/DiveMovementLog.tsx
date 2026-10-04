@@ -13,6 +13,7 @@ import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { useUserProfile } from "@/components/user-profile-provider";
 import { parseClientDate, formatClientTime, formatClientDate, toLocalDateString, toLocalTimeString, combineLocalDateAndTimeToUtcIso } from "@/utils/client-date";
+import { SmartTimeInput } from "@/components/ui/smart-time-input";
 
 // DIVE ACTIONS
 const AIR_DIVE_ACTIONS = [
@@ -328,14 +329,13 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="dive_movement_time" className="text-xs font-bold text-slate-700 dark:text-slate-300">Time (Local) *</Label>
-                            <Input
+                            <Label htmlFor="dive_movement_time" className="text-xs font-bold text-slate-700 dark:text-slate-300">Time (Local - 12h or 24h) *</Label>
+                            <SmartTimeInput
                                 id="dive_movement_time"
-                                type="time"
-                                step="1"
                                 value={newTime}
-                                onChange={(e) => setNewTime(e.target.value)}
-                                className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono text-xs h-9 font-semibold"
+                                onChange={(val) => setNewTime(val)}
+                                includeSeconds={true}
+                                className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100"
                             />
                         </div>
                     </div>
@@ -461,13 +461,12 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
                                                     />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Time (Local) *</Label>
-                                                    <Input
-                                                        type="time"
-                                                        step="1"
+                                                    <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Time (Local - 12h or 24h) *</Label>
+                                                    <SmartTimeInput
                                                         value={editTime}
-                                                        onChange={(e) => setEditTime(e.target.value)}
-                                                        className="h-8 font-mono font-bold text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                                                        onChange={(val) => setEditTime(val)}
+                                                        includeSeconds={true}
+                                                        className="h-8 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs"
                                                     />
                                                 </div>
                                             </div>

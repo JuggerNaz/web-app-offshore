@@ -274,8 +274,10 @@ if (typeof window !== "undefined") {
 
 /**
  * Resolves the effective description/findings for an inspection record.
- * Where the record status is 'INCOMPLETE' (case-insensitive) and the description/findings is null, blank, or empty,
- * it returns the incomplete_reason column value in place of the Findings or description.
+ * Where the record status is 'INCOMPLETE' (case-insensitive):
+ * - Priority is for the Reason for Incomplete Task value.
+ * - If blank or null, fallback to the inspection finding value.
+ * - Never prints both.
  */
 export const getEffectiveFindings = (r: any, explicitFindings?: string | null): string => {
     if (!r) return "";
@@ -300,13 +302,18 @@ export const getEffectiveFindings = (r: any, explicitFindings?: string | null): 
         r.incompleteReason || 
         d.incomplete_reason || 
         d.incompleteReason || 
+        r.inspection_dat?.incomplete_reason ||
         ""
     ).toString().trim();
 
     if (isStatusIncomplete) {
-        if (!cleanDesc || cleanDesc === "No significant findings" || cleanDesc === "N/A" || cleanDesc === "—" || cleanDesc === "-") {
+        if (incReason) {
             return incReason;
         }
+        if (cleanDesc && cleanDesc !== "No significant findings" && cleanDesc !== "N/A" && cleanDesc !== "—" && cleanDesc !== "-") {
+            return cleanDesc;
+        }
+        return "Incomplete";
     }
 
     return cleanDesc;
@@ -420,7 +427,7 @@ export const normalizeRecordFindings = (r: any): any => {
         }
     }
 
-    // 2. Incomplete Reason for blank findings/description
+    // 2. Incomplete Reason for findings/description (priority: incomplete_reason, fallback: inspection finding)
     const isStatusIncomplete = 
         String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
         String(inspData.status || "").trim().toUpperCase() === "INCOMPLETE" ||
@@ -437,18 +444,17 @@ export const normalizeRecordFindings = (r: any): any => {
         ""
     ).toString().trim();
 
-    if (isStatusIncomplete && incReason) {
+    if (isStatusIncomplete) {
         const desc = (r.description ?? r.findings ?? r.remarks ?? inspData.findings ?? inspData.description ?? "").toString().trim();
-        if (!desc || desc === "No significant findings" || desc === "N/A" || desc === "—" || desc === "-") {
-            inspData.description = incReason;
-            inspData.findings = incReason;
-            inspData.remarks = incReason;
-            inspData.finding = incReason;
-            recordCopy.description = incReason;
-            recordCopy.findings = incReason;
-            recordCopy.remarks = incReason;
-            modified = true;
-        }
+        const effectiveText = incReason || (!desc || desc === "No significant findings" || desc === "N/A" || desc === "—" || desc === "-" ? "Incomplete" : desc);
+        inspData.description = effectiveText;
+        inspData.findings = effectiveText;
+        inspData.remarks = effectiveText;
+        inspData.finding = effectiveText;
+        recordCopy.description = effectiveText;
+        recordCopy.findings = effectiveText;
+        recordCopy.remarks = effectiveText;
+        modified = true;
     }
 
     if (modified) {

@@ -50,6 +50,10 @@ interface WorkspaceSidebarProps {
   setTapeLogExpanded: (val: boolean) => void;
   formatTime: (sec: number) => string;
   onSetVidTimer?: (seconds: number) => void;
+  deployments?: any[];
+  onRefresh?: () => Promise<void> | void;
+  jobPackId?: string | number | null;
+  structureId?: string | number | null;
 
   // Video Props
   pipWindow: Window | null;
@@ -90,6 +94,10 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
     setTapeLogExpanded,
     formatTime,
     onSetVidTimer,
+    deployments = [],
+    onRefresh,
+    jobPackId,
+    structureId,
     pipWindow,
     renderStreamUI,
   } = props;
@@ -272,6 +280,12 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
           expanded={tapeLogExpanded}
           setExpanded={setTapeLogExpanded}
           isFloating={!!pipWindow}
+          onRefresh={onRefresh}
+          deployments={deployments}
+          activeDep={activeDep}
+          inspMethod={inspMethod}
+          jobPackId={jobPackId}
+          structureId={structureId}
         />
       </TapeManagementCard>
 

@@ -8967,6 +8967,11 @@ function V10PreviewLayout() {
                     setExpanded={setVideoLogExpanded}
                     inline={true}
                     onRefresh={syncDeploymentState}
+                    deployments={deployments}
+                    activeDep={activeDep}
+                    inspMethod={inspMethod}
+                    jobPackId={jobPackId}
+                    structureId={structureId}
                   />
                 </div>
               </DialogContent>

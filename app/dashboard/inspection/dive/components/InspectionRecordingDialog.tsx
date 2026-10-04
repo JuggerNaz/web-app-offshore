@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SmartTimeInput } from "@/components/ui/smart-time-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1257,12 +1258,12 @@ export default function InspectionRecordingDialog({
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label>Inspection Time</Label>
-                            <Input
-                                type="time"
-                                step="1"
+                            <Label>Inspection Time (12h or 24h)</Label>
+                            <SmartTimeInput
                                 value={commonData.inspectionTime}
-                                onChange={(e) => handleCommonChange('inspectionTime', e.target.value)}
+                                onChange={(val) => handleCommonChange('inspectionTime', val)}
+                                includeSeconds={true}
+                                className="h-10"
                             />
                         </div>
                     </div>

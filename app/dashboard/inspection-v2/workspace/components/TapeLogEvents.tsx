@@ -37,8 +37,19 @@ import {
     Calendar,
     Sparkles,
     Check,
-    ArrowRight
+    ArrowRight,
+    ArrowRightLeft,
+    Loader2,
+    Anchor
 } from "lucide-react";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { 
     formatClientDateTime, 
     toLocalDateString,
@@ -47,6 +58,7 @@ import {
     parseClientDate, 
     parseDbDate 
 } from "@/utils/client-date";
+import { SmartTimeInput } from "@/components/ui/smart-time-input";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -60,7 +72,12 @@ interface TapeLogEventsProps {
     setExpanded?: (v: boolean) => void;
     isFloating?: boolean;
     inline?: boolean;
-    onRefresh?: () => void;
+    onRefresh?: () => Promise<void> | void;
+    deployments?: any[];
+    activeDep?: any;
+    inspMethod?: "DIVING" | "ROV";
+    jobPackId?: string | number | null;
+    structureId?: string | number | null;
 }
 
 const STANDARD_ACTIONS = [
@@ -86,6 +103,11 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     isFloating = false,
     inline = false,
     onRefresh,
+    deployments = [],
+    activeDep,
+    inspMethod = "DIVING",
+    jobPackId,
+    structureId,
 }) => {
     const { activeCompanyId } = useUserProfile();
     const supabase = useMemo(() => createClient(), []);
@@ -108,6 +130,53 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
     const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+    // Move Tape to Another Dive Dialog State
+    const [isMoveTapeModalOpen, setIsMoveTapeModalOpen] = useState<boolean>(false);
+    const [moveTargetTapeNo, setMoveTargetTapeNo] = useState<string>("");
+    const [moveCurrentDiveNo, setMoveCurrentDiveNo] = useState<string>("");
+    const [moveTargetDiveId, setMoveTargetDiveId] = useState<string>("");
+    const [isMovingTape, setIsMovingTape] = useState<boolean>(false);
+    const [fetchedDeployments, setFetchedDeployments] = useState<any[]>([]);
+
+    // Fetch fallback deployments if not provided via props
+    useEffect(() => {
+        if (deployments && deployments.length > 0) {
+            setFetchedDeployments(deployments);
+            return;
+        }
+
+        let isMounted = true;
+        async function loadDeployments() {
+            try {
+                const table = inspMethod === "ROV" ? "insp_rov_jobs" : "insp_dive_jobs";
+                const idCol = inspMethod === "ROV" ? "rov_job_id" : "dive_job_id";
+                let query = supabase.from(table).select("*").order(idCol, { ascending: false });
+                if (jobPackId && !isNaN(Number(jobPackId))) query = query.eq("jobpack_id", Number(jobPackId));
+                if (structureId && !isNaN(Number(structureId))) query = query.eq("structure_id", Number(structureId));
+
+                const { data, error } = await query;
+                if (!error && data && isMounted) {
+                    const mapped = data.map((d: any) => {
+                        const rawId = d.dive_job_id || d.rov_job_id || d.id;
+                        const jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
+                        const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
+                        const dDate = d.created_at || d.date || d.dive_date || d.start_date || d.start_time;
+                        return { id: String(rawId), jobNo: jNo, name: dName, created_at: dDate, raw: d };
+                    });
+                    setFetchedDeployments(mapped);
+                }
+            } catch (err) {
+                console.warn("[TapeLogEvents] Could not fetch deployments:", err);
+            }
+        }
+        loadDeployments();
+        return () => { isMounted = false; };
+    }, [deployments, inspMethod, jobPackId, structureId, supabase]);
+
+    const availableDeployments = useMemo(() => {
+        return deployments && deployments.length > 0 ? deployments : fetchedDeployments;
+    }, [deployments, fetchedDeployments]);
 
     // Form State for Add / Edit
     const [formTapeNo, setFormTapeNo] = useState<string>("");
@@ -808,6 +877,156 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         }
     };
 
+    // Open Move Tape to Another Dive Modal
+    const handleOpenMoveTapeModal = (tapeNo: string, currentDiveNo?: string) => {
+        setMoveTargetTapeNo(tapeNo);
+        setMoveCurrentDiveNo(currentDiveNo || "N/A");
+
+        if (availableDeployments.length > 0) {
+            const otherDep = availableDeployments.find((d: any) => {
+                const dNo = String(d.jobNo || d.dive_no || d.deployment_no || "").trim().toUpperCase();
+                const curNo = String(currentDiveNo || "").trim().toUpperCase();
+                return dNo && curNo && dNo !== curNo;
+            });
+            setMoveTargetDiveId(String(otherDep?.id || availableDeployments[0]?.id || ""));
+        } else {
+            setMoveTargetDiveId("");
+        }
+
+        setIsMoveTapeModalOpen(true);
+    };
+
+    // Confirm Moving Tape and all its registered inspection events to another Dive
+    const handleConfirmMoveTape = async () => {
+        if (!moveTargetTapeNo) {
+            toast.error("Invalid tape selection.");
+            return;
+        }
+
+        if (!moveTargetDiveId) {
+            toast.error("Please select a destination Dive / Deployment.");
+            return;
+        }
+
+        const targetDepObj = availableDeployments.find((d: any) => String(d.id || d.dive_job_id || d.rov_job_id) === String(moveTargetDiveId));
+        const targetDepIdNum = Number(moveTargetDiveId);
+        const targetJobNo = targetDepObj?.jobNo || targetDepObj?.dive_no || targetDepObj?.deployment_no || `JOB-${targetDepIdNum}`;
+        const jobCol = (inspMethod === "ROV") ? "rov_job_id" : "dive_job_id";
+
+        setIsMovingTape(true);
+        try {
+            // 1. Find all tape_id entries in insp_video_tapes for this tape_no
+            const { data: matchedTapes, error: tapeFetchErr } = await supabase
+                .from("insp_video_tapes")
+                .select("tape_id, tape_no, chapter_no")
+                .eq("tape_no", moveTargetTapeNo);
+
+            if (tapeFetchErr) throw tapeFetchErr;
+
+            const tapeIds = (matchedTapes || []).map((t: any) => t.tape_id);
+
+            // Also collect any tape_id from local events for this tape
+            localEvents.forEach(ev => {
+                if (ev.tapeNo === moveTargetTapeNo && (ev.tapeId || ev.tape_id)) {
+                    const idVal = Number(ev.tapeId || ev.tape_id);
+                    if (idVal && !tapeIds.includes(idVal)) {
+                        tapeIds.push(idVal);
+                    }
+                }
+            });
+
+            // 2. Update insp_video_tapes with new dive_job_id / rov_job_id
+            if (tapeIds.length > 0) {
+                const { error: tapeUpdErr } = await supabase
+                    .from("insp_video_tapes")
+                    .update({
+                        [jobCol]: targetDepIdNum,
+                    })
+                    .in("tape_id", tapeIds);
+
+                if (tapeUpdErr) throw tapeUpdErr;
+            } else {
+                await supabase
+                    .from("insp_video_tapes")
+                    .update({
+                        [jobCol]: targetDepIdNum,
+                    })
+                    .eq("tape_no", moveTargetTapeNo);
+            }
+
+            // 3. Find and update all insp_records registered on this tape
+            let updatedRecordsCount = 0;
+            let recQuery = supabase.from("insp_records").select("insp_id, inspection_data, tape_id");
+
+            if (tapeIds.length > 0) {
+                recQuery = recQuery.in("tape_id", tapeIds);
+            } else {
+                recQuery = recQuery.eq("tape_no", moveTargetTapeNo);
+            }
+
+            const { data: recordsToUpdate, error: recFetchErr } = await recQuery;
+            if (recFetchErr) throw recFetchErr;
+
+            if (recordsToUpdate && recordsToUpdate.length > 0) {
+                updatedRecordsCount = recordsToUpdate.length;
+                const nowIso = new Date().toISOString();
+                await Promise.all(
+                    recordsToUpdate.map(async (rec: any) => {
+                        const updatedInspData = {
+                            ...(rec.inspection_data || {}),
+                            dive_no: targetJobNo,
+                            rov_job_no: targetJobNo,
+                        };
+                        return supabase
+                            .from("insp_records")
+                            .update({
+                                [jobCol]: targetDepIdNum,
+                                inspection_data: updatedInspData,
+                                md_date: nowIso,
+                            })
+                            .eq("insp_id", rec.insp_id);
+                    })
+                );
+            }
+
+            // 4. Update local state for immediate UI responsiveness
+            setLocalEvents(prev => prev.map(ev => {
+                if (ev.tapeNo === moveTargetTapeNo) {
+                    return {
+                        ...ev,
+                        diveNo: targetJobNo,
+                        dive_job_id: targetDepIdNum,
+                        rov_job_id: targetDepIdNum,
+                        rawRecord: ev.rawRecord ? {
+                            ...ev.rawRecord,
+                            [jobCol]: targetDepIdNum,
+                            dive_no: targetJobNo,
+                            inspection_data: {
+                                ...(ev.rawRecord.inspection_data || {}),
+                                dive_no: targetJobNo,
+                                rov_job_no: targetJobNo,
+                            }
+                        } : undefined,
+                    };
+                }
+                return ev;
+            }));
+
+            toast.success(`Successfully moved Tape "${moveTargetTapeNo}" and ${updatedRecordsCount} inspection event(s) to Dive ${targetJobNo}`);
+            setIsMoveTapeModalOpen(false);
+
+            // 5. Trigger workspace refresh
+            if (onRefresh) {
+                await onRefresh();
+            }
+        } catch (err: any) {
+            console.error("[MoveTape] Error:", err);
+            toast.error(`Failed to move tape: ${err?.message || "Unknown error"}`);
+        } finally {
+            setIsMovingTape(false);
+        }
+    };
+
     const getActionStyle = (action: string) => {
         const act = (action || "").toUpperCase();
         if (act.includes("START") && act.includes("TAPE")) {
@@ -1066,6 +1285,21 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                         </div>
 
                                         <div className="flex items-center gap-2 shrink-0">
+                                            {/* Move Tape to Another Dive Button */}
+                                            {tKey !== "Unassigned" && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenMoveTapeModal(tKey, tapeData.diveNo);
+                                                    }}
+                                                    className="px-2 py-0.5 text-[9px] font-bold rounded bg-blue-950/70 hover:bg-blue-900 text-blue-300 border border-blue-500/40 flex items-center gap-1 transition-colors shadow-sm"
+                                                    title="Move this tape and its inspection events to another Dive No."
+                                                >
+                                                    <ArrowRightLeft className="w-3 h-3 text-blue-400" /> Move Dive
+                                                </button>
+                                            )}
+
                                             {/* Quick Add Log to this Tape */}
                                             <button
                                                 type="button"
@@ -1455,14 +1689,13 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                 <div className="space-y-1">
                                     <Label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
                                         <Clock className="w-3 h-3 text-cyan-400" />
-                                        Time (Local) *
+                                        Time (Local - 12h or 24h) *
                                     </Label>
-                                    <Input
-                                        type="time"
-                                        step="1"
+                                    <SmartTimeInput
                                         value={formTime}
-                                        onChange={(e) => handleDateOrTimeChange(formDate, e.target.value)}
-                                        className="h-9 text-xs font-mono font-bold bg-slate-950 border-slate-700 text-slate-100 focus-visible:ring-blue-500"
+                                        onChange={(val) => handleDateOrTimeChange(formDate, val)}
+                                        includeSeconds={true}
+                                        className="h-9"
                                     />
                                 </div>
                             </div>
@@ -1524,6 +1757,147 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         );
     };
 
+    // Render Move Tape to Another Dive Modal
+    const renderMoveTapeModal = () => {
+        if (!isMoveTapeModalOpen) return null;
+
+        const targetEvents = localEvents.filter(ev => (ev.tapeNo || "").trim().toUpperCase() === (moveTargetTapeNo || "").trim().toUpperCase());
+        const matchingInspCount = targetEvents.filter(ev => ev.logType === "insp" || ev.action === "INSPECTION" || ev.action === "ANOMALY" || ev.action === "DEFECT").length;
+        const distinctChCount = new Set(targetEvents.map(ev => String(ev.chapterNo || "1"))).size || 1;
+
+        const selectedTargetDep = availableDeployments.find((d: any) => String(d.id || d.dive_job_id || d.rov_job_id) === String(moveTargetDiveId));
+        const isSameDive = moveCurrentDiveNo && selectedTargetDep && (
+            String(selectedTargetDep.jobNo || selectedTargetDep.dive_no || selectedTargetDep.deployment_no).trim().toUpperCase() === String(moveCurrentDiveNo).trim().toUpperCase()
+        );
+
+        return (
+            <Dialog open={isMoveTapeModalOpen} onOpenChange={setIsMoveTapeModalOpen}>
+                <DialogContent className="max-w-lg bg-slate-950 border border-slate-800 shadow-2xl text-slate-100 p-0 overflow-hidden">
+                    <DialogHeader className="p-4 bg-gradient-to-r from-blue-950/80 via-slate-900 to-slate-900 border-b border-slate-800 flex flex-row items-center gap-3">
+                        <div className="p-2 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-400 shrink-0">
+                            <ArrowRightLeft className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-0.5 min-w-0">
+                            <DialogTitle className="text-sm font-black uppercase tracking-wider text-slate-100">
+                                Move Tape to Another Dive No.
+                            </DialogTitle>
+                            <p className="text-xs text-slate-400">
+                                Reassign tape and its registered inspection events to another dive
+                            </p>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="p-4 space-y-4">
+                        {/* 1. Tape Info & Current Dive */}
+                        <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Selected Tape:</span>
+                                <span className="font-mono font-black text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded border border-cyan-800/50">
+                                    {moveTargetTapeNo}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Current Dive / Job:</span>
+                                <span className="font-bold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-800/50">
+                                    {moveCurrentDiveNo || "N/A"}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* 2. Destination Dive Selection */}
+                        <div className="space-y-1.5">
+                            <Label className="text-[10px] font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
+                                <Anchor className="w-3.5 h-3.5 text-blue-400" />
+                                Destination Dive No. *
+                            </Label>
+                            {availableDeployments.length > 0 ? (
+                                <Select value={moveTargetDiveId} onValueChange={setMoveTargetDiveId}>
+                                    <SelectTrigger className="h-10 text-xs font-bold bg-slate-900 border-slate-700 text-slate-100 focus:ring-blue-500">
+                                        <SelectValue placeholder="Select destination dive number..." />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-slate-900 border-slate-800 text-slate-100 max-h-60">
+                                        {availableDeployments.map((d: any) => {
+                                            const depId = String(d.id || d.dive_job_id || d.rov_job_id);
+                                            const depNo = d.jobNo || d.dive_no || d.deployment_no || `JOB-${depId}`;
+                                            const depName = d.name || d.diver_name || d.rov_system || "";
+                                            const isCur = String(depNo).trim().toUpperCase() === String(moveCurrentDiveNo).trim().toUpperCase();
+                                            return (
+                                                <SelectItem key={depId} value={depId} className="text-xs focus:bg-blue-600 focus:text-white">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold">{depNo}</span>
+                                                        {depName && <span className="text-slate-400 text-[11px]">({depName})</span>}
+                                                        {isCur && <span className="text-[9px] text-amber-400 bg-amber-950/60 px-1.5 py-0.2 rounded font-bold ml-1">Current</span>}
+                                                    </div>
+                                                </SelectItem>
+                                            );
+                                        })}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-xs text-amber-300">
+                                    No other dives/deployments available in this project.
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 3. Reassignment Impact Summary */}
+                        <div className="p-3 rounded-xl bg-blue-950/20 border border-blue-900/40 space-y-2">
+                            <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                                What will be updated:
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="p-2 rounded bg-slate-900/70 border border-slate-800">
+                                    <div className="text-slate-400 text-[9px] font-bold uppercase">Inspection Events</div>
+                                    <div className="text-blue-400 font-mono font-black text-sm">{matchingInspCount}</div>
+                                    <div className="text-[9px] text-slate-400">will follow to new dive</div>
+                                </div>
+                                <div className="p-2 rounded bg-slate-900/70 border border-slate-800">
+                                    <div className="text-slate-400 text-[9px] font-bold uppercase">Tape Chapters</div>
+                                    <div className="text-emerald-400 font-mono font-black text-sm">{distinctChCount}</div>
+                                    <div className="text-[9px] text-slate-400">reassigned to new dive</div>
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                                All {matchingInspCount} inspection event(s) registered on Tape <strong className="text-slate-200">{moveTargetTapeNo}</strong> will automatically be updated to match the new dive number.
+                            </p>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between sm:justify-between">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setIsMoveTapeModalOpen(false)}
+                            disabled={isMovingTape}
+                            className="text-xs text-slate-400 hover:text-white"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleConfirmMoveTape}
+                            disabled={isMovingTape || !moveTargetDiveId || !!isSameDive}
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20 flex items-center gap-1.5"
+                        >
+                            {isMovingTape ? (
+                                <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Moving Tape...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                                    <span>Confirm Move Tape</span>
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        );
+    };
+
     if (inline) {
         return (
             <div className="h-full flex flex-col bg-slate-950/80">
@@ -1531,6 +1905,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                     {renderTreeView()}
                 </div>
                 {renderAddEditModal()}
+                {renderMoveTapeModal()}
             </div>
         );
     }
@@ -1590,6 +1965,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             </Dialog>
 
             {renderAddEditModal()}
+            {renderMoveTapeModal()}
         </div>
     );
 };
