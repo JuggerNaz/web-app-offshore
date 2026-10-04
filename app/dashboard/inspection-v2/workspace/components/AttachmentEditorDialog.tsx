@@ -26,7 +26,13 @@ import {
     Video,
     ExternalLink,
     RefreshCw,
+    Upload,
+    CheckCircle2,
+    FileUp,
+    ImagePlus,
+    RotateCw
 } from 'lucide-react';
+import { toast } from "sonner";
 
 interface AttachmentEditorDialogProps {
     open: boolean;
@@ -46,6 +52,13 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [drawColor, setDrawColor] = useState('#ff0000');
     
+    // Replacement state
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [replacedFile, setReplacedFile] = useState<File | null>(null);
+    const [replacementPreviewUrl, setReplacementPreviewUrl] = useState<string | null>(null);
+    const [isReplaced, setIsReplaced] = useState<boolean>(false);
+    const [replacedFileType, setReplacedFileType] = useState<'PHOTO' | 'VIDEO' | 'DOCUMENT' | null>(null);
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const imageObjRef = useRef<HTMLImageElement | null>(null);
@@ -279,6 +292,59 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
         }
     };
 
+    const handleFileReplace = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const isImage = file.type.startsWith('image/');
+        const isVid = file.type.startsWith('video/');
+        const isDocFile = !isImage && !isVid;
+
+        const localBlobUrl = URL.createObjectURL(file);
+        setReplacedFile(file);
+        setReplacementPreviewUrl(localBlobUrl);
+        setIsReplaced(true);
+        setReplacedFileType(isImage ? 'PHOTO' : isVid ? 'VIDEO' : 'DOCUMENT');
+
+        if (isImage) {
+            setIsLoadingImage(true);
+            setImageLoadError(false);
+            const img = new Image();
+            img.onload = () => {
+                imageObjRef.current = img;
+                setImageObj(img);
+                setImageLoadError(false);
+                setIsLoadingImage(false);
+                setDrawHistory([]);
+                initCanvas(img);
+            };
+            img.onerror = () => {
+                setIsLoadingImage(false);
+                setImageLoadError(true);
+            };
+            img.src = localBlobUrl;
+        } else {
+            imageObjRef.current = null;
+            setImageObj(null);
+            setIsLoadingImage(false);
+            setImageLoadError(false);
+        }
+
+        toast.success(`Attachment replaced with ${file.name}`);
+        // Reset file input value so same file can be re-selected if desired
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleRevertReplacement = () => {
+        setReplacedFile(null);
+        setReplacementPreviewUrl(null);
+        setIsReplaced(false);
+        setReplacedFileType(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        loadImage();
+        toast.info("Reverted back to original attachment");
+    };
+
     useEffect(() => {
         if (open && attachment) {
             setTitle(attachment?.title || attachment?.name || '');
@@ -287,10 +353,18 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
             setContrast(100);
             setDrawHistory([]);
             setImageLoadError(false);
+            setReplacedFile(null);
+            setReplacementPreviewUrl(null);
+            setIsReplaced(false);
+            setReplacedFileType(null);
             loadImage();
         } else if (!open) {
             imageObjRef.current = null;
             setImageObj(null);
+            setReplacedFile(null);
+            setReplacementPreviewUrl(null);
+            setIsReplaced(false);
+            setReplacedFileType(null);
             activeLoadIdRef.current++;
         }
     }, [open, attachment?.id, attachment?.path, attachment?.previewUrl, reloadKey]);
@@ -507,19 +581,52 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
 
     const handleSave = () => {
         const canvas = canvasRef.current;
-        if (canvas && drawHistory.length > 0) {
+        const effectiveFile = replacedFile || attachment?.file;
+        const effectiveName = title || replacedFile?.name || attachment?.name || 'attachment.jpg';
+        const effectiveType = replacedFileType || (effectiveFile?.type?.startsWith('video/') ? 'VIDEO' : effectiveFile?.type?.startsWith('image/') ? 'PHOTO' : (attachment?.type || 'PHOTO'));
+
+        if (canvas && (drawHistory.length > 0 || isReplaced) && (effectiveType === 'PHOTO' || (!replacedFileType && !isVideo && !isDoc))) {
             try {
                 canvas.toBlob((blob) => {
                     if (blob) {
-                        const newFile = new File([blob], attachment?.name || 'edited-attachment.jpg', { type: 'image/jpeg' });
+                        const newFile = new File([blob], effectiveName, { type: replacedFile?.type || 'image/jpeg' });
                         const newUrl = URL.createObjectURL(blob);
                         onSave({
                             ...attachment,
                             title,
-                            name: title || attachment?.name,
+                            name: effectiveName,
                             description,
                             file: newFile,
                             previewUrl: newUrl,
+                            type: effectiveType,
+                            meta: {
+                                ...(attachment?.meta || {}),
+                                title,
+                                description,
+                                file_name: effectiveName,
+                                file_size: newFile.size,
+                                type: effectiveType
+                            },
+                            isEdited: true
+                        });
+                        onOpenChange(false);
+                    } else if (replacedFile) {
+                        onSave({
+                            ...attachment,
+                            title,
+                            name: effectiveName,
+                            description,
+                            file: replacedFile,
+                            previewUrl: replacementPreviewUrl,
+                            type: effectiveType,
+                            meta: {
+                                ...(attachment?.meta || {}),
+                                title,
+                                description,
+                                file_name: effectiveName,
+                                file_size: replacedFile.size,
+                                type: effectiveType
+                            },
                             isEdited: true
                         });
                         onOpenChange(false);
@@ -532,17 +639,51 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                         });
                         onOpenChange(false);
                     }
-                }, 'image/jpeg', 0.9);
+                }, replacedFile?.type || 'image/jpeg', 0.9);
             } catch (canvasErr) {
                 console.warn("[AttachmentEditorDialog] Canvas toBlob error:", canvasErr);
                 onSave({
                     ...attachment,
                     title,
-                    name: title || attachment?.name,
-                    description
+                    name: effectiveName,
+                    description,
+                    ...(replacedFile ? {
+                        file: replacedFile,
+                        previewUrl: replacementPreviewUrl,
+                        type: effectiveType,
+                        meta: {
+                            ...(attachment?.meta || {}),
+                            title,
+                            description,
+                            file_name: effectiveName,
+                            file_size: replacedFile.size,
+                            type: effectiveType
+                        },
+                        isEdited: true
+                    } : {})
                 });
                 onOpenChange(false);
             }
+        } else if (isReplaced && replacedFile) {
+            onSave({
+                ...attachment,
+                title,
+                name: effectiveName,
+                description,
+                file: replacedFile,
+                previewUrl: replacementPreviewUrl,
+                type: effectiveType,
+                meta: {
+                    ...(attachment?.meta || {}),
+                    title,
+                    description,
+                    file_name: effectiveName,
+                    file_size: replacedFile.size,
+                    type: effectiveType
+                },
+                isEdited: true
+            });
+            onOpenChange(false);
         } else {
             onSave({
                 ...attachment,
@@ -556,9 +697,9 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
 
     if (!open && !attachment) return null;
 
-    const isVideo = String(attachment?.type).toUpperCase() === 'VIDEO' || String(attachment?.meta?.type).toUpperCase() === 'VIDEO';
-    const isDoc = String(attachment?.type).toUpperCase() === 'DOCUMENT' || String(attachment?.meta?.type).toUpperCase() === 'DOCUMENT';
-    const rawDirectUrl = (attachment?.id ? `/api/attachment/url?id=${attachment.id}` : '') || attachment?.previewUrl || (attachment?.path ? `/api/attachment/download?path=${encodeURIComponent(attachment.path)}` : '');
+    const isVideo = replacedFileType ? replacedFileType === 'VIDEO' : (String(attachment?.type).toUpperCase() === 'VIDEO' || String(attachment?.meta?.type).toUpperCase() === 'VIDEO');
+    const isDoc = replacedFileType ? replacedFileType === 'DOCUMENT' : (String(attachment?.type).toUpperCase() === 'DOCUMENT' || String(attachment?.meta?.type).toUpperCase() === 'DOCUMENT');
+    const rawDirectUrl = replacementPreviewUrl || (attachment?.id ? `/api/attachment/url?id=${attachment.id}` : '') || attachment?.previewUrl || (attachment?.path ? `/api/attachment/download?path=${encodeURIComponent(attachment.path)}` : '');
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -566,72 +707,102 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                 <DialogHeader className="sr-only">
                     <DialogTitle>Edit Attachment: {attachment?.title || attachment?.name || 'Photo'}</DialogTitle>
                     <DialogDescription>
-                        Modify attachment metadata or apply visual markups and filters.
+                        Modify attachment metadata, replace file, or apply visual markups and filters.
                     </DialogDescription>
                 </DialogHeader>
+
+                {/* Hidden File Input for Replacement */}
+                <input 
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileReplace}
+                    accept="image/*,video/*,application/pdf,.doc,.docx"
+                    className="hidden"
+                />
+
                 <div className="flex flex-1 overflow-hidden">
                     <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
                         <div className="p-4 bg-slate-900/50 flex items-center justify-between border-b border-white/5">
                             <div className="flex items-center gap-4">
-                                <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
-                                    <Button 
-                                        variant={activeTool === 'SELECT' ? 'secondary' : 'ghost'} 
-                                        size="sm" 
-                                        onClick={() => { setActiveTool(activeTool === 'SELECT' ? null : 'SELECT'); setSelectedItemIndex(null); }}
-                                        className={`h-8 w-8 p-0 ${activeTool === 'SELECT' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
-                                        title="Select / Move"
-                                    ><MousePointer2 className="w-4 h-4" /></Button>
-                                    <Button 
-                                        variant={activeTool === 'PEN' ? 'secondary' : 'ghost'} 
-                                        size="sm" 
-                                        onClick={() => setActiveTool(activeTool === 'PEN' ? null : 'PEN')}
-                                        className={`h-8 w-8 p-0 ${activeTool === 'PEN' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
-                                        title="Pencil"
-                                    ><Pencil className="w-4 h-4" /></Button>
-                                    <Button 
-                                        variant={activeTool === 'RECT' ? 'secondary' : 'ghost'} 
-                                        size="sm" 
-                                        onClick={() => setActiveTool(activeTool === 'RECT' ? null : 'RECT')}
-                                        className={`h-8 w-8 p-0 ${activeTool === 'RECT' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
-                                        title="Rectangle"
-                                    ><Square className="w-4 h-4" /></Button>
-                                    <Button 
-                                        variant={activeTool === 'ARROW' ? 'secondary' : 'ghost'} 
-                                        size="sm" 
-                                        onClick={() => setActiveTool(activeTool === 'ARROW' ? null : 'ARROW')}
-                                        className={`h-8 w-8 p-0 ${activeTool === 'ARROW' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
-                                        title="Arrow"
-                                    ><ArrowUpRight className="w-4 h-4" /></Button>
-                                    <Button 
-                                        variant={activeTool === 'TEXT' ? 'secondary' : 'ghost'} 
-                                        size="sm" 
-                                        onClick={() => setActiveTool(activeTool === 'TEXT' ? null : 'TEXT')}
-                                        className={`h-8 w-8 p-0 ${activeTool === 'TEXT' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
-                                        title="Text"
-                                    ><Type className="w-4 h-4" /></Button>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <input 
-                                        type="color" 
-                                        value={drawColor} 
-                                        onChange={(e) => setDrawColor(e.target.value)}
-                                        className="w-6 h-6 rounded border-none bg-transparent cursor-pointer"
-                                    />
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        onClick={() => setDrawHistory(prev => prev.slice(0, -1))}
-                                        disabled={drawHistory.length === 0}
-                                        className="text-slate-400 h-8"
-                                    ><Undo className="w-4 h-4" /></Button>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        onClick={() => setDrawHistory([])}
-                                        className="text-red-400 h-8 hover:text-red-300 hover:bg-red-950/30"
-                                    ><RotateCcw className="w-4 h-4" /></Button>
-                                </div>
+                                {!isVideo && !isDoc && (
+                                    <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
+                                        <Button 
+                                            variant={activeTool === 'SELECT' ? 'secondary' : 'ghost'} 
+                                            size="sm" 
+                                            onClick={() => { setActiveTool(activeTool === 'SELECT' ? null : 'SELECT'); setSelectedItemIndex(null); }}
+                                            className={`h-8 w-8 p-0 ${activeTool === 'SELECT' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
+                                            title="Select / Move"
+                                        ><MousePointer2 className="w-4 h-4" /></Button>
+                                        <Button 
+                                            variant={activeTool === 'PEN' ? 'secondary' : 'ghost'} 
+                                            size="sm" 
+                                            onClick={() => setActiveTool(activeTool === 'PEN' ? null : 'PEN')}
+                                            className={`h-8 w-8 p-0 ${activeTool === 'PEN' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
+                                            title="Pencil"
+                                        ><Pencil className="w-4 h-4" /></Button>
+                                        <Button 
+                                            variant={activeTool === 'RECT' ? 'secondary' : 'ghost'} 
+                                            size="sm" 
+                                            onClick={() => setActiveTool(activeTool === 'RECT' ? null : 'RECT')}
+                                            className={`h-8 w-8 p-0 ${activeTool === 'RECT' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
+                                            title="Rectangle"
+                                        ><Square className="w-4 h-4" /></Button>
+                                        <Button 
+                                            variant={activeTool === 'ARROW' ? 'secondary' : 'ghost'} 
+                                            size="sm" 
+                                            onClick={() => setActiveTool(activeTool === 'ARROW' ? null : 'ARROW')}
+                                            className={`h-8 w-8 p-0 ${activeTool === 'ARROW' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
+                                            title="Arrow"
+                                        ><ArrowUpRight className="w-4 h-4" /></Button>
+                                        <Button 
+                                            variant={activeTool === 'TEXT' ? 'secondary' : 'ghost'} 
+                                            size="sm" 
+                                            onClick={() => setActiveTool(activeTool === 'TEXT' ? null : 'TEXT')}
+                                            className={`h-8 w-8 p-0 ${activeTool === 'TEXT' ? 'text-white' : 'text-slate-300 hover:text-white'}`}
+                                            title="Text"
+                                        ><Type className="w-4 h-4" /></Button>
+                                    </div>
+                                )}
+
+                                {!isVideo && !isDoc && (
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="color" 
+                                            value={drawColor} 
+                                            onChange={(e) => setDrawColor(e.target.value)}
+                                            className="w-6 h-6 rounded border-none bg-transparent cursor-pointer"
+                                        />
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            onClick={() => setDrawHistory(prev => prev.slice(0, -1))}
+                                            disabled={drawHistory.length === 0}
+                                            className="text-slate-400 h-8"
+                                            title="Undo"
+                                        ><Undo className="w-4 h-4" /></Button>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            onClick={() => setDrawHistory([])}
+                                            className="text-red-400 h-8 hover:text-red-300 hover:bg-red-950/30"
+                                            title="Clear Annotations"
+                                        ><RotateCcw className="w-4 h-4" /></Button>
+                                    </div>
+                                )}
+
+                                {/* Top Toolbar: Replace File Action Button */}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="h-8 px-2.5 text-xs font-bold text-blue-400 hover:text-white hover:bg-blue-600 bg-slate-800 border-blue-500/30 hover:border-blue-400 gap-1.5 transition-colors shadow-sm"
+                                    title="Choose a new file to replace this attachment"
+                                >
+                                    <Upload className="w-3.5 h-3.5 text-blue-400 group-hover:text-white" />
+                                    <span>Replace File</span>
+                                </Button>
                             </div>
+
                             <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="text-slate-400 hover:text-white">
                                 <X className="w-5 h-5" />
                             </Button>
@@ -642,14 +813,14 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                 <div className="flex flex-col items-center gap-6 w-full max-w-4xl">
                                     <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-white/5">
                                         <video 
-                                            key={attachment?.previewUrl || attachment?.publicUrl}
+                                            key={replacementPreviewUrl || attachment?.previewUrl || attachment?.publicUrl}
                                             controls 
                                             preload="auto"
                                             className="w-full h-full"
                                         >
                                             <source 
-                                                src={attachment?.previewUrl || attachment?.publicUrl} 
-                                                type={attachment?.file?.type || attachment?.meta?.file_type || 
+                                                src={replacementPreviewUrl || attachment?.previewUrl || attachment?.publicUrl} 
+                                                type={replacedFile?.type || attachment?.file?.type || attachment?.meta?.file_type || 
                                                      (attachment?.name?.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 
                                                       attachment?.name?.toLowerCase().endsWith('.webm') ? 'video/webm' : 
                                                       attachment?.name?.toLowerCase().endsWith('.ogg') ? 'video/ogg' : 'video/mp4')} 
@@ -660,19 +831,27 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                     <div className="flex flex-col items-center gap-3 bg-slate-900/50 p-4 rounded-lg border border-white/5 w-full">
                                         <div className="flex items-center gap-4">
                                             <Button asChild variant="secondary" size="sm" className="font-bold">
-                                                <a href={attachment?.previewUrl || attachment?.publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                                                <a href={replacementPreviewUrl || attachment?.previewUrl || attachment?.publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
                                                     <ExternalLink className="w-4 h-4" /> Open in New Tab
                                                 </a>
                                             </Button>
                                             <Button asChild variant="outline" size="sm" className="font-bold border-slate-700">
-                                                <a href={attachment?.previewUrl || attachment?.publicUrl} download={attachment?.name || 'video'} className="flex items-center gap-2">
+                                                <a href={replacementPreviewUrl || attachment?.previewUrl || attachment?.publicUrl} download={replacedFile?.name || attachment?.name || 'video'} className="flex items-center gap-2">
                                                     <Save className="w-4 h-4" /> Download Original
                                                 </a>
+                                            </Button>
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="font-bold border-blue-500/40 text-blue-400 hover:bg-blue-950/50"
+                                            >
+                                                <Upload className="w-4 h-4 mr-1.5" /> Replace Video
                                             </Button>
                                         </div>
                                         <div className="text-center space-y-1">
                                             <p className="text-[11px] text-slate-400 font-medium">
-                                                Format: <span className="text-blue-400 font-bold uppercase">{attachment?.file?.type || attachment?.meta?.file_type || 'Unknown'}</span>
+                                                Format: <span className="text-blue-400 font-bold uppercase">{replacedFile?.type || attachment?.file?.type || attachment?.meta?.file_type || 'Unknown'}</span>
                                             </p>
                                             <p className="text-[10px] text-slate-500 italic max-w-md">
                                                 Note: Formats like MKV, MOV (some codecs), and WMV may not play directly in all browsers. 
@@ -682,33 +861,46 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                     </div>
                                 </div>
                             ) : isDoc ? (
-                                <div className="flex flex-col items-center gap-6 p-12 bg-slate-900 border border-white/5 rounded-xl shadow-2xl">
-                                    <FileText className="w-24 h-24 text-blue-500 opacity-50" />
+                                <div className="flex flex-col items-center gap-6 p-12 bg-slate-900 border border-white/5 rounded-xl shadow-2xl max-w-md w-full">
+                                    <FileText className="w-20 h-20 text-blue-500 opacity-60" />
                                     <div className="text-center space-y-2">
-                                        <p className="text-white font-bold">{attachment?.name || 'Document'}</p>
+                                        <p className="text-white font-bold text-sm truncate max-w-xs">{replacedFile?.name || attachment?.name || 'Document'}</p>
                                         <p className="text-slate-400 text-xs">This file type cannot be previewed directly.</p>
                                     </div>
-                                    <Button asChild variant="secondary">
-                                        <a href={attachment?.previewUrl || attachment?.publicUrl} target="_blank" rel="noopener noreferrer">
-                                            Open in New Tab
-                                        </a>
-                                    </Button>
+                                    <div className="flex items-center gap-3">
+                                        <Button asChild variant="secondary" size="sm">
+                                            <a href={replacementPreviewUrl || attachment?.previewUrl || attachment?.publicUrl} target="_blank" rel="noopener noreferrer">
+                                                Open in New Tab
+                                            </a>
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="border-blue-500/40 text-blue-400 hover:bg-blue-950/50 font-bold"
+                                        >
+                                            <Upload className="w-3.5 h-3.5 mr-1.5" /> Replace Document
+                                        </Button>
+                                    </div>
                                 </div>
                             ) : imageLoadError ? (
                                 <div className="flex flex-col items-center justify-center p-12 gap-4 bg-slate-900 border border-white/5 rounded-xl text-slate-400 max-w-md text-center">
                                     <FileText className="w-16 h-16 text-slate-600" />
                                     <div>
                                         <p className="text-white font-bold text-sm mb-1">{attachment?.title || attachment?.name || "Attachment"}</p>
-                                        <p className="text-xs text-slate-400">Image preview cannot be decoded directly. You can still view or edit the details on the right.</p>
+                                        <p className="text-xs text-slate-400">Image preview cannot be decoded directly. You can replace the file or edit details on the right.</p>
                                     </div>
                                     <div className="flex gap-2">
                                         <Button size="sm" variant="outline" onClick={() => setReloadKey(k => k + 1)} className="border-slate-700 text-slate-200">
                                             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Retry
                                         </Button>
+                                        <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="border-blue-500/40 text-blue-400 hover:bg-blue-950/50">
+                                            <Upload className="w-3.5 h-3.5 mr-1.5" /> Replace File
+                                        </Button>
                                         {rawDirectUrl && (
                                             <Button asChild size="sm" variant="secondary">
                                                 <a href={rawDirectUrl} target="_blank" rel="noopener noreferrer">
-                                                    Open Raw URL
+                                                    Open Raw
                                                 </a>
                                             </Button>
                                         )}
@@ -776,15 +968,72 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                 <textarea 
                                     value={description} 
                                     onChange={(e) => setDescription(e.target.value)}
-                                    className="w-full h-32 bg-slate-800 border border-white/10 rounded-md p-3 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
+                                    className="w-full h-28 bg-slate-800 border border-white/10 rounded-md p-3 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
                                     placeholder="Add notes or observation..."
                                 />
+                            </div>
+
+                            {/* Dedicated Replace Attachment Section in Sidebar */}
+                            <div className="space-y-2 pt-3 border-t border-white/5">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1.5">
+                                        <FileUp className="w-3.5 h-3.5 text-blue-400" />
+                                        <span>Attachment File</span>
+                                    </Label>
+                                    {isReplaced && (
+                                        <span className="text-[9px] font-black text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-600/50 uppercase tracking-wider">
+                                            Replaced
+                                        </span>
+                                    )}
+                                </div>
+
+                                {isReplaced && replacedFile ? (
+                                    <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/40 space-y-2 text-xs animate-in fade-in-50 duration-200">
+                                        <div className="flex items-start gap-2 text-emerald-300 font-medium">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-mono text-[11px] font-bold text-white truncate" title={replacedFile.name}>
+                                                    {replacedFile.name}
+                                                </p>
+                                                <p className="text-[10px] text-emerald-400/80 font-mono">
+                                                    {(replacedFile.size / (1024 * 1024)).toFixed(2)} MB • {replacedFile.type || 'File'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between pt-1 border-t border-emerald-500/20 text-[10px]">
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="text-blue-400 hover:text-blue-300 underline font-bold"
+                                            >
+                                                Choose Another
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                onClick={handleRevertReplacement}
+                                                className="text-amber-400 hover:text-amber-300 underline font-bold"
+                                            >
+                                                Revert Original
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="w-full h-9 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border-white/10 hover:border-blue-500/50 text-xs font-bold gap-2 shadow-sm"
+                                    >
+                                        <Upload className="w-3.5 h-3.5 text-blue-400" />
+                                        Replace Attachment File
+                                    </Button>
+                                )}
                             </div>
                         </div>
 
                         <div className="mt-auto space-y-3">
                             <Button 
-                                className="w-full bg-blue-600 hover:bg-blue-500 font-bold uppercase tracking-wider h-11"
+                                className="w-full bg-blue-600 hover:bg-blue-500 font-bold uppercase tracking-wider h-11 shadow-lg shadow-blue-600/20"
                                 onClick={handleSave}
                             >
                                 <Save className="w-4 h-4 mr-2" /> Save Changes
