@@ -10,8 +10,40 @@ import path from "path";
 import os from "os";
 import { getStorageHandler } from "@/utils/storage-factory";
 import { withTenant } from "@/utils/tenant-auth";
+import { parseMediaId } from "@/utils/attachment-category";
 
 const execAsync = promisify(exec);
+
+const MEDIA_BUCKET = "inspection-media";
+
+/** Convert a stored file path / public URL into a path relative to the media bucket. */
+function toMediaBucketPath(p: string): string {
+  if (!p) return p;
+  const marker = `/${MEDIA_BUCKET}/`;
+  const idx = p.indexOf(marker);
+  if (p.startsWith("http") && idx !== -1) return p.slice(idx + marker.length).split("?")[0];
+  return p;
+}
+
+/**
+ * Load an `insp_media` row (photo/video captured in the inspection workspace) and make sure it
+ * belongs to the caller's company (via its parent inspection record).
+ */
+async function loadAuthorizedMedia(mediaId: number, companyId: any) {
+  const admin = createAdminClient() as any;
+  const { data: media } = await admin.from("insp_media").select("*").eq("media_id", mediaId).maybeSingle();
+  if (!media) return { admin, media: null };
+
+  if (companyId && media.inspection_id) {
+    const { data: rec } = await admin
+      .from("insp_records")
+      .select("company_id")
+      .eq("insp_id", media.inspection_id)
+      .maybeSingle();
+    if (rec?.company_id && String(rec.company_id) !== String(companyId)) return { admin, media: null };
+  }
+  return { admin, media };
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -387,6 +419,28 @@ export const DELETE = withTenant(async (request, { companyId }) => {
     return NextResponse.json({ error: "No ID provided" }, { status: 400 });
   }
 
+  // insp_media (workspace captured) items use ids like "m-12" / "media-12"
+  const deleteMediaId = parseMediaId(id);
+  if (deleteMediaId !== null) {
+    try {
+      const { admin, media } = await loadAuthorizedMedia(deleteMediaId, companyId);
+      if (!media) return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
+
+      if (media.file_path) {
+        const { error: storageErr } = await admin.storage
+          .from(MEDIA_BUCKET)
+          .remove([toMediaBucketPath(media.file_path)]);
+        if (storageErr) console.error("[DELETE] Media storage delete error (non-fatal):", storageErr);
+      }
+
+      const { error: delErr } = await admin.from("insp_media").delete().eq("media_id", deleteMediaId);
+      if (delErr) return handleSupabaseError(delErr, "Failed to delete media record");
+      return NextResponse.json({ success: true });
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+    }
+  }
+
   let attachmentId: number | null = null;
   try {
     attachmentId = Number(id);
@@ -487,6 +541,23 @@ export const PATCH = withTenant(async (request, { companyId }) => {
     return NextResponse.json({ error: "No ID provided" }, { status: 400 });
   }
 
+  // insp_media (workspace captured) items: only the file name is stored, so title/name -> file_name
+  const patchMediaId = parseMediaId(id);
+  if (patchMediaId !== null) {
+    const { admin, media } = await loadAuthorizedMedia(patchMediaId, companyId);
+    if (!media) return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
+
+    const newName = String(name ?? title ?? "").trim();
+    if (newName) {
+      const { error: mediaErr } = await admin
+        .from("insp_media")
+        .update({ file_name: newName })
+        .eq("media_id", patchMediaId);
+      if (mediaErr) return handleSupabaseError(mediaErr, "Failed to update media");
+    }
+    return NextResponse.json({ success: true });
+  }
+
   // 1. Fetch current attachment
   let query = (supabase as any)
     .from("attachment")
@@ -546,6 +617,39 @@ export const PUT = withTenant(async (request, { companyId }) => {
     const id = formData.get("id") as string;
     const filePath = formData.get("filePath") as string;
     const file = formData.get("file") as File;
+
+    // insp_media (workspace captured) items: overwrite the stored object in place
+    const putMediaId = parseMediaId(id);
+    if (putMediaId !== null) {
+      if (!file) return NextResponse.json({ error: "Missing file" }, { status: 400 });
+
+      const { admin, media } = await loadAuthorizedMedia(putMediaId, companyId);
+      if (!media || !media.file_path) {
+        return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
+      }
+
+      const existingIsVideo = String(media.media_type || "").toLowerCase().includes("video");
+      const newIsVideo = String(file.type || "").startsWith("video/");
+      const newIsImage = String(file.type || "").startsWith("image/");
+      if ((existingIsVideo && !newIsVideo) || (!existingIsVideo && !newIsImage)) {
+        return NextResponse.json(
+          { error: `Replacement must be the same type (${existingIsVideo ? "video" : "photo"})` },
+          { status: 400 }
+        );
+      }
+
+      const { error: upErr } = await admin.storage
+        .from(MEDIA_BUCKET)
+        .upload(toMediaBucketPath(media.file_path), Buffer.from(await file.arrayBuffer()), {
+          upsert: true,
+          contentType: file.type,
+        });
+      if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+
+      // Touch the row so realtime subscribers (Captured Events) refresh
+      await admin.from("insp_media").update({ file_name: media.file_name }).eq("media_id", putMediaId);
+      return NextResponse.json({ success: true, url: media.file_path });
+    }
 
     if (!id || !filePath || !file) {
       return NextResponse.json({ error: "Missing id, filePath, or file" }, { status: 400 });

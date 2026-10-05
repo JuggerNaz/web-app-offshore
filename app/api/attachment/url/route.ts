@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     let filePath = fallbackPath || "";
     let provider = "Supabase";
     let bucket = "attachments";
+    let attachmentCompanyId: string | null = null;
 
     // 1. Fetch attachment record if ID provided
     if (id) {
@@ -29,9 +30,9 @@ export async function GET(request: NextRequest) {
       const cleanId = isMediaPrefix ? id.replace("media-", "") : id;
 
       if (!isMediaPrefix && !isNaN(Number(id))) {
-        const { data: attachment } = await supabase
+        const { data: attachment } = await (supabase as any)
           .from("attachment")
-          .select("meta, path")
+          .select("meta, path, company_id")
           .eq("id", Number(id))
           .maybeSingle();
 
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
           filePath = meta?.file_path || attachment.path || filePath;
           provider = meta?.storage_provider || "Supabase";
           bucket = meta?.bucket || "attachments";
+          attachmentCompanyId = (attachment as any)?.company_id || null;
         }
       }
 
@@ -130,11 +132,15 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Resolve via Storage Handler for multi-cloud (S3, GDrive, Azure, Cloudinary)
-    const { data: settings } = await supabase
-      .from("company_settings" as any)
-      .select("storage_provider, storage_config")
-      .eq("id", 1)
-      .maybeSingle() as any;
+    let settingsQuery = (supabase as any)
+      .from("company_settings")
+      .select("storage_provider, storage_config");
+      
+    const targetCompanyId = attachmentCompanyId || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
+    if (targetCompanyId) {
+      settingsQuery = settingsQuery.eq("company_id", targetCompanyId);
+    }
+    const { data: settings } = await settingsQuery.limit(1).maybeSingle();
 
     const activeProvider = provider || settings?.storage_provider || "Supabase";
     const handler = await getStorageHandler(activeProvider, settings?.storage_config);

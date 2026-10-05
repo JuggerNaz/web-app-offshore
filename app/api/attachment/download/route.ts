@@ -39,16 +39,38 @@ export async function GET(request: NextRequest) {
 
     let { data, error } = await supabase.storage.from(bucket).download(storagePath);
 
-    // If download fails, try alternative bucket or path variations
+    // If Supabase storage download fails, check if multi-cloud storage (e.g. Backblaze B2, S3) is configured
     if (error || !data) {
-        const altBuckets = ["attachments", "inspection-media", "company-assets", "public"].filter(b => b !== bucket);
-        for (const altBucket of altBuckets) {
-            const { data: altData, error: altErr } = await supabase.storage.from(altBucket).download(storagePath);
-            if (!altErr && altData) {
-                data = altData;
-                error = null;
-                break;
+        try {
+            const { getStorageHandler } = await import("@/utils/storage-factory");
+            const { data: settings } = await (supabase as any)
+                .from("company_settings")
+                .select("storage_provider, storage_config")
+                .limit(1)
+                .maybeSingle();
+
+            const provider = settings?.storage_provider || (path.includes("backblazeb2.com") ? "Backblaze" : null);
+            if (provider && provider !== "Supabase") {
+                const handler = await getStorageHandler(provider, settings?.storage_config);
+                const signedUrl = await handler.getSignedUrl(path, 3600);
+                if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
+                    const resp = await fetch(signedUrl);
+                    if (resp.ok) {
+                        const buffer = await resp.arrayBuffer();
+                        return new NextResponse(buffer, {
+                            headers: {
+                                "Content-Type": resp.headers.get("Content-Type") || "image/jpeg",
+                                "Content-Length": buffer.byteLength.toString(),
+                                "Cache-Control": "public, max-age=86400",
+                                "Access-Control-Allow-Origin": "*",
+                                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                            },
+                        });
+                    }
+                }
             }
+        } catch (multiCloudErr) {
+            console.warn("[Download] Multi-cloud fallback error:", multiCloudErr);
         }
     }
 

@@ -375,6 +375,10 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
         }
     };
 
+    if (!open || !attachment) {
+        return null;
+    }
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0 overflow-hidden bg-slate-900 border-none shadow-2xl">
@@ -457,17 +461,17 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                 <div className="flex flex-col items-center gap-6 w-full max-w-4xl">
                                     <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-white/5">
                                         <video 
-                                            key={attachment.previewUrl || attachment.publicUrl}
+                                            key={attachment?.previewUrl || attachment?.publicUrl}
                                             controls 
                                             preload="auto"
                                             className="w-full h-full"
                                         >
                                             <source 
-                                                src={attachment.previewUrl || attachment.publicUrl} 
-                                                type={attachment.file?.type || attachment.meta?.file_type || 
-                                                     (attachment.name?.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 
-                                                      attachment.name?.toLowerCase().endsWith('.webm') ? 'video/webm' : 
-                                                      attachment.name?.toLowerCase().endsWith('.ogg') ? 'video/ogg' : 'video/mp4')} 
+                                                src={attachment?.previewUrl || attachment?.publicUrl} 
+                                                type={attachment?.file?.type || attachment?.meta?.file_type || 
+                                                     (attachment?.name?.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 
+                                                      attachment?.name?.toLowerCase().endsWith('.webm') ? 'video/webm' : 
+                                                      attachment?.name?.toLowerCase().endsWith('.ogg') ? 'video/ogg' : 'video/mp4')} 
                                             />
                                             Your browser does not support the video tag or the format is incompatible.
                                         </video>
@@ -475,19 +479,19 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                     <div className="flex flex-col items-center gap-3 bg-slate-900/50 p-4 rounded-lg border border-white/5 w-full">
                                         <div className="flex items-center gap-4">
                                             <Button asChild variant="secondary" size="sm" className="font-bold">
-                                                <a href={attachment.previewUrl || attachment.publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                                                <a href={attachment?.previewUrl || attachment?.publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
                                                     <ExternalLink className="w-4 h-4" /> Open in New Tab
                                                 </a>
                                             </Button>
                                             <Button asChild variant="outline" size="sm" className="font-bold border-slate-700">
-                                                <a href={attachment.previewUrl || attachment.publicUrl} download={attachment.name} className="flex items-center gap-2">
+                                                <a href={attachment?.previewUrl || attachment?.publicUrl} download={attachment?.name} className="flex items-center gap-2">
                                                     <Save className="w-4 h-4" /> Download Original
                                                 </a>
                                             </Button>
                                         </div>
                                         <div className="text-center space-y-1">
                                             <p className="text-[11px] text-slate-400 font-medium">
-                                                Format: <span className="text-blue-400 font-bold uppercase">{attachment.file?.type || attachment.meta?.file_type || 'Unknown'}</span>
+                                                Format: <span className="text-blue-400 font-bold uppercase">{attachment?.file?.type || attachment?.meta?.file_type || 'Unknown'}</span>
                                             </p>
                                             <p className="text-[10px] text-slate-500 italic max-w-md">
                                                 Note: Formats like MKV, MOV (some codecs), and WMV may not play directly in all browsers. 
@@ -500,11 +504,11 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                 <div className="flex flex-col items-center gap-6 p-12 bg-slate-900 border border-white/5 rounded-xl shadow-2xl">
                                     <FileText className="w-24 h-24 text-blue-500 opacity-50" />
                                     <div className="text-center space-y-2">
-                                        <p className="text-white font-bold">{attachment.name}</p>
+                                        <p className="text-white font-bold">{attachment?.name}</p>
                                         <p className="text-slate-400 text-xs">This file type cannot be previewed directly.</p>
                                     </div>
                                     <Button asChild variant="secondary">
-                                        <a href={attachment.previewUrl || attachment.publicUrl} target="_blank" rel="noopener noreferrer">
+                                        <a href={attachment?.previewUrl || attachment?.publicUrl} target="_blank" rel="noopener noreferrer">
                                             Open in New Tab
                                         </a>
                                     </Button>
@@ -518,12 +522,12 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
                                 <div className="flex flex-col items-center justify-center p-12 gap-4 bg-slate-900 border border-white/5 rounded-xl text-slate-400 max-w-md text-center">
                                     <FileText className="w-16 h-16 text-slate-600" />
                                     <div>
-                                        <p className="text-white font-bold text-sm mb-1">{attachment.title || attachment.name || "Attachment"}</p>
+                                        <p className="text-white font-bold text-sm mb-1">{attachment?.title || attachment?.name || "Attachment"}</p>
                                         <p className="text-xs text-slate-400">Image preview cannot be decoded directly. You can still view or edit the details on the right.</p>
                                     </div>
                                     <div className="flex gap-2">
                                         <Button asChild size="sm" variant="secondary">
-                                            <a href={attachment.previewUrl || (attachment.id ? `/api/attachment/url?id=${attachment.id}` : '')} target="_blank" rel="noopener noreferrer">
+                                            <a href={attachment?.previewUrl || (attachment?.id ? `/api/attachment/url?id=${attachment.id}` : '')} target="_blank" rel="noopener noreferrer">
                                                 Open Raw URL
                                             </a>
                                         </Button>

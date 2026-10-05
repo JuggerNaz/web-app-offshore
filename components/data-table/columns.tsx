@@ -28,6 +28,9 @@ import { LevelDialog } from "@/components/dialogs/level-dialog";
 import { FacesDialog } from "@/components/dialogs/faces-dialog";
 import Image from "next/image";
 import { ImageIcon } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { useAttachmentStore } from "@/stores/attachment-store";
+import { refreshAttachmentCaches } from "@/utils/attachment-sync";
 
 export type Platform = Database["public"]["Tables"]["platform"]["Row"];
 export type Comment = Database["public"]["Tables"]["comment"]["Row"];
@@ -1019,12 +1022,16 @@ function AttachmentActions({ row }: { row: any }) {
   const item = row.original;
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const pathname = usePathname();
+  const openSlideOver = useAttachmentStore((s) => s.openSlideOver);
+  // The editor panel is only mounted on the Attachment Module page
+  const canEdit = !!pathname?.startsWith("/dashboard/utilities/attachments");
 
   const onDelete = async () => {
     try {
       setLoading(true);
       await fetcher(`/api/attachment?id=${item.id}`, { method: "DELETE" });
-      mutate((key: any) => typeof key === 'string' && key.startsWith('/api/attachment/'));
+      refreshAttachmentCaches();
       toast.success("Attachment deleted");
       setDeleteOpen(false);
     } catch (e) {
@@ -1046,6 +1053,15 @@ function AttachmentActions({ row }: { row: any }) {
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
+          {canEdit && (
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={() => openSlideOver(item)}
+            >
+              <Edit2 size={16} className="mr-2" />
+              Edit
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             className="cursor-pointer text-red-600 focus:text-red-700"
             onClick={() => setDeleteOpen(true)}
