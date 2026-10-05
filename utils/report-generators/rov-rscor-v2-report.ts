@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -32,6 +32,7 @@ export const generateROVRSCORV2Report = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -45,7 +46,7 @@ export const generateROVRSCORV2Report = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
@@ -90,17 +91,7 @@ export const generateROVRSCORV2Report = async (
             d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
         };
 
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = new Date(Math.min(...dates.map(d => d.getTime()))); endDate = new Date(Math.max(...dates.map(d => d.getTime()))); }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
-            : (headerData.date || "N/A");
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const drawContext = (d: jsPDF, y: number) => {
             const rowH = 5;
@@ -108,7 +99,7 @@ export const generateROVRSCORV2Report = async (
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F'); 
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 d.setTextColor(...colors.text); d.setFontSize(7); d.setFont("helvetica", "bold");
                 d.text(label, x + 2, ty + 3.5); d.setFont("helvetica", "normal");
@@ -604,12 +595,12 @@ export const generateROVRSCORV2Report = async (
             for (let c = 0; c < pageFaces.length; c++) {
                 const faceName = pageFaces[c];
                 const compRecords = faceGroups.get(faceName) || [];
-                const compData = compRecords[0]?.structure_components || compRecords[0]?.component || {};
+                const sortedCompRecords = sortScourFaceRecords(compRecords, faceName);
 
                 // Draw Face Header Bar
                 doc.setFillColor(...colors.navy); doc.rect(margin, currentY, contentWidth, 4.5, 'F');
                 doc.setTextColor(255); doc.setFontSize(7); doc.setFont("helvetica", "bold");
-                const qids = Array.from(new Set(compRecords.map(r => r.structure_components?.q_id || r.qid).filter(Boolean)));
+                const qids = Array.from(new Set(sortedCompRecords.map(r => r.structure_components?.q_id || r.qid).filter(Boolean)));
                 const qidDisplay = qids.length > 0 ? ` (${qids.join(', ')})` : '';
                 doc.text(`FACE: ${faceName.toUpperCase()}${qidDisplay}`, margin + 3, currentY + 3.2);
                 currentY += 5.5;
@@ -623,19 +614,6 @@ export const generateROVRSCORV2Report = async (
                 // 2. Draw Table on the Right
                 const tableX = margin + contentWidth / 2 + 2;
                 const tableW = contentWidth / 2 - 4;
-
-                const sortGroupRecords = (recs: any[]) => {
-                    return [...recs].sort((a, b) => {
-                        const qidA = (a.structure_components?.q_id || a.component?.q_id || a.qid || "").toUpperCase();
-                        const qidB = (b.structure_components?.q_id || b.component?.q_id || b.qid || "").toUpperCase();
-                        const isPlA = qidA.startsWith("PL");
-                        const isPlB = qidB.startsWith("PL");
-                        if (isPlA !== isPlB) return isPlA ? 1 : -1;
-                        return qidA.localeCompare(qidB);
-                    });
-                };
-
-                const sortedCompRecords = sortGroupRecords(compRecords);
 
                 autoTable(doc, {
                     startY: currentY,
@@ -651,9 +629,7 @@ export const generateROVRSCORV2Report = async (
                         const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                         const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
 
-                        let findings = r.description || '';
-                        if (isAnomaly && anomRef) findings += ` [Ref: ${anomRef}]`;
-                        if (isRectified) findings += ` [Rect: ${rectRem || 'N/A'}]`;
+                        const findings = formatReportFindingText(r);
 
                         return [
                             qid,
@@ -661,18 +637,12 @@ export const generateROVRSCORV2Report = async (
                             rd.scour_depth ? `${rd.scour_depth} mm` : '-',
                             rd.Burial_percent ? `${rd.Burial_percent}%` : '-',
                             rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true ? 'Yes' : 'No',
-                            { 
-                                content: findings || 'No significant findings',
-                                styles: {
-                                    textColor: isAnomaly ? colors.anomaly : (isRectified ? colors.rectified : colors.text),
-                                    fontStyle: (isAnomaly || isRectified) ? 'bold' : 'normal'
-                                }
-                            }
+                            findings
                         ];
                     }),
                     theme: 'grid',
-                    headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 5.5, cellPadding: 0.8, halign: 'center' },
-                    styles: { fontSize: 5.5, cellPadding: 0.8 },
+                    headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, fontSize: 5.5, cellPadding: 0.8, halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                    styles: {fontSize: 5.5, cellPadding: 0.8, lineWidth: 0.1, lineColor: colors.border},
                     columnStyles: {
                         0: { cellWidth: 20 },
                         1: { cellWidth: 15, halign: 'center' },
@@ -682,18 +652,8 @@ export const generateROVRSCORV2Report = async (
                     },
                     didParseCell: (data) => {
                         if (data.section === 'body') {
-                            const r = compRecords[data.row.index];
-                            const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                            const isAnom = r.has_anomaly || !!linkedAnom;
-                            const isRect = linkedAnom ? linkedAnom.is_rectified : r.rectified;
-
-                            if (isAnom) {
-                                data.cell.styles.textColor = colors.anomaly;
-                                data.cell.styles.fontStyle = 'bold';
-                            } else if (isRect) {
-                                data.cell.styles.textColor = colors.rectified;
-                                data.cell.styles.fontStyle = 'bold';
-                            }
+                            const r = sortedCompRecords[data.row.index];
+                            applyRecordCellStyling(data.cell, r, isPF);
                         }
                     }
                 });
@@ -739,7 +699,7 @@ export const generateROVRSCORV2Report = async (
             doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
             doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
             doc.setFont("helvetica", "normal");
-            doc.text(`${companySettings.company_name || 'NasQuest Resources Sdn Bhd'}  |  Scour Survey Sketch Report v2 (ROV)  |  SOW: ${sowReportNo}`, margin, footerY);
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
             if (config.showPageNumbers !== false) {
                 doc.text(`Page ${j} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
             }

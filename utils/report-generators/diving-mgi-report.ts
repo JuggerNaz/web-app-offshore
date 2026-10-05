@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { calculateInterpolatedMgiThreshold, getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
@@ -49,7 +49,7 @@ export const generateDivingMGIReport = async (
         const GRAPH_MAX_MM = 500;
         
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -102,11 +102,12 @@ export const generateDivingMGIReport = async (
         const drawContextBox = (d: jsPDF, y: number) => {
             const rowH = 7;
             const half = contentWidth / 2;
+            const dateRangeStr = getInspectionDateRange(records, headerData, config);
             
             const drawCell = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1);
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F');
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F');
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
                 d.text(label, x + 2, ty + 4.8); d.setFont("helvetica", "normal");
@@ -116,7 +117,7 @@ export const generateDivingMGIReport = async (
             drawCell('Structure:', headerData.platformName || "N/A", margin, half, y);
             drawCell('Vessel:', headerData.vessel || 'N/A', margin + half, half, y);
             drawCell('Job Pack:', headerData.jobpackName || "N/A", margin, half, y + rowH);
-            drawCell('Date:', format(new Date(), 'dd/MM/yyyy'), margin + half, half, y + rowH);
+            drawCell('Insp. Date Range:', dateRangeStr, margin + half, half, y + rowH);
             
             return y + (rowH * 2) + 5;
         };
@@ -241,9 +242,7 @@ export const generateDivingMGIReport = async (
             const anomRef = linkedAnomaly?.anomaly_ref_no || r.anomaly_ref_no || '';
             const rectRem = linkedAnomaly?.rectified_remarks || r.rectified_comments || '';
 
-            let findings = r.description || "";
-            if (isAnomaly && anomRef) findings += `\n[Ref: ${anomRef}]`;
-            if (isRectified) findings += `\nRectified: ${rectRem || "N/A"}`;
+            const findings = formatReportFindingText(r, r.description);
 
             return {
                 itemNo: idx + 1,
@@ -260,6 +259,7 @@ export const generateDivingMGIReport = async (
                 limit,
                 nominalDia,
                 findings,
+                record: r,
                 isAnomaly,
                 isRectified
             };
@@ -277,9 +277,9 @@ export const generateDivingMGIReport = async (
                 [
                     { content: "Item\nNo.", rowSpan: 2 },
                     { content: "Elev\n(m)", rowSpan: 2 },
-                    { content: "Thickness Profile (mm)", rowSpan: 2, styles: { halign: "center" } },
-                    { content: "Coverage %", colSpan: 2, styles: { halign: "center" } },
-                    { content: "Circumference Measurement (mm)", colSpan: 5, styles: { halign: "center" } },
+                    { content: "Thickness Profile (mm)", rowSpan: 2, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Coverage %", colSpan: 2, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Circumference Measurement (mm)", colSpan: 5, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Max\nGrowth", rowSpan: 2 },
                     { content: "Max\nAllow", rowSpan: 2 },
                     { content: "Dia\n(mm)", rowSpan: 2 },
@@ -308,8 +308,8 @@ export const generateDivingMGIReport = async (
             ]),
             theme: "grid",
             headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : 255,
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : 255,
                 fontSize: 7,
                 fontStyle: "bold",
                 halign: "center",
@@ -366,12 +366,8 @@ export const generateDivingMGIReport = async (
 
                         // For other columns, apply anomaly/rectified colors but EXCLUDE Average (index 8)
                         if (data.column.index !== 8 && data.column.index !== 9 && data.column.index !== 10 && data.column.index !== 11) {
-                            if (row.isAnomaly) {
-                                data.cell.styles.textColor = colors.anomaly;
-                                data.cell.styles.fontStyle = "bold";
-                            } else if (row.isRectified) {
-                                data.cell.styles.textColor = colors.rectified;
-                                data.cell.styles.fontStyle = "bold";
+                            if (row.record) {
+                                applyRecordCellStyling(data.cell, row.record, isPF);
                             }
                         }
                     }
@@ -409,7 +405,7 @@ export const generateDivingMGIReport = async (
                     for (let g = 0; g <= GRAPH_MAX_MM; g += 50) {
                         const gx = x + (g * xRatio);
                         const isMajor = g % 100 === 0;
-                        doc.setDrawColor(isPF ? 100 : 255);
+                        doc.setDrawColor(config?.printFriendly ? 100 : 255);
                         doc.setLineWidth(isMajor ? 0.2 : 0.1);
                         doc.line(gx, y + height - (isMajor ? 2.5 : 1.5), gx, y + height);
                         doc.text(`${g}`, gx, y + height - (isMajor ? 3 : 2), { align: 'center' });
@@ -509,7 +505,7 @@ export const generateDivingMGIReport = async (
                 
                 doc.setFont("helvetica", "normal");
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Marine Growth Inspection Graph Report (Diving)`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 8
                 );
                 if (config.showPageNumbers !== false) {

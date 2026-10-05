@@ -40,7 +40,7 @@ interface ReportConfig {
 }
 
 // Helpers
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 const fetchInspectionTypes = async (): Promise<any[]> => {
     try {
@@ -119,8 +119,8 @@ export const generateWorkScopeStatusReport = async (
     const pageHeight = doc.internal.pageSize.height;
 
     // --- Header Colors & Fonts ---
-    const headerBlue: [number, number, number] = [26, 54, 93];
-    const sectionBlue: [number, number, number] = [65, 105, 225];
+    const headerBlue: [number, number, number] = [7, 78, 136];
+    const sectionBlue: [number, number, number] = [7, 78, 136];
     const borderGrey: [number, number, number] = [200, 200, 200];
     const completedColor: [number, number, number] = [34, 197, 94]; // Green
     const pendingColor: [number, number, number] = [229, 231, 235]; // Light Grey
@@ -192,11 +192,19 @@ export const generateWorkScopeStatusReport = async (
         const structStr = `Platform: ${structure.str_name || (structure.id === 'all' ? 'ALL STRUCTURES' : 'N/A')}`;
         doc.text(reportNoStr ? `${structStr}  |  ${reportNoStr}` : structStr, pageWidth / 2, 22.5, { align: "center" });
 
-        // Page No
-        if (config?.showPageNumbers) {
-            doc.setTextColor(100, 100, 100);
-            doc.text(`Page ${pageNo}`, pageWidth - 20, pageHeight - 10, { align: "right" });
+        // Footer & Page No
+        const footerY = pageHeight - 10;
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.1);
+        doc.line(10, footerY - 5, pageWidth - 10, footerY - 5);
+        doc.setFontSize(6.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100, 100, 100);
+        doc.text(REPORT_FOOTER_APP_TEXT, 10, footerY);
+        if (config?.showPageNumbers !== false) {
+            doc.text(`Page ${pageNo}`, pageWidth - 10, footerY, { align: "right" });
         }
+        (doc as any)._footerApplied = true;
     };
 
     await drawHeader(1);
@@ -311,7 +319,7 @@ export const generateWorkScopeStatusReport = async (
                 doc.rect(14, yPos, pageWidth - 28, 8, "FD");
                 doc.setTextColor(0, 0, 0);
             } else {
-                doc.setFillColor(30, 41, 59); // Dark Slate Blue
+                doc.setFillColor(7, 78, 136); // Header Blue
                 doc.rect(14, yPos, pageWidth - 28, 8, "F");
                 doc.setTextColor(255, 255, 255);
             }
@@ -373,8 +381,17 @@ export const generateWorkScopeStatusReport = async (
             // User asked for "sub header for the report number"
             const reportDisplay = rptKey === "Pending Assignment" ? "Items Pending Assignment" : `Report Ref: ${rptKey}`;
 
-            doc.setFillColor(240, 240, 240); // Light Grey
-            doc.rect(14, yPos, pageWidth - 28, 7, "F");
+            if (isPrintFriendly) {
+            doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(14, yPos, pageWidth - 28, 7, "FD");
+        } else {
+            doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.1);
+            doc.rect(14, yPos, pageWidth - 28, 7, "FD");
+        }
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(9);
             doc.setFont("helvetica", "bold");

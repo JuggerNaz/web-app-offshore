@@ -37,12 +37,32 @@ import {
     Calendar,
     Sparkles,
     Check,
-    ArrowRight
+    ArrowRight,
+    ArrowRightLeft,
+    Loader2,
+    Anchor
 } from "lucide-react";
-import { formatClientDateTime, toDatetimeLocalString, toUtcIsoTimestamp, parseClientDate, parseDbDate } from "@/utils/client-date";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { 
+    formatClientDateTime, 
+    toLocalDateString,
+    toLocalTimeString,
+    combineLocalDateAndTimeToUtcIso,
+    parseClientDate, 
+    parseDbDate 
+} from "@/utils/client-date";
+import { SmartTimeInput } from "@/components/ui/smart-time-input";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 interface TapeLogEventsProps {
     videoEvents: any[];
@@ -52,7 +72,12 @@ interface TapeLogEventsProps {
     setExpanded?: (v: boolean) => void;
     isFloating?: boolean;
     inline?: boolean;
-    onRefresh?: () => void;
+    onRefresh?: () => Promise<void> | void;
+    deployments?: any[];
+    activeDep?: any;
+    inspMethod?: "DIVING" | "ROV";
+    jobPackId?: string | number | null;
+    structureId?: string | number | null;
 }
 
 const STANDARD_ACTIONS = [
@@ -78,7 +103,13 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     isFloating = false,
     inline = false,
     onRefresh,
+    deployments = [],
+    activeDep,
+    inspMethod = "DIVING",
+    jobPackId,
+    structureId,
 }) => {
+    const { activeCompanyId } = useUserProfile();
     const supabase = useMemo(() => createClient(), []);
 
     // Local events list synchronized with initial prop
@@ -100,13 +131,61 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
     const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+    // Move Tape to Another Dive Dialog State
+    const [isMoveTapeModalOpen, setIsMoveTapeModalOpen] = useState<boolean>(false);
+    const [moveTargetTapeNo, setMoveTargetTapeNo] = useState<string>("");
+    const [moveCurrentDiveNo, setMoveCurrentDiveNo] = useState<string>("");
+    const [moveTargetDiveId, setMoveTargetDiveId] = useState<string>("");
+    const [isMovingTape, setIsMovingTape] = useState<boolean>(false);
+    const [fetchedDeployments, setFetchedDeployments] = useState<any[]>([]);
+
+    // Fetch fallback deployments if not provided via props
+    useEffect(() => {
+        if (deployments && deployments.length > 0) {
+            setFetchedDeployments(deployments);
+            return;
+        }
+
+        let isMounted = true;
+        async function loadDeployments() {
+            try {
+                const table = inspMethod === "ROV" ? "insp_rov_jobs" : "insp_dive_jobs";
+                const idCol = inspMethod === "ROV" ? "rov_job_id" : "dive_job_id";
+                let query = supabase.from(table).select("*").order(idCol, { ascending: false });
+                if (jobPackId && !isNaN(Number(jobPackId))) query = query.eq("jobpack_id", Number(jobPackId));
+                if (structureId && !isNaN(Number(structureId))) query = query.eq("structure_id", Number(structureId));
+
+                const { data, error } = await query;
+                if (!error && data && isMounted) {
+                    const mapped = data.map((d: any) => {
+                        const rawId = d.dive_job_id || d.rov_job_id || d.id;
+                        const jNo = d.dive_no || d.deployment_no || d.rov_job_no || `JOB-${rawId}`;
+                        const dName = d.diver_name || d.rov_system || d.rov_operator || "Unnamed";
+                        const dDate = d.created_at || d.date || d.dive_date || d.start_date || d.start_time;
+                        return { id: String(rawId), jobNo: jNo, name: dName, created_at: dDate, raw: d };
+                    });
+                    setFetchedDeployments(mapped);
+                }
+            } catch (err) {
+                console.warn("[TapeLogEvents] Could not fetch deployments:", err);
+            }
+        }
+        loadDeployments();
+        return () => { isMounted = false; };
+    }, [deployments, inspMethod, jobPackId, structureId, supabase]);
+
+    const availableDeployments = useMemo(() => {
+        return deployments && deployments.length > 0 ? deployments : fetchedDeployments;
+    }, [deployments, fetchedDeployments]);
+
     // Form State for Add / Edit
     const [formTapeNo, setFormTapeNo] = useState<string>("");
     const [formCustomTapeNo, setFormCustomTapeNo] = useState<string>("");
     const [formChapterNo, setFormChapterNo] = useState<string>("1");
     const [formCustomChapterNo, setFormCustomChapterNo] = useState<string>("");
     const [formAction, setFormAction] = useState<string>("START TAPE");
-    const [formEventTime, setFormEventTime] = useState<string>("");
+    const [formDate, setFormDate] = useState<string>("");
+    const [formTime, setFormTime] = useState<string>("");
     const [formTimecode, setFormTimecode] = useState<string>("00:00:00");
     const [formRemarks, setFormRemarks] = useState<string>("");
     const [formEditingId, setFormEditingId] = useState<{ id: string; realId: number; logType: string } | null>(null);
@@ -128,15 +207,24 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         return parseInt(tc, 10) || 0;
     };
 
-    // Sort events latest first
+    // Sort events latest first: 1. Inspection Date & Time, 2. Counter No (Timecode), 3. ID
     const sortedEvents = useMemo(() => {
         return [...localEvents].sort((a, b) => {
-            const timeA = a.eventTime ? new Date(a.eventTime).getTime() : 0;
-            const timeB = b.eventTime ? new Date(b.eventTime).getTime() : 0;
-            if (timeA === timeB) {
-                return (b.realId || b.id || 0) - (a.realId || a.id || 0);
+            const timeA = a.eventTime ? parseClientDate(a.eventTime).getTime() : 0;
+            const timeB = b.eventTime ? parseClientDate(b.eventTime).getTime() : 0;
+            if (timeA !== timeB) {
+                return timeB - timeA;
             }
-            return timeB - timeA;
+            const counterA = a.tape_counter_start != null 
+                ? Number(a.tape_counter_start) 
+                : timecodeToSeconds(a.time || "00:00:00");
+            const counterB = b.tape_counter_start != null 
+                ? Number(b.tape_counter_start) 
+                : timecodeToSeconds(b.time || "00:00:00");
+            if (counterA !== counterB) {
+                return counterB - counterA;
+            }
+            return (b.realId || b.id || 0) - (a.realId || a.id || 0);
         });
     }, [localEvents]);
 
@@ -199,7 +287,10 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                 const remarksMatch = (ev.remarks || "").toLowerCase().includes(q);
                 const diveMatch = (ev.diveNo || "").toLowerCase().includes(q);
                 const structMatch = (ev.structure || "").toLowerCase().includes(q);
-                return actionMatch || tapeMatch || chMatch || timeMatch || remarksMatch || diveMatch || structMatch;
+                const compMatch = (ev.componentQid || "").toLowerCase().includes(q) || (ev.compCode || "").toLowerCase().includes(q);
+                const inspTypeMatch = (ev.inspTypeName || "").toLowerCase().includes(q) || (ev.inspTypeCode || "").toLowerCase().includes(q);
+                const anomMatch = (ev.anomalyRef || "").toLowerCase().includes(q) || (ev.defectCode || "").toLowerCase().includes(q) || (ev.defectDesc || "").toLowerCase().includes(q);
+                return actionMatch || tapeMatch || chMatch || timeMatch || remarksMatch || diveMatch || structMatch || compMatch || inspTypeMatch || anomMatch;
             });
         }
 
@@ -343,7 +434,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
     const formatEventTime = (timeStr?: string | null) => {
         if (!timeStr) return "-";
-        return formatClientDateTime(timeStr, "MMM dd, HH:mm:ss");
+        return formatClientDateTime(timeStr, "MMM dd, yyyy • HH:mm:ss");
     };
 
     // Auto compute Date & Time and Timecode based on selected Tape No, Chapter No, and Action
@@ -360,8 +451,8 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         });
 
         const sortedChronological = [...matchingEvents].sort((a, b) => {
-            const tA = a.eventTime ? new Date(a.eventTime).getTime() : 0;
-            const tB = b.eventTime ? new Date(b.eventTime).getTime() : 0;
+            const tA = a.eventTime ? parseClientDate(a.eventTime).getTime() : 0;
+            const tB = b.eventTime ? parseClientDate(b.eventTime).getTime() : 0;
             return tA - tB;
         });
 
@@ -374,74 +465,115 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
         if (targetAction === "START TAPE") {
             if (startEvent && startEvent.eventTime) {
-                suggestedDate = new Date(startEvent.eventTime);
+                suggestedDate = parseClientDate(startEvent.eventTime);
+                suggestedTimecode = startEvent.time || (startEvent.tape_counter_start != null ? formatSecondsToTimecode(Number(startEvent.tape_counter_start)) : "00:00:00");
             } else if (sortedChronological.length > 0 && sortedChronological[0].eventTime) {
-                // If there are other events, suggest 1 minute before first event
-                suggestedDate = new Date(new Date(sortedChronological[0].eventTime).getTime() - 60000);
+                suggestedDate = new Date(parseClientDate(sortedChronological[0].eventTime).getTime() - 60000);
+                suggestedTimecode = "00:00:00";
             } else {
-                // Check if other chapters in this tape exist
-                const tapeEvents = sortedEvents.filter(ev => (ev.tapeNo || "").trim().toUpperCase() === (effectiveTape || "").trim().toUpperCase());
-                if (tapeEvents.length > 0 && tapeEvents[0].eventTime) {
-                    suggestedDate = new Date(new Date(tapeEvents[0].eventTime).getTime() + 10 * 60000);
-                } else {
-                    suggestedDate = new Date();
-                }
+                suggestedDate = new Date();
+                suggestedTimecode = "00:00:00";
             }
-            suggestedTimecode = "00:00:00";
         } else if (targetAction === "STOP TAPE") {
             if (sortedChronological.length > 0) {
                 const latestEv = sortedChronological[sortedChronological.length - 1];
-                if (latestEv.eventTime) {
-                    suggestedDate = new Date(new Date(latestEv.eventTime).getTime() + 5 * 60000); // 5 mins after last event
-                } else {
-                    suggestedDate = new Date();
-                }
+                const latestDate = latestEv.eventTime ? parseClientDate(latestEv.eventTime) : new Date();
+                suggestedDate = new Date(latestDate.getTime() + 5 * 60000); // 5 mins after last event
 
-                if (startEvent && startEvent.eventTime) {
-                    const startAt = new Date(startEvent.eventTime).getTime();
-                    const endAt = suggestedDate.getTime();
-                    const diff = Math.max(0, Math.floor((endAt - startAt) / 1000));
-                    suggestedTimecode = formatSecondsToTimecode(diff);
-                } else if (latestEv.time) {
-                    const lastSecs = timecodeToSeconds(latestEv.time);
-                    suggestedTimecode = formatSecondsToTimecode(lastSecs + 300);
-                } else {
-                    suggestedTimecode = "00:15:00";
-                }
+                const latestCounter = latestEv.tape_counter_start != null 
+                    ? Number(latestEv.tape_counter_start) 
+                    : timecodeToSeconds(latestEv.time || "00:00:00");
+                suggestedTimecode = formatSecondsToTimecode(latestCounter + 300);
             } else {
                 suggestedDate = new Date();
                 suggestedTimecode = "00:15:00";
             }
         } else {
-            // General event, Pause, Resume, Task, Note
+            // General event, Pause, Resume, Task, Note, Pre/Post-Inspection
             if (sortedChronological.length > 0) {
                 const latestEv = sortedChronological[sortedChronological.length - 1];
-                if (latestEv.eventTime) {
-                    suggestedDate = new Date(new Date(latestEv.eventTime).getTime() + 60000);
-                } else {
-                    suggestedDate = new Date();
-                }
+                const latestDate = latestEv.eventTime ? parseClientDate(latestEv.eventTime) : new Date();
+                suggestedDate = new Date(latestDate.getTime() + 60000); // 1 min after last event
 
-                if (startEvent && startEvent.eventTime) {
-                    const startAt = new Date(startEvent.eventTime).getTime();
-                    const currAt = suggestedDate.getTime();
-                    const diff = Math.max(0, Math.floor((currAt - startAt) / 1000));
-                    suggestedTimecode = formatSecondsToTimecode(diff);
-                } else if (latestEv.time) {
-                    const lastSecs = timecodeToSeconds(latestEv.time);
-                    suggestedTimecode = formatSecondsToTimecode(lastSecs + 60);
-                }
+                const latestCounter = latestEv.tape_counter_start != null 
+                    ? Number(latestEv.tape_counter_start) 
+                    : timecodeToSeconds(latestEv.time || "00:00:00");
+                suggestedTimecode = formatSecondsToTimecode(latestCounter + 60);
             } else {
                 suggestedDate = new Date();
                 suggestedTimecode = "00:00:00";
             }
         }
 
-        const localIso = toDatetimeLocalString(suggestedDate.toISOString());
         return {
-            eventTime: localIso,
+            eventDate: toLocalDateString(suggestedDate),
+            eventTime: toLocalTimeString(suggestedDate, true),
             timecode: suggestedTimecode,
         };
+    };
+
+    // Calculate timecode counter based on user-entered Date & Time and preceding chronological events
+    const calculateCounterForDateTime = (
+        targetTape: string, 
+        targetChapter: string, 
+        dateStr: string, 
+        timeStr: string, 
+        action: string,
+        currentEditId?: string
+    ): string => {
+        if (action === "START TAPE") return "00:00:00";
+        if (!dateStr || !timeStr) return "00:00:00";
+
+        const effectiveTape = targetTape === "__NEW__" ? formCustomTapeNo : targetTape;
+        const effectiveChapter = targetChapter === "__NEW__" ? formCustomChapterNo : targetChapter;
+
+        const matchingEvents = sortedEvents.filter(ev => {
+            const tNo = ev.tapeNo && ev.tapeNo !== "N/A" ? ev.tapeNo : "";
+            const chNo = ev.chapterNo != null ? String(ev.chapterNo) : "";
+            return tNo.trim().toUpperCase() === (effectiveTape || "").trim().toUpperCase() &&
+                   chNo.trim() === (effectiveChapter || "").trim();
+        });
+
+        if (matchingEvents.length === 0) return "00:00:00";
+
+        const sortedChronological = [...matchingEvents].sort((a, b) => {
+            const tA = a.eventTime ? parseClientDate(a.eventTime).getTime() : 0;
+            const tB = b.eventTime ? parseClientDate(b.eventTime).getTime() : 0;
+            return tA - tB;
+        });
+
+        const targetIso = combineLocalDateAndTimeToUtcIso(dateStr, timeStr);
+        const targetMillis = parseClientDate(targetIso).getTime();
+
+        // Find the most recent preceding event at or before targetMillis
+        const precedingEvents = sortedChronological.filter(ev => {
+            if (!ev.eventTime) return false;
+            if (currentEditId && ev.id === currentEditId) return false;
+            return parseClientDate(ev.eventTime).getTime() <= targetMillis;
+        });
+
+        if (precedingEvents.length > 0) {
+            const prevEv = precedingEvents[precedingEvents.length - 1];
+            const prevMillis = parseClientDate(prevEv.eventTime).getTime();
+            const prevCounter = prevEv.tape_counter_start != null 
+                ? Number(prevEv.tape_counter_start) 
+                : timecodeToSeconds(prevEv.time || "00:00:00");
+            const diffSecs = Math.max(0, Math.floor((targetMillis - prevMillis) / 1000));
+            return formatSecondsToTimecode(prevCounter + diffSecs);
+        }
+
+        // If target is earlier than all events, reference the first event
+        const firstEv = sortedChronological.find(ev => !currentEditId || ev.id !== currentEditId) || sortedChronological[0];
+        if (firstEv && firstEv.eventTime) {
+            const firstMillis = parseClientDate(firstEv.eventTime).getTime();
+            const firstCounter = firstEv.tape_counter_start != null 
+                ? Number(firstEv.tape_counter_start) 
+                : timecodeToSeconds(firstEv.time || "00:00:00");
+            const diffSecs = Math.floor((targetMillis - firstMillis) / 1000);
+            return formatSecondsToTimecode(Math.max(0, firstCounter + diffSecs));
+        }
+
+        return "00:00:00";
     };
 
     // Open Add Modal with smart defaults
@@ -460,10 +592,34 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         setIsAutoDateCalculated(true);
 
         const computed = computeAutoDateTimeAndCounter(tape, chapter, "START TAPE");
-        setFormEventTime(computed.eventTime);
+        setFormDate(computed.eventDate);
+        setFormTime(computed.eventTime);
         setFormTimecode(computed.timecode);
 
         setIsAddModalOpen(true);
+    };
+
+    // Helper to robustly match any raw action or DB code to standard actions
+    const isActionMatch = (currentFormAction: string, act: typeof STANDARD_ACTIONS[0]) => {
+        if (!currentFormAction) return act.value === "START TAPE";
+        const cur = currentFormAction.trim().toUpperCase();
+        const val = (act.value || "").toUpperCase();
+        const db = (act.dbCode || "").toUpperCase();
+        const lbl = (act.label || "").toUpperCase();
+
+        if (cur === val || cur === db || cur === lbl) return true;
+        if (val === "START TAPE" && (cur === "NEW_LOG_START" || cur === "START" || cur === "START TAPE" || cur.includes("START TAPE"))) return true;
+        if (val === "STOP TAPE" && (cur === "END" || cur === "STOP" || cur === "STOP TAPE" || cur.includes("STOP TAPE"))) return true;
+        if (val === "PAUSE" && (cur === "PAUSE" || cur === "PAUSE TAPE" || cur.includes("PAUSE"))) return true;
+        if (val === "RESUME" && (cur === "RESUME" || cur === "RESUME TAPE" || cur.includes("RESUME"))) return true;
+        if (val === "START TASK" && (cur === "START_TASK" || cur === "START TASK")) return true;
+        if (val === "STOP TASK" && (cur === "STOP_TASK" || cur === "STOP TASK")) return true;
+        if (val === "NOTE" && (cur === "NOTE" || cur === "REMARK" || cur.includes("NOTE") || cur.includes("REMARK"))) return true;
+        if (val === "PRE-INSPECTION" && (cur === "PRE_INSPECTION" || cur === "PRE-INSPECTION" || cur.includes("PRE-INSPECTION") || cur.includes("PRE_INSPECTION"))) return true;
+        if (val === "POST-INSPECTION" && (cur === "POST_INSPECTION" || cur === "POST-INSPECTION" || cur.includes("POST-INSPECTION") || cur.includes("POST_INSPECTION"))) return true;
+        if (val === "INTRODUCTION" && (cur === "INTRODUCTION" || cur.includes("INTRO"))) return true;
+        if (val === "CUSTOM" && (cur === "CUSTOM" || cur === "CUSTOM EVENT")) return true;
+        return false;
     };
 
     // Open Edit Modal for a specific event
@@ -471,15 +627,23 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         setFormEditingId({ id: ev.id, realId: ev.realId, logType: ev.logType || "video_log" });
         setFormTapeNo(ev.tapeNo || commonTapeNo);
         setFormChapterNo(String(ev.chapterNo || "1"));
-        setFormAction(ev.action || "START TAPE");
+        
+        const rawAction = ev.action || "START TAPE";
+        const matched = STANDARD_ACTIONS.find(a => isActionMatch(rawAction, a));
+        setFormAction(matched ? matched.value : (rawAction || "CUSTOM"));
+        
         setFormTimecode(ev.time || "00:00:00");
         setFormRemarks(ev.remarks || "");
         setIsAutoDateCalculated(false);
 
         if (ev.eventTime) {
-            setFormEventTime(toDatetimeLocalString(ev.eventTime));
+            const evDate = parseClientDate(ev.eventTime);
+            setFormDate(toLocalDateString(evDate));
+            setFormTime(toLocalTimeString(evDate, true));
         } else {
-            setFormEventTime(toDatetimeLocalString(new Date().toISOString()));
+            const now = new Date();
+            setFormDate(toLocalDateString(now));
+            setFormTime(toLocalTimeString(now, true));
         }
 
         setIsEditModalOpen(true);
@@ -493,44 +657,35 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
         if (isAutoDateCalculated) {
             const computed = computeAutoDateTimeAndCounter(newTape, newChapter, newAction);
-            setFormEventTime(computed.eventTime);
+            setFormDate(computed.eventDate);
+            setFormTime(computed.eventTime);
             setFormTimecode(computed.timecode);
         }
     };
 
-    // When user manually edits Date & Time, recalculate timecode counter if chapter start exists
-    const handleDateTimeChange = (newLocalVal: string) => {
-        setFormEventTime(newLocalVal);
+    // When user manually edits Date or Time, recalculate timecode counter from preceding event
+    const handleDateOrTimeChange = (newDateVal: string, newTimeVal: string) => {
+        setFormDate(newDateVal);
+        setFormTime(newTimeVal);
         setIsAutoDateCalculated(false);
 
-        if (!newLocalVal) return;
-        const effectiveTape = formTapeNo === "__NEW__" ? formCustomTapeNo : formTapeNo;
-        const effectiveChapter = formChapterNo === "__NEW__" ? formCustomChapterNo : formChapterNo;
-
-        // Find chapter start event
-        const matchingEvents = sortedEvents.filter(ev => {
-            const tNo = ev.tapeNo && ev.tapeNo !== "N/A" ? ev.tapeNo : "";
-            const chNo = ev.chapterNo != null ? String(ev.chapterNo) : "";
-            return tNo.trim().toUpperCase() === (effectiveTape || "").trim().toUpperCase() &&
-                   chNo.trim() === (effectiveChapter || "").trim();
-        });
-
-        const startEvent = matchingEvents.find(ev => 
-            (ev.action || "").toUpperCase().includes("START") && (ev.action || "").toUpperCase().includes("TAPE")
+        if (!newDateVal || !newTimeVal) return;
+        const computedCounter = calculateCounterForDateTime(
+            formTapeNo,
+            formChapterNo,
+            newDateVal,
+            newTimeVal,
+            formAction,
+            formEditingId?.id
         );
-
-        if (startEvent && startEvent.eventTime && formAction !== "START TAPE") {
-            const startDate = parseDbDate(startEvent.eventTime);
-            const userDate = parseClientDate(newLocalVal);
-            const diffSecs = Math.max(0, Math.floor((userDate.getTime() - startDate.getTime()) / 1000));
-            setFormTimecode(formatSecondsToTimecode(diffSecs));
-        }
+        setFormTimecode(computedCounter);
     };
 
     // Recalculate button trigger
     const triggerRecalculate = () => {
         const computed = computeAutoDateTimeAndCounter(formTapeNo, formChapterNo, formAction);
-        setFormEventTime(computed.eventTime);
+        setFormDate(computed.eventDate);
+        setFormTime(computed.eventTime);
         setFormTimecode(computed.timecode);
         setIsAutoDateCalculated(true);
         toast.info("Auto-calculated Date & Time from Chapter timeline");
@@ -546,23 +701,57 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             return;
         }
 
-        if (!formEventTime) {
-            toast.error("Please enter a valid Date & Time");
+        if (!formDate) {
+            toast.error("Please enter a valid Date");
+            return;
+        }
+
+        if (!formTime) {
+            toast.error("Please enter a valid Time");
             return;
         }
 
         setIsSubmitting(true);
         try {
-            const isoEventTime = toUtcIsoTimestamp(formEventTime);
+            const isoEventTime = combineLocalDateAndTimeToUtcIso(formDate, formTime);
             const totalCounterSecs = timecodeToSeconds(formTimecode);
 
             // Map UI action to standard DB event_type code
-            const matchedStandard = STANDARD_ACTIONS.find(a => a.value === formAction || a.label === formAction);
-            let dbEventType = matchedStandard?.dbCode || formAction;
-            if (formAction === "START TAPE") dbEventType = "NEW_LOG_START";
-            if (formAction === "STOP TAPE") dbEventType = "END";
-            if (formAction === "PAUSE") dbEventType = "PAUSE";
-            if (formAction === "RESUME") dbEventType = "RESUME";
+            const ALLOWED_DB_TYPES = new Set([
+                'NEW_LOG_START', 'INTRODUCTION', 'PRE_INSPECTION', 'POST_INSPECTION',
+                'INSPECTION', 'ANOMALY', 'START_TASK', 'STOP_TASK', 'PAUSE_TASK',
+                'RESUME_TASK', 'PAUSE', 'RESUME', 'END', 'NOTE', 'CUSTOM', 'SNAPSHOT'
+            ]);
+
+            const normalizedAction = (formAction || "").trim().toUpperCase();
+            let dbEventType = "CUSTOM";
+
+            if (normalizedAction === "START TAPE" || normalizedAction === "START" || normalizedAction === "NEW_LOG_START") {
+                dbEventType = "NEW_LOG_START";
+            } else if (normalizedAction === "STOP TAPE" || normalizedAction === "STOP" || normalizedAction === "END") {
+                dbEventType = "END";
+            } else if (normalizedAction === "PAUSE" || normalizedAction === "PAUSE TAPE") {
+                dbEventType = "PAUSE";
+            } else if (normalizedAction === "RESUME" || normalizedAction === "RESUME TAPE") {
+                dbEventType = "RESUME";
+            } else if (normalizedAction === "START TASK" || normalizedAction === "START_TASK") {
+                dbEventType = "START_TASK";
+            } else if (normalizedAction === "STOP TASK" || normalizedAction === "STOP_TASK") {
+                dbEventType = "STOP_TASK";
+            } else if (normalizedAction.includes("NOTE") || normalizedAction.includes("REMARK")) {
+                dbEventType = "NOTE";
+            } else if (normalizedAction.includes("PRE-INSPECTION") || normalizedAction === "PRE_INSPECTION") {
+                dbEventType = "PRE_INSPECTION";
+            } else if (normalizedAction.includes("POST-INSPECTION") || normalizedAction === "POST_INSPECTION") {
+                dbEventType = "POST_INSPECTION";
+            } else if (normalizedAction === "INTRODUCTION") {
+                dbEventType = "INTRODUCTION";
+            } else if (ALLOWED_DB_TYPES.has(normalizedAction)) {
+                dbEventType = normalizedAction;
+            } else {
+                const matchedStandard = STANDARD_ACTIONS.find(a => a.value.toUpperCase() === normalizedAction || a.label.toUpperCase() === normalizedAction);
+                dbEventType = matchedStandard?.dbCode || "CUSTOM";
+            }
 
             if (isEditModalOpen && formEditingId) {
                 // UPDATE existing event
@@ -630,6 +819,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                             tape_type: "DIGITAL - PRIMARY",
                             status: "ACTIVE",
                             cr_user: user?.id || "system",
+                            company_id: activeCompanyId || null,
                         })
                         .select("tape_id")
                         .single();
@@ -648,6 +838,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                     timecode_start: formTimecode,
                     tape_counter_start: totalCounterSecs,
                     remarks: formRemarks,
+                    company_id: activeCompanyId || null,
                 };
                 if (targetTapeId) insertPayload.tape_id = targetTapeId;
 
@@ -692,6 +883,156 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             toast.error(`Failed to save log event: ${err?.message || "Unknown error"}`);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    // Open Move Tape to Another Dive Modal
+    const handleOpenMoveTapeModal = (tapeNo: string, currentDiveNo?: string) => {
+        setMoveTargetTapeNo(tapeNo);
+        setMoveCurrentDiveNo(currentDiveNo || "N/A");
+
+        if (availableDeployments.length > 0) {
+            const otherDep = availableDeployments.find((d: any) => {
+                const dNo = String(d.jobNo || d.dive_no || d.deployment_no || "").trim().toUpperCase();
+                const curNo = String(currentDiveNo || "").trim().toUpperCase();
+                return dNo && curNo && dNo !== curNo;
+            });
+            setMoveTargetDiveId(String(otherDep?.id || availableDeployments[0]?.id || ""));
+        } else {
+            setMoveTargetDiveId("");
+        }
+
+        setIsMoveTapeModalOpen(true);
+    };
+
+    // Confirm Moving Tape and all its registered inspection events to another Dive
+    const handleConfirmMoveTape = async () => {
+        if (!moveTargetTapeNo) {
+            toast.error("Invalid tape selection.");
+            return;
+        }
+
+        if (!moveTargetDiveId) {
+            toast.error("Please select a destination Dive / Deployment.");
+            return;
+        }
+
+        const targetDepObj = availableDeployments.find((d: any) => String(d.id || d.dive_job_id || d.rov_job_id) === String(moveTargetDiveId));
+        const targetDepIdNum = Number(moveTargetDiveId);
+        const targetJobNo = targetDepObj?.jobNo || targetDepObj?.dive_no || targetDepObj?.deployment_no || `JOB-${targetDepIdNum}`;
+        const jobCol = (inspMethod === "ROV") ? "rov_job_id" : "dive_job_id";
+
+        setIsMovingTape(true);
+        try {
+            // 1. Find all tape_id entries in insp_video_tapes for this tape_no
+            const { data: matchedTapes, error: tapeFetchErr } = await supabase
+                .from("insp_video_tapes")
+                .select("tape_id, tape_no, chapter_no")
+                .eq("tape_no", moveTargetTapeNo);
+
+            if (tapeFetchErr) throw tapeFetchErr;
+
+            const tapeIds = (matchedTapes || []).map((t: any) => t.tape_id);
+
+            // Also collect any tape_id from local events for this tape
+            localEvents.forEach(ev => {
+                if (ev.tapeNo === moveTargetTapeNo && (ev.tapeId || ev.tape_id)) {
+                    const idVal = Number(ev.tapeId || ev.tape_id);
+                    if (idVal && !tapeIds.includes(idVal)) {
+                        tapeIds.push(idVal);
+                    }
+                }
+            });
+
+            // 2. Update insp_video_tapes with new dive_job_id / rov_job_id
+            if (tapeIds.length > 0) {
+                const { error: tapeUpdErr } = await supabase
+                    .from("insp_video_tapes")
+                    .update({
+                        [jobCol]: targetDepIdNum,
+                    })
+                    .in("tape_id", tapeIds);
+
+                if (tapeUpdErr) throw tapeUpdErr;
+            } else {
+                await supabase
+                    .from("insp_video_tapes")
+                    .update({
+                        [jobCol]: targetDepIdNum,
+                    })
+                    .eq("tape_no", moveTargetTapeNo);
+            }
+
+            // 3. Find and update all insp_records registered on this tape
+            let updatedRecordsCount = 0;
+            let recQuery = supabase.from("insp_records").select("insp_id, inspection_data, tape_id");
+
+            if (tapeIds.length > 0) {
+                recQuery = recQuery.in("tape_id", tapeIds);
+            } else {
+                recQuery = recQuery.eq("tape_no", moveTargetTapeNo);
+            }
+
+            const { data: recordsToUpdate, error: recFetchErr } = await recQuery;
+            if (recFetchErr) throw recFetchErr;
+
+            if (recordsToUpdate && recordsToUpdate.length > 0) {
+                updatedRecordsCount = recordsToUpdate.length;
+                const nowIso = new Date().toISOString();
+                await Promise.all(
+                    recordsToUpdate.map(async (rec: any) => {
+                        const updatedInspData = {
+                            ...(rec.inspection_data || {}),
+                            dive_no: targetJobNo,
+                            rov_job_no: targetJobNo,
+                        };
+                        return supabase
+                            .from("insp_records")
+                            .update({
+                                [jobCol]: targetDepIdNum,
+                                inspection_data: updatedInspData,
+                                md_date: nowIso,
+                            })
+                            .eq("insp_id", rec.insp_id);
+                    })
+                );
+            }
+
+            // 4. Update local state for immediate UI responsiveness
+            setLocalEvents(prev => prev.map(ev => {
+                if (ev.tapeNo === moveTargetTapeNo) {
+                    return {
+                        ...ev,
+                        diveNo: targetJobNo,
+                        dive_job_id: targetDepIdNum,
+                        rov_job_id: targetDepIdNum,
+                        rawRecord: ev.rawRecord ? {
+                            ...ev.rawRecord,
+                            [jobCol]: targetDepIdNum,
+                            dive_no: targetJobNo,
+                            inspection_data: {
+                                ...(ev.rawRecord.inspection_data || {}),
+                                dive_no: targetJobNo,
+                                rov_job_no: targetJobNo,
+                            }
+                        } : undefined,
+                    };
+                }
+                return ev;
+            }));
+
+            toast.success(`Successfully moved Tape "${moveTargetTapeNo}" and ${updatedRecordsCount} inspection event(s) to Dive ${targetJobNo}`);
+            setIsMoveTapeModalOpen(false);
+
+            // 5. Trigger workspace refresh
+            if (onRefresh) {
+                await onRefresh();
+            }
+        } catch (err: any) {
+            console.error("[MoveTape] Error:", err);
+            toast.error(`Failed to move tape: ${err?.message || "Unknown error"}`);
+        } finally {
+            setIsMovingTape(false);
         }
     };
 
@@ -953,6 +1294,21 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                         </div>
 
                                         <div className="flex items-center gap-2 shrink-0">
+                                            {/* Move Tape to Another Dive Button */}
+                                            {tKey !== "Unassigned" && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenMoveTapeModal(tKey, tapeData.diveNo);
+                                                    }}
+                                                    className="px-2 py-0.5 text-[9px] font-bold rounded bg-blue-950/70 hover:bg-blue-900 text-blue-300 border border-blue-500/40 flex items-center gap-1 transition-colors shadow-sm"
+                                                    title="Move this tape and its inspection events to another Dive No."
+                                                >
+                                                    <ArrowRightLeft className="w-3 h-3 text-blue-400" /> Move Dive
+                                                </button>
+                                            )}
+
                                             {/* Quick Add Log to this Tape */}
                                             <button
                                                 type="button"
@@ -1025,44 +1381,89 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                             <div className="space-y-1.5 ml-2 sm:ml-3 pl-2 sm:pl-3 border-l-2 border-slate-800/50">
                                                                 {chapterEvents.map((ev, idx) => {
                                                                     const style = getActionStyle(ev.action);
+                                                                    const isInsp = ev.logType === "insp" || ev.action === "INSPECTION" || ev.action === "ANOMALY" || ev.action === "DEFECT";
 
                                                                     return (
                                                                         <div
                                                                             key={ev.id || idx}
-                                                                            className="group/ev relative flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 bg-slate-900/80 hover:bg-slate-850 rounded-lg border border-slate-800/90 hover:border-slate-700 shadow-sm transition-all animate-in fade-in slide-in-from-top-1"
+                                                                            className={`group/ev relative flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 rounded-lg border transition-all animate-in fade-in slide-in-from-top-1 ${
+                                                                                isInsp
+                                                                                    ? (ev.action === "ANOMALY"
+                                                                                        ? "bg-red-950/25 hover:bg-red-950/40 border-red-800/40 hover:border-red-700/60 shadow-sm"
+                                                                                        : "bg-blue-950/20 hover:bg-blue-950/35 border-blue-800/30 hover:border-blue-700/50 shadow-sm")
+                                                                                    : "bg-slate-900/80 hover:bg-slate-850 rounded-lg border border-slate-800/90 hover:border-slate-700 shadow-sm"
+                                                                            }`}
                                                                         >
-                                                                            {/* Left: Timecode + Action Badge + Description */}
+                                                                            {/* Left: Timecode + Action Badge + Component / Inspection Metadata */}
                                                                             <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
                                                                                 {/* Timecode Pill */}
-                                                                                <div className="px-2 py-1 rounded bg-slate-950 border border-slate-800 text-cyan-400 font-mono text-[11px] font-black shrink-0 tracking-wider shadow-inner">
+                                                                                <div className={`px-2 py-1 rounded font-mono text-[11px] font-black shrink-0 tracking-wider shadow-inner border ${
+                                                                                    isInsp
+                                                                                        ? "bg-slate-950 border-blue-900/60 text-cyan-300"
+                                                                                        : "bg-slate-950 border-slate-800 text-cyan-400"
+                                                                                }`}>
                                                                                     {ev.time || "00:00:00"}
                                                                                 </div>
 
                                                                                 <div className="flex flex-col min-w-0 flex-1">
-                                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                                    <div className="flex items-center gap-1.5 flex-wrap">
                                                                                         {/* Action Pill */}
                                                                                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${style.badge}`}>
                                                                                             <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                                                                                             {ev.action}
                                                                                         </span>
 
-                                                                                        {/* Component / Structure Tag if available */}
-                                                                                        {ev.structure && ev.structure !== "N/A" && (
+                                                                                        {/* Inspection Specific Badges: Component QID, Inspection Type, Anomaly Ref */}
+                                                                                        {isInsp && ev.componentQid && ev.componentQid !== "-" && (
+                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-600/40 font-mono" title="Component QID">
+                                                                                                <Bookmark className="w-2.5 h-2.5 text-sky-400" />
+                                                                                                {ev.componentQid}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {isInsp && (ev.inspTypeName || ev.inspTypeCode) && (
+                                                                                            <span className="text-[9px] font-bold text-indigo-300 bg-indigo-950/80 px-1.5 py-0.5 rounded border border-indigo-600/40 uppercase">
+                                                                                                {ev.inspTypeName || ev.inspTypeCode}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {isInsp && ev.anomalyRef && (
+                                                                                            <span className="text-[9px] font-black text-red-200 bg-red-950/90 px-2 py-0.5 rounded border border-red-500/60 uppercase flex items-center gap-1 shadow-sm">
+                                                                                                <AlertCircle className="w-3 h-3 text-red-400" />
+                                                                                                {ev.anomalyRef}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {isInsp && ev.defectCode && (
+                                                                                            <span className="text-[9px] font-bold text-orange-300 bg-orange-950/80 px-1.5 py-0.5 rounded border border-orange-600/40 uppercase">
+                                                                                                {ev.defectCode}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {/* Component Type Code if available */}
+                                                                                        {ev.compCode && (
+                                                                                            <span className="text-[8px] font-bold text-slate-400 uppercase bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60">
+                                                                                                {ev.compCode}
+                                                                                            </span>
+                                                                                        )}
+
+                                                                                        {/* Structure Tag if available and not redundant */}
+                                                                                        {!isInsp && ev.structure && ev.structure !== "N/A" && (
                                                                                             <span className="text-[8px] font-bold text-slate-400 uppercase bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60">
                                                                                                 {ev.structure}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
 
-                                                                                    {/* Timestamp & Remarks */}
+                                                                                    {/* Timestamp & Remarks / Findings */}
                                                                                     <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium mt-1 flex-wrap">
-                                                                                        <div className="flex items-center gap-1 text-slate-500">
+                                                                                        <div className="flex items-center gap-1 text-slate-500 shrink-0">
                                                                                             <Clock className="w-3 h-3" />
                                                                                             <span>{formatEventTime(ev.eventTime)}</span>
                                                                                         </div>
 
                                                                                         {ev.remarks && ev.remarks !== "-" && (
-                                                                                            <span className="text-slate-300 font-normal italic truncate max-w-md">
+                                                                                            <span className="text-slate-200 font-normal truncate max-w-xl">
                                                                                                 • {ev.remarks}
                                                                                             </span>
                                                                                         )}
@@ -1211,12 +1612,27 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                         </div>
 
                         {/* 2. Action Selector (Standard List) */}
-                        <div className="space-y-1.5">
-                            <Label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Action / Status Event</Label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-[10px] font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
+                                    <Video className="w-3.5 h-3.5 text-blue-400" />
+                                    Action / Status Event
+                                </Label>
+                                {(() => {
+                                    const currentSelected = STANDARD_ACTIONS.find(a => isActionMatch(formAction, a));
+                                    const displayLabel = currentSelected ? currentSelected.label : (formAction || "Select Action");
+                                    return (
+                                        <div className="flex items-center gap-1.5 text-[10px] font-black text-white bg-blue-600 px-3 py-0.5 rounded-full shadow-md shadow-blue-500/30 border border-blue-400">
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                            <span>Current: {displayLabel}</span>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                 {STANDARD_ACTIONS.map((act) => {
                                     const IconComp = act.icon;
-                                    const isSelected = formAction === act.value;
+                                    const isSelected = isActionMatch(formAction, act);
                                     return (
                                         <button
                                             key={act.value}
@@ -1225,23 +1641,23 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                 if (isEdit) setFormAction(act.value);
                                                 else handleAddFormChange(formTapeNo, formChapterNo, act.value);
                                             }}
-                                            className={`p-2 rounded-lg text-left text-xs font-bold transition-all flex items-center gap-2 border ${
+                                            className={`p-2.5 rounded-xl text-left text-xs font-bold transition-all flex items-center gap-2 border ${
                                                 isSelected
-                                                    ? "bg-blue-600/25 border-blue-500 text-white shadow-sm ring-1 ring-blue-500"
-                                                    : "bg-slate-900/80 border-slate-800 text-slate-300 hover:bg-slate-850 hover:text-white"
+                                                    ? "bg-blue-600 border-blue-400 text-white font-black shadow-lg shadow-blue-500/40 ring-2 ring-blue-400 scale-[1.02]"
+                                                    : "bg-slate-900/90 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-700"
                                             }`}
                                         >
-                                            <IconComp className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                                            <IconComp className={`w-4 h-4 shrink-0 ${isSelected ? "text-white" : "text-slate-400 opacity-80"}`} />
                                             <span className="truncate">{act.label}</span>
-                                            {isSelected && <Check className="w-3 h-3 ml-auto text-blue-400 shrink-0" />}
+                                            {isSelected && <CheckCircle2 className="w-4 h-4 ml-auto text-white shrink-0 animate-in zoom-in-75" />}
                                         </button>
                                     );
                                 })}
                             </div>
                         </div>
 
-                        {/* 3. Wall Clock Date & Time (with Auto-Calculation & manual editing) */}
-                        <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/90 border border-slate-800">
+                        {/* 3. Wall Clock Date & Time (Separated Local Date and Local Time) */}
+                        <div className="space-y-2 p-3 rounded-xl bg-slate-900/90 border border-slate-800">
                             <div className="flex items-center justify-between">
                                 <Label className="text-[10px] font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
                                     <Calendar className="w-3.5 h-3.5 text-blue-400" />
@@ -1266,15 +1682,34 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                 </div>
                             </div>
 
-                            <Input
-                                type="datetime-local"
-                                step="1"
-                                value={formEventTime}
-                                onChange={(e) => handleDateTimeChange(e.target.value)}
-                                className="h-9 text-xs font-mono font-bold bg-slate-950 border-slate-700 text-slate-100 focus-visible:ring-blue-500"
-                            />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                                        <Calendar className="w-3 h-3 text-blue-400" />
+                                        Date (Local) *
+                                    </Label>
+                                    <Input
+                                        type="date"
+                                        value={formDate}
+                                        onChange={(e) => handleDateOrTimeChange(e.target.value, formTime)}
+                                        className="h-9 text-xs font-mono font-bold bg-slate-950 border-slate-700 text-slate-100 focus-visible:ring-blue-500"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-cyan-400" />
+                                        Time (Local - 12h or 24h) *
+                                    </Label>
+                                    <SmartTimeInput
+                                        value={formTime}
+                                        onChange={(val) => handleDateOrTimeChange(formDate, val)}
+                                        includeSeconds={true}
+                                        className="h-9"
+                                    />
+                                </div>
+                            </div>
                             <p className="text-[10px] text-slate-400 italic">
-                                Timestamp auto-adapts based on Tape & Chapter timeline; you can freely adjust it anytime.
+                                Timestamp auto-adapts in your local browser timezone; you can freely adjust it anytime.
                             </p>
                         </div>
 
@@ -1331,6 +1766,147 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         );
     };
 
+    // Render Move Tape to Another Dive Modal
+    const renderMoveTapeModal = () => {
+        if (!isMoveTapeModalOpen) return null;
+
+        const targetEvents = localEvents.filter(ev => (ev.tapeNo || "").trim().toUpperCase() === (moveTargetTapeNo || "").trim().toUpperCase());
+        const matchingInspCount = targetEvents.filter(ev => ev.logType === "insp" || ev.action === "INSPECTION" || ev.action === "ANOMALY" || ev.action === "DEFECT").length;
+        const distinctChCount = new Set(targetEvents.map(ev => String(ev.chapterNo || "1"))).size || 1;
+
+        const selectedTargetDep = availableDeployments.find((d: any) => String(d.id || d.dive_job_id || d.rov_job_id) === String(moveTargetDiveId));
+        const isSameDive = moveCurrentDiveNo && selectedTargetDep && (
+            String(selectedTargetDep.jobNo || selectedTargetDep.dive_no || selectedTargetDep.deployment_no).trim().toUpperCase() === String(moveCurrentDiveNo).trim().toUpperCase()
+        );
+
+        return (
+            <Dialog open={isMoveTapeModalOpen} onOpenChange={setIsMoveTapeModalOpen}>
+                <DialogContent className="max-w-lg bg-slate-950 border border-slate-800 shadow-2xl text-slate-100 p-0 overflow-hidden">
+                    <DialogHeader className="p-4 bg-gradient-to-r from-blue-950/80 via-slate-900 to-slate-900 border-b border-slate-800 flex flex-row items-center gap-3">
+                        <div className="p-2 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-400 shrink-0">
+                            <ArrowRightLeft className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-0.5 min-w-0">
+                            <DialogTitle className="text-sm font-black uppercase tracking-wider text-slate-100">
+                                Move Tape to Another Dive No.
+                            </DialogTitle>
+                            <p className="text-xs text-slate-400">
+                                Reassign tape and its registered inspection events to another dive
+                            </p>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="p-4 space-y-4">
+                        {/* 1. Tape Info & Current Dive */}
+                        <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Selected Tape:</span>
+                                <span className="font-mono font-black text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded border border-cyan-800/50">
+                                    {moveTargetTapeNo}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Current Dive / Job:</span>
+                                <span className="font-bold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-800/50">
+                                    {moveCurrentDiveNo || "N/A"}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* 2. Destination Dive Selection */}
+                        <div className="space-y-1.5">
+                            <Label className="text-[10px] font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
+                                <Anchor className="w-3.5 h-3.5 text-blue-400" />
+                                Destination Dive No. *
+                            </Label>
+                            {availableDeployments.length > 0 ? (
+                                <Select value={moveTargetDiveId} onValueChange={setMoveTargetDiveId}>
+                                    <SelectTrigger className="h-10 text-xs font-bold bg-slate-900 border-slate-700 text-slate-100 focus:ring-blue-500">
+                                        <SelectValue placeholder="Select destination dive number..." />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-slate-900 border-slate-800 text-slate-100 max-h-60">
+                                        {availableDeployments.map((d: any) => {
+                                            const depId = String(d.id || d.dive_job_id || d.rov_job_id);
+                                            const depNo = d.jobNo || d.dive_no || d.deployment_no || `JOB-${depId}`;
+                                            const depName = d.name || d.diver_name || d.rov_system || "";
+                                            const isCur = String(depNo).trim().toUpperCase() === String(moveCurrentDiveNo).trim().toUpperCase();
+                                            return (
+                                                <SelectItem key={depId} value={depId} className="text-xs focus:bg-blue-600 focus:text-white">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold">{depNo}</span>
+                                                        {depName && <span className="text-slate-400 text-[11px]">({depName})</span>}
+                                                        {isCur && <span className="text-[9px] text-amber-400 bg-amber-950/60 px-1.5 py-0.2 rounded font-bold ml-1">Current</span>}
+                                                    </div>
+                                                </SelectItem>
+                                            );
+                                        })}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-xs text-amber-300">
+                                    No other dives/deployments available in this project.
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 3. Reassignment Impact Summary */}
+                        <div className="p-3 rounded-xl bg-blue-950/20 border border-blue-900/40 space-y-2">
+                            <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                                What will be updated:
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="p-2 rounded bg-slate-900/70 border border-slate-800">
+                                    <div className="text-slate-400 text-[9px] font-bold uppercase">Inspection Events</div>
+                                    <div className="text-blue-400 font-mono font-black text-sm">{matchingInspCount}</div>
+                                    <div className="text-[9px] text-slate-400">will follow to new dive</div>
+                                </div>
+                                <div className="p-2 rounded bg-slate-900/70 border border-slate-800">
+                                    <div className="text-slate-400 text-[9px] font-bold uppercase">Tape Chapters</div>
+                                    <div className="text-emerald-400 font-mono font-black text-sm">{distinctChCount}</div>
+                                    <div className="text-[9px] text-slate-400">reassigned to new dive</div>
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                                All {matchingInspCount} inspection event(s) registered on Tape <strong className="text-slate-200">{moveTargetTapeNo}</strong> will automatically be updated to match the new dive number.
+                            </p>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between sm:justify-between">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setIsMoveTapeModalOpen(false)}
+                            disabled={isMovingTape}
+                            className="text-xs text-slate-400 hover:text-white"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleConfirmMoveTape}
+                            disabled={isMovingTape || !moveTargetDiveId || !!isSameDive}
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20 flex items-center gap-1.5"
+                        >
+                            {isMovingTape ? (
+                                <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Moving Tape...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                                    <span>Confirm Move Tape</span>
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        );
+    };
+
     if (inline) {
         return (
             <div className="h-full flex flex-col bg-slate-950/80">
@@ -1338,6 +1914,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                     {renderTreeView()}
                 </div>
                 {renderAddEditModal()}
+                {renderMoveTapeModal()}
             </div>
         );
     }
@@ -1397,6 +1974,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             </Dialog>
 
             {renderAddEditModal()}
+            {renderMoveTapeModal()}
         </div>
     );
 };

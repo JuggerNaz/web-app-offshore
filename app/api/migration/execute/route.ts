@@ -5357,6 +5357,7 @@ export async function POST(request: NextRequest) {
                 inspIdCache,
                 jobpackDefaultPrefixMap,
                 sowReportMap: sowInspCache,
+                companyId: resolvedCompanyId || undefined,
               });
               return;
             }

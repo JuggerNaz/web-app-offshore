@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 export interface CompanySettings {
@@ -68,7 +68,7 @@ export const generateROVNavigReport = async (
     const isBlankReport = config.printBlankReport === true || config.isBlankReport === true;
 
     const colors = {
-        navy: [31, 55, 93] as [number, number, number],
+        navy: [7, 78, 136] as [number, number, number],
         lightGray: [248, 250, 252] as [number, number, number],
         border: [203, 213, 225] as [number, number, number],
         darkBorder: [100, 116, 139] as [number, number, number],
@@ -388,7 +388,7 @@ export const generateROVNavigReport = async (
         const jobPackName = jobPack?.name || hData.jobpackName || "N/A";
         const vessel = hData.vessel || "N/A";
         const reportNo = sowReportNo || hData.sowReportNo || `${config.reportNoPrefix || "REP"}-NAVIG-01`;
-        const inspDate = hData.date || format(new Date(), "dd/MM/yyyy");
+        const inspDate = getInspectionDateRange(rawRecords, hData, config);
 
         const fieldsRow1 = [
             { label: "PIPELINE / STRUCTURE:", value: structName },
@@ -398,7 +398,7 @@ export const generateROVNavigReport = async (
 
         const fieldsRow2 = [
             { label: "VESSEL / SPREAD:", value: vessel },
-            { label: "INSPECTION DATE:", value: inspDate },
+            { label: "INSP. DATE RANGE:", value: inspDate },
             { label: "INSPECTION TYPE:", value: "NAVIG (Pipeline ROV Survey)" }
         ];
 
@@ -449,7 +449,7 @@ export const generateROVNavigReport = async (
             margin: { left: margin, right: margin },
             head: [
                 [
-                    { content: "GEODETIC PARAMETERS & NAVIGATION REFERENCE", colSpan: 6, styles: { fillColor: isPrintFriendly ? [230, 230, 230] : [31, 55, 93], textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontStyle: "bold", halign: "center", fontSize: 7 } }
+                    { content: "GEODETIC PARAMETERS & NAVIGATION REFERENCE", colSpan: 6, styles: {fillColor: isPrintFriendly ? [230, 230, 230] : [7, 78, 136], textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontStyle: "bold", halign: "center", fontSize: 7, lineWidth: 0.1, lineColor: colors.border} }
                 ]
             ],
             body: [
@@ -558,23 +558,23 @@ export const generateROVNavigReport = async (
         margin: { left: margin, right: margin },
         head: [
             [
-                { content: "Item No.", styles: { halign: "center" } },
-                { content: "Date", styles: { halign: "center" } },
-                { content: "Time", styles: { halign: "center" } },
-                { content: "Easting\n(m)", styles: { halign: "center" } },
-                { content: "Northing\n(m)", styles: { halign: "center" } },
-                { content: "KP\n(km)", styles: { halign: "center" } },
-                { content: "Depth\n(m)", styles: { halign: "center" } },
-                { content: "CP Reading\n(mV)", styles: { halign: "center" } },
-                { content: "Event Name", styles: { halign: "center" } },
-                { content: "Finding", styles: { halign: "center" } },
-                { content: "Anomaly\nPriority", styles: { halign: "center" } }
+                { content: "Item No.", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Date", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Time", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Easting\n(m)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Northing\n(m)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "KP\n(km)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Depth\n(m)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "CP Reading\n(mV)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Event Name", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Finding", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Anomaly\nPriority", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
             ]
         ],
         body: tableBodyData,
         theme: "grid",
         headStyles: {
-            fillColor: isPrintFriendly ? [240, 240, 240] : [31, 55, 93],
+            fillColor: isPrintFriendly ? [240, 240, 240] : [7, 78, 136],
             textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
             fontSize: 6.8,
             fontStyle: "bold",
@@ -640,7 +640,23 @@ export const generateROVNavigReport = async (
     });
 
     // Apply Watermark, Signatures & Page Numbers
-    applyWatermarkAndSignaturesGlobal(doc, config);
+    
+        const totalPages = doc.getNumberOfPages();
+        for (let j = 1; j <= totalPages; j++) {
+            doc.setPage(j);
+            const footerY = pageHeight - 5;
+            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+            doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
+            doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
+            doc.setFont("helvetica", "normal");
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
+            if (config?.showPageNumbers !== false) {
+                doc.text(`Page ${j} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+            }
+        }
+        (doc as any)._footerApplied = true;
+
+        applyWatermarkAndSignaturesGlobal(doc, config);
 
     if (config.returnBlob) {
         return doc.output("blob");

@@ -76,6 +76,11 @@ interface InspectionFormProps {
     activeDep: any;
     currentMovement: string;
     tapeId: any;
+    jobTapes?: any[];
+    originalRecordContext?: any;
+    tapeNo?: string;
+    activeChapter?: number;
+    deployments?: any[];
     vidState: string;
     onChangeTaskClick?: () => void;
     onChangeComponentClick?: () => void;
@@ -91,6 +96,7 @@ interface InspectionFormProps {
     setPrevRefNo: (val: string) => void;
     criteriaRules?: any[];
     onVoiceActionCommand?: (actionIntent: any) => void;
+    calculateAutoCounter?: (targetDate?: string, targetTime?: string) => number | null;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -134,6 +140,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     activeDep,
     currentMovement,
     tapeId,
+    jobTapes = [],
+    originalRecordContext,
+    tapeNo,
+    activeChapter = 1,
+    deployments = [],
     vidState,
     onChangeTaskClick,
     onChangeComponentClick,
@@ -148,8 +159,56 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     validateAnomalyRef,
     setPrevRefNo,
     criteriaRules = [],
-    onVoiceActionCommand
+    onVoiceActionCommand,
+    calculateAutoCounter
 }) => {
+    const displayDiveNo = (() => {
+        if (isEditing && originalRecordContext) {
+            return (
+                originalRecordContext.dive_no ||
+                originalRecordContext.deployment_no ||
+                originalRecordContext.raw?.insp_dive_jobs?.job_no ||
+                originalRecordContext.raw?.insp_dive_jobs?.dive_no ||
+                originalRecordContext.raw?.insp_rov_jobs?.job_no ||
+                originalRecordContext.raw?.insp_rov_jobs?.deployment_no ||
+                deployments?.find((d: any) => String(d.id) === String(originalRecordContext.dive_job_id || originalRecordContext.rov_job_id))?.deployment_no ||
+                deployments?.find((d: any) => String(d.id) === String(originalRecordContext.dive_job_id || originalRecordContext.rov_job_id))?.dive_no ||
+                activeDep?.deployment_no ||
+                activeDep?.dive_no ||
+                activeDep?.job_no ||
+                "-"
+            );
+        }
+        return activeDep?.deployment_no || activeDep?.dive_no || activeDep?.job_no || "-";
+    })();
+
+    const displayTapeNo = (() => {
+        if (isEditing && originalRecordContext) {
+            return (
+                originalRecordContext.tape_no ||
+                originalRecordContext.raw?.insp_video_tapes?.tape_no ||
+                jobTapes?.find((t: any) => t.tape_id === originalRecordContext.tape_id)?.tape_no ||
+                tapeNo ||
+                "-"
+            );
+        }
+        return tapeNo || jobTapes?.find((t: any) => t.tape_id === tapeId)?.tape_no || "-";
+    })();
+
+    const displayChapter = (() => {
+        if (isEditing && originalRecordContext) {
+            const ch = (
+                originalRecordContext.chapter_no ??
+                originalRecordContext.raw?.insp_video_tapes?.chapter_no ??
+                originalRecordContext.raw?.chapter_no ??
+                originalRecordContext.raw?.inspection_data?.chapter_no ??
+                originalRecordContext.raw?.inspection_data?.chapter ??
+                jobTapes?.find((t: any) => t.tape_id === originalRecordContext.tape_id)?.chapter_no
+            );
+            return ch !== undefined && ch !== null ? String(ch) : "1";
+        }
+        return activeChapter !== undefined && activeChapter !== null ? String(activeChapter) : "1";
+    })();
     const [activeCriteriaRules, setActiveCriteriaRules] = React.useState<any[]>(criteriaRules || []);
 
     // Sync from prop
@@ -419,43 +478,83 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     };
 
     React.useEffect(() => {
-        if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
         if (!activeSpec || !['MGI', 'RMGI', 'DMGI', 'MGROW'].includes(activeSpec.toUpperCase())) return;
-        const vDepthRaw = getFormDepth();
-        const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
-        const waterDepth = resolveWaterDepth();
-        const applicableMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
-        if (applicableMax === null) return;
-        const formattedThreshold = `${applicableMax.toFixed(1)}mm`;
-        if (dynamicProps?.mgi_profile !== formattedThreshold && handleDynamicPropChange) {
-            handleDynamicPropChange('mgi_profile', formattedThreshold);
+
+        let applicableMax: number | null = null;
+
+        // When viewing or editing an existing record, retrieve the max allowable MGI from the record
+        if (isEditing && (dynamicProps?.max_allowable_thickness != null || dynamicProps?.mgi_profile != null)) {
+            if (dynamicProps?.max_allowable_thickness != null && dynamicProps.max_allowable_thickness !== "") {
+                const num = parseFloat(String(dynamicProps.max_allowable_thickness));
+                if (!isNaN(num)) applicableMax = num;
+            }
+            if (applicableMax === null && dynamicProps?.mgi_profile != null && dynamicProps.mgi_profile !== "") {
+                const num = parseFloat(String(dynamicProps.mgi_profile).replace(/[^\d.-]/g, ''));
+                if (!isNaN(num)) applicableMax = num;
+            }
         }
-        if (dynamicProps?.max_allowable_thickness !== applicableMax && handleDynamicPropChange) {
-            handleDynamicPropChange('max_allowable_thickness', applicableMax);
+
+        // For a new record (or if existing record does not have a saved value), calculate from current active MGI profile settings
+        if (applicableMax === null) {
+            if (!activeMGIProfile || !activeMGIProfile.thresholds || activeMGIProfile.thresholds.length === 0) return;
+            const vDepthRaw = getFormDepth();
+            const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
+            const waterDepth = resolveWaterDepth();
+            applicableMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
+            if (applicableMax === null) return;
+            const formattedThreshold = `${applicableMax.toFixed(1)}mm`;
+            if (dynamicProps?.mgi_profile !== formattedThreshold && handleDynamicPropChange) {
+                handleDynamicPropChange('mgi_profile', formattedThreshold);
+            }
+            if (dynamicProps?.max_allowable_thickness !== applicableMax && handleDynamicPropChange) {
+                handleDynamicPropChange('max_allowable_thickness', applicableMax);
+            }
+            if (activeMGIProfile?.id && dynamicProps?._mgi_profile_id !== activeMGIProfile.id && handleDynamicPropChange) {
+                handleDynamicPropChange('_mgi_profile_id', activeMGIProfile.id);
+            }
         }
-        if (activeMGIProfile?.id && dynamicProps?._mgi_profile_id !== activeMGIProfile.id && handleDynamicPropChange) {
-            handleDynamicPropChange('_mgi_profile_id', activeMGIProfile.id);
-        }
-        const thicknessFields = ['mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9'];
+
+        const thicknessFields = [
+            'mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9',
+            'marine_growth_hard', 'hard_growth', 'effective_thickness'
+        ];
         const currentMaxT = Math.max(...thicknessFields.map(f => parseFloat(dynamicProps?.[f]) || 0));
-        if (currentMaxT > applicableMax) {
+        if (applicableMax !== null && currentMaxT > applicableMax) {
             if (lastFlaggedThreshold !== applicableMax && findingType !== 'Anomaly') {
                 setFindingType('Anomaly');
                 setLastFlaggedThreshold(applicableMax);
                 setAnomalyData((prev: any) => ({
                     ...prev,
                     defectCode: 'Marine Growth',
-                    description: `MGI Thickness threshold breached. Depth: ${vDepthRaw}${vDepthUnit}. Threshold: ${applicableMax.toFixed(1)}mm. Measured: ${currentMaxT}mm.`,
+                    description: `MGI Thickness threshold breached. Depth: ${getFormDepth()}${dynamicProps?.verification_depth_unit || 'm'}. Threshold: ${applicableMax!.toFixed(1)}mm. Measured: ${currentMaxT}mm.`,
                     priority: 'Anomalous'
                 }));
                 toast.warning(`MGI Threshold Breached (${applicableMax.toFixed(1)}mm)! Switch to Anomaly detected.`, {
-                    description: `Measured ${currentMaxT}mm at ${vDepthRaw}${vDepthUnit} depth.`
+                    description: `Measured ${currentMaxT}mm at ${getFormDepth()}${dynamicProps?.verification_depth_unit || 'm'} depth.`
                 });
             }
         } else if (lastFlaggedThreshold === applicableMax && findingType === 'Anomaly' && anomalyData.defectCode === 'Marine Growth') {
             setLastFlaggedThreshold(null);
         }
-    }, [dynamicProps?.mgi_hard_thickness_at_12, dynamicProps?.mgi_hard_thickness_at_3, dynamicProps?.mgi_hard_thickness_at_6, dynamicProps?.mgi_hard_thickness_at_9, dynamicProps?.verification_depth, dynamicProps?.verification_depth_unit, activeMGIProfile, headerData.waterDepth, activeSpec, selectedComp.depth, selectedComp.lowestElev]);
+    }, [
+        dynamicProps?.mgi_hard_thickness_at_12,
+        dynamicProps?.mgi_hard_thickness_at_3,
+        dynamicProps?.mgi_hard_thickness_at_6,
+        dynamicProps?.mgi_hard_thickness_at_9,
+        dynamicProps?.marine_growth_hard,
+        dynamicProps?.hard_growth,
+        dynamicProps?.effective_thickness,
+        dynamicProps?.verification_depth,
+        dynamicProps?.verification_depth_unit,
+        dynamicProps?.mgi_profile,
+        dynamicProps?.max_allowable_thickness,
+        activeMGIProfile,
+        headerData.waterDepth,
+        activeSpec,
+        selectedComp.depth,
+        selectedComp.lowestElev,
+        isEditing
+    ]);
 
     React.useEffect(() => {
         if (!activeSpec || (activeSpec.toUpperCase() !== 'UTWTK' && activeSpec.toUpperCase() !== 'RUTWT' && activeSpec.toUpperCase() !== 'DUTWT' && activeSpec.toUpperCase() !== 'SZONE' && activeSpec.toUpperCase() !== 'RSZCI' && activeSpec.toUpperCase() !== 'DSZCI')) return;
@@ -687,7 +786,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     // Synchronize nominal wall thickness from selected component spec if not set
     React.useEffect(() => {
-        if (!isEditing && (isThicknessTask || compNomThickness) && handleDynamicPropChange) {
+        if ((isThicknessTask || compNomThickness) && handleDynamicPropChange) {
             if (compNomThickness && compNomThickness > 0) {
                 const curNt = parseFloat(dynamicProps?.nominal_thickness || dynamicProps?.nominal_wall_thickness || dynamicProps?.wall_thickness || dynamicProps?.nom_wt || '');
                 if (isNaN(curNt) || curNt === 0) {
@@ -1155,7 +1254,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">
-            <div className="px-3 py-1.5 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800">
+            <div className="px-3 py-1.5 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800 flex-wrap gap-1.5">
                 <span className="font-black tracking-tight text-xs flex items-center gap-1.5 overflow-hidden">
                     <FileText className="w-3.5 h-3.5 text-blue-200 shrink-0" />
                     <span className="text-blue-50 opacity-90 font-bold truncate">{selectedComp.name}</span>
@@ -1163,7 +1262,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         <button onClick={onChangeComponentClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">Change</button>
                     )}
                     <span className="text-blue-100/40 shrink-0">/</span>
-                    <span className="truncate max-w-[340px] sm:max-w-md opacity-90">{(() => {
+                    <span className="truncate max-w-[260px] sm:max-w-xs opacity-90">{(() => {
                         const codeClean = (activeSpec || '').toUpperCase().trim();
                         const jsonSpec = (inspectionSpecs?.inspectionTypes || []).find((t: any) => (t.code || '').toUpperCase().trim() === codeClean);
                         let rawName = jsonSpec?.name;
@@ -1177,7 +1276,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         <button onClick={onChangeTaskClick} className="px-1.5 py-0.5 text-[8px] uppercase tracking-tighter font-bold bg-white/20 hover:bg-white/30 rounded transition-colors text-white border border-white/5 whitespace-nowrap">Change</button>
                     )}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Non-editable location badge (Dive/Dep, Tape, Chapter) */}
+                    <div className="flex items-center gap-1.5 bg-black/25 px-2 py-0.5 rounded border border-white/15 text-[10px] font-mono text-blue-100 shrink-0 select-none" title={`Recorded under ${inspMethod === 'ROV' ? 'ROV Deployment' : 'Dive'}: ${displayDiveNo}, Tape: ${displayTapeNo}, Chapter: ${displayChapter}`}>
+                        <span className="text-blue-200 font-bold text-[9px] uppercase">{inspMethod === 'ROV' ? 'DEP' : 'DIVE'}:</span>
+                        <span className="font-bold text-white text-[10px]">{displayDiveNo}</span>
+                        <span className="text-blue-300/40">|</span>
+                        <span className="text-blue-200 font-bold text-[9px] uppercase">TAPE:</span>
+                        <span className="font-bold text-white text-[10px] max-w-[120px] truncate" title={displayTapeNo}>{displayTapeNo}</span>
+                        <span className="text-blue-300/40">|</span>
+                        <span className="text-blue-200 font-bold text-[9px] uppercase">CH:</span>
+                        <span className="font-bold text-white text-[10px]">{displayChapter}</span>
+                    </div>
+
                     <div className="flex items-center gap-1.5 bg-black/20 px-1.5 py-0.5 rounded border border-white/10 shrink-0">
                         <Video className="w-3 h-3 text-blue-200" />
                         <div className="flex flex-col">
@@ -1324,8 +1435,32 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                             <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Insp. Time</span>
                                             {renderInspectionField({ name: 'inspection_time', label: 'Time', type: 'text' }, 'primary')}
                                         </div>
-                                        <div className="space-y-0.5 flex-grow min-w-[75px] max-w-[105px]">
-                                            <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Counter</span>
+                                        <div className="space-y-0.5 flex-grow min-w-[85px] max-w-[120px]">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase">Counter</span>
+                                                {calculateAutoCounter && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const d = dynamicProps?.inspection_date;
+                                                            const t = dynamicProps?.inspection_time;
+                                                            const secs = calculateAutoCounter(d, t);
+                                                            if (secs !== null && secs !== undefined && secs >= 0) {
+                                                                const fmt = formatTime(secs);
+                                                                handleDynamicPropChange?.('tape_count_no', fmt);
+                                                                handleDynamicPropChange?.('counter', fmt);
+                                                                toast.success(`Counter auto-calculated: ${fmt}`);
+                                                            } else {
+                                                                toast.info("No recorded tape start time found to calculate duration.");
+                                                            }
+                                                        }}
+                                                        className="text-[7.5px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-0.5"
+                                                        title="Auto-calculate counter from tape start time & event time"
+                                                    >
+                                                        <Sparkles className="w-2.5 h-2.5" /> Auto
+                                                    </button>
+                                                )}
+                                            </div>
                                             {renderInspectionField({ name: 'tape_count_no', label: `Live: ${formatTime(vidTimer)}`, type: 'text' }, 'primary')}
                                         </div>
                                     </div>
@@ -1502,6 +1637,16 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                     const softFields = mgiFields.filter((p: any) => p && p.groupRow === 'soft');
                                     const profileField = mgiFields.find((p: any) => p && p.type === 'mgi_profile_display');
                                     const resolveApplicableMax = () => {
+                                        // When viewing or editing an existing record, retrieve from the inspection record
+                                        if (dynamicProps?.max_allowable_thickness != null && dynamicProps.max_allowable_thickness !== "") {
+                                            const num = parseFloat(String(dynamicProps.max_allowable_thickness));
+                                            if (!isNaN(num)) return num;
+                                        }
+                                        if (dynamicProps?.mgi_profile != null && dynamicProps.mgi_profile !== "") {
+                                            const num = parseFloat(String(dynamicProps.mgi_profile).replace(/[^\d.-]/g, ''));
+                                            if (!isNaN(num)) return num;
+                                        }
+                                        // For new record, calculate from current active MGI profile settings
                                         const vDepthRaw = getFormDepth();
                                         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
                                         const waterDepth = resolveWaterDepth();
@@ -1528,9 +1673,52 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                  })()}</span>
                                                               </div>
                                                          </div>
-                                                         {activeMGIProfile && (
-                                                             <div className="flex flex-col items-end"><span className="text-[10px] font-black text-teal-600 dark:text-teal-400 bg-teal-100/50 dark:bg-teal-900/30 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800">MAX: {resolveApplicableMax()?.toFixed(1) ?? '—'}mm</span></div>
-                                                         )}
+                                                         <div className="flex items-center gap-1.5 bg-teal-100/70 dark:bg-teal-900/40 px-2 py-0.5 rounded border border-teal-300 dark:border-teal-700 shadow-sm">
+                                                             <label htmlFor="mgi-max-input" className="text-[10px] font-black text-teal-800 dark:text-teal-300 uppercase tracking-wider cursor-pointer">
+                                                                 MAX:
+                                                             </label>
+                                                             <input
+                                                                 id="mgi-max-input"
+                                                                 type="number"
+                                                                 step="0.1"
+                                                                 value={
+                                                                     dynamicProps?.max_allowable_thickness !== undefined && dynamicProps?.max_allowable_thickness !== null && dynamicProps?.max_allowable_thickness !== ""
+                                                                         ? dynamicProps.max_allowable_thickness
+                                                                         : (dynamicProps?.mgi_profile ? parseFloat(String(dynamicProps.mgi_profile).replace(/[^\d.-]/g, '')) || '' : (resolveApplicableMax() ?? ''))
+                                                                 }
+                                                                 onChange={(e) => {
+                                                                     const raw = e.target.value;
+                                                                     const num = parseFloat(raw);
+                                                                     if (handleDynamicPropChange) {
+                                                                         handleDynamicPropChange('max_allowable_thickness', isNaN(num) ? '' : num);
+                                                                         handleDynamicPropChange('mgi_profile', raw ? `${raw}mm` : '');
+                                                                     }
+                                                                 }}
+                                                                 className="w-16 h-5 px-1.5 text-[10px] font-black text-right text-teal-900 dark:text-teal-100 bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-700 rounded focus:outline-none focus:ring-1 focus:ring-teal-500 shadow-inner"
+                                                                 placeholder="—"
+                                                             />
+                                                             <span className="text-[9px] font-black text-teal-700 dark:text-teal-300">mm</span>
+                                                             {activeMGIProfile && (
+                                                                 <button
+                                                                     type="button"
+                                                                     title="Reset to Active Profile threshold"
+                                                                     onClick={() => {
+                                                                         const vDepthRaw = getFormDepth();
+                                                                         const vDepthUnit = dynamicProps?.verification_depth_unit || 'm';
+                                                                         const waterDepth = resolveWaterDepth();
+                                                                         const profMax = calculateInterpolatedMgiThreshold(vDepthRaw, waterDepth, activeMGIProfile.thresholds, vDepthUnit);
+                                                                         if (profMax !== null && handleDynamicPropChange) {
+                                                                             handleDynamicPropChange('max_allowable_thickness', profMax);
+                                                                             handleDynamicPropChange('mgi_profile', `${profMax.toFixed(1)}mm`);
+                                                                             toast.info(`Reset to active MGI profile: ${profMax.toFixed(1)}mm`);
+                                                                         }
+                                                                     }}
+                                                                     className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-200 p-0.5 rounded transition-colors"
+                                                                 >
+                                                                     <RefreshCw className="w-3 h-3" />
+                                                                 </button>
+                                                             )}
+                                                         </div>
                                                     </div>
                                                     {profileField && !activeMGIProfile && (
                                                         <div className="flex items-center gap-2 p-2.5 bg-amber-50/50 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-800/40 rounded-lg">
@@ -2087,16 +2275,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                             </div>
                             {pendingAttachments.length > 0 && (
                                 <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-1 bg-slate-50/50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
-                                    {pendingAttachments.map(att => {
+                                    {pendingAttachments.map((att, attIdx) => {
+                                        const isPhoto = !att.type || String(att.type).toUpperCase() === 'PHOTO' || String(att.type).toLowerCase().includes('image') || String(att.meta?.type).toUpperCase() === 'PHOTO';
+                                        const isVideo = String(att.type).toUpperCase() === 'VIDEO' || String(att.meta?.type).toUpperCase() === 'VIDEO';
                                         const resolvedPreview = att.previewUrl || (att.id ? `/api/attachment/url?id=${encodeURIComponent(att.id)}${att.path ? `&path=${encodeURIComponent(att.path)}` : ''}` : (att.path ? `/api/attachment/download?path=${encodeURIComponent(att.path)}` : ''));
                                         return (
-                                            <div key={att.id} className="relative group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                                            <div key={att.id || `att-${attIdx}`} className="relative group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 dark:hover:border-blue-700 transition-all">
                                                 <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all flex items-center justify-center" onClick={() => setEditingAttachment(att)}>
-                                                    {att.type === 'PHOTO' && resolvedPreview ? (
+                                                    {isPhoto && resolvedPreview ? (
                                                         <>
                                                             <img 
+                                                                key={`${att.id || attIdx}-${resolvedPreview}`}
                                                                 src={resolvedPreview} 
-                                                                alt="" 
+                                                                alt={att.title || att.name || "Attachment"} 
                                                                 className="w-full h-full object-cover" 
                                                                 onError={(e) => {
                                                                     const target = e.currentTarget;
@@ -2115,14 +2306,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                 <FileText className="w-5 h-5 opacity-50" />
                                                             </div>
                                                         </>
-                                                    ) : att.type === 'VIDEO' && resolvedPreview ? (
+                                                    ) : isVideo && resolvedPreview ? (
                                                         <div className="w-full h-full relative">
                                                             <video src={resolvedPreview} className="w-full h-full object-cover" />
                                                             <div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video className="w-5 h-5 text-white opacity-80" /></div>
                                                         </div>
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center bg-slate-200 dark:bg-slate-800">
-                                                            {att.type === 'VIDEO' ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
+                                                            {isVideo ? <Video className="w-5 h-5 opacity-40" /> : <FileText className="w-5 h-5 opacity-40" />}
                                                         </div>
                                                     )}
                                                 </div>

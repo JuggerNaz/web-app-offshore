@@ -540,6 +540,88 @@
             ]
         },
         {
+            "code": "BOTTM",
+            "name": "Bottom / Seabed Survey",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "name": "face",
+                    "label": "Platform Face",
+                    "type": "combo",
+                    "lib_code": "platform_faces",
+                    "required": false
+                },
+                {
+                    "name": "leg1",
+                    "label": "Leg 1",
+                    "type": "string",
+                    "required": false
+                },
+                {
+                    "name": "leg2",
+                    "label": "Leg 2",
+                    "type": "string",
+                    "required": false
+                },
+                {
+                    "name": "midpoint",
+                    "label": "Midpoint",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "depth1",
+                    "label": "Depth 1",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "depth2",
+                    "label": "Depth 2",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "depth_midpoint ",
+                    "label": "Depth (Midpoint)",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "dist_leg1",
+                    "label": "Distance from Leg 1",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                },
+                {
+                    "name": "dist_midpoint",
+                    "label": "Distance from Midpoint",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "defaultMetric": "m",
+                    "defaultImperial": "ft",
+                    "required": false
+                }
+            ]
+        },
+        {
             "code": "CLEAN",
             "name": "Cleaning",
             "methods": [
@@ -1656,6 +1738,99 @@
                     "label": "Grouted",
                     "type": "boolean",
                     "required": true
+                }
+            ]
+        },
+        {
+            "code": "PL_DB",
+            "name": "Debris Inspection",
+            "methods": [
+                "DIVING"
+            ],
+            "fields": [
+                {
+                    "$ref": "cp_rdg"
+                },
+                {
+                    "name": "distance_debris",
+                    "label": "Distance Debris",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "name": "side_facing",
+                    "label": "Side Facing",
+                    "type": "text",
+                    "required": true
+                },
+                {
+                    "name": "length_debris",
+                    "label": "Length Debris",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "name": "width_debris",
+                    "label": "Width Debris",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "name": "height_debris",
+                    "label": "Height Debris",
+                    "type": "number",
+                    "unitCategory": "LENGTH",
+                    "required": true,
+                    "defaultMetric": "mm",
+                    "defaultImperial": "in"
+                },
+                {
+                    "name": "debris_item",
+                    "label": "Debris Item",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "size_of_debris",
+                    "label": "Size of Debris",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "name": "db_cp_pulled",
+                    "label": "Debris CP Pulled",
+                    "type": "boolean",
+                    "required": false
+                },
+                {
+                    "name": "damage_caused",
+                    "label": "Damage Caused",
+                    "type": "boolean",
+                    "required": false
+                },
+                {
+                    "name": "debris_removed",
+                    "label": "Debris Removed",
+                    "type": "boolean",
+                    "required": false
+                },
+                {
+                    "name": "assessment",
+                    "label": "Assessment",
+                    "type": "text",
+                    "required": false
+                },
+                {
+                    "$ref": "cp_rdg_additional"
                 }
             ]
         },

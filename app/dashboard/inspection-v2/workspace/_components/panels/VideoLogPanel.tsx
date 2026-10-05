@@ -41,6 +41,12 @@ interface VideoLogPanelProps {
   lineWidth?: number;
   setLineWidth?: (width: number) => void;
   overlayManager?: any;
+  deployments?: any[];
+  activeDep?: any;
+  inspMethod?: "DIVING" | "ROV";
+  jobPackId?: string | number | null;
+  structureId?: string | number | null;
+  onRefresh?: () => Promise<void> | void;
 }
 
 export function VideoLogPanel({
@@ -80,6 +86,12 @@ export function VideoLogPanel({
   lineWidth,
   setLineWidth,
   overlayManager,
+  deployments = [],
+  activeDep,
+  inspMethod = "DIVING",
+  jobPackId,
+  structureId,
+  onRefresh,
 }: VideoLogPanelProps) {
   return (
     <div className="flex flex-col h-full bg-[#0f172a] text-slate-100 overflow-hidden">
@@ -124,6 +136,12 @@ export function VideoLogPanel({
           onEditEvent={(ev) => {
             setEditingEvent(ev);
           }}
+          onRefresh={onRefresh}
+          deployments={deployments}
+          activeDep={activeDep}
+          inspMethod={inspMethod}
+          jobPackId={jobPackId}
+          structureId={structureId}
         />
       </div>
     </div>

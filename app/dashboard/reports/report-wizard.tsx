@@ -1814,7 +1814,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
             const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
             const { generateROVRSCORSurveyReport } = await import("@/utils/report-generators/rov-rscor-survey-report");
-            const { generateROVCPReport, isROVRecord } = await import("@/utils/report-generators/rov-cp-report");
+            const { generateROVCPReport, isROVRecord, hasCPReading } = await import("@/utils/report-generators/rov-cp-report");
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
             const { generateROVCondReport }  = await import("@/utils/report-generators/rov-rcond-report");
             const { generateROVCondSketchReport } = await import("@/utils/report-generators/rov-rcond-sketch-report");
@@ -3705,9 +3705,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const d = r.inspection_data || r.inspection_dat || {};
-                const hasCP = d.cp_rdg !== undefined || d.cp_reading_mv !== undefined || d.cp !== undefined;
                 const isROV = isROVRecord(r);
+                const hasCP = hasCPReading(r);
                 return sowMatches && jobPackMatches && hasCP && isROV;
             });
 

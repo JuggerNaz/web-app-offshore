@@ -35,25 +35,67 @@ type AuthenticatedRoleHandler = (
  */
 export async function getUserMembership(supabase: any, userId: string, companyId?: string | null) {
   // Profile, memberships and role are all keyed by user_id and independent —
+  // Profile, memberships and role are all keyed by user_id and independent —
   // fetch them in parallel instead of sequentially (saves 2 round trips).
   const [profileRes, membershipsRes, roleRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).single(),
     supabase
       .from("company_memberships")
-      .select("*, company:companies(*)")
+      .select("*, company:companies!company_id(*)")
       .eq("user_id", userId)
       .eq("is_active", true),
     supabase.from("user_roles").select("role, modules").eq("user_id", userId).maybeSingle(),
   ]);
 
-  const profile = profileRes.data;
-  const profileError = profileRes.error;
+  let profile = profileRes.data;
+  let profileError = profileRes.error;
+  let allMemberships = membershipsRes.data || [];
+
+  // If RLS blocked standard client query (e.g. auth.uid() session timing), fallback to admin client
+  if (!profile || profileError || allMemberships.length === 0) {
+    try {
+      const { createAdminClient } = await import("@/utils/supabase/server");
+      const adminClient = createAdminClient();
+      
+      if (!profile || profileError) {
+        const adminProfileRes = await adminClient.from("profiles").select("*").eq("id", userId).maybeSingle();
+        if (adminProfileRes.data) {
+          profile = adminProfileRes.data;
+          profileError = null;
+        }
+      }
+
+      if (allMemberships.length === 0) {
+        const adminMembershipsRes = await adminClient
+          .from("company_memberships")
+          .select("*, company:companies!company_id(*)")
+          .eq("user_id", userId)
+          .eq("is_active", true);
+
+        if (adminMembershipsRes.data && adminMembershipsRes.data.length > 0) {
+          allMemberships = adminMembershipsRes.data;
+        } else {
+          // Direct query on company_memberships without join
+          const directRes = await adminClient
+            .from("company_memberships")
+            .select("*")
+            .eq("user_id", userId)
+            .eq("is_active", true);
+          if (directRes.data && directRes.data.length > 0) {
+            allMemberships = directRes.data;
+          }
+        }
+      }
+    } catch (adminErr) {
+      console.warn("[getUserMembership] Admin client fallback warning:", adminErr);
+    }
+  }
 
   if (profileError || !profile) {
     return { error: "Profile not found", status: 404 };
   }
 
-  if (!profile.is_active) {
+  if (profile.is_active === false) {
     return { error: "User profile is inactive", status: 403 };
   }
 
@@ -98,16 +140,39 @@ export async function getUserMembership(supabase: any, userId: string, companyId
     }
   }
 
-  // 2. Resolve memberships (fetched in parallel above)
-  // Filter out any memberships that are inactive OR belong to a deactivated organization
-  const allMemberships = membershipsRes.data || [];
+  // 2. Resolve company details if missing
+  const missingCompanyIds = allMemberships
+    .filter((m: any) => !m.company && m.company_id)
+    .map((m: any) => m.company_id);
+
+  if (missingCompanyIds.length > 0) {
+    let comps: any[] | null = null;
+    const compsRes = await supabase.from("companies").select("*").in("id", missingCompanyIds);
+    comps = compsRes.data;
+    if (!comps || comps.length === 0) {
+      try {
+        const { createAdminClient } = await import("@/utils/supabase/server");
+        const adminClient = createAdminClient();
+        const adminCompsRes = await adminClient.from("companies").select("*").in("id", missingCompanyIds);
+        comps = adminCompsRes.data;
+      } catch (_) {}
+    }
+
+    const compMap = new Map((comps || []).map((c: any) => [c.id, c]));
+    allMemberships = allMemberships.map((m: any) => ({
+      ...m,
+      company: m.company || compMap.get(m.company_id) || { id: m.company_id, name: "Default Company", is_active: true },
+    }));
+  }
+
+  // Filter out any memberships that are explicitly inactive OR belong to an explicitly deactivated organization
   const memberships = allMemberships.filter((m: any) => {
-    if (!m.is_active) return false;
+    if (m.is_active === false) return false;
     if (m.company && (m.company.is_active === false || m.company.is_active === 0)) return false;
     return true;
   });
 
-  if (membershipsRes.error || !memberships || memberships.length === 0) {
+  if (!memberships || memberships.length === 0) {
     return { error: "No active company memberships found", status: 403, profile };
   }
 

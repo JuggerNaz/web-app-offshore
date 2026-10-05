@@ -359,6 +359,7 @@ export const POST = withAuth(
 
     const createdAt = new Date().toISOString();
     const structureIdNumber = Number(structure_id);
+    const companyId = request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value || body.company_id;
 
     const { data, error } = await supabase
       .from("structure_components")
@@ -367,6 +368,7 @@ export const POST = withAuth(
         structure_id: structureIdNumber,
         created_at: createdAt,
         created_by: user.id,
+        ...(companyId ? { company_id: companyId } : {}),
       })
       .select()
       .single();

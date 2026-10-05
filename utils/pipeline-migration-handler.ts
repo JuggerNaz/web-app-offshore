@@ -15,6 +15,7 @@ export interface PipelineMigrationContext {
   updateComponentSpecs?: boolean;
   insertNewComponents?: boolean;
   migrateAttachments?: boolean;
+  companyId?: string;
   mappings: Record<string, any[]>;
   logs: string[];
   report: Record<string, { status: string; oracleRows: number; migratedRows: number; errors: string[] }>;
@@ -499,7 +500,11 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
     // 1. Ensure parent record in structure table
     const { error: parentErr } = await supabase
       .from("structure")
-      .upsert({ str_id: resolvedStructureId, str_type: "PIPELINE" }, { onConflict: "str_id" });
+      .upsert({ 
+        str_id: resolvedStructureId, 
+        str_type: "PIPELINE",
+        ...(ctx.companyId ? { company_id: ctx.companyId } : {})
+      }, { onConflict: "str_id" });
 
     if (parentErr) {
       logs.push(`[Pipeline Engine] Warning: inserting parent structure: ${parentErr.message}`);
@@ -517,7 +522,10 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
     } else {
       const { error: pipeErr } = await supabase
         .from("u_pipeline")
-        .upsert(pgPipeRecord, { onConflict: "pipe_id" });
+        .upsert({
+          ...pgPipeRecord,
+          ...(ctx.companyId ? { company_id: ctx.companyId } : {})
+        }, { onConflict: "pipe_id" });
 
       if (pipeErr) {
         throw pipeErr;
@@ -564,13 +572,17 @@ export async function migratePipelineStructureAndGeodetics(ctx: PipelineMigratio
         q_id: `PIPE-${resolvedStructureId}`,
         code: "PIPE",
         is_deleted: false,
-        metadata: defaultCompMetadata
+        metadata: defaultCompMetadata,
+        ...(ctx.companyId ? { company_id: ctx.companyId } : {})
       };
       await (supabase.from as any)("structure_components").insert(defaultCompRecord);
       logs.push(`[Pipeline Engine] Auto-created default pipeline component with KP Range 0.000 - ${resolvedPipeLength} km`);
     } else if (existingComp.comp_id === 999999 || existingComp.id_no === "PIPE-MAIN-01") {
       await (supabase.from as any)("structure_components")
-        .update({ metadata: defaultCompMetadata })
+        .update({ 
+          metadata: defaultCompMetadata,
+          ...(ctx.companyId ? { company_id: ctx.companyId } : {})
+        })
         .eq("id", existingComp.id);
       logs.push(`[Pipeline Engine] Updated default pipeline component with KP Range 0.000 - ${resolvedPipeLength} km`);
     }
@@ -1433,7 +1445,8 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
                 status: "ACTIVE",
                 cr_user: "migration",
                 cr_date: `${inspDate}T${inspTime}`,
-                workunit: "000"
+                workunit: "000",
+                ...(ctx.companyId ? { company_id: ctx.companyId } : {})
               }, { onConflict: "tape_no" })
               .select("tape_id")
               .single();
@@ -1468,7 +1481,8 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
             remarks: finalEventDescription !== "-" ? finalEventDescription : (rawComments || rawDescr || `${rawEvent}: ${rawPos}`),
             cr_user: 'migration',
             cr_date: `${inspDate}T${inspTime}`,
-            workunit: '000'
+            workunit: '000',
+            ...(ctx.companyId ? { company_id: ctx.companyId } : {})
           });
         }
         // NOTE: We do NOT skip this row! It is ALSO inserted into insp_records so 100% of survey records are retained.
@@ -1606,6 +1620,7 @@ export async function migratePipelineNavigInspections(ctx: PipelineMigrationCont
         inspection_data: inspectionData,
         status: "COMPLETED",
         _oracle_insp_id: oracleInspId,
+        ...(ctx.companyId ? { company_id: ctx.companyId } : {})
       });
     }
 

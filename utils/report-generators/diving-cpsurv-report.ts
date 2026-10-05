@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -77,6 +77,7 @@ export const generateDivingCPSURVReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void | null> => {
+    records = normalizeReportRecords(records);
     if (!config.isBlankReport && (!records || records.length === 0)) {
         return null;
     }
@@ -89,14 +90,14 @@ export const generateDivingCPSURVReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         // ── Fetch CPCLB Calibration Map for matching Dive No ───────────────────
@@ -147,18 +148,7 @@ export const generateDivingCPSURVReport = async (
             }
         }
 
-        // ── Date range ──────────────────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate:   Date | null = null;
-        if (records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = min(dates); endDate = max(dates); }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : "N/A";
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 
@@ -292,38 +282,7 @@ export const generateDivingCPSURVReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            // Findings Column: Description + Additional CP postfix details + Anomaly/Finding ref + Rectification
-            const findingsParts: string[] = [];
-
-            // 1. Description / Findings text
-            if (r.description && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            }
-
-            // 2. Postfix with full additional CP details
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? a.value ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3. Anomaly / Finding Reference
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) {
-                const isFindingRef = anomRef.toUpperCase().includes("F") && !anomRef.toUpperCase().includes("A");
-                findingsParts.push(`${isFindingRef ? "Finding Ref" : "Anomaly Ref"}: ${anomRef}`);
-            }
-
-            // 4. Rectification Comments
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                findingsParts.push(`Rectified Comments: ${rectRem}`);
-            }
+            const findings = formatReportFindingText(r, r.description);
 
             return [
                 String(idx + 1),
@@ -334,7 +293,7 @@ export const generateDivingCPSURVReport = async (
                 preDive,
                 postDive,
                 cpDisplay,
-                findingsParts.length > 0 ? findingsParts.join("\n") : "—",
+                findings
             ];
         };
 
@@ -347,25 +306,25 @@ export const generateDivingCPSURVReport = async (
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [
                 [
-                    { content: "Item\nNo.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Component\nQID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Elevation\n(m)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Dive No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Equipment /\nSerial No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Cathodic Potential (mV)", colSpan: 3, styles: { halign: "center", valign: "middle" } },
-                    { content: "Findings", rowSpan: 2, styles: { halign: "center", valign: "middle" } }
+                    { content: "Item\nNo.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Component\nQID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Elevation\n(m)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dive No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Equipment /\nSerial No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Cathodic Potential (mV)", colSpan: 3, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Findings", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} }
                 ],
                 [
-                    { content: "Pre Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
-                    { content: "Post Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
-                    { content: "CP Value\n(mV)", styles: { halign: "center", valign: "middle" } }
+                    { content: "Pre Dive\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Post Dive\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "CP Value\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} }
                 ]
             ],
             body: sorted.map(buildRow),
             theme: "grid",
             headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 7.5,
                 fontStyle: "bold",
                 halign: "center",
@@ -398,24 +357,7 @@ export const generateDivingCPSURVReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                if (!r) return;
-
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding";
-                const isAnom     = (r.has_anomaly === true || r.is_anomaly === true || !!linkedAnom) && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle  = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);
@@ -425,7 +367,7 @@ export const generateDivingCPSURVReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  CP Survey Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

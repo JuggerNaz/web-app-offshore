@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -34,6 +34,7 @@ export const generateROVFMDReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -45,7 +46,7 @@ export const generateROVFMDReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -64,20 +65,7 @@ export const generateROVFMDReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        // Calculate date range
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records.map(r => new Date(r.cr_date)).filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate = max(dates);
-            }
-        }
-
-        const dateRangeStr = startDate && endDate 
-            ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
-            : 'N/A';
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const headerH = 26;
         const drawHeader = (d: jsPDF) => {
@@ -118,7 +106,7 @@ export const generateROVFMDReport = async (
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F'); 
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 
                 d.setTextColor(...colors.text); d.setFontSize(7); d.setFont("helvetica", "bold");
@@ -153,7 +141,6 @@ export const generateROVFMDReport = async (
                 ['Component QID', 'Elevation (m)', 'Dive No.', 'Tape No.', 'Status', 'Density Value', 'Findings']
             ],
             body: sortedRecords.map(r => {
-                const depth = parseFloat(r.elevation);
                 const qid = r.structure_components?.q_id || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
@@ -226,47 +213,31 @@ export const generateROVFMDReport = async (
 
                 const densityColValue = densityColumnList.length > 0 ? densityColumnList.join('\n') : '-';
 
-                // Construct findings from record description and density location details
-                let findingsParts: string[] = [];
-                if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
-                    findingsParts.push(String(r.description).trim());
-                }
+                const depth = parseFloat(r.elevation);
+                const elevStr = isNaN(depth) ? (r.elevation || '-') : `${depth.toFixed(2)} m`;
+                const statusText = data.member_status || (data.flooded ? 'Flooded' : 'Not Flooded') || '-';
 
-                if (locationDetailList.length > 0) {
-                    findingsParts.push(`Location & Density Details:\n${locationDetailList.join('\n')}`);
-                }
-
-                if (isAnomaly && anomRef) findingsParts.push(`[Reference: ${anomRef}]`);
-                if (isRectified) findingsParts.push(`Rectified: ${rectRem || 'N/A'}`);
-
+                const baseParts: string[] = [];
+                if (r.description && String(r.description).trim()) baseParts.push(String(r.description).trim());
+                if (locationDetailList.length > 0) baseParts.push(`Location & Density Details:\n${locationDetailList.join('\n')}`);
+                const findings = formatReportFindingText(r, baseParts.join('\n'));
                 return [
                     qid,
-                    isNaN(depth) ? r.elevation : depth.toFixed(2),
+                    elevStr,
                     diveNo,
                     tapeNo,
-                    data.member_status || 'N/A',
+                    statusText,
                     densityColValue,
-                    findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A'
+                    findings
                 ];
             }),
             theme: 'grid',
-            headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
-            styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
+            headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+            styles: {fontSize: 7.5, cellPadding: 2, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1},
             didParseCell: (data) => {
-                if (data.section === 'body') {
-                    const r = sortedRecords[data.row.index];
-                    const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                    const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-
-                    if (isAnom) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = 'bold';
-                    } else if (isRect) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = 'bold';
-                    }
-                }
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
             },
             columnStyles: {
                 0: { cellWidth: 26, fontStyle: 'bold', halign: 'left' },
@@ -286,7 +257,7 @@ export const generateROVFMDReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Flooded Member Detection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

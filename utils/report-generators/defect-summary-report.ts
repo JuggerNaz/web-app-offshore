@@ -2,7 +2,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
 // ─── Priority colour mapping ─────────────────────────────────────────────────
@@ -247,7 +247,7 @@ export const generateDefectSummaryReport = async (
             d.setLineWidth(0.3);
             d.rect(sx, sy, contentWidth, headerH);
         } else {
-            d.setFillColor(31, 55, 93);
+            d.setFillColor(7, 78, 136);
             d.rect(sx, sy, contentWidth, headerH, "F");
         }
 
@@ -263,7 +263,7 @@ export const generateDefectSummaryReport = async (
         }
 
         // Centre text
-        d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
+        d.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
         d.text((companySettings.company_name || "TANJUNG OFFSHORE").toUpperCase(), pageWidth / 2, sy + 6, { align: "center" });
@@ -297,8 +297,8 @@ export const generateDefectSummaryReport = async (
         const valueColWidth = (contentWidth - labelColWidth * 2) / 2;
 
         const headSt = isPrintFriendly
-            ? { fillColor: [255, 255, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] }
-            : { fillColor: [229, 231, 235] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] };
+            ? { fillColor: [255, 255, 255] as [number, number, number], textColor: [7, 78, 136] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [200, 200, 200] as [number, number, number] }
+            : { fillColor: [7, 78, 136] as [number, number, number], textColor: [255, 255, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [255, 255, 255] as [number, number, number] };
 
         autoTable(d, {
             startY,
@@ -395,9 +395,18 @@ export const generateDefectSummaryReport = async (
         // Draw Section Title
         d.setFontSize(9);
         d.setFont("helvetica", "bold");
-        d.setFillColor(240, 240, 240);
-        d.rect(margin, y, contentWidth, 7, "F");
-        d.setTextColor(31, 55, 93);
+        if (isPrintFriendly) {
+            d.setFillColor(240, 240, 240);
+            d.setDrawColor(180, 180, 180);
+            d.setLineWidth(0.3);
+            d.rect(margin, y, contentWidth, 7, "FD");
+        } else {
+            d.setFillColor(240, 240, 240);
+            d.setDrawColor(200, 200, 200);
+            d.setLineWidth(0.1);
+            d.rect(margin, y, contentWidth, 7, "FD");
+        }
+        d.setTextColor(7, 78, 136);
         const dashTitle = config.isFindingsReport ? "FINDINGS STATISTICAL SUMMARY" : "ANOMALY STATISTICAL SUMMARY";
         d.text(dashTitle, margin + 2, y + 5);
         d.setTextColor(0, 0, 0);
@@ -462,17 +471,15 @@ export const generateDefectSummaryReport = async (
             body: sortedLabels.map(l => {
                 const { bg, text } = priorityStyle(l, colorMap);
                 return [
-                    { content: l.toUpperCase(), styles: { fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const } },
-                    { content: String(counts[l]), styles: { halign: "center" as const, fontStyle: "bold" as const } }
+                    { content: l.toUpperCase(), styles: {fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                    { content: String(counts[l]), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} }
                 ];
             }),
             theme: "grid",
             styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
-            headStyles: {
-                fillColor: isPrintFriendly ? [230, 230, 230] : [31, 55, 93],
+            headStyles: {fillColor: isPrintFriendly ? [230, 230, 230] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-                halign: "center"
-            },
+                halign: "center", lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
         });
 
         return Math.max((d as any).lastAutoTable.finalY + 5, chartY + dashH);
@@ -486,6 +493,7 @@ export const generateDefectSummaryReport = async (
         d.setFontSize(7);
         d.setFont("helvetica", "normal");
         d.setTextColor(100, 100, 100);
+        d.text(REPORT_FOOTER_APP_TEXT, margin, FOOTER_LINE_Y + 3.5);
         d.text(`Page ${pageNum} of ${totalPages}`, pageWidth / 2, FOOTER_LINE_Y + 3.5, { align: "center" });
         d.setTextColor(0, 0, 0);
     };
@@ -552,20 +560,17 @@ export const generateDefectSummaryReport = async (
         // Priority cell with colour
         const priorityCell = {
             content: isRectified ? `${priority}\n✓ RECTIFIED` : priority,
-            styles: {
-                fillColor: isRectified ? [0, 176, 80] as [number, number, number] : bg,
+            styles: {fillColor: isRectified ? [0, 176, 80] as [number, number, number] : bg,
                 textColor: isRectified ? [255, 255, 255] as [number, number, number] : text,
                 fontStyle: "bold" as const,
                 halign: "center" as const,
-                fontSize: 7,
-            },
+                fontSize: 7, lineWidth: 0.1, lineColor: [203, 213, 225],},
         };
 
         // Finding cell — coloured by priority
         const findingsCell = {
             content: findings,
-            styles: {
-                fillColor: isRectified
+            styles: {fillColor: isRectified
                     ? [229, 255, 229] as [number, number, number]
                     : (bg[0] === 220 && bg[1] === 220 ? [255, 255, 255] as [number, number, number] :
                         // Very light tint of priority colour
@@ -576,12 +581,11 @@ export const generateDefectSummaryReport = async (
                         ] as [number, number, number]
                     ),
                 textColor: [0, 0, 0] as [number, number, number],
-                fontSize: 7,
-            },
+                fontSize: 7, lineWidth: 0.1, lineColor: [203, 213, 225],},
         };
 
         return [
-            { content: String(idx + 1), styles: { halign: "center" as const, fontStyle: "bold" as const } },
+            { content: String(idx + 1), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} },
             ref,
             tapeDisplay,
             defectCode,
@@ -615,7 +619,7 @@ export const generateDefectSummaryReport = async (
         body: tableBody,
         theme: "grid",
         headStyles: {
-            fillColor: isPrintFriendly ? [229, 231, 235] : [31, 55, 93],
+            fillColor: isPrintFriendly ? [229, 231, 235] : [7, 78, 136],
             textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
             fontStyle: "bold",
             fontSize: 7.5,

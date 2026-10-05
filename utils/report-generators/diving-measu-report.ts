@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -36,6 +36,7 @@ export const generateDivingMEASUReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config?.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -47,7 +48,7 @@ export const generateDivingMEASUReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -67,20 +68,7 @@ export const generateDivingMEASUReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        // --- 2. Calculate Date Range ---
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records.map(r => new Date(r.cr_date || r.inspection_date)).filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate = max(dates);
-            }
-        }
-
-        const dateRangeStr = startDate && endDate 
-            ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
-            : 'N/A';
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const headerH = 26;
         const drawHeader = (d: jsPDF) => {
@@ -122,7 +110,7 @@ export const generateDivingMEASUReport = async (
                 d.setDrawColor(...colors.border);
                 d.setLineWidth(0.2); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'FD'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'FD'); 
                 
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
                 d.text(label, x + 3, ty + 4.8); d.setFont("helvetica", "normal");
@@ -244,14 +232,12 @@ export const generateDivingMEASUReport = async (
                 {
                     content: `QID: ${group.qid}   |   Elevation: ${group.elevation}   |   Dive No.: ${group.diveNo}`,
                     colSpan: 4,
-                    styles: {
-                        fillColor: isPF ? [240, 240, 240] : [241, 245, 249],
+                    styles: {fillColor: config?.printFriendly ? [240, 240, 240] : [241, 245, 249],
                         textColor: colors.navy,
                         fontStyle: 'bold',
                         fontSize: 8,
                         cellPadding: 3.5,
-                        halign: 'left'
-                    }
+                        halign: 'left', lineWidth: 0.1, lineColor: colors.border}
                 }
             ]);
 
@@ -266,22 +252,9 @@ export const generateDivingMEASUReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || r.rectified_remarks || '';
 
-                if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
-                    const desc = String(r.description).trim();
-                    if (!groupFindingsList.includes(desc)) groupFindingsList.push(desc);
-                } else if (data.remarks && String(data.remarks).trim() !== '') {
-                    const rem = String(data.remarks).trim();
-                    if (!groupFindingsList.includes(rem)) groupFindingsList.push(rem);
-                }
-
-                if (isAnomaly && anomRef) {
-                    const refStr = `[Ref: ${anomRef}]`;
-                    if (!groupFindingsList.includes(refStr)) groupFindingsList.push(refStr);
-                }
-
-                if (isRectified) {
-                    const rectStr = `[Rectified: ${rectRem || 'Completed'}]`;
-                    if (!groupFindingsList.includes(rectStr)) groupFindingsList.push(rectStr);
+                const fText = formatReportFindingText(r, r.description || data.remarks);
+                if (fText && fText !== "No significant findings" && !groupFindingsList.includes(fText)) {
+                    groupFindingsList.push(fText);
                 }
 
                 // Extract measurement items
@@ -312,6 +285,7 @@ export const generateDivingMEASUReport = async (
                             mUnit,
                             mResult
                         ],
+                        record: r,
                         isAnomaly,
                         isRectified
                     });
@@ -320,15 +294,15 @@ export const generateDivingMEASUReport = async (
 
             // Group Findings Footer Row (Placed cleanly at the end of each QID group)
             const groupFindingsText = groupFindingsList.length > 0 
-                ? groupFindingsList.join('; ') 
+                ? groupFindingsList.join('\n') 
                 : 'No specific findings reported.';
 
             bodyRows.push([
                 {
-                    content: `Findings: ${groupFindingsText}`,
+                    content: `Findings:\n${groupFindingsText}`,
                     colSpan: 4,
                     styles: {
-                        fillColor: isPF ? [250, 250, 250] : [248, 250, 252],
+                        fillColor: config?.printFriendly ? [250, 250, 250] : [248, 250, 252],
                         textColor: colors.text,
                         fontStyle: 'bold',
                         fontSize: 7.5,
@@ -353,8 +327,8 @@ export const generateDivingMEASUReport = async (
             body: bodyForAutoTable,
             theme: 'grid',
             headStyles: { 
-                fillColor: isPF ? [255, 255, 255] : colors.navy, 
-                textColor: isPF ? colors.navy : 255, 
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy, 
+                textColor: config?.printFriendly ? colors.navy : 255, 
                 fontSize: 8, 
                 fontStyle: 'bold', 
                 halign: 'center',
@@ -373,14 +347,8 @@ export const generateDivingMEASUReport = async (
             didParseCell: (data) => {
                 if (data.section === 'body') {
                     const rowObj = bodyRows[data.row.index];
-                    if (rowObj && !Array.isArray(rowObj)) {
-                        if (rowObj.isAnomaly) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (rowObj.isRectified) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
-                        }
+                    if (rowObj && !Array.isArray(rowObj) && rowObj.record) {
+                        applyRecordCellStyling(data.cell, rowObj.record, isPF);
                     }
                 }
             },
@@ -399,7 +367,7 @@ export const generateDivingMEASUReport = async (
                 doc.setDrawColor(...colors.darkBorder); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Measurement Dimensional Survey Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

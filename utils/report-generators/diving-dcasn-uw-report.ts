@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -37,6 +37,7 @@ export const generateDivingDCASNUWReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | null | void> => {
+    records = normalizeReportRecords(records);
     const supabase = createClient();
     console.log("[generateDivingDCASNUWReport] Starting generation", { recordsCount: records?.length, config });
 
@@ -48,14 +49,14 @@ export const generateDivingDCASNUWReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         // Filter records
@@ -119,20 +120,7 @@ export const generateDivingDCASNUWReport = async (
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
 
-            let startDate: Date | null = null;
-            let endDate: Date | null = null;
-            if (groupRecords.length > 0) {
-                const dates = groupRecords
-                    .map(r => new Date(r.cr_date || r.created_at))
-                    .filter(dt => !isNaN(dt.getTime()));
-                if (dates.length > 0) {
-                    startDate = min(dates);
-                    endDate = max(dates);
-                }
-            }
-            const dateRangeStr = startDate && endDate
-                ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-                : "N/A";
+            const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
             const drawBox = (label: string, value: string, x: number, w: number, y: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1);
@@ -227,34 +215,7 @@ export const generateDivingDCASNUWReport = async (
         }
 
         const formatFindings = (r: any) => {
-            const d = r.inspection_data || {};
-            const parts: string[] = [];
-            if (r.description?.trim()) {
-                parts.push(r.description.trim());
-            } else if (d.findings?.trim()) {
-                parts.push(d.findings.trim());
-            }
-
-            // CP Additional
-            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    parts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) parts.push(`Ref: ${anomRef}`);
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                parts.push(`Rectified: ${rectRem}`);
-            }
-            return parts.length > 0 ? parts.join("\n") : "—";
+            return formatReportFindingText(r, r.description || r.inspection_data?.findings);
         };
 
         const parseMetaStatus = (r: any) => {
@@ -268,17 +229,7 @@ export const generateDivingDCASNUWReport = async (
 
         const applyCellColoring = (data: any, r: any) => {
             if (data.section !== "body") return;
-            const { isFinding, isAnom, isRect } = parseMetaStatus(r);
-            if (isFinding) {
-                data.cell.styles.textColor = colors.finding;
-                data.cell.styles.fontStyle = "bold";
-            } else if (isAnom) {
-                data.cell.styles.textColor = colors.anomaly;
-                data.cell.styles.fontStyle = "bold";
-            } else if (isRect) {
-                data.cell.styles.textColor = colors.rectified;
-                data.cell.styles.fontStyle = "bold";
-            }
+            applyRecordCellStyling(data.cell, r, config.printFriendly);
         };
 
         // Generate Pages
@@ -324,10 +275,20 @@ export const generateDivingDCASNUWReport = async (
 
             const drawSectionHeader = (title: string) => {
                 checkPageBreak(12);
-                doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-                doc.setTextColor(...colors.navy);
-                doc.text(title, margin, currentY + 4);
-                currentY += 6;
+                const isPF = config.printFriendly;
+                if (isPF) {
+                    doc.setDrawColor(...colors.border);
+                    doc.setLineWidth(0.2);
+                    doc.rect(margin, currentY, contentWidth, 6, "S");
+                    doc.setTextColor(...colors.navy);
+                } else {
+                    doc.setFillColor(...colors.navy);
+                    doc.rect(margin, currentY, contentWidth, 6, "F");
+                    doc.setTextColor(255, 255, 255);
+                }
+                doc.setFontSize(8); doc.setFont("helvetica", "bold");
+                doc.text(title, margin + 2, currentY + 4.2);
+                currentY += 8;
             };
 
             // 1. GVINS
@@ -354,7 +315,7 @@ export const generateDivingDCASNUWReport = async (
                         ];
                     }),
                     theme: "grid",
-                    headStyles: { fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center" },
+                    headStyles: {fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                     bodyStyles: { fontSize: 6.5, textColor: colors.text },
                     columnStyles: {
                         0: { cellWidth: 12, halign: "center" },
@@ -397,7 +358,7 @@ export const generateDivingDCASNUWReport = async (
                         ];
                     }),
                     theme: "grid",
-                    headStyles: { fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center" },
+                    headStyles: {fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                     bodyStyles: { fontSize: 6.5, textColor: colors.text },
                     columnStyles: {
                         0: { cellWidth: 12, halign: "center" },
@@ -441,7 +402,7 @@ export const generateDivingDCASNUWReport = async (
                         ];
                     }),
                     theme: "grid",
-                    headStyles: { fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center" },
+                    headStyles: {fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                     bodyStyles: { fontSize: 6.5, textColor: colors.text },
                     columnStyles: {
                         0: { cellWidth: 12, halign: "center" },
@@ -468,13 +429,13 @@ export const generateDivingDCASNUWReport = async (
                     margin: { left: margin, right: margin },
                     head: [
                         [
-                            { content: "Item No.", rowSpan: 2, styles: { valign: "middle" } },
-                            { content: "QID", rowSpan: 2, styles: { valign: "middle" } },
-                            { content: "Elevation (m)", rowSpan: 2, styles: { valign: "middle" } },
-                            { content: "Dive No.", rowSpan: 2, styles: { valign: "middle" } },
-                            { content: "Thickness Readings (o'clock)", colSpan: 4, styles: { halign: "center" } },
-                            { content: "Nominal Thickness", rowSpan: 2, styles: { valign: "middle" } },
-                            { content: "Findings", rowSpan: 2, styles: { valign: "middle" } }
+                            { content: "Item No.", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                            { content: "QID", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                            { content: "Elevation (m)", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                            { content: "Dive No.", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                            { content: "Thickness Readings (o'clock)", colSpan: 4, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                            { content: "Nominal Thickness", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                            { content: "Findings", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} }
                         ],
                         ["12", "3", "6", "9"]
                     ],
@@ -497,7 +458,7 @@ export const generateDivingDCASNUWReport = async (
                         ];
                     }),
                     theme: "grid",
-                    headStyles: { fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center" },
+                    headStyles: {fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                     bodyStyles: { fontSize: 6.5, textColor: colors.text },
                     columnStyles: {
                         0: { cellWidth: 12, halign: "center" },
@@ -552,6 +513,22 @@ export const generateDivingDCASNUWReport = async (
                 drawSig("APPROVED BY", margin + (sigW * 2), config?.approvedBy);
             }
         });
+
+        
+        const totalPages = doc.getNumberOfPages();
+        for (let j = 1; j <= totalPages; j++) {
+            doc.setPage(j);
+            const footerY = pageHeight - 5;
+            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+            doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
+            doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
+            doc.setFont("helvetica", "normal");
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
+            if (config?.showPageNumbers !== false) {
+                doc.text(`Page ${j} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+            }
+        }
+        (doc as any)._footerApplied = true;
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");

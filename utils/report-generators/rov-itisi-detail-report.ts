@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -39,6 +39,7 @@ export const generateROVRRISIITubeDetailReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | null | void> => {
+    records = normalizeReportRecords(records);
     const supabase = createClient();
     console.log("[ROV I-Tube Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
@@ -49,7 +50,7 @@ export const generateROVRRISIITubeDetailReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -280,27 +281,13 @@ export const generateROVRRISIITubeDetailReport = async (
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
 
-            // Date range for this group
-            let startDate: Date | null = null;
-            let endDate: Date | null = null;
-            if (groupRecords.length > 0) {
-                const dates = groupRecords
-                    .map(r => new Date(r.cr_date || r.created_at))
-                    .filter(d => !isNaN(d.getTime()));
-                if (dates.length > 0) {
-                    startDate = min(dates);
-                    endDate = max(dates);
-                }
-            }
-            const dateStr = startDate && endDate
-                ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
-                : "N/A";
+            const dateStr = getInspectionDateRange(records, headerData, config);
 
             const drawBox = (label: string, value: string, x: number, y: number, w: number) => {
                 d.setDrawColor(...colors.border);
                 d.setLineWidth(0.1);
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, y, w, ROW_H, isPF ? "S" : "F");
+                d.rect(x, y, w, ROW_H, config?.printFriendly ? "S" : "F");
                 d.rect(x, y, w, ROW_H, "S");
 
                 d.setTextColor(...colors.text);
@@ -327,7 +314,7 @@ export const generateROVRRISIITubeDetailReport = async (
 
             d.setFontSize(7);
             d.setFont("helvetica", "normal");
-            d.text(`Report ID: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin, footerY);
+            d.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
             d.text(`Printed: ${format(new Date(), "dd MMM yyyy HH:mm")}`, margin + contentWidth / 2, footerY, { align: "center" });
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: "right" });
         };
@@ -384,45 +371,24 @@ export const generateROVRRISIITubeDetailReport = async (
                     ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                     : "—";
 
-                // Format Findings
-                let findingsParts: string[] = [];
-                if (r.description && r.description.trim()) {
-                    findingsParts.push(r.description.trim());
-                } else if (d.findings && d.findings.trim()) {
-                    findingsParts.push(d.findings.trim());
-                }
-
-                additionals.forEach((a: any) => {
-                    const val = a.reading ?? a.cp_rdg ?? "";
-                    if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                        const loc = a.location ? ` @ ${a.location}` : "";
-                        const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                        findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                    }
-                });
-
-                if (anoms.length > 0) {
-                    findingsParts.push(...anoms.map((a: any) => `[Anom Ref: ${a.ref_no || a.anomaly_ref_no || "N/A"}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ""})` : ""}`));
-                }
-
-                const findings = findingsParts.length > 0 ? findingsParts.join("\n") : "No significant findings";
+                const findings = formatReportFindingText(r);
 
                 return [
-                    { content: String(rIdx + 1), styles: { halign: "center" as const } },
+                    { content: String(rIdx + 1), styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: comp.q_id || "—" },
-                    { content: elevDisplay, styles: { halign: "center" as const } },
-                    { content: String(diveNo), styles: { halign: "center" as const } },
-                    { content: String(tapeNo), styles: { halign: "center" as const } },
-                    { content: cpDisplay, styles: { halign: "center" as const } },
-                    { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
+                    { content: elevDisplay, styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: String(diveNo), styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: String(tapeNo), styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: cpDisplay, styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: findings }
                 ];
             }) : [[
-                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "-" },
-                { content: "-", styles: { halign: "center" as const } },
-                { content: "-", styles: { halign: "center" as const } },
-                { content: "-", styles: { halign: "center" as const } },
-                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "No observations recorded for this scope." }
             ]];
 
@@ -431,19 +397,19 @@ export const generateROVRRISIITubeDetailReport = async (
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 6 },
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center" as const } },
+                        { content: "Item No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                         { content: "QID" },
-                        { content: "Elevation", styles: { halign: "center" as const } },
-                        { content: "Dive No.", styles: { halign: "center" as const } },
-                        { content: "Tape No.", styles: { halign: "center" as const } },
-                        { content: "CP", styles: { halign: "center" as const } },
+                        { content: "Elevation", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: "Dive No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: "Tape No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: "CP", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                         { content: "Findings" }
                     ]
                 ],
                 body: tableRows,
                 theme: "grid",
-                headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
-                styles: { fontSize: 7.5, cellPadding: 2.5 },
+                headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                styles: {fontSize: 7.5, cellPadding: 2.5, lineWidth: 0.1, lineColor: colors.border},
                 columnStyles: {
                     0: { cellWidth: 12 }, // Item No.
                     1: { cellWidth: 16 }, // QID
@@ -453,7 +419,12 @@ export const generateROVRRISIITubeDetailReport = async (
                     5: { cellWidth: 26 }, // CP
                     6: { cellWidth: "auto" } // Findings
                 },
-                didDrawPage: (data) => {
+                didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
+            },
+            didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawPageHeader(doc);
                 }
             });

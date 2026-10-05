@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -281,7 +281,7 @@ export const generateDefectAnomalyReport = async (
             doc.rect(startX, startY, contentWidth, headerH);
         } else {
             // Screen/Color: Dark Blue Filled Background
-            doc.setFillColor(31, 55, 93); // Dark Blue #1f375d
+            doc.setFillColor(7, 78, 136); // Dark Blue #1f375d
             doc.rect(startX, startY, contentWidth, headerH, "F");
         }
 
@@ -299,7 +299,7 @@ export const generateDefectAnomalyReport = async (
 
         // --- Center: Text ---
         // Print-Friendly: Dark text on white. Normal: White text on dark blue.
-        doc.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
+        doc.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
 
         // Company Name - SAME size as Report Title
         doc.setFont("helvetica", "bold");
@@ -477,8 +477,8 @@ export const generateDefectAnomalyReport = async (
         }
 
         const headStylesString = isPrintFriendly
-            ? { fillColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [0, 0, 0] }
-            : { fillColor: [229, 231, 235], fontStyle: 'bold', lineWidth: 0.1, lineColor: [0, 0, 0] };
+            ? { fillColor: [255, 255, 255], textColor: [7, 78, 136], fontStyle: 'bold', lineWidth: 0.1, lineColor: [200, 200, 200] }
+            : { fillColor: [7, 78, 136], textColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [255, 255, 255] };
 
 
         // Component & Elevation Vals
@@ -516,7 +516,7 @@ export const generateDefectAnomalyReport = async (
                     { content: "Jobpack:", styles: headStylesString },
                     { content: record.jobpack_name || jobPack.name || "N/A" },
                     { content: "Priority:", styles: headStylesString },
-                    { content: priority, styles: { fillColor: priorityColor, fontStyle: 'bold', halign: 'center' } }
+                    { content: priority, styles: {fillColor: priorityColor, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [203, 213, 225]} }
                 ],
                 [
                     { content: "Field:", styles: headStylesString }, { content: field },
@@ -544,7 +544,7 @@ export const generateDefectAnomalyReport = async (
                 ]
             ] as any,
             theme: 'grid',
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [0, 0, 0] },
             columnStyles: {
                 0: { cellWidth: labelColWidth },
                 1: { cellWidth: valueColWidth },
@@ -600,25 +600,29 @@ export const generateDefectAnomalyReport = async (
         const boxContentH = (descLines.length * descLineHeight) + 6; // padding
         const totalBoxH = boxHeaderH + boxContentH;
 
-        // Draw Light Box - border only, no background fill
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(margin, lastY, contentWidth, totalBoxH);
-
-        // Draw light background for Anomaly Description sub-header row
-        doc.setFillColor(isPrintFriendly ? 240 : 229, isPrintFriendly ? 240 : 231, isPrintFriendly ? 240 : 235);
-        doc.rect(margin, lastY, contentWidth, boxHeaderH, 'F');
+        // Draw background for Anomaly Description sub-header row
+        if (isPrintFriendly) {
+            doc.setFillColor(240, 240, 240);
+            doc.rect(margin, lastY, contentWidth, boxHeaderH, 'F');
+            doc.setTextColor(7, 78, 136);
+        } else {
+            doc.setFillColor(7, 78, 136);
+            doc.rect(margin, lastY, contentWidth, boxHeaderH, 'F');
+            doc.setTextColor(255, 255, 255);
+        }
         // Re-draw border on top of fill
         doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.1);
         doc.rect(margin, lastY, contentWidth, totalBoxH);
 
         // Title
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(0, 0, 0);
         const descriptionTitle = config.isFindingsReport ? `Findings Description: ${defectTitle.toUpperCase()}` : `Anomaly Description: ${defectTitle.toUpperCase()}`;
         doc.text(descriptionTitle, margin + textPadding, lastY + 5);
 
         // Content - use same font size as splitTextToSize calculation
+        doc.setTextColor(0, 0, 0);
         doc.setFontSize(descFontSize);
         doc.setFont("helvetica", "normal");
         doc.text(descLines, margin + textPadding, lastY + boxHeaderH + 4);
@@ -716,11 +720,17 @@ export const generateDefectAnomalyReport = async (
                     const subBarY = margin + headerH + 2;
                     doc.setDrawColor(200, 200, 200);
                     doc.setLineWidth(0.1);
-                    doc.setFillColor(isPrintFriendly ? 250 : 240, isPrintFriendly ? 250 : 242, isPrintFriendly ? 250 : 246);
-                    doc.rect(margin, subBarY, contentWidth, subBarH, 'FD');
+                    if (isPrintFriendly) {
+                        doc.setFillColor(240, 240, 240);
+                        doc.rect(margin, subBarY, contentWidth, subBarH, 'FD');
+                        doc.setTextColor(7, 78, 136);
+                    } else {
+                        doc.setFillColor(7, 78, 136);
+                        doc.rect(margin, subBarY, contentWidth, subBarH, 'FD');
+                        doc.setTextColor(255, 255, 255);
+                    }
                     doc.setFontSize(7.5);
                     doc.setFont("helvetica", "bold");
-                    doc.setTextColor(31, 55, 93);
                     doc.text(`${config.isFindingsReport ? "Findings Ref:" : "Anomaly Ref:"} ${ref}  |  Structure: ${install}  |  Component: ${compVal || "N/A"}`, margin + 3, subBarY + 4.2);
                     doc.setTextColor(0, 0, 0);
 
@@ -751,11 +761,17 @@ export const generateDefectAnomalyReport = async (
                 doc.rect(margin, lastY, contentWidth, totalBlockH);
 
                 // 2. Draw Header for Title (Centered)
-                doc.setFillColor(245, 245, 245);
-                doc.rect(margin, lastY, contentWidth, headerH_box, 'F');
+                if (isPrintFriendly) {
+                    doc.setFillColor(245, 245, 245);
+                    doc.rect(margin, lastY, contentWidth, headerH_box, 'F');
+                    doc.setTextColor(7, 78, 136);
+                } else {
+                    doc.setFillColor(7, 78, 136);
+                    doc.rect(margin, lastY, contentWidth, headerH_box, 'F');
+                    doc.setTextColor(255, 255, 255);
+                }
                 doc.setFontSize(8);
                 doc.setFont("helvetica", "bold");
-                doc.setTextColor(31, 55, 93);
                 doc.text(title.toUpperCase(), pageWidth / 2, lastY + 5, { align: "center" });
 
                 // 3. Draw Image (Centered horizontally within container box)
@@ -868,7 +884,7 @@ export const generateDefectAnomalyReport = async (
                 const subBarY = margin + headerH + 2;
                 doc.setFontSize(7.5);
                 doc.setFont("helvetica", "bold");
-                doc.setTextColor(31, 55, 93);
+                doc.setTextColor(7, 78, 136);
                 doc.text(`Page ${localPage} of ${localTotal}`, pageWidth - margin - 3, subBarY + 4.2, { align: "right" });
                 doc.setTextColor(0, 0, 0);
             }
@@ -882,6 +898,12 @@ export const generateDefectAnomalyReport = async (
             doc.setDrawColor(180, 180, 180);
             doc.setLineWidth(0.3);
             doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+
+            // App Name & Version - left aligned
+            doc.setFontSize(7);
+            doc.setTextColor(100, 100, 100);
+            doc.setFont("helvetica", "normal");
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerLineY + 4);
 
             // Page number - centered
             doc.setFontSize(7);

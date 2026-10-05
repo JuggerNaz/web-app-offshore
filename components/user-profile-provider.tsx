@@ -91,8 +91,13 @@ export function UserProfileProvider({
           setData(json.data);
         }
       } else if (res.status === 403 || res.status === 401) {
+        let errorMsg = "Your account has been deactivated. Please contact your administrator.";
+        try {
+          const json = await res.json();
+          if (json.error) errorMsg = json.error;
+          else if (json.message) errorMsg = json.message;
+        } catch (_) {}
         if (typeof window !== "undefined") {
-          const errorMsg = "Your account has been deactivated. Please contact your administrator.";
           window.location.href = `/sign-in?error=${encodeURIComponent(errorMsg)}`;
         }
       }
@@ -126,8 +131,13 @@ export function UserProfileProvider({
           }
         }
       } else if (res.status === 403 || res.status === 401) {
+        let errorMsg = "Your account has been deactivated. Please contact your administrator.";
+        try {
+          const json = await res.json();
+          if (json.error) errorMsg = json.error;
+          else if (json.message) errorMsg = json.message;
+        } catch (_) {}
         if (typeof window !== "undefined") {
-          const errorMsg = "Your account has been deactivated. Please contact your administrator.";
           window.location.href = `/sign-in?error=${encodeURIComponent(errorMsg)}`;
         }
       }

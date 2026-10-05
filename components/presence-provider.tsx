@@ -143,9 +143,9 @@ export function PresenceProvider({
                                     heartbeatFailed.current = true;
                                     console.warn("Presence heartbeat function missing. Disabling DB heartbeat tracking.");
                                 } else {
-                                    // Only log if it's a real error and not a transient network failure
-                                    if ((error.message || error.code) && !error.message?.includes("Failed to fetch")) {
-                                        console.error("Heartbeat interval error:", error.message || error.code);
+                                    // Only log if it's a real error and not a transient network failure or timeout
+                                    if ((error.message || error.code) && !error.message?.includes("Failed to fetch") && !error.message?.includes("timeout")) {
+                                        console.warn("Heartbeat interval warning:", error.message || error.code);
                                     }
                                 }
                             }
